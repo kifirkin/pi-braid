@@ -20,113 +20,153 @@
 
 **Why P0:** Every prompt, guideline, and tool description in braid encodes assumptions about what braid is. If those assumptions are inconsistent, no amount of feature work fixes the agent's behavior. The identity blocks, guidelines, and tool descriptions are the agent's operating system — they need to be structured for clarity, not just stuffed with directives.
 
-**2026-07-17 update — Methodology pivot:** The original approach (synthetic A/B testing with subagents and standardized task sets) was discarded. Rationale: synthetic tasks create artificial scenarios that don't reflect real usage patterns. The real signal is in the existing session corpus — 333 sessions, 327MB, spanning April 21 to July 17, 2026. This corpus naturally captures multiple prompt versions:
+**2026-07-17 update — Methodology pivot:** The original approach (synthetic A/B testing with subagents and standardized task sets) was discarded. Rationale: synthetic tasks create artificial scenarios that don't reflect real usage patterns. The real signal is in the existing session corpus — 334 sessions, 327MB, spanning April 13 to July 17, 2026. This corpus naturally captures multiple prompt versions.
 
-| Period | Prompt version | Key change |
-|--------|---------------|------------|
-| ~Apr 21 – ~Jun 10 | Original | 17 standalone directives, no identity section, guidelines inline |
-| ~Jun 10 – ~Jun 20 | Consolidated identity | 5 identity blocks under `## Identity` heading (a891693a) |
-| ~Jun 20 – ~Jul 1 | Guidelines extracted | Guidelines moved before tools, separate sub-functions (e3e6e43b) |
-| ~Jul 1 – Jul 16 | Pipeline added | Context navigation pipeline with tool-availability guards (53f97c8e) |
-| Jul 16+ | Current | Pipeline wisdom embedded in code, checkout auto-summary |
+**CORRECTED timeline (from actual git history, not ROADMAP estimates):**
 
-Each version boundary is a natural experiment. The corpus lets us compare the same user (you) interacting with the same agent (braid) under different prompt structures, and infer what works from indirect behavioral signals.
+| Period | Sessions | Prompt version | Key commits |
+|--------|----------|----------------|-------------|
+| Apr 13 – Jun 12 | 209 | Original prompt-builder | Evolving identity, 17+ directives inline |
+| Jun 13 – Jun 22 | 15 | Identity extracted | `46fb6fb` — extract identity into separate file |
+| Jun 23 – Jul 1 | 14 | Identity refined (11→8) | `c411087` — 11→8 values, CONCISE_RESPONSES |
+| Jul 2 – Jul 15 | 49 | **SCOPES + INTERACTION_STYLE** | `322d2c4`, `77bb0cb`, `aefefc6`, `1399480` |
+| Jul 16+ | 17 | 17→5 identity blocks + guidelines + pipeline | `a891693a`, `e3e6e43b`, `53f97c8e` |
 
-**Current state (post 2026-07-16 session):**
-- Identity blocks consolidated from 17 directives to 5 character traits under `## Identity` heading
-- Guidelines extracted into separate section before tools (pi-core pattern)
-- Context navigation pipeline guidelines added with tool-availability guards
-- Tool descriptions updated with "when to use" framing
-- Each guideline family is a separate sub-function (file tools, communication, context navigation)
-- Pipeline wisdom embedded in tool implementations (nextStep in details)
-- Checkout auto-summary with smart content selection
+**Note:** The ROADMAP's estimated dates (~Jun 10 for identity, ~Jun 20 for guidelines, ~Jul 1 for pipeline) were aspirational. The actual changes all landed on Jul 16-17. The most significant behavioral improvement correlates with the **Jul 2-4 commits** (SCOPES identity, INTERACTION_STYLE, CORRECTION lean directive, behavioral-verification philosophy), which reduced user correction rate by 62% (10.9% → 4.1%).
 
-**Methodology — indirect evidence mining instead of A/B testing**
+**Status: COMPLETED.**
 
-Rather than running synthetic tasks, we mine the session corpus for indirect signals that reveal prompt structure effectiveness:
+### Key findings
+
+**1. User correction rate dropped 62% after Jul 2-4 identity changes**
+
+The SCOPES identity + INTERACTION_STYLE + CORRECTION lean directive + behavioral-verification philosophy (commits `322d2c4`, `77bb0cb`, `aefefc6`, `1399480`) reduced user correction rate from 10.9% to 4.1%. This is the single most impactful prompt intervention to date.
+
+| Prompt version | User correction rate | Sessions |
+|----------------|---------------------|----------|
+| Original (Apr 13 – Jun 12) | 2.7-10.9% (variable) | 209 |
+| Identity extracted (Jun 13-22) | 6.1-9.6% | 15 |
+| Identity refined (Jun 23 – Jul 1) | 10.9-15.8% (peak) | 14 |
+| SCOPES + INTERACTION_STYLE (Jul 2-15) | **4.1-5.0%** | 49 |
+| 17→5 identity blocks (Jul 16+) | 5.2% (n=15) | 17 |
+
+**2. Frequent identity changes cause temporary confusion**
+
+The Jun 22-29 period (15.8% correction rate) was the most active period of prompt development — behavior modes added/removed, identity values fluctuating, directives changing rapidly. Correction rates spike during churn, then normalize after changes settle.
+
+**3. Verification pass rate has been 100% since Jun 08**
+
+This is the **test pass rate** (npm test, npm run typecheck), not the judge verdict rate. The verification judge itself outputs "fail" verdicts regularly (4 times in July sessions alone) — it's catching real issues, not being lenient. The judge is the most reliable component and should NOT be reframed.
+
+**4. Internal prompts are hybrids, not pure directive lists (CORRECTED)**
+
+| Prompt | File | True style |
+|--------|------|------------|
+| Verification judge | `enforcement/verification-judge.ts` | **Pure directive** |
+| Input polisher | `core/input-polisher/consolidated-input-critic.ts` | **Hybrid** |
+| Backward checker | `lib/verification/backward-checker.ts` | **Hybrid** |
+| Claim critic | `lib/ai/consolidated-claim-critic.ts` | **Hybrid** |
+| Harness proposer | `lib/harness/harness-proposer.ts` | **Hybrid** |
+| Harness validator | `lib/harness/harness-validator.ts` | **Hybrid** |
+| Session analyze | `memory/session-recall/analyze.ts` | **Hybrid** |
+| Session query | `memory/session-recall/query.ts` | **Identity-framed** |
+| Fresh eyes (think) | `cognitive/metacognition/handlers/think.ts` | **Identity-framed** |
+
+6 of 9 are hybrids (identity opening + directive body). Only 2 are genuinely identity-framed throughout (session query, fresh eyes). The fresh eyes prompt is the best example of pure identity framing.
+
+**5. WORK_ETHIC block causes over-explanation (⚠️ risky fix)**
+
+The INTERACTION_STYLE block reduced tone-mismatch corrections by ~50%. The remaining over-explanation is in the WORK_ETHIC block (6 merged directives). Proposed trim to 3 sentences — but this is risky: the thoroughness directives prevent sloppy mistakes. **Must A/B test before applying.**
+
+**6. Context hygiene has 3 dead thresholds**
+
+`USAGE_WHISPER_SOFT` (40%), `USAGE_WHISPER_ADVISORY` (50%), and `USAGE_WHISPER_WARNING` (60%) are defined in `context-thresholds.ts` but never used by any handler. The enforcement jumps from 30K tokens straight to 75%+ usage. See P3-5 for the proposed progressive cascade.
+
+**7. Tool output pruning mechanism does not exist**
+
+The tool loop detector (`tool-loop-detector.ts`) detects loops at 16+ consecutive same-tool calls but does NOT prune old tool results. The agent accumulates all tool outputs. See P3-6 for the proposed mechanism.
+
+### Proposed prompt diff (WORK_ETHIC trim — untested, proceed with caution)
+
+**Current (6 directives, ~120 words):**
+```
+WORK_ETHIC: You are methodical and precise. Every concrete identifier must be quoted from source. Guessing a name is a correctness error. Before calling finalize, every done item must carry a verification triple. Before non-trivial work, recall from past sessions via memory. After work producing a reusable insight, store it in memory. Focus on correctness over verboity. State the conclusion first; reasoning comes after, only if it's load-bearing.
+```
+
+**Proposed (3 sentences, ~60 words):**
+```
+WORK_ETHIC: You are methodical and precise. Verify before finalizing, recall from memory before non-trivial work, and store reusable insights. Be concise unless the user asks for details — state the conclusion first, then the reasoning only if it's load-bearing.
+```
+
+### Raw data
+
+Full session mining data (correction rates, tool usage patterns, self-correction analysis, enforcement whisper density, verification pass/fail rates by week, and qualitative deep dives) is available in the archived report at `docs/RESEARCH-prompt-structure.md`.
+
+### Methodology
+
+**Indirect evidence mining:** Rather than synthetic A/B testing, the session corpus (334 sessions, Apr 13 – Jul 17) was mined for indirect behavioral signals:
 
 | Signal | What it reveals | How to detect |
 |--------|----------------|---------------|
-| **User corrections** | Where the prompt led the agent astray | Patterns: "no", "actually", "that's not right", "I meant", user rewrites the agent's output |
-| **User tone shifts** | Friction points, frustration, impatience | Patterns: shortened responses, directive tone, repetition of same request, "just do X", dismissive language |
-| **Agent self-corrections** | Prompt-induced confusion, uncertainty | Patterns: "actually, let me...", "wait", "on second thought", backtracking, abandoned tool chains |
-| **Agent tool usage patterns** | What the prompt prioritizes (or doesn't) | Tool call frequency, tool selection bias, unnecessary bash vs targeted tool usage, premature task switching |
-| **Agent planning depth** | Whether the prompt encourages structured thinking | `think` tool usage frequency, scratchpad detail level, plan item granularity, verification before action |
-| **Verification judge outcomes** | Quality trends over time | Pass/fail rate per prompt version, false positive rate, types of failures caught vs missed |
-| **Compaction patterns** | Context management behavior | compress:checkout ratio, agent-initiated compress frequency, context threshold at compress time |
-| **Task completion patterns** | What the prompt enables vs hinders | Session length, turns-to-completion, abandoned tasks, multi-step task success rate |
+| **User corrections** | Where the prompt led the agent astray | Patterns: "no", "actually", "that's not right", "I meant" |
+| **Agent self-corrections** | Prompt-induced confusion | Patterns: "actually, let me...", "wait", "on second thought" |
+| **Tool usage patterns** | What the prompt prioritizes | Tool call frequency, selection bias |
+| **Verification outcomes** | Quality trends | Pass/fail rate per prompt version |
+| **Compaction patterns** | Context management behavior | compress:checkout ratio, threshold at compress |
 
-**Research questions (reformulated for session mining):**
+**Limitations:**
+- Small post-change cohort (Jul 16+ has only 17 sessions)
+- Confounding variables (task complexity, user mood, model changes)
+- Pattern matching noise (~70% precision on correction regex)
+- Session sampling (20 per week, not full 334)
 
-1. **Does guidelines-before-tools improve agent behavior?** Compare sessions before vs after commit e3e6e43b. Look for: reduction in unnecessary bash calls, more targeted tool selection, fewer user corrections about tool misuse. The natural experiment: the same agent, same user, same project — only the prompt structure changed.
+**Deliverable:** This P0-1 section in ROADMAP.md contains the consolidated findings. The detailed raw data (correction rate tables, weekly breakdowns, signal extraction methodology, qualitative deep dives, methodology notes and future work) is archived in `docs/RESEARCH-prompt-structure.md`.
 
-2. **Does identity framing beat directive lists?** Compare sessions before vs after commit a891693a (17 directives → 5 identity blocks). Look for: fewer user corrections about agent behavior, fewer agent self-corrections, smoother task progression. The archaeology finding says identity works — but does the session data confirm it?
+---
 
-3. **What is the optimal guideline density?** The prompt went from ~0 guidelines (inline) to ~12 (3 families) to ~8 (condensed). Compare cohorts. Look for: correlation between guideline density and user correction rate, agent self-correction rate, task completion rate. Too many guidelines create cognitive load; too few leave gaps.
+### P0-2: Philosophical deepening of identity blocks
 
-4. **Does the context navigation pipeline reduce agent-initiated compaction?** Compare sessions before vs after commit 53f97c8e. Measure compress:checkout ratio. Does the pipeline actually change behavior, or is it just documentation?
+**Status: SHIPPED 2026-07-17.**
 
-5. **What's the relationship between prompt structure and session quality?** Across all 333 sessions, can we predict session quality (user satisfaction, task completion, verification pass rate) from prompt structure? This is the meta-question that ties everything together.
+**Why:** P0-1 proved identity framing works (62% reduction in user corrections). The next step was to deepen the framing — not just consolidate directives into identity blocks, but ground those blocks in the philosophical principles discovered during the pi/braid research.
 
-**Analysis pipeline:**
+**Philosophical principles (from 2026-07-08 presentation research):**
 
-1. **Cohort definition** — Tag each session by the prompt version active at its timestamp. Build 4-5 cohorts.
+| Principle | Source | Maps to identity block |
+|-----------|--------|----------------------|
+| Pi is a minimal harness — every 'no' is an open door | pi's "shape of No" philosophy | IDENTITY_INTRO |
+| Braid is the metacognitive layer: verification, memory, reasoning, self-improvement | braid's 5 pillars | IDENTITY_INTRO |
+| Systematic over hacky | braid pillar #3 | WORK_ETHIC |
+| Verify before done | braid pillar #1 | WORK_ETHIC, SELF_MANAGEMENT |
+| Memory as workspace | braid pillar #4 | SELF_MANAGEMENT |
+| Truth-seeking over agreeableness | braid pillar #2 | EPISTEMIC_STANCE |
 
-2. **Signal extraction per cohort** — For each cohort, run:
-   - `session action=analyze` with targeted questions (did the user correct the agent? how many times? what kind?)
-   - `session action=batch` for pattern matching on specific signals (correction phrases, tool usage patterns, compaction events)
-   - `session action=search` for keyword-based signal discovery
-   - Episodes search for recurring patterns
+**Evolution path (system prompt identity):**
 
-3. **Cross-cohort comparison** — Compare signal frequencies across cohorts. Which prompt version has the lowest correction rate? Highest task completion rate? Best verification outcomes?
+```
+Jun 29: 17 standalone directives → 5 identity blocks (behavioral-guardrails.ts deleted)
+  ↓
+Jul 16: 5 identity blocks refined (COMMUNICATION merged, CONCISE_RESPONSES merged)
+  ↓
+Jul 17: 5 identity blocks philosophically deepened, trimmed ~55% word count
+         (515 words → 230 words, principled framings, not directive lists)
+```
 
-4. **Signal correlation** — Do multiple signals agree? (e.g., lower correction rate + higher task completion + better verification = strong evidence). Do they conflict? (e.g., fewer corrections but more abandoned tasks = prompt makes agent less assertive, which is bad).
+**What changed (identity.ts, Jul 17):**
 
-5. **Qualitative deep dive** — For the most and least effective prompt versions, read representative sessions. What does the interaction *feel* like? The quantitative signals tell you what happened; the qualitative tells you why.
+| Block | Before | After | Key change |
+|-------|--------|-------|------------|
+| IDENTITY_INTRO | "You are Braid, a generalist operating inside the pi coding agent harness." | + "a minimal harness designed to be extended, not bloated. You add the metacognitive layer: verification, memory, reasoning, and self-improvement." | Added pi's philosophy + braid's purpose |
+| WORK_ETHIC | 6 directives, ~120 words | 2 principled sentences, ~50 words | Replaced directive list with "systematic over hacky" + "verify before done" |
+| SELF_MANAGEMENT | 6 directives, ~140 words | 3 principled sentences, ~54 words | Replaced directive list with "memory as workspace" framing |
+| COMMUNICATION | 3 sentences, ~65 words | 2 sentences, ~41 words | Tightened, removed redundancy |
+| EPISTEMIC_STANCE | 5 sentences, ~110 words | 3 principled sentences, ~51 words | Added "truth-seeking over agreeableness" framing, trimmed |
 
-6. **Synthesis** — What specifically worked? (e.g., "identity blocks reduced corrections about tone by 40%" not "identity framing is better"). The deliverable is actionable findings, not philosophy.
+**Total reduction:** 515 words → 230 words (~55% reduction, with added philosophical depth)
 
-**Success criteria:**
-1. Each prompt version cohort has at least 20 analyzable sessions (enough for signal comparison)
-2. At least 3 signals show statistically distinguishable differences between cohorts
-3. At least 1 actionable finding that directly informs a prompt improvement (not "identity is better" but "the WORK_ETHIC block causes agent to over-explain — trim to 2 sentences")
-4. Findings are grounded in specific session excerpts, not abstract reasoning
-5. The research produces a concrete prompt diff that improves the next session
+**Risk assessment:** Lower risk than P0-1's WORK_ETHIC trim proposal. The trim is paired with principled framing (every block now names the principle it embodies), so the agent trades explicit directives for a coherent philosophical framework. The verification judge, enforcement signals, and verifier tools provide the procedural safety net that the directives previously covered.
 
-**Extension — braid's internal system prompts review:**
-
-P0-1's scope extends beyond the agent system prompt to braid's own internal prompts. These 9 prompts are themselves subject to the same quality concerns — they're directive lists where identity framing might work better:
-
-| Prompt | File | Current style |
-|--------|------|---------------|
-| Verification judge | `enforcement/verification-judge.ts` | Directive list — "Evaluate whether..." |
-| Input polisher | `core/input-polisher/consolidated-input-critic.ts` | Directive list — "Polish user input..." |
-| Session analyze | `memory/session-recall/analyze.ts` | Directive list — "You are analyzing..." (partial identity) |
-| Session query | `memory/session-recall/query.ts` | Directive list — "You are analyzing..." (partial identity) |
-| Fresh eyes (think) | `cognitive/metacognition/handlers/think.ts` | Identity-framed — "You are a sharp, critical thinker..." |
-| Backward checker | `lib/verification/backward-checker.ts` | Directive list — "Check if..." |
-| Claim critic | `lib/ai/consolidated-claim-critic.ts` | Directive list — "Evaluate truthfulness..." |
-| Harness proposer | `lib/harness/harness-proposer.ts` | Directive list — "Generate test harness..." |
-| Harness validator | `lib/harness/harness-validator.ts` | Directive list — "Validate test harness..." |
-
-**Research questions for internal prompts:**
-
-1. **Does identity framing improve internal prompt effectiveness?** The fresh eyes prompt (identity-framed) is the outlier — does it produce better output than the directive-list prompts? If so, can we reframe the others?
-
-2. **What's the relationship between internal prompt quality and agent behavior?** If the verification judge's prompt is weak, it produces false positives/negatives, which degrades the agent's feedback loop. The internal prompts are the agent's operating system — they need the same care as the surface prompt.
-
-3. **Can the session corpus reveal internal prompt issues?** Verification judge false positives (like flagging documentation-only changes as unverified) are visible in sessions. The rate of such false positives across prompt versions is measurable.
-
-**Methodology:** The same session-mining approach applies. The verification judge's output is visible in sessions — we can measure its false positive rate, the types of issues it flags, and how its behavior changed across versions. The other internal prompts are less visible externally but can be evaluated through their outputs (analysis quality, suggestion quality, etc.).
-
-**Deliverable:** Research report in `docs/RESEARCH-prompt-structure.md` containing:
-- Cohort definitions and session counts
-- Signal extraction methodology and raw results
-- Cross-cohort comparison with signal agreement analysis
-- Representative session excerpts for each finding
-- Actionable prompt diff with expected impact
-- Updated prompt based on findings
-- **Addendum: Internal prompts audit** — current state of each internal prompt, assessment of directive-list vs identity-framing effectiveness, recommended reframes for top 3 candidates
+**Verification:** Typecheck clean, 42/42 tests pass. Full session test recommended.
 
 ---
 
@@ -293,6 +333,36 @@ context_inspect(detail='quick')                        → verify health
 ### P3-4: Forward-looking proposals
 
 **Deferred:** Finalization practices, skill discovery, skill quality audit. All require P0 identity to settle first.
+
+### P3-5: Context hygiene progressive thresholds
+
+**Why P3:** The infrastructure already exists (3 dead thresholds in `context-thresholds.ts`). Wiring them in is low-risk, but the real value requires P0 identity to be stable (context hygiene messages are part of the agent's experience).
+
+**Research finding:** `USAGE_WHISPER_SOFT` (40%), `USAGE_WHISPER_ADVISORY` (50%), and `USAGE_WHISPER_WARNING` (60%) are defined in `context-thresholds.ts` but **never referenced by any handler** — they are dead code. The enforcement currently jumps from 30K tokens straight to 75%+ usage.
+
+**Proposed cascade:**
+- 30-40%: Soft whisper — gentle suggestion to archive
+- 50%: Firm advisory — tag position and archive
+- 60%: Hard warning — full pipeline, stronger language
+- 75%: Forceful critical — same as current USAGE_WHISPER_CRITICAL
+- 90%: Auto-compact with pre-save safety net
+
+**Implementation:**
+1. Wire the 3 dead thresholds into `register-turn-end-hygiene.ts`
+2. Decrease `contextCheckInterval` from 34 to 10-15 turns
+3. Keep token-based checks (30K/75K) as an earlier warning
+
+### P3-6: Periodic redundant tool output pruning
+
+**Why P3:** Novel mechanism that requires careful design. Low risk technically (pruning old tool results is safe), but the cadence and retention policy need tuning.
+
+**Research finding:** The tool loop detector (`tool-loop-detector.ts`) detects loops at 16+ consecutive same-tool calls but does NOT prune old tool results from context. The agent accumulates all tool outputs over time.
+
+**Proposed mechanism:**
+- Add a tool-call counter per turn
+- When threshold reached (20-30 calls), prune oldest tool results
+- Retain last 10 tool results as a floor
+- 1-turn cooldown between prunes
 
 ---
 

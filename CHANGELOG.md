@@ -28,6 +28,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **P0-2: Philosophical deepening of identity blocks.** All 5 identity
+  blocks in identity.ts were deepened with principled framings grounded
+  in pi's philosophy (minimal harness, every 'no' is an open door) and
+  braid's 5 pillars (verify before done, truth-seeking, systematic,
+  memory as workspace, self-improvement). Reduced from ~515 words to
+  ~230 words (~55% reduction) while adding philosophical depth.
+  - IDENTITY_INTRO: now names pi's minimalism + braid's metacognitive role
+  - WORK_ETHIC: "systematic over hacky" + "verify before done" framing
+  - SELF_MANAGEMENT: "memory as workspace" framing, trimmed to 54 words
+  - COMMUNICATION: tightened, removed redundancy
+  - EPISTEMIC_STANCE: "truth-seeking over agreeableness" framing
+
 - **Compaction speaker attribution (P1-2).** Three paths fixed:
   1. `context_compress` tool description and summary parameter now instruct
      the agent to write speaker-labeled summaries (<user>...</user> /
