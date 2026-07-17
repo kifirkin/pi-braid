@@ -334,14 +334,7 @@ export function resetTimerExtensionFactoryState(): void {
   _timerExtensionFactoryState = undefined;
 }
 
-// ── Discoverability dedup (survives /reload module re-evaluation) ──────────────
-// The discoverability handler in enforcement runs on every session_start and
-// emits a bundled whisper with prior-session hints. On /reload, the extension
-// module IS re-evaluated (so module-level Set in the handler doesn't persist).
-// This global-state slot lets the dedup Set survive across reloads within the
-// same process.
-
-// ── Discoverability dedup (survives /reload module re-evaluation) ──────────────
+// ── Discoverability dedup (survives /reload AND process restart) ──────────────
 // The discoverability handler in enforcement runs on every session_start and
 // emits a bundled whisper with prior-session hints. On /reload, the extension
 // module IS re-evaluated (so module-level `let` in the handler doesn't persist).
@@ -352,6 +345,17 @@ export function resetTimerExtensionFactoryState(): void {
 // Key: process-global (not module-global). A fresh `pi` process starts with
 // an empty Set (everything is "new"). Within the same process, the Set persists
 // across any number of /reload calls.
+//
+// Two layers:
+//   1. Bundle-text dedup: `_GLOBAL_KEY` (`__braid_discoverability_shown`).
+//      Old approach (2026-07-02). Fragile: dynamic content changes (openPlans
+//      count, goal slice) cause the bundle string to vary, missing the Set.has.
+//   2. Per-signal dedup: `_GLOBAL_SIGNAL_KEY` (`__braid_shown_signal_types`).
+//      Added 2026-07-16. Stable across content variations. Each signal TYPE
+//      is a semantic key; content changes don't affect dedup.
+//   3. Per-project disk persistence: `_GLOBAL_PROJECT_SIGNAL_KEY` +
+//      `SHOWN_SIGNALS_FILE` (shown-signals.json). Added 2026-07-17 for P1-3.
+//      Survives process restart (`pi --session <id>`).
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";

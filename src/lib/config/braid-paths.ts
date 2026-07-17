@@ -19,7 +19,8 @@
  *   │   │   │   ├── braid-metrics.jsonl  (analytics: tool call metrics + A/B variants)
  *   │   │   │   └── degradation.json     (degradation detector state)
  *   │   │   ├── session-recall.json   (session-recall: cross-session history)
- *   │   │   └── scratchpads/         (scratchpad: task state per project)
+ *   │   │   ├── scratchpads/         (scratchpad: task state per project)
+ *   │   │   └── shown-signals.json   (discoverability dedup, per-project)
  *   │   └── settings.json       (pi-native + braid config)
  *   └── memory/
  *       └── memory.json          (lib/memory legacy path - kept for migration compat)

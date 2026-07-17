@@ -24,8 +24,10 @@ and delegate to the actual enforcement logic.
 | File | Event |
 |---|---|
 | `register-session-start.ts` | `session_start` |
+| `register-session-start-discoverability.ts` | `session_start` (Background phase, via `registerSessionStartHandler`) — surfaces disk-backed prior state (scratchpad, memory, sessions, resume file, tags) before the first turn. Per-signal dedup with per-project disk persistence. |
 | `register-session-compact.ts` | `session_compact` |
 | `register-session-shutdown.ts` | `session_shutdown` |
+| `register-session-shutdown-resumption.ts` | (read by discoverability handler) — resume file creation on shutdown. |
 | `register-input-handler.ts` | `input` |
 | `register-message-end.ts` | `message_end` |
 | `register-tool-call.ts` | `before_tool_call` |
