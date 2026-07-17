@@ -37,6 +37,12 @@ const inspectSchema = Type.Object({
       default: 5000,
     }),
   ),
+  match: Type.Optional(
+    Type.String({
+      description:
+        "Only show lines containing this string. Case-insensitive. Useful to inspect a specific section (e.g. 'guidelines', 'context_navigate', 'identity'). When set, truncate is ignored and the full matching section is shown.",
+    }),
+  ),
 });
 
 function countLines(text: string, pattern: RegExp): number {
@@ -56,12 +62,13 @@ export function createPromptInspectTool() {
     description:
       "Show the current system prompt from runtime to debug prompt-related issues, " +
       "inspect the assembled content, or suggest improvements. " +
-      "Use includeTools/includeSkills to exclude long sections, truncate to limit chars.",
+      "Use includeTools/includeSkills to exclude long sections, truncate to limit chars, " +
+      "or match to filter lines by keyword.",
     parameters: inspectSchema,
 
     execute: async (
       _toolCallId: string,
-      params: { includeTools?: boolean; includeSkills?: boolean; truncate?: number },
+      params: { includeTools?: boolean; includeSkills?: boolean; truncate?: number; match?: string },
       _signal: unknown,
       _onUpdate: unknown,
       ctx: ExtensionContext | undefined,
@@ -156,11 +163,24 @@ export function createPromptInspectTool() {
       const injectionsSection = `\n\n── INJECTIONS ──\n${injLines.join("\n")}`;
       let body = result;
 
-      // Apply truncation if needed
-      if (maxLen > 0 && body.length > maxLen) {
-        body =
-          body.slice(0, maxLen - 80) +
-          `\n...(truncated at ${maxLen} chars, full prompt is ${raw.length} chars)`;
+      // Apply match filter if requested
+      const matchFilter = params.match;
+      if (matchFilter) {
+        const lowerFilter = matchFilter.toLowerCase();
+        const lines = body.split("\n");
+        const matchedLines = lines.filter((l) => l.toLowerCase().includes(lowerFilter));
+        if (matchedLines.length > 0) {
+          body = matchedLines.join("\n");
+        } else {
+          body = `(no lines matched "${matchFilter}" in ${lines.length} lines)`;
+        }
+      } else {
+        // Apply truncation only when no match filter is active
+        if (maxLen > 0 && body.length > maxLen) {
+          body =
+            body.slice(0, maxLen - 80) +
+            `\n...(truncated at ${maxLen} chars, full prompt is ${raw.length} chars)`;
+        }
       }
 
       const output = infoParts.join("\n") + "\n\n" + body + injectionsSection;

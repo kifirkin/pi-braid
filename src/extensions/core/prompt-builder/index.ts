@@ -148,7 +148,12 @@ function communicationGuidelines(): string[] {
 
 /**
  * Context navigation pipeline guidelines (tool-availability-guarded).
- * Only renders guidelines for context tools that are actually registered.
+ *
+ * Teaches the agent the session-tree mental model and how to compose
+ * navigation tools strategically — not just what each tool does (the tools
+ * section already covers that), but how to use them together.
+ *
+ * Concise: no markdown headings, no excessive structure (per P0-2).
  */
 function contextNavigationGuidelines(toolNames: string[]): string[] {
   const lines: string[] = [];
@@ -162,18 +167,26 @@ function contextNavigationGuidelines(toolNames: string[]): string[] {
   }
 
   lines.push("");
+
   if (hasContextNavigate) {
-    lines.push("Use context_navigate to save positions, checkout to jump tags, log for history.");
+    lines.push("The session is a branching tree \u2014 tag positions, log to see history, checkout to jump to a leaf with its context summarized. Use backupTag to save your spot before jumping.");
   }
+
+  if (hasContextNavigate && hasContextCompress) {
+    lines.push("To explore a leaf in depth: tag your position, checkout to the target, explore, then checkout back to resume.");
+  }
+
   if (hasContextCompress) {
-    lines.push("Use context_compress to free space: archive when > 50%, compact as last resort (> 70%). Pipeline: tag \u2192 archive \u2192 inspect.");
+    lines.push("Free space: archive when > 50%, compact as last resort (> 70%). Pipeline: tag \u2192 archive \u2192 inspect.");
   }
-  if (hasContextInspect) {
-    lines.push("Use context_inspect for health checks: quick for summary, prune for bloat detection.");
+
+  if (hasContextInspect || hasContextProposals) {
+    const parts: string[] = [];
+    if (hasContextInspect) parts.push("context_inspect for summary or bloat detection");
+    if (hasContextProposals) parts.push("context_proposals for pending auto-suggestions");
+    lines.push("Health: " + parts.join("; ") + ".");
   }
-  if (hasContextProposals) {
-    lines.push("Use context_proposals to review pending auto-suggestions.");
-  }
+
   return lines;
 }
 
