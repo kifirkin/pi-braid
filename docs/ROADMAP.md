@@ -241,6 +241,8 @@ context_inspect(detail='quick')                        → verify health
 
 ### P1-2: Compaction speaker attribution
 
+**Status: SHIPPED 2026-07-17.**
+
 **Why P1:** The agent misattributes its own questions as the user's after compaction. This compounds over multiple cycles and degrades conversation quality.
 
 **Three compaction paths, three levels of control:**
@@ -256,33 +258,13 @@ context_inspect(detail='quick')                        → verify health
 
 ### P1-3: Session resume flooding
 
+**Status: SHIPPED 2026-07-17.**
+
 **Why P1:** `pi --session <id>` triggers full SESSION_START → discoverability bundle fires again because `globalThis` is process-local. The agent sees the same bundle it already saw before the session was interrupted.
 
-**Proposed fixes:**
-1. Persist `shownSignals` to disk (append-only JSONL) so they survive restart
-2. Or: skip discoverability bundle entirely on resume
-3. Or: reduce to single line ("Resuming session. Use scratchpad for prior state.")
+**Fix implemented:** Per-project disk-persisted shown-signals via `~/.pi/agent/braid/shown-signals.json`. When a new process starts for the same project, previously shown discoverability signal types are loaded from disk and skipped. The old `isSignalShown/markSignalShown` (process-global `globalThis`, survives `/reload` only) is complemented by the new `isProjectSignalShown/markProjectSignalShown` (disk-persisted, survives process restart).
 
-**Action:**
-- Investigate: how does `pi --session` trigger SESSION_START vs fresh start?
-- Implement fix: persist shown signals, or skip bundle on resume
-
-### P1-2: Compaction speaker attribution
-
-**Why P1:** The agent misattributes its own questions as the user's after compaction. This compounds over multiple cycles and degrades conversation quality.
-
-**Three compaction paths, three levels of control:**
-
-1. **`context_compress` tool** (agent-initiated) — agent controls `summary`. Fix: write summaries with explicit speaker labels (`<user>...</user>` / `<agent>...</agent>`).
-2. **Auto-compact** (pi-core, threshold) — braid can't control format. Fix: listen to `session_compact` and emit re-attribution whisper.
-3. **Overflow force-compact** (pi-core, critical) — same as #2.
-
-**Action:**
-1. Update `context_compress` tool to write speaker-labeled summaries
-2. Add `session_compact` listener for re-attribution whisper
-3. Test all three paths
-
----
+**Verification:** 42/42 tests pass, typecheck clean.
 
 ## P2 — Next session
 
@@ -379,6 +361,10 @@ context_inspect(detail='quick')                        → verify health
 ### Enforcement whisper dedup (per-signal)
 **Commit:** f4fdb40a
 **Status:** Fix #1 shipped. Option #4 (audit other whisper families) in BACKLOG.
+
+### Session resume flooding (P1-3)
+**Commit:** (pending)
+**Status:** Per-project disk-persisted shown-signals. 42/42 tests pass.
 
 ### System architecture deep dive
 **Status:** Complete. Key findings documented in HISTORY.md.

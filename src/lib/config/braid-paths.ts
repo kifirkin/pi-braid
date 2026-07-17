@@ -76,4 +76,10 @@ export const METRICS_FILE = path.join(METRICS_DIR, "braid-metrics.jsonl");
 /** Degradation detector: health metrics state */
 export const DEGRADATION_FILE = path.join(METRICS_DIR, "degradation.json");
 
+/** Shown-signals persistence: survive process restart for session resume dedup.
+ *  Per-project map: { "<project-slug>": ["signal_type1", ...] }.
+ *  Used by isSignalShown/markSignalShown in global-state.ts.
+ *  Added 2026-07-17 for P1-3 (session resume flooding). */
+export const SHOWN_SIGNALS_FILE = path.join(BRAID, "shown-signals.json");
+
 // ── Ensure directories exist ─────────────────────────────────────────────

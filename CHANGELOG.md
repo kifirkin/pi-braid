@@ -10,6 +10,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Session resume discoverability dedup (P1-3).** Per-project disk-persisted
+  shown-signals via `~/.pi/agent/braid/shown-signals.json`. When `pi --session
+  <id>` starts a new process, previously shown discoverability signal types
+  are loaded from disk and skipped — no duplicate bundle on session resume.
+  (register-session-start-discoverability.ts, global-state.ts, braid-paths.ts)
+
 - **Context navigation pipeline in system prompt.** Added tool-availability-guarded
   guidelines for context_navigate, context_compress, context_inspect, and
   context_proposals to the tools section, following pi-core's pattern.

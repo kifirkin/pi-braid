@@ -8,8 +8,9 @@
  *
  * Contract pinned:
  *   - instanceSection() returns a PromptSection named "instance"
- *   - The rendered output starts with "## Instance" and contains
- *     the Agent, Root, Cwd, Settings, OS+hostname, Now, PID, Session,
+ *   - The rendered output starts with "Agent: Braid v<X> (over pi-core v<Y>)"
+ *     (no heading, plain text since P0-2 2026-07-17) and contains
+ *     the Agent, Core, Cwd, Settings, OS+hostname, Now, PID, Session,
  *     Pi extensions blocks.
  *   - Root points at the pi-core npm package folder (not braid).
  *   - Cwd is always rendered as its own line (never suppressed).
@@ -104,10 +105,10 @@ await test("Section returns a PromptSection named 'instance'", () => {
   assert.equal(typeof SECTION.render, "function");
 });
 
-await test("Rendered output starts with '## Instance'", () => {
+await test("Rendered output starts with 'Agent: Braid v<X> (over pi-core v<Y>)' (no heading)", () => {
   assert.ok(
-    OUT.startsWith("## Instance\n"),
-    `expected output to start with '## Instance', got: ${OUT.slice(0, 80)}`,
+    OUT.startsWith("Agent: Braid v"),
+    `expected output to start with 'Agent:', got: ${OUT.slice(0, 80)}`,
   );
 });
 

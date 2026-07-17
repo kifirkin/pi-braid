@@ -353,6 +353,10 @@ export function resetTimerExtensionFactoryState(): void {
 // an empty Set (everything is "new"). Within the same process, the Set persists
 // across any number of /reload calls.
 
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { SHOWN_SIGNALS_FILE } from "../config/braid-paths.js";
+
 const _GLOBAL_KEY = "__braid_discoverability_shown";
 
 /**
@@ -412,4 +416,100 @@ export function isSignalShown(t: DiscoverySignalType): boolean {
 /** Mark a signal type as shown in this process. */
 export function markSignalShown(t: DiscoverySignalType): void {
   getShownSignals().add(t);
+}
+
+// ── Disk-persisted per-project shown signals (survives process restart) ──
+// On `pi --session <id>`, a new Node.js process starts, so `globalThis`
+// is empty. The discoverability bundle fires again even though the user
+// already saw it in the prior session. Per-project disk persistence solves
+// this: when a new process starts for the same project, previously shown
+// signal types are loaded from disk and skipped.
+
+const _GLOBAL_PROJECT_SIGNAL_KEY = "__braid_project_shown_signals";
+
+/**
+ * Get the per-project shown-signals map from disk.
+ * Internal cache keyed by project slug. The on-disk file is a flat JSON
+ * object: `{ "<project-slug>": ["signal_type1", ...] }`.
+ */
+function loadProjectShownSignalsFromDisk(): Record<string, DiscoverySignalType[]> {
+  try {
+    if (existsSync(SHOWN_SIGNALS_FILE)) {
+      const raw = readFileSync(SHOWN_SIGNALS_FILE, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch {
+    // File corrupt or missing — start fresh
+  }
+  return {};
+}
+
+function persistProjectShownSignalsToDisk(data: Record<string, DiscoverySignalType[]>): void {
+  try {
+    const dir = dirname(SHOWN_SIGNALS_FILE);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(SHOWN_SIGNALS_FILE, JSON.stringify(data), "utf-8");
+  } catch {
+    // Non-fatal — persistence is a best-effort optimization
+  }
+}
+
+/**
+ * Get the process-global cache of per-project shown signals.
+ * Lazily loaded from disk on first access.
+ * Structure: { "<slug>": Set<signal_type> }
+ */
+function getProjectShownSignalsCache(): Map<string, Set<DiscoverySignalType>> {
+  if (!(globalThis as any)[_GLOBAL_PROJECT_SIGNAL_KEY]) {
+    const fromDisk = loadProjectShownSignalsFromDisk();
+    const map = new Map<string, Set<DiscoverySignalType>>();
+    for (const [slug, types] of Object.entries(fromDisk)) {
+      map.set(slug, new Set(types));
+    }
+    (globalThis as any)[_GLOBAL_PROJECT_SIGNAL_KEY] = map;
+  }
+  return (globalThis as any)[_GLOBAL_PROJECT_SIGNAL_KEY];
+}
+
+/**
+ * Check if a signal type has been shown for a specific project slug.
+ * Uses disk-persisted per-project state (survives process restart).
+ */
+export function isProjectSignalShown(slug: string, t: DiscoverySignalType): boolean {
+  const cache = getProjectShownSignalsCache();
+  const projectSet = cache.get(slug);
+  return projectSet ? projectSet.has(t) : false;
+}
+
+/**
+ * Mark a signal type as shown for a specific project slug.
+ * Persists to disk immediately (best-effort, non-fatal on failure).
+ */
+export function markProjectSignalShown(slug: string, t: DiscoverySignalType): void {
+  const cache = getProjectShownSignalsCache();
+  let projectSet = cache.get(slug);
+  if (!projectSet) {
+    projectSet = new Set<DiscoverySignalType>();
+    cache.set(slug, projectSet);
+  }
+  projectSet.add(t);
+
+  // Persist to disk: convert Map to flat object
+  const data: Record<string, DiscoverySignalType[]> = {};
+  for (const [s, set] of cache) {
+    data[s] = Array.from(set);
+  }
+  persistProjectShownSignalsToDisk(data);
+}
+
+/** Reset per-project shown signals. Test helper. */
+export function resetProjectShownSignals(): void {
+  delete (globalThis as any)[_GLOBAL_PROJECT_SIGNAL_KEY];
+  try {
+    if (existsSync(SHOWN_SIGNALS_FILE)) {
+      writeFileSync(SHOWN_SIGNALS_FILE, "{}", "utf-8");
+    }
+  } catch {
+    // ignore
+  }
 }

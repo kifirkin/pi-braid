@@ -34,7 +34,7 @@ import { registerSessionStartHandler, SessionPhase } from "../../../lib/state/se
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { enforcementSignals, type EnforcementSignalEntry } from "../signals.js";
-import { isSignalShown, markSignalShown, type DiscoverySignalType } from "../../../lib/state/global-state.js";
+import { isProjectSignalShown, markProjectSignalShown, type DiscoverySignalType } from "../../../lib/state/global-state.js";
 import { SCRATCHPAD_DIR, EPISODES_FILE, SEMANTIC_MEMORY_FILE, AGENT } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -220,22 +220,25 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         });
       }
 
-      // ── Per-signal dedup (fixes "duplicate on /reload" bug) ───────────
-      // Each signal TYPE is a stable key in `getShownSignals()` (process-global,
-      // survives /reload via globalThis). Only UNSEEN signal TYPES are bundled.
-      // Old bundle-text dedup missed when ANY dynamic content changed
-      // (openPlans count, goal slice prefix, tag list) — the bundle string
-      // would vary, the Set.has check would miss, and the full bundle would
-      // fire again. Per-signal dedup is stable across content variations.
+      // ── Per-signal dedup (survives /reload AND process restart) ───────
+      // Each signal TYPE is a stable key. Per-project persistence (via
+      // `projectSlugFromCwd`) ensures that `pi --session <id>` (new process)
+      // reads previously shown signals from disk and skips them.
       //
-      // Example: `scratchpad_prior` shown once with 3 open plans. Agent adds
-      // another plan (4 open plans). Old dedup: bundle text mismatches → fires
-      // again. New dedup: signal TYPE "scratchpad_prior" still in set → skip.
-      const unseenSignals = signals.filter((s) => !isSignalShown(s.type));
+      // Old bundle-text dedup (< 2026-07-16) missed when ANY dynamic content
+      // changed (openPlans count, goal slice prefix, tag list). Per-signal
+      // dedup is stable across content variations.
+      //
+      // Disk persistence (< 2026-07-17) survives process restart, so the
+      // discoverability bundle doesn't re-fire on session resume.
+      const slug = signals.length > 0 && (cwd ? projectSlugFromCwd(cwd) : "");
+      const unseenSignals = slug
+        ? signals.filter((s) => !isProjectSignalShown(slug, s.type))
+        : signals.filter((s) => !isProjectSignalShown("default", s.type));
       if (unseenSignals.length > 0) {
         const bundled = unseenSignals.map((s) => s.text).join("\n");
         for (const s of unseenSignals) {
-          markSignalShown(s.type);
+          markProjectSignalShown(slug || "default", s.type);
         }
         sendEnforcementWhisper(pi, ctx, bundled);
         log.debug(
