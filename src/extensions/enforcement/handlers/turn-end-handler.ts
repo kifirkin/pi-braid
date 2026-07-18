@@ -32,6 +32,9 @@ import { sendEnforcementWhisper } from "../whisper.js";
 import { knownFiles, loadFileContent } from "../similarity.js";
 import { enforcementSignals, pruneSignals, SIGNAL_KEYS } from "../signals.js";
 import {
+  USAGE_WHISPER_SOFT,
+  USAGE_WHISPER_ADVISORY,
+  USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
   USAGE_COMPACT_MEDIUM,
@@ -78,9 +81,15 @@ export async function dispatchTurnEndLoop(
   const hadErrors = erroredTools.size > 0;
 
   // ── Tool output extraction (for verification judge) ───────────────────
+  // Every tool result gets an entry prefixed with [OK] or [FAIL] so the
+  // judge can verify exit status without regex-parsing truncated output.
+  // - Success with output:  `bash [OK]: 42 passed, 0 failed`
+  // - Success with no stdout: `bash [OK]: (no output)`
+  // - Failure:              `bash [FAIL]: Error: can't find ...`
   const toolOutputs: string[] = [];
   const MAX_OUTPUT_CHARS = 300;
   for (const r of event.toolResults || []) {
+    const status = r.isError ? "FAIL" : "OK";
     const outputText = (r.content || [])
       .filter((c: any) => c?.type === "text")
       .map((c: any) => c.text || "")
@@ -91,7 +100,9 @@ export async function dispatchTurnEndLoop(
       const truncated = outputText.length > MAX_OUTPUT_CHARS
         ? outputText.slice(0, MAX_OUTPUT_CHARS) + "..."
         : outputText;
-      toolOutputs.push(`${r.toolName}: ${truncated}`);
+      toolOutputs.push(`${r.toolName} [${status}]: ${truncated}`);
+    } else {
+      toolOutputs.push(`${r.toolName} [${status}]: (no output)`);
     }
   }
 
@@ -518,6 +529,10 @@ export async function dispatchTurnEndLoop(
   }
 
   // ── Percentage-based check (original, longer interval) ──────────────────
+  // Progressive cascade: soft (40%) -> advisory (50%) -> warning (60%) ->
+  // critical (75%) -> compact (80%). Token-based checks at 30K/75K fire
+  // first at a tighter interval (8 turns); this percentage cascade uses
+  // the longer interval (contextCheckInterval, ~15 turns).
   if (
     !hadErrors &&
     actualTools.length > 0 &&
@@ -539,7 +554,29 @@ export async function dispatchTurnEndLoop(
       sessionSignals.push({
         key: "context-percent",
         content:
-          `Context at ${pct}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
+          `Context at ${pct}%. Tag with context_navigate(action="tag"), then ` +
+          `context_compress(action="archive") to branch with a summary.`,
+      });
+    } else if (usagePercent >= USAGE_WHISPER_WARNING) {
+      sessionSignals.push({
+        key: "context-percent",
+        content:
+          `Context at ${pct}%. Warning — tag with context_navigate(action="tag"), then ` +
+          `context_compress(action="archive") to branch with a summary.`,
+      });
+    } else if (usagePercent >= USAGE_WHISPER_ADVISORY) {
+      sessionSignals.push({
+        key: "context-percent",
+        content:
+          `Context at ${pct}%. Advisory — consider context_archive for completed tasks. ` +
+          `context_navigate(action="tag") to mark your position first.`,
+      });
+    } else if (usagePercent >= USAGE_WHISPER_SOFT) {
+      sessionSignals.push({
+        key: "context-percent",
+        content:
+          `Context at ${pct}%. Soft whisper — consider context_inspect(detail="prune") ` +
+          `to see candidates for archival.`,
       });
     }
   }

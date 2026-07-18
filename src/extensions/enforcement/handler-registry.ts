@@ -37,6 +37,7 @@ import { registerSessionShutdownHandler } from "./handlers/register-session-shut
 import { registerSessionShutdownResumption } from "./handlers/register-session-shutdown-resumption.js";
 import { registerSessionStartDiscoverability } from "./handlers/register-session-start-discoverability.js";
 import { registerTurnEndHygiene } from "./handlers/register-turn-end-hygiene.js";
+import { registerPostCycleHygiene } from "./handlers/register-post-cycle-hygiene.js";
 import { driftHandler } from "./handlers/analysis/drift-handler.js";
 import { bpeHandler, setLastRecommendationType } from "./handlers/analysis/bpe-handler.js";
 import { marsHandler } from "./handlers/analysis/mars-handler.js";
@@ -190,6 +191,9 @@ function registerCompactAndSessionHandlers(pi: ExtensionAPI): void {
 
   // ── turn_end: context hygiene + discoverability (lowest priority) ──
   registerTurnEndHygiene(pi);
+
+  // ── turn_end: post-cycle hygiene (dead last — runs only on text-only yields) ──
+  registerPostCycleHygiene(pi);
 
   // ── turn_end: coordinator dispatch ──
   onEvent(pi, TURN_END, async (event: any, ctx: any) => {

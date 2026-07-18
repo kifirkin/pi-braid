@@ -86,6 +86,8 @@ export interface ContextHygieneState {
    *   reason: "threshold"|"overflow" means auto-compaction → auto-resume anyway
    */
   autoResumeAfterCompaction: boolean;
+  /** Turn of the last post-cycle hygiene (auto-tag + inspect). Initialized to -100. */
+  lastPostCycleHygieneTurn: number;
 }
 
 export function createContextHygieneState(): ContextHygieneState {
@@ -94,9 +96,10 @@ export function createContextHygieneState(): ContextHygieneState {
     lastContextCheckTurn: 0,
     lastCompactionTurn: 0,
     overflowRecently: 0,
-    contextCheckInterval: 34,
+    contextCheckInterval: 15,
     contextAuditThreshold: 0.66,
     autoResumeAfterCompaction: false,
+    lastPostCycleHygieneTurn: -100,
   };
 }
 
@@ -106,13 +109,17 @@ export function resetContextHygieneState(s: ContextHygieneState): void {
   s.lastCompactionTurn = 0;
   s.overflowRecently = 0;
   s.autoResumeAfterCompaction = false;
-  s.contextCheckInterval = 34;
+  s.contextCheckInterval = 15;
   s.contextAuditThreshold = 0.66;
+  s.lastPostCycleHygieneTurn = -100;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 import {
+  USAGE_WHISPER_SOFT,
+  USAGE_WHISPER_ADVISORY,
+  USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_COMPACT_MEDIUM,
   USAGE_TOKENS_SOFT,
@@ -183,6 +190,7 @@ export function getContextNudgeMessage(usagePercent: number, usageTokens: number
       `Consider context_inspect(detail="prune") to see candidates, or tag position with context_navigate(action="tag").`
     );
   }
+  // ── Progressive percentage-based messages ─────────────────────────
   if (usagePercent >= USAGE_COMPACT_MEDIUM) {
     return (
       `Context at ${Math.round(usagePercent)}%. Pipeline: context_navigate(action="tag") -> ` +
@@ -193,6 +201,24 @@ export function getContextNudgeMessage(usagePercent: number, usageTokens: number
     return (
       `Context at ${Math.round(usagePercent)}%. Tag with context_navigate(action="tag"), then ` +
       `context_compress(action="archive") to branch with a summary.`
+    );
+  }
+  if (usagePercent >= USAGE_WHISPER_WARNING) {
+    return (
+      `Context at ${Math.round(usagePercent)}%. Warning — tag with context_navigate(action="tag"), ` +
+      `then context_compress(action="archive") to branch with a summary.`
+    );
+  }
+  if (usagePercent >= USAGE_WHISPER_ADVISORY) {
+    return (
+      `Context at ${Math.round(usagePercent)}%. Advisory — consider context_archive for completed tasks. ` +
+      `context_navigate(action="tag") to mark your position first.`
+    );
+  }
+  if (usagePercent >= USAGE_WHISPER_SOFT) {
+    return (
+      `Context at ${Math.round(usagePercent)}%. Soft whisper — consider context_inspect(detail="prune") ` +
+      `to see candidates for archival.`
     );
   }
   return null;

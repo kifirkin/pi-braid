@@ -33,6 +33,7 @@ and delegate to the actual enforcement logic.
 | `register-tool-call.ts` | `before_tool_call` |
 | `register-tool-result.ts` | `tool_execution_end` |
 | `register-auto-retry-end.ts` | `auto_retry_end` |
+| `register-post-cycle-hygiene.ts` | `turn_end` (priority 1 — auto-tag + inspect + advise on text-only yield after work) |
 
 ### Orchestrators (not `register-*`, but invoked at turn end)
 | File | Purpose |

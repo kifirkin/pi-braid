@@ -172,7 +172,30 @@ Jul 17: 5 identity blocks philosophically deepened, trimmed ~55% word count
 
 ## P1 — Ship this session
 
-### P1-1: Context navigation pipeline (system prompt + tool availability guards)
+### P1-4: Post-cycle auto-tag + inspect + advisory on yield
+
+**Status: SHIPPED 2026-07-18.**
+
+**Why P1:** After a cycle of work (35+ tool-call turns for 2 user messages), the agent yields with a text-only response. The accumulated tool results stay in context, silently filling the window until the percentage thresholds react. This adds a **structural** hygiene pass at the natural cycle boundary — before the problem reaches 40%.
+
+**Design (minimal risk, zero data loss):**
+- Trigger: text-only yield turn after 2+ preceding work turns (edit/write/finalize)
+- No archiving or compaction — only tag + inspect + whisper
+- 10-turn cooldown to prevent thrashing
+- Suppressed during error bursts
+
+**What it does:**
+1. Auto-tags the position as `cycle-{turn}` via `sessionManager.setLabel()`
+2. Lightweight session inspection: counts assistant/tool/user messages, estimates old tool results (age > 3)
+3. Whispers a brief hygiene advisory: suggests `context_compress(action="compact")` when >5 old tool results, or `context_inspect(detail="prune")` when >20 assistant messages
+
+**Implementation:**
+- New file: `src/extensions/enforcement/handlers/register-post-cycle-hygiene.ts`
+- Priority 1 (lowest — runs after verification judge, analysis handlers, and turn-end-hygiene)
+- State: `lastPostCycleHygieneTurn` in `ContextHygieneState`
+- Wired via `handler-registry.ts` after `registerTurnEndHygiene`
+
+**Verification:** 42/42 tests pass, typecheck clean, doc checks clean.
 
 **Status: SHIPPED.**
 
@@ -263,21 +286,28 @@ Verification: All 42 tests pass, typecheck clean.
 
 ### P3-5: Context hygiene progressive thresholds
 
-**Why P3:** The infrastructure already exists (3 dead thresholds in `context-thresholds.ts`). Wiring them in is low-risk, but the real value requires P0 identity to be stable (context hygiene messages are part of the agent's experience).
+**Status: SHIPPED 2026-07-18.**
 
-**Research finding:** `USAGE_WHISPER_SOFT` (40%), `USAGE_WHISPER_ADVISORY` (50%), and `USAGE_WHISPER_WARNING` (60%) are defined in `context-thresholds.ts` but **never referenced by any handler** — they are dead code. The enforcement currently jumps from 30K tokens straight to 75%+ usage.
+**Why P3:** The infrastructure already exists (3 thresholds in `context-thresholds.ts` were only used by the heartbeat module, not the enforcement pipeline). Wiring them in is low-risk, but the real value requires P0 identity to be stable (context hygiene messages are part of the agent's experience). P0 is now stable.
 
-**Proposed cascade:**
-- 30-40%: Soft whisper — gentle suggestion to archive
-- 50%: Firm advisory — tag position and archive
-- 60%: Hard warning — full pipeline, stronger language
-- 75%: Forceful critical — same as current USAGE_WHISPER_CRITICAL
-- 90%: Auto-compact with pre-save safety net
+**Research finding:** `USAGE_WHISPER_SOFT` (40%), `USAGE_WHISPER_ADVISORY` (50%), and `USAGE_WHISPER_WARNING` (60%) are defined in `context-thresholds.ts` and used by the heartbeat context-hygiene module and context-lifecycle policy engine, but were **not wired into the enforcement pipeline** (turn-end-handler.ts, register-turn-end-hygiene.ts, getContextNudgeMessage). The enforcement jumped from 30K/75K token thresholds straight to 75%/80% percentage thresholds, skipping the 40-60% range entirely.
+
+**Cascade now wired in all 3 enforcement paths:**
+- 40%: Soft whisper — gentle suggestion to inspect candidates
+- 50%: Firm advisory — consider archive, tag position first
+- 60%: Hard warning — stronger language, full pipeline
+- 75%: Forceful critical — same as before
+- 80%: Compact-medium — same as before
+- 90%: Auto-compact with pre-save safety net — same as before
 
 **Implementation:**
-1. Wire the 3 dead thresholds into `register-turn-end-hygiene.ts`
-2. Decrease `contextCheckInterval` from 34 to 10-15 turns
-3. Keep token-based checks (30K/75K) as an earlier warning
+1. Wired thresholds into `register-turn-end-hygiene.ts` (enforcement whisper)
+2. Wired thresholds into `turn-end-handler.ts` (session signals)
+3. Wired thresholds into `getContextNudgeMessage()` in `context-hygiene-state.ts`
+4. Decreased `contextCheckInterval` from 34 to 15 turns
+5. Token-based checks (30K/75K at 8-turn interval) remain as the earlier warning
+
+**Verification:** 42/42 tests pass, typecheck clean, doc checks clean.
 
 ### P3-6: Periodic redundant tool output pruning
 
@@ -328,6 +358,31 @@ Verification: All 42 tests pass, typecheck clean.
 ---
 
 ## BACKLOG (research needed)
+
+### Finalize tool self-contradiction (unpersisted learnings vs. no-tool-calls)
+
+**Observation:** The `finalize` tool's output contains a direct contradiction:
+
+```
+📚 4 unpersisted learning(s). Call memory_store(...) now to preserve them across sessions
+
+[ok] Auto-proceed to next task.
+
+IMPORTANT: DO NOT call any tools after this message.
+```
+
+The tool instructs the agent to call `memory_store` (a tool call), then immediately forbids tool calls. The agent cannot comply with both directives. This creates a structural problem:
+
+- If the agent obeys the first instruction: it violates the no-tool-calls directive.
+- If the agent obeys the second: unpersisted learnings are lost on shutdown.
+- If the agent calls `memory_store` *before* finalize: it can't know what learnings finalize will report.
+
+**Possible resolutions (research needed):**
+1. **finalize auto-persists learnings** — add a `memory_store` call inside finalize's implementation so the tool does both steps atomically.
+2. **Drop the unpersisted-learnings block** — memory_store is the agent's responsibility; finalize shouldn't nag about it.
+3. **Soft vs. hard constraints** — make "no tool calls" a guideline (SHOULD NOT) rather than an absolute (MUST NOT), so the agent can persist learnings on the finalize turn.
+
+**Research needed:** Which resolution best aligns with braid's philosophy and practical agent behavior?
 
 ### Full Braid critical review
 Subagent-assisted audit of every subsystem, skill, doc, and convention. High effort, high reward. Requires P0 identity as reference.

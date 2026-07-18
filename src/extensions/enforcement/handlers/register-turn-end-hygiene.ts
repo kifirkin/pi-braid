@@ -35,6 +35,9 @@ import {
   USAGE_TOKENS_SOFT,
   USAGE_TOKENS_WARNING,
   USAGE_TOKENS_CRITICAL,
+  USAGE_WHISPER_SOFT,
+  USAGE_WHISPER_ADVISORY,
+  USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_COMPACT_MEDIUM,
   USAGE_COMPACT_AGGRESSIVE,
@@ -227,7 +230,10 @@ function checkContextUsage(
     return;
   }
 
-  // ── Percentage-based whispers ───────────────────────────────────────
+  // ── Progressive percentage-based whispers ──────────────────────────
+  // Cascade: soft (40%) -> advisory (50%) -> warning (60%) ->
+  // critical (75%) -> compact (80%). Token-based checks fire first
+  // (30K/75K), then these percentage tiers add increasing urgency.
   if (usagePercent >= USAGE_COMPACT_MEDIUM) {
     state.contextNudgeSent = true;
     sendEnforcementWhisper(
@@ -246,6 +252,39 @@ function checkContextUsage(
       ctx,
       `Context at ${Math.round(usagePercent)}%. Tag with context_navigate(action="tag"), ` +
         `then context_compress(action="archive") to branch with a summary.`,
+    );
+    return;
+  }
+
+  if (usagePercent >= USAGE_WHISPER_WARNING) {
+    state.contextNudgeSent = true;
+    sendEnforcementWhisper(
+      pi,
+      ctx,
+      `Context at ${Math.round(usagePercent)}%. Warning — tag with context_navigate(action="tag"), ` +
+        `then context_compress(action="archive") to branch with a summary.`,
+    );
+    return;
+  }
+
+  if (usagePercent >= USAGE_WHISPER_ADVISORY) {
+    state.contextNudgeSent = true;
+    sendEnforcementWhisper(
+      pi,
+      ctx,
+      `Context at ${Math.round(usagePercent)}%. Advisory — consider context_archive for completed tasks. ` +
+        `context_navigate(action="tag") to mark your position first.`,
+    );
+    return;
+  }
+
+  if (usagePercent >= USAGE_WHISPER_SOFT) {
+    state.contextNudgeSent = true;
+    sendEnforcementWhisper(
+      pi,
+      ctx,
+      `Context at ${Math.round(usagePercent)}%. Soft whisper — consider context_inspect(detail="prune") ` +
+        `to see candidates for archival.`,
     );
   }
 }

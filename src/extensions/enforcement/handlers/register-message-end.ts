@@ -293,35 +293,12 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         // Not a git repo or git unavailable — judge will work without it
       }
 
-      // ── Verification history: extract ALL verification-relevant commands ──
-      // from the FULL turn history (not just the last 30 tool log entries).
-      // This ensures the judge sees verification evidence even on long sessions.
-      const VERIFICATION_CMD = /(npm\s+(test|run\s+(test|typecheck|build|check))|\btsc\b|\b(jest|vitest)\b)/i;
-      const VERIFICATION_OUT = /(PASS|FAIL|error\s+TS|typecheck\s+clean|tests?\s+passed|\d+\/\d+\s+passed)/i;
-
-      const verificationEntries: string[] = [];
-      for (const [, turn] of getState(ctx).turnHistory) {
-        if (turn.actualTools.length > 0) {
-          const toolLine = `Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`;
-          const outputs = turn.toolOutputs || [];
-          const hasBashOrVerify = turn.actualTools.some((t: string) => t === "bash" || t === "verify");
-          const matchingOutputs = outputs.filter((o: string) => VERIFICATION_CMD.test(o) || VERIFICATION_OUT.test(o));
-          if (hasBashOrVerify && matchingOutputs.length > 0) {
-            verificationEntries.push(toolLine + "\n" + matchingOutputs.map((o: string) => `  -> ${o}`).join("\n"));
-          }
-        }
-      }
-      const verificationHistory = verificationEntries.length > 0
-        ? verificationEntries.join("\n\n")
-        : undefined;
-
       const judgeCtx: any = {
         userRequest: getState(ctx).originalRequest || getState(ctx).lastUserMessage || "",
         toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
         toolLog,
         hasCodeChanges: getState(ctx).hasCodeChanges,
         gitHistory,
-        verificationHistory,
         lastResponse: fullContent,
         thinking: thinkingContent,
       };
