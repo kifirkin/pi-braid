@@ -379,6 +379,10 @@ context_inspect(detail='quick')                        → verify health
 ### pi-core 0.80.8 → 0.80.9 compatibility
 **Status:** Verified. No breaking changes. Documented in CHANGELOG.
 
+### Skills section polish (line counts + name-description XML)
+**Commit:** (pending)
+**Status:** Upper Resources block now groups skills by directory with precise line counts per SKILL.md. Lower `<available_skills>` XML reduced to just name + description (XML wrapping kept for safety against bad description content; location and line counts moved to the upper block as clean plain text). System prompt size reduced from ~18,979 chars to ~16,720 chars. 42/42 tests pass.
+
 ---
 
 ## BACKLOG (research needed)

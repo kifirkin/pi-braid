@@ -48,6 +48,7 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, realpathSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -356,12 +357,33 @@ function discoverOtherPiInstances(): OtherPiInstance[] {
 
 // ── Main builder ────────────────────────────────────────────────────────────
 
+/** Minimal skill info for the Resources block. */
+export interface SkillEntry {
+  name: string;
+  filePath: string;
+  baseDir: string;
+}
+
+/** Read a SKILL.md file and count its lines. Returns 0 on error. */
+async function getSkillLineCount(filePath: string): Promise<number> {
+  try {
+    const content = await readFile(filePath, "utf-8");
+    return content.split("\n").length;
+  } catch {
+    return 0;
+  }
+}
+
 export interface InstanceContext {
   /** Skills available (from prompt-builder). */
   skillCount: number;
   /** Unique base directories for loaded skills (from skill file paths).
    *  Defaults to [] when not provided. */
   skillDirs?: string[];
+  /** Skill entries for line-count rendering in the Resources block.
+   *  When provided, the Resources line shows per-skill line counts
+   *  grouped by directory. */
+  skills?: SkillEntry[];
   /** Memory entries (from three-memory-stores). */
   memoryCount: number;
 }
@@ -393,6 +415,8 @@ interface InstanceData {
   skillCount: number;
   /** Unique base directories for loaded skills. */
   skillDirs: string[];
+  /** Skill entries for line-count rendering. */
+  skills: SkillEntry[];
   memoryCount: number;
 }
 
@@ -431,17 +455,18 @@ export async function instanceSection(
     otherPiInstances,
     skillCount: instanceCtx.skillCount,
     skillDirs: instanceCtx.skillDirs ?? [],
+    skills: instanceCtx.skills ?? [],
     memoryCount: instanceCtx.memoryCount,
   };
   return {
     name: "instance",
-    render: () => renderInstance(data),
+    render: async () => renderInstance(data),
   };
 }
 
 // ── Renderer ────────────────────────────────────────────────────────────────
 
-function renderInstance(d: InstanceData): string {
+async function renderInstance(d: InstanceData): Promise<string> {
   const lines: string[] = [];
   lines.push(
     `Agent: Braid v${d.braidVersion} (over pi-core v${d.pi.version})`,
@@ -517,10 +542,41 @@ function renderInstance(d: InstanceData): string {
   const counts: string[] = [];
   if (d.skillCount > 0) {
     const dirs = relativeToCwdList(d.skillDirs, d.cwd);
-    const dirInfo = dirs.length > 0 ? ` from ${dirs.join(", ")}` : "";
-    counts.push(`${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}${dirInfo}`);
+    // Skill line counts for individual skills (grouped by directory)
+    if (d.skills.length > 0) {
+      // Group skills by their base directory
+      const byDir = new Map<string, SkillEntry[]>();
+      for (const skill of d.skills) {
+        const dir = skill.baseDir || "(unknown)";
+        const list = byDir.get(dir);
+        if (list) list.push(skill);
+        else byDir.set(dir, [skill]);
+      }
+      // Render each directory group on its own line, skills sorted by name
+      const skillLines: string[] = [];
+      for (const [dir, group] of byDir) {
+        const sorted = group.sort((a, b) => a.name.localeCompare(b.name));
+        const rel = relativeToCwd(dir, d.cwd);
+        // Compute line counts in parallel
+        const lineCounts = await Promise.all(
+          sorted.map((s) => getSkillLineCount(s.filePath)),
+        );
+        const skillEntries = sorted.map((s, i) => `${s.name} (${lineCounts[i]})`).join(", ");
+        skillLines.push(`  ${rel}: ${skillEntries}`);
+      }
+      lines.push("");
+      const mem = d.memoryCount > 0 ? ` | memory: ${d.memoryCount}` : "";
+      lines.push(`Resources: ${d.skillCount} skills${mem}`);
+      lines.push(...skillLines);
+    } else {
+      // Fallback: just show directories (no skill entries provided)
+      const dirInfo = dirs.length > 0 ? ` from ${dirs.join(", ")}` : "";
+      counts.push(`${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}${dirInfo}`);
+      if (d.memoryCount > 0) counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
+    }
+  } else if (d.memoryCount > 0) {
+    counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
   }
-  if (d.memoryCount > 0) counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
   if (counts.length > 0) {
     lines.push("");
     lines.push(`Resources: ${counts.join(", ")}`);

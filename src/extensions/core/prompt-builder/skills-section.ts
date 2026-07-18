@@ -3,11 +3,12 @@
  *
  * Formats the resolved skill set as a `<available_skills>` block.
  *
- * Each entry carries the discoverability triple (name + description + location)
- * so the agent can pattern-match relevant skills without reading every SKILL.md.
- * Descriptions come from skill frontmatter (already loaded by pi-core) -- no
- * extra file reads for the pointer block. The agent reads the full SKILL.md
- * on demand when a description matches the current task.
+ * Each entry carries just the name + description mapping (in XML for
+ * safety against problematic description content). Location and line
+ * counts live in the upper Resources block (instance-composition.ts)
+ * where they're rendered as clean plain text. The agent pattern-matches
+ * descriptions here, then `read <location>` from the Resources block
+ * to load the full SKILL.md.
  *
  * No relevance scoring, no cap, no hidden list - every skill the
  * loader produced is here, so the agent can always `read` any of
@@ -31,6 +32,9 @@ function escapeAttr(str: string): string {
   return str.replace(/"/g, "'");
 }
 
+const MAX_DESC_LEN = 280;
+const SOFT_LIMIT = 320;
+
 /**
  * Aggressively normalize a skill description for the pointer block.
  * Handles:
@@ -47,8 +51,7 @@ function escapeAttr(str: string): string {
  * Mirrors pi-core's normalizeForFuzzyMatch patterns plus XML safety.
  */
 
-const MAX_DESC_LEN = 280;
-const SOFT_LIMIT = 320;
+
 
 function normalizeDescription(raw: string): string {
   let s = raw
@@ -115,13 +118,13 @@ export async function skillsSection(skills: Skill[]): Promise<PromptSection> {
       const sorted = [...visibleSkills].sort((a, b) => a.name.localeCompare(b.name));
 
       const lines = [
-        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task in a domain covered by a skill below, read that skill first. Skills are executable procedures, not optional hints. \`read <location>\` the matching SKILL.md and follow its instructions.`,
+        `Skills (${sorted.length} available): procedural guides for specialized domains. Before starting a task in a domain covered by a skill below, read that skill first. Skills are executable procedures, not optional hints. SKILL.md locations and line counts are in the Resources block above; this block is the name-to-description mapping.`,
         "<available_skills>",
       ];
 
       for (const skill of sorted) {
         lines.push(
-          `  <skill name="${escapeAttr(skill.name)}" description="${escapeAttr(normalizeDescription(skill.description))}" location="${escapeAttr(skill.filePath)}" />`,
+          `  <skill name="${escapeAttr(skill.name)}" description="${escapeAttr(normalizeDescription(skill.description))}" />`,
         );
       }
 

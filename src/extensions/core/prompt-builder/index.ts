@@ -331,6 +331,11 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const inst = await instanceSection(pi, ctx, {
       skillCount: skills.length,
       skillDirs,
+      skills: skills.map((s) => ({
+        name: s.name,
+        filePath: s.filePath,
+        baseDir: s.baseDir,
+      })),
       memoryCount,
     });
 
