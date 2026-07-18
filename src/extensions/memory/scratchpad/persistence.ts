@@ -28,6 +28,14 @@ import type {
   HypothesisItem,
 } from "./types.js";
 
+/**
+ * Max checkpoint lines to keep in the append-only events.jsonl log.
+ * Old lines are trimmed after save to prevent unbounded growth.
+ * Each line is a full state serialization (~20-80KB), so 50 lines
+ * is ~1-4MB — well within reasonable bounds.
+ */
+const MAX_CHECKPOINT_LINES = 50;
+
 const log = createLogger("scratchpad-persistence");
 
 // SCRATCHPAD_DIR already points to ~/.pi/agent/braid/scratchpads
@@ -255,6 +263,23 @@ export async function saveScratchpadToDisk(scratchpad: TaskScratchpad): Promise<
   });
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.appendFile(filePath, line + "\n", "utf-8");
+
+  // ── Prune old checkpoints to prevent unbounded growth ─────────────
+  // Each line is a full state serialization (~20-80KB). Without pruning,
+  // the file grows indefinitely (observed: 146MB from 1,618 checkpoints).
+  // We keep only MAX_CHECKPOINT_LINES (50) most recent entries.
+  // Read-modify-write is safe here because writes are debounced,
+  // and there is at most one active session per project.
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    if (lines.length > MAX_CHECKPOINT_LINES) {
+      const pruned = lines.slice(-MAX_CHECKPOINT_LINES);
+      await fs.writeFile(filePath, pruned.join("\n") + "\n", "utf-8");
+    }
+  } catch {
+    // Non-fatal: pruning failed, the file still has the latest checkpoint
+  }
 }
 
 /**
