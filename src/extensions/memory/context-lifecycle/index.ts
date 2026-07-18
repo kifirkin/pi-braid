@@ -765,10 +765,11 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "context_proposals",
     label: "Context Proposals",
-    promptSnippet: "View and manage S-MMU context proposals",
+    promptSnippet: "View and manage auto-generated context proposals",
     description:
       "View and manage auto-generated context proposals for session improvement - use to review or act on pending compaction/archive suggestions. Proposals are auto-generated " +
-      "based on session analysis. Use `list` to see pending, `approve`/`reject` to act.",
+      "based on session analysis. Use `list` to see pending, `approve`/`reject` to act. " +
+      "When to use: after receiving a context proposal whisper, or when context feels bloated and auto-suggestions might help guide your next step.",
     parameters: contextProposalsSchema,
     execute: async (
       _toolCallId: string,

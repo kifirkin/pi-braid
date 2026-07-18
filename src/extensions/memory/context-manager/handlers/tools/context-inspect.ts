@@ -50,7 +50,10 @@ export function registerContextInspect(pi: ExtensionAPI): void {
       "Use detail=quick for a 5-line summary (like context_snapshot), " +
       "detail=detailed for full audit with recommendations (like context_audit), " +
       "detail=full for detailed + top prune candidates, " +
-      "detail=prune to see only candidates eligible for removal (like context_prune dry-run).",
+      "detail=prune to see only candidates eligible for removal (like context_prune dry-run). " +
+      "When to use: quick after every checkpoint operation. " +
+      "Detailed when the session feels bloated or slow. " +
+      "Prune to see what could be removed before a forced compact.",
     parameters: contextInspectSchema,
     execute: async (
       _toolCallId: string,

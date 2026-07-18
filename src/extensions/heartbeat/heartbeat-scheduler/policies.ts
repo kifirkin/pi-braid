@@ -149,22 +149,22 @@ export function createDefaultPolicies(
             {
               pct: USAGE_WHISPER_SOFT,
               priority: "low",
-              msg: `Context at ${USAGE_WHISPER_SOFT}%. context_tag to mark progress.`,
+              msg: `Context at ${USAGE_WHISPER_SOFT}%. Tag with context_navigate(action="tag") to mark progress.`,
             },
             {
               pct: USAGE_WHISPER_ADVISORY,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. context_tag, then context_checkout to branch with a summary.`,
+              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
             },
             {
               pct: USAGE_WHISPER_WARNING,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_WARNING}%. context_tag now, then branch with context_checkout.`,
+              msg: `Context at ${USAGE_WHISPER_WARNING}%. Tag now with context_navigate(action="tag"), then archive with context_compress(action="archive").`,
             },
             {
               pct: USAGE_WHISPER_CRITICAL,
               priority: "high",
-              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).`,
+              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort).`,
             },
           ];
 
@@ -177,7 +177,7 @@ export function createDefaultPolicies(
             if (pct === USAGE_WHISPER_CRITICAL) {
               const finalizationMessage =
                 `[heartbeat] Context critical at ${percent?.toFixed(1)}%. ` +
-                `Tag your position with context_tag now and branch with context_checkout.`;
+                `Tag your position with context_navigate(action="tag") now and archive with context_compress(action="archive").`;
               sendSteerMessage(finalizationMessage);
               log.warn(`Auto-finalize triggered at ${USAGE_WHISPER_CRITICAL}%`);
             }

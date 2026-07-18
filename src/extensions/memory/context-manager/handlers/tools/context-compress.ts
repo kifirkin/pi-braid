@@ -154,7 +154,10 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       "It aborts the current turn, which discards any pending tool " +
       "results from the same batch. Issue this tool call alone. " +
       "When writing summaries for archive/deep_clean, use explicit speaker labels " +
-      "(<user>...</user> / <agent>...</agent>) to prevent misattribution after compaction.",
+      "(<user>...</user> / <agent>...</agent>) to prevent misattribution after compaction. " +
+      "When to use: archive when context > 50% and you want to preserve a branch summary. " +
+      "Compact only when archive isn't enough (> 70%) since it's destructive. " +
+      "Deep_clean for a one-shot tag + archive + compact when you need all three.",
     parameters: contextCompressSchema,
     execute: async (
       _toolCallId: string,

@@ -183,7 +183,7 @@ export const contextHygieneModule: CognitiveModule = {
         `[proactive] Context projected at ${projectedPercent}% in ` +
           `${Math.ceil(remainingTurns)} turns (${(density.totalTokens / 1000).toFixed(0)}K tokens, ` +
           `${(density.tokenRatio * 100).toFixed(0)}% now). ` +
-          `Pipeline: context_tag -> context_checkout to branch before hitting limit.`,
+          `Pipeline: context_navigate(action="tag") -> context_navigate(action="checkout") to branch before hitting limit.`,
         { category: "cognitive", priority: remainingTurns <= 3 ? "high" : "medium" },
       );
     } else if (remainingTurns > PROACTIVE_THRESHOLD_TURNS * 2) {
@@ -224,7 +224,7 @@ export const contextHygieneModule: CognitiveModule = {
             density.noisyMessages +
             ", Signal: " +
             density.signalMessages +
-            ". Pipeline: context_tag -> context_checkout -> context_archive -> compact (last resort).",
+            ". Pipeline: context_navigate(action=\"tag\") -> context_navigate(action=\"checkout\") -> context_compress(action=\"archive\") -> compact (last resort).",
           { category: "cognitive", priority: "high" },
         );
         log.info(
@@ -246,7 +246,7 @@ export const contextHygieneModule: CognitiveModule = {
               density.noisyMessages +
               ", Signal: " +
               density.signalMessages +
-              ". Pipeline: context_tag -> context_checkout to branch.",
+              ". Pipeline: context_navigate(action=\"tag\") -> context_navigate(action=\"checkout\") to branch.",
             {
               category: "cognitive",
               priority: density.density < DENSITY_VERY_LOW ? "high" : "medium",
@@ -271,7 +271,7 @@ export const contextHygieneModule: CognitiveModule = {
           "%) but large context (" +
           Math.round(density.tokenRatio * 100) +
           "% of limit). " +
-          "context_tag then context_checkout to branch.",
+          "context_navigate(action=\"tag\") then context_navigate(action=\"checkout\") to branch.",
         { category: "cognitive", priority: "low" },
       );
     }
