@@ -10,8 +10,11 @@
  *   - Top-level pi extension PACKAGES read from pi-core's settings
  *     `packages` field (the real runtime configuration), tagged
  *     `project` or `user-global` by scope
- *   - Aggregate counts (total skills, memory entries)
- *   - A generic discovery hint pointing at the read tool
+ *   - Other Pi instances in the same working directory
+ *
+ * Skills and memory resources are rendered in a separate Resources
+ * section (resources-section.ts) placed just before the skills XML
+ * block — not here.
  *
  * This is the agent's at-a-glance view of "what is loaded and
  * where it came from." Three corrections since v3.7:
@@ -48,7 +51,6 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -59,6 +61,7 @@ import {
   type TopLevelExtension,
 } from "./top-level-extensions.js";
 import { gatherL1Environment, type L1EnvironmentData } from "../agent-environment/index.js";
+import type { SkillEntry } from "./resources-section.js";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── Pi-core version discovery (use the actually-running binary) ─────────────
@@ -357,36 +360,20 @@ function discoverOtherPiInstances(): OtherPiInstance[] {
 
 // ── Main builder ────────────────────────────────────────────────────────────
 
-/** Minimal skill info for the Resources block. */
-export interface SkillEntry {
-  name: string;
-  filePath: string;
-  baseDir: string;
-}
-
-/** Read a SKILL.md file and count its lines. Returns 0 on error. */
-async function getSkillLineCount(filePath: string): Promise<number> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    return content.split("\n").length;
-  } catch {
-    return 0;
-  }
-}
-
 export interface InstanceContext {
   /** Skills available (from prompt-builder). */
   skillCount: number;
   /** Unique base directories for loaded skills (from skill file paths).
    *  Defaults to [] when not provided. */
   skillDirs?: string[];
-  /** Skill entries for line-count rendering in the Resources block.
-   *  When provided, the Resources line shows per-skill line counts
-   *  grouped by directory. */
+  /** Skill entries for line-count rendering (passed through to resources-section). */
   skills?: SkillEntry[];
   /** Memory entries (from three-memory-stores). */
   memoryCount: number;
 }
+
+/** Minimal skill info for the Resources section. Re-exported for index.ts. */
+export type { SkillEntry };
 
 interface InstanceData {
   braidVersion: string;
@@ -531,64 +518,12 @@ async function renderInstance(d: InstanceData): Promise<string> {
       `Pi instances (${otherCount} other${otherCount === 1 ? "" : "s"}) in cwd:`,
     );
     for (const inst of sameDirInstances) {
-      const marker = inst.isCurrent ? "  ← current" : "";
+      const marker = inst.isCurrent ? "  \u2190 current" : "";
       lines.push(
         `  PID ${inst.pid}  ${inst.elapsed}  ${inst.tty}${marker}`,
       );
     }
   }
-
-  // Aggregate counts with paths
-  const counts: string[] = [];
-  if (d.skillCount > 0) {
-    const dirs = relativeToCwdList(d.skillDirs, d.cwd);
-    // Skill line counts for individual skills (grouped by directory)
-    if (d.skills.length > 0) {
-      // Group skills by their base directory
-      const byDir = new Map<string, SkillEntry[]>();
-      for (const skill of d.skills) {
-        const dir = skill.baseDir || "(unknown)";
-        const list = byDir.get(dir);
-        if (list) list.push(skill);
-        else byDir.set(dir, [skill]);
-      }
-      // Render each directory group on its own line, skills sorted by name
-      const skillLines: string[] = [];
-      for (const [dir, group] of byDir) {
-        const sorted = group.sort((a, b) => a.name.localeCompare(b.name));
-        const rel = relativeToCwd(dir, d.cwd);
-        // Compute line counts in parallel
-        const lineCounts = await Promise.all(
-          sorted.map((s) => getSkillLineCount(s.filePath)),
-        );
-        const skillEntries = sorted.map((s, i) => `${s.name} (${lineCounts[i]})`).join(", ");
-        skillLines.push(`  ${rel}: ${skillEntries}`);
-      }
-      lines.push("");
-      const mem = d.memoryCount > 0 ? ` | memory: ${d.memoryCount}` : "";
-      lines.push(`Resources: ${d.skillCount} skills${mem}`);
-      lines.push(...skillLines);
-    } else {
-      // Fallback: just show directories (no skill entries provided)
-      const dirInfo = dirs.length > 0 ? ` from ${dirs.join(", ")}` : "";
-      counts.push(`${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}${dirInfo}`);
-      if (d.memoryCount > 0) counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
-    }
-  } else if (d.memoryCount > 0) {
-    counts.push(`${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`);
-  }
-  if (counts.length > 0) {
-    lines.push("");
-    lines.push(`Resources: ${counts.join(", ")}`);
-  }
-
-  // Discovery hint: the prompt is not a directory listing. Every path
-  // above is `read`-able on demand; tools reach the wider runtime
-  // (~/.pi/agent, <pi-core>/docs, sibling repos via the file system).
-  lines.push("");
-  lines.push(
-    "Discover on demand: `read` any path above to inspect its source; the file tools (`bash`, `grep`, `find`, `ls`) reach the wider runtime including ~/.pi/agent and the pi-core package.",
-  );
 
   return lines.join("\n");
 }
@@ -613,23 +548,6 @@ function relativeToCwd(p: string, cwd: string): string {
   if (p === cwd) return p + " (cwd)";
   if (p.startsWith(cwd + "/")) return p.slice(cwd.length + 1);
   return p;
-}
-
-/**
- * Render a list of paths relative to cwd, deduplicating identical
- * entries. Used for showing skill directories and other multi-source
- * paths in the Instance block.
- */
-function relativeToCwdList(paths: string[], cwd: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of paths) {
-    const rel = relativeToCwd(p, cwd);
-    if (seen.has(rel)) continue;
-    seen.add(rel);
-    out.push(rel);
-  }
-  return out;
 }
 
 function formatMs(ms: number): string {

@@ -30,6 +30,7 @@ import {
   resetMemorySectionCache,
 } from "./memory-section.js";
 import { instanceSection } from "./instance-composition.js";
+import { resourcesSection, type SkillEntry } from "./resources-section.js";
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -359,6 +360,22 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
 
     // 3. Available tools
     sections.push(toolsSection(tools));
+
+    // 3.5. Resources (skill counts, line counts, memory) — placed just before
+    //       skills XML below, so skill paths sit near skill descriptions.
+    const res = resourcesSection({
+      skillCount: skills.length,
+      skillDirs,
+      skills: skills.map((s) => ({
+        name: s.name,
+        filePath: s.filePath,
+        baseDir: s.baseDir,
+      })),
+      memoryCount,
+      cwd,
+    });
+    const resText = await res.render();
+    if (resText) sections.push(simpleSection("resources", resText));
 
     // 3. Skills (only when the read tool is available)
     if (hasRead) {

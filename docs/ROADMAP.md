@@ -174,70 +174,12 @@ Jul 17: 5 identity blocks philosophically deepened, trimmed ~55% word count
 
 ### P1-1: Context navigation pipeline (system prompt + tool availability guards)
 
-**Why P1:** This is the highest-impact change for day-to-day session quality. The agent needs a proper context navigation pipeline in the system prompt, with tool availability guards matching pi-core's native pattern. The pipeline wisdom is embedded in the tool implementations themselves: each tool's `details` output includes `nextStep` suggestions for the pipeline (tag → archive → inspect), and the heartbeat whisper suggests pipeline-specific actions at context thresholds.
+**Status: SHIPPED.**
 
-**Core loop:**
-```
-context_navigate(action='tag', name='checkpoint-N')  → save position
-context_navigate(action='checkout', target='<tag>')    → jump to checkpoint
-context_compress(action='archive', beforeTag='<tag>')  → free space
-context_inspect(detail='quick')                        → verify health
-```
+**2026-07-17:** Pipeline guidelines with tool-availability guards added to `prompt-builder/index.ts` (`contextNavigationGuidelines()`).
+**2026-07-18:** Tool descriptions updated with "when to use" situational framing (context_navigate, context_compress, context_inspect, context_proposals). Heartbeat policies.ts and context-hygiene.ts modernized from stale old names (context_tag/context_checkout/context_archive) to modern equivalents with pipeline-specific messaging at each threshold. Resources block moved out of Instance section to just before skills XML block.
 
-**When to use which tool:**
-
-| Situation | Tool | Action |
-|-----------|------|--------|
-| Starting complex work | `context_navigate` | `action='tag', name='before-<task>'` |
-| Context > 50% | `context_compress` | `action='archive', beforeTag='last-checkpoint'` |
-| Context > 70% | `context_compress` | `action='compact', keep=10` |
-| Lost in history | `context_navigate` | `action='log'` then `action='checkout'` |
-| Before risky operation | `context_navigate` | `action='tag', name='before-<op>'` |
-| After any checkpoint | `context_inspect` | `detail='quick'` |
-| Session feels bloated | `context_inspect` | `detail='prune'` then act on candidates |
-
-**Implementation (single file: `prompt-builder/index.ts`):**
-- Add context tool availability checks: `hasContextNavigate`, `hasContextCompress`, `hasContextInspect`
-- Add pipeline guidelines block gated on those checks (pi-core pattern)
-- Update each context tool's `description` with "when to use" framing
-
-**Implementation order:**
-1. Add context tool availability checks + pipeline guidelines to `toolsSection()` in `prompt-builder/index.ts`
-2. Update `context_navigate` description with "when to use" framing
-3. Update `context_compress` description with "when to use" framing
-4. Update `context_inspect` description with "when to use" framing
-5. Update heartbeat whisper with pipeline-specific suggestions at 50%/70%/85% thresholds
-6. Run typecheck + tests (42/42)
-7. Commit: `feat: add context navigation pipeline with tool availability guards`
-8. Test: run a full session using only navigate, no agent-initiated compress
-
-**Deep research findings:**
-
-1. **Can navigate replace agent-initiated compaction?** — Hypothesis: with proper tagging discipline, the agent can always jump back to a known-good state, eliminating the need for agent-initiated `context_compress`. Only pi-core auto-compact and overflow force-compact remain. Needs testing: track tags per session, monitor whether agent hits auto-compact threshold.
-
-2. **Tagging discipline** — Good tags describe what you're about to do (`before-refactor-X`), not what you've done (`checkpoint-3`). Bad tags are meaningless names (`tag-1`, `tag-2`) or generic labels that get overwritten. Guideline: "Tags should describe what you're about to do, not what you've done."
-
-3. **Deferred tool loading interaction** — If context tools are deferred, pipeline guidelines are hidden until the agent activates them. Chicken-and-egg problem: the agent needs to know about context tools before they're active. Solution: keep `context_navigate` always active, defer only `context_compress` and `context_inspect`.
-
-4. **Heartbeat whisper integration** — The heartbeat whisper fires at context thresholds. It should suggest specific pipeline actions:
-   - At 50%: "Consider: context_navigate(action='tag', name='before-cleanup') then context_compress(action='archive', beforeTag='before-cleanup')."
-   - At 70%: "Consider: context_compress(action='compact', keep=10)."
-   - At 85%: "Context critical. Use context_navigate(action='checkout') to a recent checkpoint, or context_compress(action='compact', keep=5)."
-
-**Open questions:**
-1. Should the pipeline live in `identity.ts` (as a "Context Manager" trait) or `toolsSection()` (as guidelines)? Decision: toolsSection — the pipeline is a strategy, not a character trait.
-2. Should the heartbeat whisper use `triggerTurn: true` at critical levels (85%)? Currently `triggerTurn: false` (advisory), but at 85% the agent might not see it before a crash.
-3. Should `context_proposals` be part of the pipeline? No — proposals are about auto-generated suggestions, not agent-initiated navigation.
-
-**Success criteria:**
-1. Agent tags before every major operation in a session
-2. Agent uses `context_navigate(action='checkout')` to explore branches instead of letting context grow
-3. Agent-initiated `context_compress` calls drop by >80%
-4. Context stays below 70% without agent-initiated compaction
-5. Pipeline is documented in the system prompt with tool-availability guards
-6. All 42 tests pass, typecheck clean
-
-**Deliverable:** `prompt-builder/index.ts` changes + updated tool descriptions + heartbeat whisper integration.
+Verification: All 42 tests pass, typecheck clean.
 
 ### P1-2: Compaction speaker attribution
 

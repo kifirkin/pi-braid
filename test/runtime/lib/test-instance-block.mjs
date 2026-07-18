@@ -25,6 +25,8 @@
  *   - No project-specific internal module paths leak into the rendered output.
  *   - File-existence regression guards for the deleted
  *     session-section.ts and l1-environment.ts.
+ *   - Instance block does NOT contain Resources or discovery hint
+ *     (those moved to resources-section.ts in 2026-07-18).
  *
  * What this test does NOT do (and why):
  *   - It does NOT grep source for "export async function instanceSection".
@@ -252,30 +254,19 @@ await test("No project-specific internal module paths leak into the output", () 
   );
 });
 
-await test("Renders 'Resources: N skills, M memories' line", () => {
-  assert.match(
-    OUT,
-    /^Resources: 26 skills, 5 memories$/m,
-    "must show resources line with the passed skillCount + memoryCount",
-  );
-});
-
-await test("Discovery hint is generic, with no unicode arrow", () => {
-  // v3.8 corrected two issues: dropped the `->` arrow (excessive)
-  // and broadened the hint to cover the full runtime (not just
-  // extension source code).
-  assert.ok(!OUT.includes("->"), "must not use a unicode arrow in the hint");
-  assert.match(
-    OUT,
-    /Discover on demand: `read`/,
-    "must have a 'Discover on demand' line with a `read` pointer",
-  );
-  // The generic hint should also mention the file tools reach the
-  // wider runtime -- not just extension source.
+await test("Renders no empty trailing sections (resources moved to separate section)", () => {
+  // The Resources block (skill counts, line counts, memory) and the
+  // discovery hint were moved to a separate Resources section in
+  // 2026-07-18. The Instance block no longer renders them.
   assert.ok(
-    /bash.*grep.*find.*ls|`bash`|`grep`|`find`|`ls`/.test(OUT),
-    "hint should mention file tools for broader discoverability",
+    !OUT.includes("Resources:"),
+    "Resources block was moved to resources-section.ts; should not appear in Instance",
   );
+  assert.ok(
+    !OUT.includes("Discover on demand"),
+    "Discovery hint was moved to resources-section.ts; should not appear in Instance",
+  );
+  assert.ok(!OUT.includes("->"), "must not use a unicode arrow");
 });
 
 // ── discoverTopLevelExtensions runtime behavior ────────────────────────────
