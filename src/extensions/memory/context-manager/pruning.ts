@@ -224,6 +224,48 @@ const errorPurgingRule: PruneRule = {
   },
 };
 
+// ── Tool Result Volume Rule ──────────────────────────────────────────────
+// Limits accumulated tool results. Prevents infinite growth on long sessions.
+// When tool result count exceeds MAX, the OLDEST excess results are pruned,
+// keeping the KEEP_RECENT most recent ones. This runs before recencyRule so
+// each rule has a clear concern: volume limits tool results, recency protects
+// the last N messages generally.
+
+const TOOL_RESULT_MAX = 25;
+const TOOL_RESULT_KEEP_RECENT = 10;
+
+const toolResultVolumeRule: PruneRule = {
+  id: "tool_result_volume",
+  description: `Limit total tool results — prune oldest when count > ${TOOL_RESULT_MAX}, keep ${TOOL_RESULT_KEEP_RECENT} recent`,
+  enabled: true,
+
+  process(msg: MessageWithMetadata, ctx: PruneContext) {
+    if (msg.metadata.shouldPrune) return;
+    if (!hasToolResult(msg.message)) return;
+
+    // Count tool results and find this message's index among them
+    let totalResults = 0;
+    let thisResultIndex = -1;
+    for (let i = 0; i < ctx.messages.length; i++) {
+      if (hasToolResult(ctx.messages[i].message)) {
+        if (ctx.messages[i] === msg) {
+          thisResultIndex = totalResults;
+        }
+        totalResults++;
+      }
+    }
+
+    if (totalResults <= TOOL_RESULT_MAX) return;
+
+    // Prune oldest excess: keep TOOL_RESULT_KEEP_RECENT most recent
+    const excess = totalResults - TOOL_RESULT_KEEP_RECENT;
+    if (thisResultIndex < excess) {
+      msg.metadata.shouldPrune = true;
+      msg.metadata.pruneReason = `excess_tool_result (${totalResults} total, keeping ${TOOL_RESULT_KEEP_RECENT})`;
+    }
+  },
+};
+
 function createRecencyRule(keepRecentCount: number): PruneRule {
   return {
     id: "recency",
@@ -400,6 +442,7 @@ export function createPruningState(keepRecentCount = 10): PruningState {
     deduplicationRule,
     supersededWritesRule,
     errorPurgingRule,
+    toolResultVolumeRule,
     createRecencyRule(keepRecentCount),
   ];
   return state;

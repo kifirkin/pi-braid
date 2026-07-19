@@ -311,15 +311,18 @@ Verification: All 42 tests pass, typecheck clean.
 
 ### P3-6: Periodic redundant tool output pruning
 
-**Why P3:** Novel mechanism that requires careful design. Low risk technically (pruning old tool results is safe), but the cadence and retention policy need tuning.
+**Status: SHIPPED 2026-07-19.**
 
-**Research finding:** The tool loop detector (`tool-loop-detector.ts`) detects loops at 16+ consecutive same-tool calls but does NOT prune old tool results from context. The agent accumulates all tool outputs over time.
+**Keep:** `TOOL_RESULT_MAX = 25` tool result messages, keep the most recent `TOOL_RESULT_KEEP_RECENT = 10`.
 
-**Proposed mechanism:**
-- Add a tool-call counter per turn
-- When threshold reached (20-30 calls), prune oldest tool results
-- Retain last 10 tool results as a floor
-- 1-turn cooldown between prunes
+**Implementation:** Added `toolResultVolumeRule` — 6th rule in the existing context pruning pipeline (`applyPruningWorkflow` in `pruning.ts`). Runs before recencyRule so concerns are cleanly separated: volume limits tool results, recency protects last N messages generally. The existing `repairOrphanedToolPairs` (Phase 3.5) handles any assistant/tool-result pairing edge cases.
+
+- No cooldown needed (triggered on every `context` event — i.e., before every LLM call — not per turn)
+- Oldest excess results are pruned by chronological index, keeping the most recent 10
+- Integrates with existing stats tracking (`pruneReasons["excess_tool_result"]`)
+- No new files — single rule in `pruning.ts`
+
+**Verification:** Typecheck clean, 42/42 tests pass.
 
 ---
 
