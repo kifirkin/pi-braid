@@ -12,10 +12,13 @@ import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
 import { addEpisode, addPrinciple } from "../../../memory/three-memory-stores/index.js";
 import { executeConsolidation } from "../../../../lib/events/consolidation-channel.js";
-import { handleArchiveDone } from "../../../memory/scratchpad/handlers.js";
-import type { TaskScratchpad } from "../../../memory/scratchpad/types.js";
+import { handleArchiveDone, handlePersistLearnings } from "../../../memory/scratchpad/handlers.js";
+import type { TaskScratchpad, KeyLearning } from "../../../memory/scratchpad/types.js";
 import { getSessionManager } from "../../../../lib/state/session-manager.js";
 import { getUnresolvedConflicts } from "../../../../lib/store/evidence-pool.js";
+import { getCognitiveMemory } from "../../../../lib/memory/index.js";
+import type { CognitiveMemoryType } from "../../../../lib/memory/types.js";
+import { deriveProjectIdFromCwd } from "../../../../lib/memory/past-insights.js";
 
 const log = createLogger("finalize");
 
@@ -273,6 +276,64 @@ async function autoTagPosition(ctx: ExtensionContext, summary: string): Promise<
   }
 }
 
+/**
+ * Map scratchpad KeyLearning.category to CognitiveMemoryType.
+ */
+function mapCategoryToMemoryType(category: KeyLearning["category"]): CognitiveMemoryType {
+  switch (category) {
+    case "root_cause": return "error";
+    case "pattern": return "pattern";
+    case "fix": return "pattern";
+    case "constraint": return "insight";
+    case "codebase_fact": return "semantic";
+  }
+}
+
+/**
+ * Auto-persist unpersisted learnings to long-term memory.
+ * Called inside finalize before the no-tools message, so the agent doesn't need
+ * to call memory_store separately. Eliminates the contradiction between
+ * "store learnings" and "don't call any tools" in the finalize output.
+ * Fire-and-forget: failures are logged but not surfaced to the agent.
+ */
+async function autoPersistLearnings(ctx: ExtensionContext): Promise<number> {
+  try {
+    const cache = getExtensionState<{ pad: TaskScratchpad | null }>(
+      ctx, "scratchpad-cache", () => ({ pad: null }),
+    );
+    if (!cache?.pad) return 0;
+
+    const unpersisted = cache.pad.key_learnings.filter((l) => !l.persisted);
+    if (unpersisted.length === 0) return 0;
+
+    const memory = getCognitiveMemory();
+    const projectId = deriveProjectIdFromCwd(ctx.cwd ?? "");
+
+    for (const learning of unpersisted) {
+      try {
+        await memory.store(
+          learning.content,
+          mapCategoryToMemoryType(learning.category),
+          {
+            tags: learning.scope.length > 0 ? learning.scope : undefined,
+            source: "finalize",
+            importance: 0.5,
+            projectId,
+          },
+        );
+      } catch (storeErr) {
+        log.warn(`Auto-persist failed for learning ${learning.id}: ${(storeErr as Error).message}`);
+      }
+    }
+
+    // Mark them persisted in scratchpad
+    await handlePersistLearnings(cache.pad);
+    return unpersisted.length;
+  } catch {
+    return 0;
+  }
+}
+
 export interface FinalizeCallbacks {
   onFinalize?: (summary: string, completed: boolean) => void;
   recordCalibration?: (
@@ -289,7 +350,7 @@ export function createFinalizeTool(callbacks: FinalizeCallbacks = {}): ToolDefin
     name: "finalize" as const,
     label: "Finalize",
     promptSnippet: "Mark the current task as complete and trigger review",
-    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. The verification triple on each done item must guard specific failure modes — 'file was modified' is not a meaningful check, 'behavior changed as expected' is. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.\n\nAutomation (all fire-and-forget):\n- Archives done items to disk (append-only JSONL, survives across sessions)\n- Auto-tags current session position for navigation back to this point\n- Auto-proceeds to next pending task by default (set autoProceed=false to disable)\n- Reports unpersisted learnings that need memory_store`,
+    description: `Mark a task complete and record it to session memory. Must call at the end of every task or significant subtask — never finish work without finalizing. Checks recent verify() result and blocks if unresolved issues remain. The verification triple on each done item must guard specific failure modes — 'file was modified' is not a meaningful check, 'behavior changed as expected' is. After finalize, respond with text only (no tool calls) to end the agent loop cleanly.\n\nAutomation (all fire-and-forget):\n- Archives done items to disk (append-only JSONL, survives across sessions)\n- Auto-tags current session position for navigation back to this point\n- Auto-proceeds to next pending task by default (set autoProceed=false to disable)\n- Auto-persists unpersisted learnings to long-term memory (no separate memory_store call needed)`,
     parameters: finalizeSchema,
     execute: async (
       _toolCallId: string,
@@ -368,6 +429,10 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
         autoTagPosition(_ctx, params.summary).catch(() => {});
       }
 
+      // Auto-persist unpersisted learnings atomically — resolves the contradiction
+      // between "store learnings" and "don't call any tools" in the output.
+      const persistedCount = _ctx ? await autoPersistLearnings(_ctx) : 0;
+
       const status = params.completed ? "Task completed" : "Task incomplete";
       const messages: string[] = [status, `Summary: ${params.summary}`];
 
@@ -390,11 +455,13 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
         }
       }
 
-      if (unpersistedLearnings) {
+      if (persistedCount > 0) {
+        messages.push(`\n📚 **${persistedCount} learning(s) auto-persisted to memory.**`);
+      } else if (unpersistedLearnings) {
         messages.push(
-          `\n📚 **${unpersistedLearnings} unpersisted learning(s).** ` +
+          `\n📚 **${unpersistedLearnings} learning(s) could not be auto-persisted.** ` +
           `Call \`memory_store(content=..., memoryType=..., tags=...)\` ` +
-          `now to preserve them across sessions — they will be lost on shutdown.`
+          `manually, or the next finalize will retry.`
         );
       }
 
