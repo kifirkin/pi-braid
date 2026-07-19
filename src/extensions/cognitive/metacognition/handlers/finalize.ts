@@ -477,7 +477,7 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       messages.push(
         "The agent loop terminates cleanly when you respond with text only - no tool calls.",
       );
-      messages.push("Acknowledge completion in a brief text response, then stop.");
+      messages.push("Summarize what shipped, any advisories received this session, and what's next.");
 
       return {
         content: [{ type: "text" as const, text: messages.join("\n") }],
