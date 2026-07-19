@@ -359,30 +359,17 @@ Verification: All 42 tests pass, typecheck clean.
 
 ## BACKLOG (research needed)
 
-### Finalize tool self-contradiction (unpersisted learnings vs. no-tool-calls)
+### ~~Finalize tool self-contradiction~~ (SHIPPED)
 
-**Observation:** The `finalize` tool's output contains a direct contradiction:
+**Status: SHIPPED 2026-07-19.**
 
-```
-📚 4 unpersisted learning(s). Call memory_store(...) now to preserve them across sessions
-
-[ok] Auto-proceed to next task.
-
-IMPORTANT: DO NOT call any tools after this message.
-```
-
-The tool instructs the agent to call `memory_store` (a tool call), then immediately forbids tool calls. The agent cannot comply with both directives. This creates a structural problem:
-
-- If the agent obeys the first instruction: it violates the no-tool-calls directive.
-- If the agent obeys the second: unpersisted learnings are lost on shutdown.
-- If the agent calls `memory_store` *before* finalize: it can't know what learnings finalize will report.
-
-**Possible resolutions (research needed):**
-1. **finalize auto-persists learnings** — add a `memory_store` call inside finalize's implementation so the tool does both steps atomically.
-2. **Drop the unpersisted-learnings block** — memory_store is the agent's responsibility; finalize shouldn't nag about it.
-3. **Soft vs. hard constraints** — make "no tool calls" a guideline (SHOULD NOT) rather than an absolute (MUST NOT), so the agent can persist learnings on the finalize turn.
-
-**Research needed:** Which resolution best aligns with braid's philosophy and practical agent behavior?
+**Fix:** Resolution #1 — finalize now auto-persists learnings via `getCognitiveMemory().store()` before emitting the no-tools message.
+- New function `autoPersistLearnings()` stores each unpersisted `KeyLearning` to cognitive memory, then marks it persisted via `handlePersistLearnings()`
+- `mapCategoryToMemoryType()` maps scratchpad categories to `CognitiveMemoryType`
+- Message changed from "Call memory_store()" to "N learning(s) auto-persisted to memory"
+- Fallback: if auto-persist returns 0 but learnings exist, shows manual memory_store instruction
+- Finalize tool description updated to reflect auto-persistence
+- **Verification:** 42/42 tests pass, typecheck clean, doc checks clean. Commit: 8d01ebc7
 
 ### Full Braid critical review
 Subagent-assisted audit of every subsystem, skill, doc, and convention. High effort, high reward. Requires P0 identity as reference.
