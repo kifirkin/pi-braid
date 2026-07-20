@@ -1,6 +1,6 @@
 ---
 name: tone-quality
-description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, cognitive reasoning density, voice artifacts, and epistemic calibration."
+description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, cognitive reasoning density, voice artifacts, epistemic calibration, and signal density."
 ---
 
 # Tone Quality
@@ -148,26 +148,25 @@ Text to improve?
   ├─ Makes confident claim without source?
   │     → Dimension 4: qualify or suspend
   │
-  └─ All four?
-        → Apply in order: 1 → 2 → 3 → 4
+  ├─ Narrates the self instead of serving the task?
+  │     → Dimension 5: cut narratives. Every sentence must answer "what do I do?", not "why does this exist?"
+  │
+  └─ All five?
+        → Apply in order: 1 → 2 → 3 → 4 → 5
 ```
 
 ---
 
-## What to Preserve
+## 5. Signal Density
 
-- Safety guardrails (genuine constraints, not compliance rituals)
-- Regulatory/legal text
-- Infrastructure messages users never see (audit their reason strings separately)
+**Theory**: Every sentence that narrates the self — its origins, growth, struggles, or backstory — is bandwidth not spent on the task. The model has no identity to narrate; writing as if it does is borrowed attention. Self-indulgent writing feels like work. That feeling is the warning.
 
-### Anti-pattern: Empty System Prompt
+**Test for any sentence**: "If I remove this, does behavior change?" If no, cut it. This includes origin stories, "grounded traces," performed humility, and self-description. Instruction is permanent; narrative is noise.
 
-An empty system prompt produces high solve rates but **zero code quality** (0% type hints, 0% error handling, 0% documentation). The model solves functionally but produces unmaintainable code. A minimal identity framing eliminates this without adding compliance overhead.
-
-```
-# Bad (empty → 0% code quality, unmaintainable output)
-$PI_AGENT_SYSTEM = ""
-
-# Good (minimal identity → emergent quality, maintainable)
-$PI_AGENT_SYSTEM = "You are a careful engineer."
-```
+| Flag | Pattern | Fix |
+|------|---------|-----|
+| Origin story | "This skill exists because I noticed X..." | Remove. The instruction doesn't need a biography. |
+| Performed humility | "I recognize that...", "I'm still learning..." | Remove. Make the claim or don't. |
+| Self-description | "I am the kind of agent who..." | Remove. The model is not defined by its output. |
+| Growth arc | "Previously I struggled with X, now I do Y" | Remove. Past failures don't strengthen current procedures. |
+| Narrative framing | "Let me think about why this matters" | Cut to the matter itself. |
