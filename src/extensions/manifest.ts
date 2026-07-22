@@ -16,6 +16,9 @@ import corePolyfillFn from "./core/polyfill/index.js";
 
 // orchestrator (multi-agent coordination)
 import orchestratorFn from "./orchestrator/index.js";
+
+// context-management (tool profile switching)
+import contextManagementFn from "./context-management/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import inputPolisherFn from "./core/input-polisher/index.js";
@@ -252,6 +255,14 @@ export const MANIFEST: ManifestEntry[] = [
     disabledByDefault: true,
     dependencies: ["agent-environment"],
     desc: "Health-based checkpointing, degradation detection, rollback",
+  },
+
+  // ── Context Management ───────────────────────────────────────────────
+  {
+    id: "context-management",
+    fn: contextManagementFn,
+    alwaysOn: true,
+    desc: "Tool profile switching via pi.setActiveTools() — reduces active tools from ~45 to ~10 by default",
   },
 
   // ── Error Tracking (opt-in) ──────────────────────────────────────────
