@@ -3,6 +3,8 @@ name: tone-quality
 description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, cognitive reasoning density, voice artifacts, epistemic calibration, and signal density."
 ---
 
+trigger: "writing documentation, writing prompts, writing messages, writing skills, writing comments, writing explanations, drafting text, editing text"
+---
 # Tone Quality
 
 Apply four diagnostic dimensions when creating or revising text. Each dimension catches problems the others miss.

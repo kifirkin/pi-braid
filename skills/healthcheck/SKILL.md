@@ -3,6 +3,8 @@ name: healthcheck
 description: "Run agent self-diagnostic to validate all tools and capabilities, and clean up stale processes. Use when troubleshooting tool failures, after setup, verifying environment readiness, or when pi instances accumulate and slow down the system."
 ---
 
+trigger: "troubleshooting tool failures, verifying environment readiness, post-setup validation, stale process cleanup, tool diagnostics"
+---
 # Healthcheck
 
 ## Core Tools

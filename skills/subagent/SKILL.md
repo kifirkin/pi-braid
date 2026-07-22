@@ -1,6 +1,7 @@
 ---
 name: subagent
 description: "Spawn, monitor, and coordinate pi instances as subagents. Covers: JSON-mode subprocess, RPC-based task delegation, parallel fan-out/fan-in, result extraction, session resumption, and error recovery. Activate when a task benefits from isolated context windows, parallel execution, or delegating to a specialized agent configuration."
+trigger: "spawning subagents, parallel task execution, isolated context windows, task delegation, RPC orchestration, session resumption, fan-out tasks, multi-agent coordination"
 ---
 
 # Subagent Orchestration

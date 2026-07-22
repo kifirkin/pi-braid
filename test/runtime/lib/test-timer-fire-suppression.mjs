@@ -137,6 +137,15 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     clearAllBuckets();
   });
 
+  /**
+   * sendTrackedMessage defers triggerTurn:true messages to setTimeout(0)
+   * (stack overflow fix). This helper flushes the deferred queue so
+   * pi.sent reflects the actual send.
+   */
+  function flushDeferred() {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   function fireTimerWhisper(pi) {
     sendTrackedMessage(
       pi,
@@ -151,16 +160,17 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     );
   }
 
-  it("PASS: timer fire in fresh turn reaches the runtime", () => {
+  it("PASS: timer fire in fresh turn reaches the runtime", async () => {
     beginTurn();
     const pi = makeMockPi();
     fireTimerWhisper(pi);
+    await flushDeferred();
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(timerSent.length, 1, "fresh turn -> timer reaches runtime");
     assert.equal(timerSent[0].options.triggerTurn, true, "triggerTurn preserved");
   });
 
-  it("FIX: timer fire is NOT suppressed by 3 high-priority whispers from other sources", () => {
+  it("FIX: timer fire is NOT suppressed by 3 high-priority whispers from other sources", async () => {
     beginTurn();
     const pi = makeMockPi();
 
@@ -186,6 +196,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
 
     // 4th high would be suppressed, but timer is now critical - must pass
     fireTimerWhisper(pi);
+    await flushDeferred();
 
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(
@@ -196,7 +207,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     assert.equal(pi.sent.length, 4, "all 4 whispers reach");
   });
 
-  it("FIX: compaction-resume timer also bypasses the high cap", () => {
+  it("FIX: compaction-resume timer also bypasses the high cap", async () => {
     // Compaction-resume timer (tag: "compaction-resume", wake: true) uses
     // source "timer/fire" with triggerTurn: true - same fix path. The
     // post-compaction auto-resume wake-up is now reliable.
@@ -235,12 +246,13 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
       { deliverAs: "steer", triggerTurn: true },
       { type: "heartbeat", source: "timer/fire" },
     );
+    await flushDeferred();
 
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(timerSent.length, 1, "compaction-resume timer reaches runtime");
   });
 
-  it("RESIDUAL: 3rd timer fire in same turn is per-source suppressed (PER_SOURCE_CAP=2)", () => {
+  it("RESIDUAL: 3rd timer fire in same turn is per-source suppressed (PER_SOURCE_CAP=2)", async () => {
     // Acceptable: per-source cap of 2 still applies to critical. The user
     // can stagger their timers to avoid this. This documents the constraint
     // so it doesn't regress.
@@ -249,6 +261,7 @@ describe("Timer fire end-to-end through sendTrackedMessage", () => {
     fireTimerWhisper(pi);
     fireTimerWhisper(pi);
     fireTimerWhisper(pi);
+    await flushDeferred();
 
     const timerSent = pi.sent.filter((m) => m.params.customType === "timer");
     assert.equal(timerSent.length, 2, "only 2 timer fires reach (3rd is per-source capped)");

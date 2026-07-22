@@ -50,6 +50,62 @@ import { Type } from "typebox";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { getSessionIdSafe } from "../../../lib/state/extension-state.js";
 import { getTimerExtensionFactoryState } from "../../../lib/state/global-state.js";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { getTimerFilePath } from "../../../lib/config/braid-paths.js";
+
+type PersistedTimer = {
+  id: string;
+  sessionId: string;
+  firesAt: number;
+  reason: string;
+  tag?: string;
+  createdAt: number;
+  wake: boolean;
+};
+
+/** Get the timer file path for the current process CWD.
+ *  Each project CWD has its own timer file for independent timer pools. */
+function timerFilePath(): string {
+  return getTimerFilePath(process.cwd());
+}
+
+function loadPendingTimers(): PersistedTimer[] {
+  try {
+    const file = timerFilePath();
+    if (!existsSync(file)) return [];
+    const raw = readFileSync(file, "utf-8").trim();
+    if (!raw) return [];
+    return raw.split("\n").map((line) => JSON.parse(line) as PersistedTimer);
+  } catch {
+    return [];
+  }
+}
+
+function savePendingTimers(timers: PersistedTimer[]): void {
+  try {
+    const file = timerFilePath();
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, timers.map((t) => JSON.stringify(t)).join("\n") + "\n", "utf-8");
+  } catch {
+    /* non-fatal */
+  }
+}
+
+function persistTimerToDisk(timer: PersistedTimer): void {
+  try {
+    const file = timerFilePath();
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, JSON.stringify(timer) + "\n", "utf-8");
+  } catch {
+    /* non-fatal */
+  }
+}
+
+function removeTimerFromDisk(id: string): void {
+  const timers = loadPendingTimers().filter((t) => t.id !== id);
+  savePendingTimers(timers);
+}
 
 import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
 import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
@@ -98,12 +154,40 @@ export function scheduleTimer(
   tag?: string,
   wake: boolean = true,
 ): string {
-  return timerManager.setTimer(sessionId, delayMs, reason, tag, wake);
+  const id = timerManager.setTimer(sessionId, delayMs, reason, tag, wake);
+  persistTimerToDisk({
+    id,
+    sessionId,
+    firesAt: Date.now() + delayMs,
+    reason: reason ?? "Timer",
+    tag,
+    createdAt: Date.now(),
+    wake,
+  });
+  return id;
 }
 
 /** Cancel a timer by ID in a specific session. */
 export function cancelTimer(sessionId: string, id: string): boolean {
-  return timerManager.cancelTimer(sessionId, id);
+  const cancelled = timerManager.cancelTimer(sessionId, id);
+  if (cancelled) removeTimerFromDisk(id);
+  return cancelled;
+}
+
+/**
+ * Restore a persisted timer into memory without writing to disk
+ * (the disk entry already exists). Used by process-restart recovery
+ * to re-arm unexpired timers so the poller fires them on schedule.
+ * Returns the new in-memory timer id.
+ */
+export function restoreTimer(
+  sessionId: string,
+  delayMs: number,
+  reason: string,
+  tag: string | undefined,
+  wake: boolean,
+): string {
+  return timerManager.setTimer(sessionId, delayMs, reason, tag, wake);
 }
 
 /** List all active timers for a session. Sorted by firesAt. */
@@ -166,6 +250,9 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI): void {
   // to timer fires asynchronously, register a listener first.)
 
   log.info(`[timer] fired: ${timer.id} (session=${timer.sessionId}) - ${timer.reason}`);
+
+  // Remove from disk persistence so it doesn't fire again on next restart
+  removeTimerFromDisk(timer.id);
 
   // Compute elapsed time for the wake message
   const elapsedSec = Math.round((Date.now() - timer.createdAt) / 1000);
@@ -307,7 +394,7 @@ function createTimerTool(sessionState: { id: string; resolved: boolean }): ToolD
             throw new Error(`Invalid tag "${tag}" - use alphanumeric + dash/underscore`);
           }
           const delayMs = (delay_seconds ?? 60) * 1000;
-          const id = timerManager.setTimer(sessionState.id, delayMs, reason ?? "Timer", tag);
+          const id = scheduleTimer(sessionState.id, delayMs, reason ?? "Timer", tag);
           const firesAt = Date.now() + delayMs;
           return {
             content: [
@@ -352,7 +439,7 @@ function createTimerTool(sessionState: { id: string; resolved: boolean }): ToolD
           };
         }
         case "cancel": {
-          const cancelled = timerManager.cancelTimer(sessionState.id, params.timer_id);
+          const cancelled = cancelTimer(sessionState.id, params.timer_id);
           if (!cancelled) {
             throw new Error(
               `Timer "${params.timer_id}" not found in session ${sessionState.id} or already fired.`,

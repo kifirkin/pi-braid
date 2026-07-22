@@ -3,6 +3,8 @@ name: agent-testing
 description: "Use when testing agent behavior programmatically: benchmarking, multi-trial comparisons, tool execution verification, or evaluating agent configurations. Covers: pi RPC mode event parsing, Python/JS test harness patterns, and extracting results from agent runs. Activate when building a test suite, running a benchmark, or comparing agent behaviors."
 ---
 
+trigger: "benchmarking, multi-trial comparisons, tool execution verification, evaluating agent configurations, building test suites"
+---
 # Agent Testing
 
 Test agent behavior programmatically. pi runs in RPC mode as a subprocess — you send JSON events, receive structured events back.

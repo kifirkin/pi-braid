@@ -12,16 +12,16 @@
 // CONTEXT USAGE THRESHOLDS (% of context window filled)
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** First soft whisper - gentle suggestion to archive completed work. */
-export const USAGE_WHISPER_SOFT = 40;
+/** First soft whisper - inspect context, start tracking. */
+export const USAGE_WHISPER_SOFT = 30;
 
-/** Advisory - suggest specific action (context_archive / finalize). */
+/** Advisory - suggest light pruning or archiving completed work. */
 export const USAGE_WHISPER_ADVISORY = 50;
 
-/** Warning - stronger language, medium priority. */
-export const USAGE_WHISPER_WARNING = 60;
+/** Warning - suggest deep compaction and compression. */
+export const USAGE_WHISPER_WARNING = 65;
 
-/** Critical - high priority, suggest immediate action. */
+/** Critical - high priority, force immediate hygiene. */
 export const USAGE_WHISPER_CRITICAL = 75;
 
 /** Auto-compaction: medium level at this usage. */

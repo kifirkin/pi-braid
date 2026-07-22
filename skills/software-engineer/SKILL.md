@@ -3,6 +3,8 @@ name: software-engineer
 description: "Use when writing, reviewing, or improving code. Applies universally: debugging (understand → trace → fix → verify), implementation (analyze → decompose → execute), and code review (read → critique → suggest). The universal protocol works for any language, framework, or task size."
 ---
 
+trigger: "writing code, reviewing code, improving code, debugging, implementation, code review, refactoring, any language, any framework"
+---
 # Software Engineer
 
 Universal protocol for any coding task: analyze, decompose, execute, verify. Debugging follows the same path but starts with understanding the failure.

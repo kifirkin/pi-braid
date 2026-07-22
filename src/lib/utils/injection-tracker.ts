@@ -304,26 +304,30 @@ export function sendTrackedMessage(
     params.details = existingDetails;
   }
 
-  if (_sendDepth >= MAX_REENTRY_DEPTH) {
-    // Break synchronous re-entry by deferring to a MACROTASK (setTimeout 0).
-    // queueMicrotask does NOT break the call stack — all microtasks run in
-    // the same event loop turn before the next macrotask. If each deferred
-    // microtask triggers another synchronous chain (before_agent_start →
-    // 25+ extension hooks → sendTrackedMessage → pi.sendMessage →
-    // _runAgentPrompt → ...), the stack still overflows.
-    //
-    // setTimeout(0) creates a real macrotask boundary: the current call
-    // stack fully unwinds before the deferred send runs, breaking the
-    // synchronous re-entry chain at the root.
-    //
-    // This is the fix for the recurring "Maximum call stack size exceeded"
-    // error that happened every time the agent called scratchpad after
-    // compaction: the post-compaction agent turn fires tool_call/
-    // tool_execution_end events synchronously, and any handler that sends
-    // a triggerTurn:true whisper creates a recursive _runAgentPrompt call.
-    log.warn(
-      `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to setTimeout(0)`,
-    );
+  // ── Always defer triggerTurn:true messages to a macrotask boundary ────
+  // This is the nuclear fix for the recurring post-compaction stack overflow.
+  // When triggerTurn:true is set, pi.sendMessage calls sendCustomMessage →
+  // _runAgentPrompt → agent loop synchronously (the async function preamble
+  // before the first await sets up the chain). If the agent loop fires events
+  // whose handlers call sendTrackedMessage with triggerTurn:true, the chain
+  // becomes recursive and overflows the V8 stack — even with the
+  // MAX_REENTRY_DEPTH guard below, because the guard only catches the SECOND
+  // re-entrant call, not the first synchronous chain from the agent loop.
+  //
+  // setTimeout(0) creates a real macrotask boundary: the call stack fully
+  // unwinds before _runAgentPrompt starts. This prevents ALL synchronous
+  // re-entry, regardless of the call depth or event chain complexity.
+  //
+  // For non-triggerTurn messages (steer, followUp, silent push), the
+  // synchronous path is preserved — they don't enter the agent loop and
+  // can't cause stack overflow.
+  const shouldDefer = options?.triggerTurn === true;
+  if (shouldDefer || _sendDepth >= MAX_REENTRY_DEPTH) {
+    if (!shouldDefer) {
+      log.warn(
+        `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to setTimeout(0)`,
+      );
+    }
     setTimeout(() => {
       pi.sendMessage(params, options);
     }, 0);

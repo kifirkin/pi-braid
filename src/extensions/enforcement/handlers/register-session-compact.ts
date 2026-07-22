@@ -139,6 +139,11 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
         return;
       }
 
+      // ── Deferred: read scratchpad ──────────────────────────────────
+      // Separated into its own setTimeout(0) so the tool dispatch completes
+      // (and any side-effects, like timer fireExpired, are scheduled) before
+      // the agent wake-up starts. This is belt-and-suspenders alongside the
+      // always-defer-triggerTurn fix in injection-tracker.ts.
       setTimeout(() => {
         void (async () => {
           try {
@@ -171,31 +176,42 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
                 type: "enforcement_signals",
               });
             }
-
-            // Re-orientation whisper with triggerTurn: true wakes the agent
-            // Includes speaker attribution guidance: after compaction, the summary
-            // may lack explicit speaker labels. The agent should use the scratchpad
-            // (which preserves speaker context) to re-orient rather than relying on
-            // the compaction summary's implicit attribution.
-            sendEnforcementWhisper(
-              pi,
-              ctx,
-              `Context compacted at turn ${compactTurn}. ` +
-                `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
-                `Note: compaction summaries may lack speaker labels — use the scratchpad ` +
-                `(which preserves speaker context) to distinguish who said what. ` +
-                `These surfaces survive compaction - continue from there.`,
-              false,
-              { triggerTurn: true },
-            );
           } catch (err) {
             log.debug(
-              "session_compact handler: side-effects failed (stale ctx?):",
+              "session_compact handler: scratchpad read failed (stale ctx?):",
               (err as Error)?.message,
             );
           }
         })();
-      });
+      }, 0);
+
+      // ── Deferred: re-orientation whisper (separate macrotask) ────────
+      // On its own setTimeout(0) so the scratchpad tool dispatch (above)
+      // fully completes before the agent loop starts. sendTrackedMessage
+      // with triggerTurn:true is also deferred by injection-tracker.ts's
+      // always-defer-triggerTurn fix, so this chains as:
+      //   macrotask 1: scratchpad tool dispatch
+      //   macrotask 2: sendTrackedMessage (deferred by triggerTurn fix)
+      //   macrotask 3: pi.sendMessage → _runAgentPrompt → agent loop
+      // Each macrotask is independent — the stack never grows.
+      setTimeout(() => {
+        // Re-orientation whisper with triggerTurn: true wakes the agent.
+        // Note: sendTrackedMessage will defer this to another setTimeout(0)
+        // because of the always-defer-triggerTurn fix, creating a clean
+        // macrotask boundary between the scratchpad read, the message send,
+        // and the agent loop.
+        sendEnforcementWhisper(
+          pi,
+          ctx,
+          `Context compacted at turn ${compactTurn}. ` +
+            `Re-orient: read scratchpad for goal/plan/learnings, then check next pending task. ` +
+            `Note: compaction summaries may lack speaker labels — use the scratchpad ` +
+            `(which preserves speaker context) to distinguish who said what. ` +
+            `These surfaces survive compaction - continue from there.`,
+          false,
+          { triggerTurn: true },
+        );
+      }, 0);
     } finally {
       reentrancy.inHandler = false;
     }

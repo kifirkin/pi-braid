@@ -3,6 +3,8 @@ name: meta-improvement
 description: "Create new skills, run self-improving experiments, and measure skill performance. Covers: writing SKILL.md, building skills iteratively, archive-based evolution with staged evaluation, and testing improvements against baselines."
 ---
 
+trigger: "creating new skills, writing SKILL.md, self-improvement experiments, skill performance measurement, iterative skill development"
+---
 # Meta-Improvement
 
 Build skills from experience and run self-improving experiments.

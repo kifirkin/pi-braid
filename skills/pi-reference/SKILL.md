@@ -3,6 +3,8 @@ name: pi-reference
 description: "Use when asking about pi capabilities, configuration, customization, or extending pi. Covers SDK, extensions, skills, themes, TUI, keybindings, models, providers, prompts, RPC mode, session management, settings, CLI, and internal architecture. Also use when creating custom tools or building self-improving extensions."
 ---
 
+trigger: "pi capabilities, configuration, customization, extending pi, SDK usage, extension development, themes, keybindings, models, providers, prompts, RPC mode, session management, settings, CLI"
+---
 # Pi Reference
 
 Complete reference for pi's architecture, configuration, and internals.

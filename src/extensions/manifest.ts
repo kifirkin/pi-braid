@@ -36,6 +36,9 @@ import workspaceSnapshotFn from "./memory/workspace-snapshot/index.js";
 // scheduling (time-based events: reminders)
 import timerFn from "./scheduling/timer/index.js";
 
+// tools (on-demand utilities)
+import skillsToolFn from "./core/skills-tool/index.js";
+
 // self (self-management: health, errors, recovery, behavior, session monitor)
 import healthMaintenanceFn from "./self/health-maintenance/index.js";
 import errorCaptureFn from "./self/error-tracking/index.js";
@@ -207,6 +210,12 @@ export const MANIFEST: ManifestEntry[] = [
     id: "timer",
     fn: timerFn,
     desc: "Timer tool",
+  },
+  // ── On-Demand Tools ──────────────────────────────────────────────
+  {
+    id: "skills-tool",
+    fn: skillsToolFn,
+    desc: "list_skills tool — on-demand skill discovery",
   },
   {
     id: "auto-recovery",

@@ -149,22 +149,22 @@ export function createDefaultPolicies(
             {
               pct: USAGE_WHISPER_SOFT,
               priority: "low",
-              msg: `Context at ${USAGE_WHISPER_SOFT}%. Tag with context_navigate(action="tag") to mark progress.`,
+              msg: `Context at ${USAGE_WHISPER_SOFT}%. Inspect and track: context_inspect(action="quick"). Tag with context_navigate(action="tag") to mark progress.`,
             },
             {
               pct: USAGE_WHISPER_ADVISORY,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. Tag with context_navigate(action="tag"), then context_compress(action="archive") to branch with a summary.`,
+              msg: `Context at ${USAGE_WHISPER_ADVISORY}%. Light pruning: context_inspect(action="prune") then context_compress(action="archive") or context_navigate(action="tag") + context_compress(action="archive").`,
             },
             {
               pct: USAGE_WHISPER_WARNING,
               priority: "medium",
-              msg: `Context at ${USAGE_WHISPER_WARNING}%. Tag now with context_navigate(action="tag"), then archive with context_compress(action="archive").`,
+              msg: `Context at ${USAGE_WHISPER_WARNING}%. Deep compaction: tag + archive now. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact if needed.`,
             },
             {
               pct: USAGE_WHISPER_CRITICAL,
               priority: "high",
-              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort).`,
+              msg: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. FORCE IMMEDIATE HYGIENE. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact (last resort). Do not continue work until done.`,
             },
           ];
 

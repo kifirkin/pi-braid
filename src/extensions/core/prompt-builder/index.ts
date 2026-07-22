@@ -12,25 +12,86 @@ import type { PromptSection } from "./section.js";
 import { linesSection, simpleSection, headingSection, composeSections } from "./section.js";
 import {
   IDENTITY_INTRO,
+  SKILLS_LOADING,
   WORK_ETHIC,
   SELF_MANAGEMENT,
   COMMUNICATION,
   EPISTEMIC_STANCE,
 } from "./identity.js";
 import {
-  reconstructSkillsSection,
-  resetSkillsSectionCache,
-} from "./skills-section.js";
-import {
   reconstructProjectDocsSection,
   resetProjectDocsSectionCache,
 } from "./project-docs-section.js";
+import { setCachedSkills } from "../skills-tool/index.js";
 import {
   reconstructMemorySection,
   resetMemorySectionCache,
 } from "./memory-section.js";
 import { instanceSection } from "./instance-composition.js";
 import { resourcesSection, type SkillEntry } from "./resources-section.js";
+import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
+import { getTimerFilePath } from "../../../lib/config/braid-paths.js";
+import { restoreTimer } from "../../../extensions/scheduling/timer/index.js";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-details.js";
+
+/**
+ * Fire persisted timers that expired during a process gap (e.g. /reload).
+ * Reads PENDING_TIMERS_FILE, fires expired ones via a tracked wakeup message,
+ * and rewrites the file with only the unexpired timers remaining.
+ * Called once per before_agent_start (every turn) but cheap: empty file = no-op.
+ */
+function recoverPersistedTimers(pi: ExtensionAPI): void {
+  try {
+    const timerFile = getTimerFilePath(process.cwd());
+    if (!existsSync(timerFile)) return;
+    const raw = readFileSync(timerFile, "utf-8").trim();
+    if (!raw) return;
+    const timers = raw.split("\n").map((l) => JSON.parse(l));
+    const now = Date.now();
+    const remaining: unknown[] = [];
+    let fired = 0;
+    let restored = 0;
+    for (const t of timers) {
+      if (t.firesAt <= now) {
+        const text = `[TIMER FIRED - persisted] ${t.reason} - Resume the task.`;
+        try {
+          sendTrackedMessage(
+            pi,
+            {
+              customType: "timer-fire",
+              content: [{ type: "text" as const, text }],
+              display: true,
+              details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "timer/persisted-fire", timerId: t.id },
+            },
+            { triggerTurn: true },
+            { type: "heartbeat", source: "timer/persisted-fire" },
+            { bypassFloodCap: true },
+          );
+          fired++;
+        } catch {
+          remaining.push(t);
+        }
+      } else {
+        // Re-arm unexpired timers into memory so the poller fires them on schedule.
+        // restoreTimer() returns a new id; rewrite the disk entry with it.
+        try {
+          const newId = restoreTimer(t.sessionId, t.firesAt - now, t.reason, t.tag, t.wake);
+          remaining.push({ ...t, id: newId });
+          restored++;
+        } catch {
+          remaining.push(t);
+        }
+      }
+    }
+    writeFileSync(timerFile, remaining.map((t) => JSON.stringify(t)).join("\n") + (remaining.length ? "\n" : ""), "utf-8");
+    if (fired > 0) console.log(`[timer] recovered ${fired} persisted timer(s) after restart`);
+    if (restored > 0) console.log(`[timer] re-armed ${restored} unexpired persisted timer(s)`);
+    if (fired > 0) console.log(`[timer] recovered ${fired} persisted timer(s) after restart`);
+  } catch {
+    /* non-fatal */
+  }
+}
 
 /**
  * Prompt Builder - Reconstruction from Structured Data
@@ -277,12 +338,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
   // memory section also invalidates so a freshly-written episode surfaces
   // in the next turn's pointer block.
   pi.on(RESOURCES_DISCOVER, async (_event, ctx) => {
-    resetSkillsSectionCache(ctx);
     resetProjectDocsSectionCache(ctx);
     resetMemorySectionCache(ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    // Fire any persisted timers that expired during a process gap (e.g. /reload)
+    recoverPersistedTimers(pi);
+
     const ps = getPromptState(ctx);
     const cwd = ctx.cwd;
     const allTools = pi.getAllTools();
@@ -320,6 +383,8 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // 0. Instance composition block (top-level, all env + session info
     //    merged in v3.7). See instance-composition.ts for the design.
     const skills = event.systemPromptOptions?.skills ?? [];
+    // Cache skills for the list_skills tool (on-demand discovery).
+    setCachedSkills(skills);
     // Extract unique base directories from loaded skill file paths so the
     // Instance block can show where skills are loaded from (not just the count).
     const skillDirs = [...new Set(skills.map((s) => s.baseDir).filter(Boolean))];
@@ -353,16 +418,17 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
         EPISTEMIC_STANCE,
       ].join("\n\n")),
 
-      // 2. Guidelines (before tools, pi-core native pattern).
+      // 2. Skills-loading directive (before guidelines, before tools).
+      //    Tells the agent to load skills on first tool call.
+      simpleSection("skills-loading", SKILLS_LOADING),
+
+      // 3. Guidelines (before tools, pi-core native pattern).
       //    Order: file tools → communication → context navigation.
       guidelinesSection(toolNames),
     ];
 
-    // 3. Available tools
-    sections.push(toolsSection(tools));
-
-    // 3.5. Resources (skill counts, line counts, memory) — placed just before
-    //       skills XML below, so skill paths sit near skill descriptions.
+    // 3.5. Resources (skill counts, memory counts) — before tools so the
+    //       agent knows what skills are available before seeing the tool list.
     const res = resourcesSection({
       skillCount: skills.length,
       skillDirs,
@@ -377,23 +443,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     const resText = await res.render();
     if (resText) sections.push(simpleSection("resources", resText));
 
-    // 3. Skills (only when the read tool is available)
-    if (hasRead) {
-      // Use skills resolved by pi's full resource loader -- this includes
-      // package skills (e.g. pi-braid-skills), user/project skill dirs,
-      // .agents/skills, and CLI --skill paths. We only re-format with
-      // description+location metadata from the loaded Skill objects; we do
-      // NOT re-discover skills ourselves and we do NOT cap or filter them.
-      // Every skill is listed with its domain description and full path so
-      // the agent can pattern-match and `read` any of them on demand.
-      const skillsText = await reconstructSkillsSection(
-        event.systemPromptOptions?.skills ?? [],
-        ctx,
-      );
-      if (skillsText) sections.push(simpleSection("skills", skillsText));
-    }
+    // 4. Available tools
+    sections.push(toolsSection(tools));
 
-    // 4. Unified context block (project-docs + memory + runtime context).
+    // 5. Unified context block (project-docs + memory + runtime context).
     //    No heading — plain text, like the rest of the prompt.
     const contextFragments = [
       await (await projectContextSection(cwd, ctx)).render(),

@@ -30,7 +30,7 @@
   "homepage": "https://github.com/kifirkin/pi-braid#readme",
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ],
     "skills": [
       "./skills"
@@ -51,10 +51,13 @@
     "check:deps": "node scripts/check-deps.mjs",
     "check:docs": "node scripts/check-doc-status.mjs",
     "check:doc-drift": "node scripts/check-doc-drift.mjs",
-    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:deps && npx tsc --noEmit && npm test"
+    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:deps && npx tsc --noEmit && npm test",
+    "release:local": "npm run build && npm pack && mkdir -p ~/.pi/agent/local-packages && cp pi-braid-*.tgz ~/.pi/agent/local-packages/ && cd ~/.pi/agent/local-packages && npm install ./pi-braid-*.tgz"
+
   },
   "dependencies": {
-    "typebox": "1.1.34"
+    "typebox": "1.1.34",
+    "pi-braid-lib": "file:../pi-braid-lib"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
