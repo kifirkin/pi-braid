@@ -13,6 +13,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // core (input/output shaping: platform, env, prompt, input polish)
 import corePolyfillFn from "./core/polyfill/index.js";
+
+// orchestrator (multi-agent coordination)
+import orchestratorFn from "./orchestrator/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 import inputPolisherFn from "./core/input-polisher/index.js";
@@ -211,11 +214,16 @@ export const MANIFEST: ManifestEntry[] = [
     fn: timerFn,
     desc: "Timer tool",
   },
-  // ── On-Demand Tools ──────────────────────────────────────────────
+    // ── On-Demand Tools ──────────────────────────────────────────────
   {
     id: "skills-tool",
     fn: skillsToolFn,
     desc: "list_skills tool — on-demand skill discovery",
+  },
+  {
+    id: "orchestrator",
+    fn: orchestratorFn,
+    desc: "orchestrate tool — multi-agent coordination (branch-per-worker, file-lock, conflict detection, merge verification)",
   },
   {
     id: "auto-recovery",
