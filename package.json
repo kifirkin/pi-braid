@@ -53,11 +53,10 @@
     "check:doc-drift": "node scripts/check-doc-drift.mjs",
     "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:deps && npx tsc --noEmit && npm test",
     "release:local": "npm run build && npm pack && mkdir -p ~/.pi/agent/local-packages && cp pi-braid-*.tgz ~/.pi/agent/local-packages/ && cd ~/.pi/agent/local-packages && npm install ./pi-braid-*.tgz"
-
   },
   "dependencies": {
-    "typebox": "1.1.34",
-    "pi-braid-lib": "file:../pi-braid-lib"
+    "pi-braid-lib": "file:../pi-braid-lib",
+    "typebox": "1.1.34"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -72,7 +71,7 @@
   "peerDependencies": {
     "@earendil-works/pi-agent-core": ">=0.80.0",
     "@earendil-works/pi-ai": ">=0.80.0",
-    "@earendil-works/pi-coding-agent": ">=0.80.0",
+    "@earendil-works/pi-coding-agent": "0.81.1",
     "@earendil-works/pi-tui": ">=0.80.0"
   },
   "keywords": [

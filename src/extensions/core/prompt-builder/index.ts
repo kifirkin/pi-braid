@@ -17,6 +17,7 @@ import {
   SELF_MANAGEMENT,
   COMMUNICATION,
   EPISTEMIC_STANCE,
+  AGENT_AWARENESS,
 } from "./identity.js";
 import {
   reconstructProjectDocsSection,
@@ -409,13 +410,14 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       // 0. Instance composition (top of prompt, stable per session)
       inst,
 
-      // 1. Identity: who Braid is (5 consolidated blocks, no heading)
+      // 1. Identity: who Braid is (6 consolidated blocks, no heading)
       simpleSection("identity", [
         IDENTITY_INTRO,
         WORK_ETHIC,
         SELF_MANAGEMENT,
         COMMUNICATION,
         EPISTEMIC_STANCE,
+        AGENT_AWARENESS,
       ].join("\n\n")),
 
       // 2. Skills-loading directive (before guidelines, before tools).
