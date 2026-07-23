@@ -15,6 +15,7 @@
 const VERIFICATION_JUDGE_SYSTEM_PROMPT = `Evaluate whether the agent's work matches the user's request.
 
 Git history (recent commits) is provided as verification evidence that survives across reloads and compactions. If the GIT HISTORY section shows commits that match the changed files, that is strong evidence the work was completed and verified -- even if the tool log has been truncated.
+- **DELIVERABLES MANIFEST (disk-checked):** The DELIVERABLES MANIFEST section lists the agent's claimed deliverables with 'exists: true/false' verified **directly on the filesystem** (not inferred from the tool log). If it shows the claimed files exist on disk, that is ground-truth verification — do NOT emit unverified/warn/fail solely because the TOOL EXECUTION LOG was truncated by compaction. Trust the manifest over absent tool-log entries.
 
 Output a JSON object with exactly these fields:
 - verdict: "pass" | "warn" | "fail"
@@ -73,6 +74,15 @@ export interface VerificationIssue {
 /**
  * Context snapshot passed to the judge for analysis
  */
+export interface DeliverableCheck {
+  /** Repository-relative path of a claimed deliverable. */
+  path: string;
+  /** Whether the file currently exists on disk. */
+  exists: boolean;
+  /** Whether the on-disk sha256 matches the recorded sha256 (undefined if no record / unreadable). */
+  sha256Match?: boolean;
+}
+
 export interface JudgeContext {
   /** User's original request/task */
   userRequest: string | undefined;
@@ -88,6 +98,8 @@ export interface JudgeContext {
   thinking: string;
   /** Recent git history (git log --oneline -5) for verification evidence across reloads/compactions */
   gitHistory?: string;
+  /** Disk-checked deliverables manifest (B17): claimed shipped files verified on the filesystem */
+  deliverables?: DeliverableCheck[];
 }
 
 /**
@@ -123,6 +135,18 @@ function buildVerificationPrompt(context: JudgeContext): string {
   if (context.gitHistory) {
     sections.push("## GIT HISTORY (recent commits)");
     sections.push(context.gitHistory);
+    sections.push("");
+  }
+
+  if (context.deliverables && context.deliverables.length > 0) {
+    sections.push("## DELIVERABLES MANIFEST (disk-checked — ground truth)");
+    const allExist = context.deliverables.every((d) => d.exists);
+    sections.push(
+      context.deliverables
+        .map((d) => `- ${d.exists ? "[OK]" : "[MISSING]"} ${d.path}${d.sha256Match === false ? " (sha256 MISMATCH)" : ""}`)
+        .join("\n"),
+    );
+    sections.push(allExist ? "\nAll claimed deliverables exist on disk → work is verified." : "\nSome deliverables missing on disk → real unverified risk.");
     sections.push("");
   }
 

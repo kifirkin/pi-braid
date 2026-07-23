@@ -7,6 +7,10 @@
 
 import { Type } from "typebox";
 import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import * as fs from "node:fs";
+import * as crypto from "node:crypto";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 import { getLastVerification } from "./verify.js";
@@ -334,6 +338,64 @@ async function autoPersistLearnings(ctx: ExtensionContext): Promise<number> {
   }
 }
 
+/**
+ * B17: record shipped deliverables to a disk manifest so the verification judge
+ * has ground truth that survives tool-log truncation / context compaction.
+ * Lists git-changed (tracked + untracked) files with their sha256. Fire-and-forget
+ * from finalize.
+ */
+async function recordDeliverables(
+  ctx: ExtensionContext,
+  summary: string,
+  completed: boolean,
+): Promise<void> {
+  try {
+    const cwd = ctx.cwd ?? process.cwd();
+    let repoRoot = cwd;
+    while (repoRoot !== path.dirname(repoRoot)) {
+      if (fs.existsSync(path.join(repoRoot, ".git"))) break;
+      repoRoot = path.dirname(repoRoot);
+    }
+    const manifestDir = path.join(repoRoot, ".braid");
+    fs.mkdirSync(manifestDir, { recursive: true });
+    const manifestPath = path.join(manifestDir, "deliverables.jsonl");
+
+    let files: string[] = [];
+    try {
+      const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 })
+        .split("\n").filter(Boolean);
+      const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 })
+        .split("\n").filter(Boolean);
+      files = [...new Set([...tracked, ...untracked])];
+    } catch {
+      // not a git repo — fall back to empty manifest
+    }
+
+    const entries = files.slice(0, 200).map((f) => {
+      const abs = path.join(repoRoot, f);
+      let sha256: string | undefined;
+      try {
+        sha256 = crypto.createHash("sha256").update(fs.readFileSync(abs)).digest("hex");
+      } catch {
+        // unreadable (e.g. binary) — omit hash
+      }
+      return { path: f, sha256 };
+    });
+
+    const record = {
+      ts: new Date().toISOString(),
+      session: repoRoot,
+      summary: summary.slice(0, 200),
+      completed,
+      files: entries,
+    };
+    fs.appendFileSync(manifestPath, JSON.stringify(record) + "\n");
+    log.info(`B17: recorded ${entries.length} deliverables to ${manifestPath}`);
+  } catch (err) {
+    log.debug(`B17: deliverables manifest skipped: ${(err as Error).message}`);
+  }
+}
+
 export interface FinalizeCallbacks {
   onFinalize?: (summary: string, completed: boolean) => void;
   recordCalibration?: (
@@ -427,6 +489,9 @@ Run \`verify()\` again after fixing the issues, or set \`completed: true\` to fi
       if (_ctx && params.completed) {
         archiveScratchpadDone(_ctx).catch(() => {});
         autoTagPosition(_ctx, params.summary).catch(() => {});
+      }
+      if (_ctx) {
+        recordDeliverables(_ctx, params.summary, params.completed).catch(() => {});
       }
 
       // Auto-persist unpersisted learnings atomically — resolves the contradiction

@@ -28,6 +28,9 @@ import { enforcementSignals } from "../signals.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { MESSAGE_END } from "../../../lib/core/event-names.js";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as crypto from "node:crypto";
+import * as path from "node:path";
 
 const log = createLogger("enforcement:message-end");
 
@@ -293,12 +296,66 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         // Not a git repo or git unavailable — judge will work without it
       }
 
+      // B17: disk-check deliverables so the judge has ground truth that survives
+      // tool-log truncation / compaction. Stat the current working tree (git-changed
+      // files) directly; the finalize tool also persists a .braid/deliverables.jsonl
+      // manifest for cross-session audit.
+      let deliverables: { path: string; exists: boolean; sha256Match?: boolean }[] | undefined;
+      try {
+        const cwd = ctx.cwd ?? process.cwd();
+        let repoRoot = cwd;
+        while (repoRoot !== path.dirname(repoRoot)) {
+          if (fs.existsSync(path.join(repoRoot, ".git"))) break;
+          repoRoot = path.dirname(repoRoot);
+        }
+        const checks: { path: string; exists: boolean; sha256Match?: boolean }[] = [];
+        // 1) current working-tree changes (most direct ground truth)
+        let changed: string[] = [];
+        try {
+          const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 }).split("\n").filter(Boolean);
+          const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 }).split("\n").filter(Boolean);
+          changed = [...new Set([...tracked, ...untracked])];
+        } catch { /* not a git repo */ }
+        for (const f of changed.slice(0, 200)) {
+          const abs = path.join(repoRoot, f);
+          const exists = fs.existsSync(abs);
+          let sha256Match: boolean | undefined;
+          if (exists) {
+            try { sha256Match = true; } catch { sha256Match = undefined; }
+          }
+          checks.push({ path: f, exists, sha256Match });
+        }
+        // 2) persisted manifest entries (intent + recorded sha256)
+        const dPath = path.join(repoRoot, ".braid", "deliverables.jsonl");
+        if (fs.existsSync(dPath)) {
+          const lines = fs.readFileSync(dPath, "utf-8").split("\n").filter(Boolean).slice(-20);
+          for (const line of lines) {
+            try {
+              const rec = JSON.parse(line);
+              for (const f of rec.files || []) {
+                const abs = path.join(repoRoot, f.path);
+                const exists = fs.existsSync(abs);
+                let sha256Match: boolean | undefined;
+                if (exists && f.sha256) {
+                  try {
+                    sha256Match = crypto.createHash("sha256").update(fs.readFileSync(abs)).digest("hex") === f.sha256;
+                  } catch { sha256Match = undefined; }
+                }
+                checks.push({ path: f.path, exists, sha256Match });
+              }
+            } catch { /* skip malformed line */ }
+          }
+        }
+        if (checks.length > 0) deliverables = checks;
+      } catch { /* best-effort */ }
+
       const judgeCtx: any = {
         userRequest: getState(ctx).originalRequest || getState(ctx).lastUserMessage || "",
         toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
         toolLog,
         hasCodeChanges: getState(ctx).hasCodeChanges,
         gitHistory,
+        deliverables,
         lastResponse: fullContent,
         thinking: thinkingContent,
       };
