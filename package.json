@@ -48,7 +48,9 @@
     "check:docs": "node scripts/check-doc-status.mjs",
     "check:doc-drift": "node scripts/check-doc-drift.mjs",
     "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:deps && npx tsc --noEmit && npm test",
-    "release:local": "npm run build && npm pack && mkdir -p ~/.pi/agent/local-packages && cp pi-braid-*.tgz ~/.pi/agent/local-packages/ && cd ~/.pi/agent/local-packages && npm install ./pi-braid-*.tgz"
+    "release:local": "node scripts/publish-local.mjs",
+    "publish:local": "node scripts/publish-local.mjs",
+    "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid"
   },
   "dependencies": {
     "pi-braid-lib": "file:../pi-braid-lib",
