@@ -25,6 +25,9 @@ export {
   branchExists,
   getCurrentBranch,
   parseWorkerBranch,
+  findRepoRoot,
+  gitAvailable,
+  checkoutBranch,
 } from "./branch.js";
 
 export type { WorkerBranchInfo } from "./branch.js";

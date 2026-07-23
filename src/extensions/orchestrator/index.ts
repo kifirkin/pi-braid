@@ -5,6 +5,12 @@
  * Supports branch-per-worker, file-lock awareness, conflict detection,
  * and merge verification.
  *
+ * Git operations auto-detect the repo root from the `files` parameter,
+ * so orchestrate works from ANY cwd (including ~/.pi/agent). Falls back
+ * to lock-only coordination when no git repo is found.
+ *
+ * Workers can be spawned via herdr (recommended) or manual instructions.
+ *
  * This is the implementation counterpart to skills/orchestrator/SKILL.md.
  */
 
@@ -21,9 +27,25 @@ import {
   deleteWorkerBranch,
   getDiff,
   getCurrentBranch,
+  findRepoRoot,
+  gitAvailable,
+  branchExists,
+  checkoutBranch,
 } from "../../lib/orchestrator/index.js";
 
 const log = createLogger("orchestrator");
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the repo root: explicit `cwd` param wins, otherwise auto-detect
+ * from file paths. Returns undefined if no git repo is found.
+ */
+function resolveCwd(cwd?: string, files?: string[]): string | undefined {
+  if (cwd) return cwd;
+  if (files && files.length > 0) return findRepoRoot(files);
+  return undefined;
+}
 
 // ── Tool Definition ────────────────────────────────────────────────────────
 
@@ -41,7 +63,11 @@ Actions:
   - list-locks: Show all currently held file locks
   - check-conflicts: Check if given files conflict with existing locks
 
-Use this tool when you need to coordinate multiple agents working on the same codebase to prevent edit conflicts.`,
+Use this tool when you need to coordinate multiple agents working on the same codebase to prevent edit conflicts.
+
+Git operations auto-detect the repo root from the file paths, so orchestrate works from any working directory.
+Pass an explicit \`cwd\` to override auto-detection. When no git repo is found, orchestrate falls back to
+lock-only coordination (branch operations are skipped).`,
   parameters: Type.Object({
     action: Type.Union(
       [
@@ -66,15 +92,22 @@ Use this tool when you need to coordinate multiple agents working on the same co
     branch: Type.Optional(
       Type.String({ description: "Branch name. Required for verify-and-merge." }),
     ),
+    cwd: Type.Optional(
+      Type.String({ description: "Git repo root (auto-detected from files if omitted)." }),
+    ),
   }),
   execute: async (
     _id: string,
-    params: { action: string; workerId?: string; slug?: string; files?: string[]; branch?: string },
+    params: { action: string; workerId?: string; slug?: string; files?: string[]; branch?: string; cwd?: string },
     _signal: AbortSignal,
     _onUpdate: unknown,
     _ctx: unknown,
   ) => {
-    const { action, workerId, slug, files, branch } = params;
+    const { action, workerId, slug, files, branch, cwd: explicitCwd } = params;
+
+    const repoRoot = resolveCwd(explicitCwd, files);
+    const hasGit = gitAvailable(repoRoot);
+    const gitMode = hasGit ? "git" : "lock-only";
 
     switch (action) {
       case "spawn-worker": {
@@ -251,7 +284,7 @@ Next steps:
           throw new Error("release-locks requires workerId");
         }
 
-        releaseLock(workerId);
+        releaseLock(workerId, repoRoot);
         return {
           content: [
             {
@@ -264,7 +297,7 @@ Next steps:
       }
 
       case "list-locks": {
-        const locks = getAllLocks();
+        const locks = getAllLocks(repoRoot);
         const entries = Object.entries(locks);
 
         if (entries.length === 0) {
@@ -299,7 +332,7 @@ Next steps:
           throw new Error("check-conflicts requires files");
         }
 
-        const conflicts = getConflicts(files);
+        const conflicts = getConflicts(files, repoRoot);
 
         if (conflicts.length === 0) {
           return {

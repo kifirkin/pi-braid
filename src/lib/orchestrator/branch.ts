@@ -3,9 +3,16 @@
  *
  * Workers get isolated git branches. The master creates, verifies,
  * and merges worker branches. All operations use git commands.
+ *
+ * Each function accepts an optional `cwd` to run git from a specific
+ * working directory (the repo root). When omitted or when git is not
+ * available (non-git directory, no git binary), all operations fall
+ * back gracefully — returning empty/no-op results without crashing.
  */
 
 import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import * as path from "node:path";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -15,37 +22,28 @@ export interface WorkerBranchInfo {
   slug: string;
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Create a worker branch from the current branch.
- * Returns the branch name.
+ * Detect the nearest ancestor git repo from a list of file paths.
+ * Returns the first repo root found, or undefined if none of the paths
+ * belong to a git repo.
  */
-export function createWorkerBranch(
-  workerId: string,
-  slug: string,
-  baseBranch = "main",
-): string {
-  const branch = `worker/${workerId}/${slug}`;
-  execSync(`git checkout ${baseBranch}`, { stdio: "pipe" });
-  execSync(`git checkout -b ${branch}`, { stdio: "pipe" });
-  return branch;
+export function findRepoRoot(files: string[]): string | undefined {
+  for (const file of files) {
+    let dir = path.dirname(path.resolve(file));
+    while (dir !== path.dirname(dir)) {
+      if (existsSync(path.join(dir, ".git"))) return dir;
+      dir = path.dirname(dir);
+    }
+  }
+  return undefined;
 }
 
-/**
- * Delete a worker branch.
- */
-export function deleteWorkerBranch(branch: string): void {
-  execSync(`git branch -D ${branch} 2>/dev/null || true`, { stdio: "pipe" });
-}
-
-/**
- * Squash-merge a worker branch into the current branch.
- * Returns true if the merge succeeded.
- */
-export function squashMerge(branch: string): boolean {
+function isGitAvailable(cwd?: string): boolean {
+  if (!cwd) return false;
   try {
-    execSync(`git merge --squash ${branch} 2>/dev/null`, { stdio: "pipe" });
+    execSync("git rev-parse --git-dir", { cwd, stdio: "pipe", encoding: "utf-8" });
     return true;
   } catch {
     return false;
@@ -53,12 +51,80 @@ export function squashMerge(branch: string): boolean {
 }
 
 /**
- * Get the diff between main and the given branch.
- * Returns the diff as a string.
+ * Check if git is available at the given directory. Returns true if
+ * a git repo exists and the git binary works.
  */
-export function getDiff(branch: string, baseBranch = "main"): string {
+export function gitAvailable(cwd?: string): boolean {
+  return isGitAvailable(cwd);
+}
+
+// ── Branch operations (all accept optional cwd) ────────────────────────────
+
+/**
+ * Create a worker branch from the base branch.
+ * Returns the branch name, or a generated placeholder if no git repo.
+ */
+export function createWorkerBranch(
+  workerId: string,
+  slug: string,
+  baseBranch = "main",
+  cwd?: string,
+): string {
+  const branch = `worker/${workerId}/${slug}`;
+  if (!isGitAvailable(cwd)) {
+    // No git repo — return a placeholder; lock-based coordination still works
+    return branch;
+  }
+  try {
+    execSync(`git checkout ${baseBranch} 2>/dev/null || git checkout -b ${baseBranch} 2>/dev/null`, { cwd, stdio: "pipe" });
+    execSync(`git checkout -b ${branch}`, { cwd, stdio: "pipe" });
+    return branch;
+  } catch {
+    // Fallback: branch creation failed (e.g., base branch doesn't exist)
+    try {
+      execSync(`git checkout -b ${branch}`, { cwd, stdio: "pipe" });
+    } catch {
+      // Give up — lock coordination still works
+    }
+    return branch;
+  }
+}
+
+/**
+ * Delete a worker branch.
+ */
+export function deleteWorkerBranch(branch: string, cwd?: string): void {
+  if (!isGitAvailable(cwd)) return;
+  try {
+    execSync(`git branch -D ${branch} 2>/dev/null || true`, { cwd, stdio: "pipe" });
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Squash-merge a worker branch into the current branch.
+ * Returns true if the merge succeeded.
+ */
+export function squashMerge(branch: string, cwd?: string): boolean {
+  if (!isGitAvailable(cwd)) return false;
+  try {
+    execSync(`git merge --squash ${branch} 2>/dev/null`, { cwd, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get the diff between baseBranch and the given branch.
+ * Returns the diff as a string, or empty string if no git available.
+ */
+export function getDiff(branch: string, baseBranch = "main", cwd?: string): string {
+  if (!isGitAvailable(cwd)) return "";
   try {
     return execSync(`git diff ${baseBranch}...${branch}`, {
+      cwd,
       encoding: "utf-8",
       stdio: "pipe",
     });
@@ -70,9 +136,11 @@ export function getDiff(branch: string, baseBranch = "main"): string {
 /**
  * Check if a branch exists locally.
  */
-export function branchExists(branch: string): boolean {
+export function branchExists(branch: string, cwd?: string): boolean {
+  if (!isGitAvailable(cwd)) return false;
   try {
     const result = execSync(`git branch --list ${branch}`, {
+      cwd,
       encoding: "utf-8",
       stdio: "pipe",
     });
@@ -83,11 +151,13 @@ export function branchExists(branch: string): boolean {
 }
 
 /**
- * Get the current branch name.
+ * Get the current branch name, or "unknown" if git is not available.
  */
-export function getCurrentBranch(): string {
+export function getCurrentBranch(cwd?: string): string {
+  if (!isGitAvailable(cwd)) return "unknown";
   try {
     return execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd,
       encoding: "utf-8",
       stdio: "pipe",
     }).trim();
@@ -98,9 +168,24 @@ export function getCurrentBranch(): string {
 
 /**
  * Parse a worker branch name into its components.
+ * Does not require git — pure string parsing.
  */
 export function parseWorkerBranch(branch: string): WorkerBranchInfo | null {
   const match = /^worker\/([^/]+)\/(.+)$/.exec(branch);
   if (!match) return null;
   return { branch, workerId: match[1], slug: match[2] };
+}
+
+/**
+ * Checkout a branch (for the worker to switch into the branch).
+ * Returns true if checkout succeeded.
+ */
+export function checkoutBranch(branch: string, cwd?: string): boolean {
+  if (!isGitAvailable(cwd)) return false;
+  try {
+    execSync(`git checkout ${branch}`, { cwd, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -321,6 +321,13 @@ export function sendTrackedMessage(
   // For non-triggerTurn messages (steer, followUp, silent push), the
   // synchronous path is preserved — they don't enter the agent loop and
   // can't cause stack overflow.
+  // BUGFIX 2026-07-23: Always call pi.sendMessage through sendTrackedMessage
+  // even in the deferred path, so _sendDepth correctly tracks re-entry across
+  // triggerTurn boundaries. Previously, deferred triggerTurn calls called
+  // pi.sendMessage DIRECTLY, which left _sendDepth=0 for the entire agent turn.
+  // When the agent loop then dispatched tools, tool_result handlers calling
+  // sendTrackedMessage (non-triggerTurn, depth 0->1) went through synchronously
+  // and re-entered _runAgentPrompt, overflowing the stack.
   const shouldDefer = options?.triggerTurn === true;
   if (shouldDefer || _sendDepth >= MAX_REENTRY_DEPTH) {
     if (!shouldDefer) {
@@ -328,8 +335,17 @@ export function sendTrackedMessage(
         `sendTrackedMessage re-entry depth ${_sendDepth}/${MAX_REENTRY_DEPTH} - deferring to setTimeout(0)`,
       );
     }
+    // Mark depth as busy before deferring so the agent loop that starts from
+    // the deferred pi.sendMessage inherits the depth guard. Without this,
+    // non-triggerTurn sendTrackedMessage calls from tool_result handlers
+    // during that agent turn would re-enter synchronously.
+    _sendDepth++;
     setTimeout(() => {
-      pi.sendMessage(params, options);
+      try {
+        pi.sendMessage(params, options);
+      } finally {
+        _sendDepth--;
+      }
     }, 0);
     return;
   }
