@@ -362,9 +362,9 @@ async function recordDeliverables(
 
     let files: string[] = [];
     try {
-      const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 })
+      const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] })
         .split("\n").filter(Boolean);
-      const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 })
+      const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] })
         .split("\n").filter(Boolean);
       files = [...new Set([...tracked, ...untracked])];
     } catch {

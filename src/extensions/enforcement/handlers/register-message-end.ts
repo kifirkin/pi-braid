@@ -312,8 +312,8 @@ export function registerMessageEndHandler(pi: ExtensionAPI): void {
         // 1) current working-tree changes (most direct ground truth)
         let changed: string[] = [];
         try {
-          const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 }).split("\n").filter(Boolean);
-          const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000 }).split("\n").filter(Boolean);
+          const tracked = execSync("git diff --name-only HEAD", { cwd: repoRoot, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).split("\n").filter(Boolean);
+          const untracked = execSync("git ls-files --others --exclude-standard", { cwd: repoRoot, encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).split("\n").filter(Boolean);
           changed = [...new Set([...tracked, ...untracked])];
         } catch { /* not a git repo */ }
         for (const f of changed.slice(0, 200)) {
