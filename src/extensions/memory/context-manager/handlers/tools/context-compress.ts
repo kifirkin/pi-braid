@@ -17,6 +17,7 @@ import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-age
 import { analyzeSession } from "../../analysis.js";
 import * as timerMod from "../../../../scheduling/timer/index.js";
 import { getState } from "../../../../enforcement/state.js";
+import { getCmState, log } from "../shared.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,16 +56,19 @@ function captureUsage(ctx: any): { percent: number; tokens: number; contextWindo
 
 export const contextCompressSchema = Type.Object({
   action: Type.String({
-    enum: ["compact", "archive", "deep_clean"],
+    enum: ["compact", "archive", "deep_clean", "slide"],
     description:
       "compact = remove obsolete/duplicate entries (like context_compact). " +
       "archive = compress a range of messages into a topic summary (like context_archive). " +
-      "deep_clean = tag current position, archive everything before the tag, then compact. All-in-one.",
+      "deep_clean = tag current position, archive everything before the tag, then compact. All-in-one. " +
+      'slide = deterministic sliding-window compaction. Drops oldest entries, keeps recent N intact. No LLM summarization.',
   }),
-  // compact params
+  // compact params (also used by slide)
   keep: Type.Optional(
     Type.Number({
-      description: "Number of most recent messages to preserve. Only used with action=compact.",
+      description:
+        "Number of most recent messages to preserve. Used with action=compact (token-based, LLM-assisted) " +
+        "or action=slide (entry-based, deterministic, no LLM). Default for slide: 50.",
     }),
   ),
   // archive params (original numeric range)
@@ -157,7 +161,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       "(<user>...</user> / <agent>...</agent>) to prevent misattribution after compaction. " +
       "When to use: archive when context > 50% and you want to preserve a branch summary. " +
       "Compact only when archive isn't enough (> 70%) since it's destructive. " +
-      "Deep_clean for a one-shot tag + archive + compact when you need all three.",
+      'Deep_clean for a one-shot tag + archive + compact when you need all three. ' +
+      'Action=slide: drops oldest entries, keeps the most recent N (default 50) deterministically with no LLM summarization.',
     parameters: contextCompressSchema,
     execute: async (
       _toolCallId: string,
@@ -591,11 +596,163 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
       }
 
+      // ── SLIDE ────────────────────────────────────────────────────────
+      if (action === "slide") {
+        try {
+          const sm = ctx.sessionManager;
+          if (!sm || typeof sm.getBranch !== "function") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Session manager not available.",
+                },
+              ],
+              details: { action, error: "no session manager" },
+            };
+          }
+
+          const keepCount = params?.keep != null ? params.keep : 50;
+          if (typeof keepCount !== "number" || keepCount < 1 || !Number.isFinite(keepCount)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "keep must be a positive integer >= 1.",
+                },
+              ],
+              details: { action, error: "invalid keep" },
+            };
+          }
+
+          const branch = sm.getBranch() ?? [];
+          if (branch.length <= keepCount) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Branch has ${branch.length} entries, which is <= keep (${keepCount}). Nothing to slide.`,
+                },
+              ],
+              details: {
+                action,
+                keep: keepCount,
+                branchLength: branch.length,
+                slid: 0,
+              },
+            };
+          }
+
+          const cutIndex = branch.length - keepCount;
+          const cutEntryId = branch[cutIndex].id;
+          const droppedCount = cutIndex;
+          const usage = captureUsage(ctx);
+          const usageLine = usage
+            ? `${usage.percent.toFixed(1)}% used (${Math.round(usage.tokens / 1024)}K tokens)`
+            : "unknown";
+
+          // Persist slide-mode state for session_before_compact to consume.
+          let cmState: any;
+          try {
+            cmState = getCmState(ctx);
+          } catch {
+            log.warn("[context-compress] Failed to access cmState");
+          }
+          if (cmState) {
+            cmState.slideMode = {
+              active: true,
+              cutEntryId,
+              keepCount,
+              droppedCount,
+              timestamp: Date.now(),
+            };
+          }
+
+          // Record the slide operation as a custom entry for audit trail.
+          try {
+            sm.appendCustomEntry?.("context_compress_slide", {
+              keep: keepCount,
+              dropped: droppedCount,
+              branchLength: branch.length,
+              timestamp: Date.now(),
+            });
+          } catch {
+            // Non-fatal - audit trail is best-effort
+          }
+
+          // Cancel stale resume timers from previous compaction cycles.
+          try {
+            const sessionId =
+              (ctx as { sessionManager?: { getSessionId?: () => string } })?.sessionManager
+                ?.getSessionId?.() ?? "anonymous";
+            timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+            timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+          } catch {
+            // Non-fatal
+          }
+
+          // Trigger compaction with SLIDE_MODE marker.
+          // The session_before_compact handler detects this marker and overrides
+          // the preparation to skip LLM summarization and use our entry-based cut.
+          setTimeout(() => {
+            try {
+              try {
+                getState(ctx).autoResumeAfterCompaction = true;
+              } catch {
+                // Non-fatal
+              }
+              ctx.compact({ customInstructions: "SLIDE_MODE:true" });
+            } catch {
+              // Agent already disconnected - non-fatal
+            }
+          }, 0);
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Slide window compaction triggered.**`,
+                  `  Keep recent: ${keepCount} entries`,
+                  `  Dropped: ${droppedCount} entries`,
+                  `  Before: ${usageLine}`,
+                  ``,
+                  `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action,
+              slideTriggered: true,
+              keep: keepCount,
+              dropped: droppedCount,
+              branchLength: branch.length,
+              nextStep: {
+                tool: "context_inspect",
+                detail: "quick",
+                note: "after auto-resume",
+              },
+            },
+          };
+        } catch (e: any) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Failed to slide: ${e.message}`,
+              },
+            ],
+            details: { action, error: e.message },
+          };
+        }
+      }
+
       return {
         content: [
           {
             type: "text" as const,
-            text: "Unknown action. Use compact, archive, or deep_clean.",
+            text: "Unknown action. Use compact, archive, deep_clean, or slide.",
           },
         ],
         details: { action, error: true },
