@@ -116,7 +116,7 @@ lock-only coordination (branch operations are skipped).`,
         }
 
         // Check conflicts first
-        const conflicts = getConflicts(files);
+        const conflicts = getConflicts(files, repoRoot);
         if (conflicts.length > 0) {
           const detail = conflicts
             .map((c: { file: string; lockedBy: string; branch: string }) => `  ${c.file} — locked by ${c.lockedBy} (${c.branch})`)
@@ -133,13 +133,13 @@ lock-only coordination (branch operations are skipped).`,
         }
 
         // Create branch
-        const branchName = createWorkerBranch(workerId, slug);
+        const branchName = createWorkerBranch(workerId, slug, undefined, repoRoot);
 
         // Acquire locks
-        const locked = acquireLock(files, workerId, branchName);
+        const locked = acquireLock(files, workerId, branchName, repoRoot);
         if (!locked) {
           // Shouldn't happen after conflict check, but be safe
-          deleteWorkerBranch(branchName);
+          deleteWorkerBranch(branchName, repoRoot);
           return {
             content: [
               {
@@ -176,7 +176,7 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
           throw new Error("check-worker requires workerId");
         }
 
-        const locks = getAllLocks();
+        const locks = getAllLocks(repoRoot);
         const workerFiles = Object.entries(locks).filter(
           ([, entry]) => entry.workerId === workerId,
         );
@@ -194,7 +194,7 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         }
 
         const wBranch = workerFiles[0][1].branch;
-        const currentBranch = getCurrentBranch();
+        const currentBranch = getCurrentBranch(repoRoot);
 
         return {
           content: [
@@ -215,7 +215,7 @@ Locked files: ${workerFiles.map(([f]) => f).join(", ")}`,
           throw new Error("verify-and-merge requires workerId");
         }
 
-        const locks = getAllLocks();
+        const locks = getAllLocks(repoRoot);
         const workerFiles = Object.entries(locks).filter(
           ([, entry]) => entry.workerId === workerId,
         );
@@ -235,10 +235,10 @@ Locked files: ${workerFiles.map(([f]) => f).join(", ")}`,
         const workerBranch = workerFiles[0][1].branch;
 
         // Get the diff
-        const diff = getDiff(workerBranch);
+        const diff = getDiff(workerBranch, undefined, repoRoot);
 
         // Try squash merge
-        const merged = squashMerge(workerBranch);
+        const merged = squashMerge(workerBranch, repoRoot);
 
         if (!merged) {
           return {
@@ -255,10 +255,10 @@ ${diff.slice(0, 2000)}`,
         }
 
         // Release locks
-        releaseLock(workerId);
+        releaseLock(workerId, repoRoot);
 
         // Delete worker branch
-        deleteWorkerBranch(workerBranch);
+        deleteWorkerBranch(workerBranch, repoRoot);
 
         return {
           content: [
