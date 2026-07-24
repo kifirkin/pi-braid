@@ -343,6 +343,53 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
       }
       const prep = event.preparation;
 
+      // STEP 0.5: Detect SLIDE_MODE from customInstructions (set by context_compress action="slide").
+      // When slide mode is active, override the preparation to skip LLM summarization
+      // and use a deterministic entry-based cut point instead of the default token-based cut.
+      const customInstructions: string | undefined = event.customInstructions;
+      if (
+        typeof customInstructions === "string" &&
+        customInstructions.includes("SLIDE_MODE") &&
+        prep
+      ) {
+        const cmState = getCmState(ctx);
+        const slide = cmState.slideMode;
+        if (slide?.active && slide.cutEntryId) {
+          log.info(
+            `[context-manager] Slide mode: keeping last ${slide.keepCount} entries, ` +
+              `dropping ${slide.droppedCount}`,
+          );
+
+          // Override messagesToSummarize to empty — no LLM summarization needed.
+          // The pi-core's compact() will call generateSummary([]) which produces a
+          // trivial acknowledgment rather than summarizing dropped content.
+          (prep as any).messagesToSummarize = [];
+
+          // Clear turnPrefixMessages and isSplitTurn to prevent the pi-core from
+          // calling generateTurnPrefixSummary (a second LLM call) when the cut falls
+          // mid-turn.
+          (prep as any).turnPrefixMessages = [];
+          (prep as any).isSplitTurn = false;
+
+          // Override firstKeptEntryId to our deterministic entry-based cut point.
+          (prep as any).firstKeptEntryId = slide.cutEntryId;
+
+          // Replace custom instructions with a minimal note so the LLM generates a
+          // single-line acknowledgment instead of attempting content summarization.
+          event.customInstructions = `Sliding window compaction: kept ${slide.keepCount} entries, dropped ${slide.droppedCount}. Generate a single-line acknowledgment only — no content summarization needed.`;
+
+          // Reset slide mode state so a subsequent normal compaction is unaffected.
+          cmState.slideMode = null;
+
+          // Skip the rest of this handler (pre-filter, semantic compress, instructions).
+          return;
+        } else {
+          log.warn(
+            "[context-manager] SLIDE_MODE marker found but slide state is missing or inactive",
+          );
+        }
+      }
+
       // STEP 1: Pre-filter 100%-certain-redundant items.
       // Removes duplicate reads, resolved errors, oversized non-critical outputs.
       // Reduces context before LLM call so LLM summarization has an easier job.

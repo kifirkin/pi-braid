@@ -53,6 +53,25 @@ interface CmState {
     turnRange: { from: number; to: number };
     timestamp: number;
   };
+  /** Slide-mode state for deterministic sliding-window compaction. */
+  slideMode?: SlideModeState | null;
+}
+
+/**
+ * State for the sliding-window compaction action (action="slide").
+ * Stored per-session via getExtensionState, consumed by session_before_compact.
+ */
+export interface SlideModeState {
+  /** Whether slide mode is active for the current compaction cycle. */
+  active: boolean;
+  /** Entry ID to start keeping from (cut point). */
+  cutEntryId: string;
+  /** Number of entries to keep (the `keep` parameter). */
+  keepCount: number;
+  /** Number of entries dropped before the cut point. */
+  droppedCount: number;
+  /** Timestamp when slide mode was activated. */
+  timestamp: number;
 }
 
 export function getCmState(ctx: ExtensionContext): CmState {
@@ -63,6 +82,7 @@ export function getCmState(ctx: ExtensionContext): CmState {
     // H5: Retry guards initialized to false (prevents double-trigger)
     compactionRetryActive: false,
     overflowRetryActive: false,
+    slideMode: null,
   }));
 }
 
