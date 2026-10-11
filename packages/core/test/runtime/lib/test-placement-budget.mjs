@@ -17,6 +17,11 @@
  * that tree and the real checkout is never written to. The budget constant
  * is read from the source, so a deliberate bump is tracked instead of
  * pinned here.
+ *
+ * The mutant is executed, and both verdicts are read from its exit status:
+ * a copy that cannot parse exits non-zero, the same status case 1 asserts, so
+ * the copy is guarded before it runs. A broken mutant stops at the guard, by
+ * name, instead of being read as a budget failure that never happened.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -25,6 +30,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { assertFixtureParses } from "./fixture-guard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
@@ -60,6 +67,7 @@ function runOverBudgetCopy(args) {
     mkdirSync(scriptsDir, { recursive: true });
     const copy = join(scriptsDir, "check-placement.mjs");
     writeFileSync(copy, overBudgetSource());
+    assertFixtureParses(copy);
     for (const gitArgs of [["init", "-q"], ["add", "-A"]]) {
       const git = spawnSync("git", gitArgs, { cwd: tree, encoding: "utf8" });
       assert.equal(git.status, 0, `git ${gitArgs.join(" ")} failed: ${git.stderr}`);

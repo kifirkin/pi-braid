@@ -18,6 +18,11 @@
  * temp, and no pi-braid-test-* runner dir survives either. A run that never
  * reached the child's scratch phase fails the proof check instead of
  * passing vacuously.
+ *
+ * The runner copy and the probe are fixtures built here and then executed by
+ * the nested runner, so both are guarded before the run: a fixture that cannot
+ * parse is reported by the runner as a plain failure, and the timeout this
+ * file's verdict rests on would never appear.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -32,6 +37,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { assertFixtureParses } from "./lib/fixture-guard.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultScript = resolve(here, "..", "..", "scripts", "run-tests.mjs");
@@ -68,6 +75,8 @@ try {
   mkdirSync(benchTests, { recursive: true });
   writeFileSync(join(benchScripts, "run-tests.mjs"), readFileSync(scriptUnderTest, "utf-8"));
   writeFileSync(join(benchTests, "tmpdir-leak-probe.mjs"), PROBE);
+  assertFixtureParses(join(benchScripts, "run-tests.mjs"));
+  assertFixtureParses(join(benchTests, "tmpdir-leak-probe.mjs"));
 
   const proofFile = join(bench, "proof.txt");
   const nestedEnv = {
