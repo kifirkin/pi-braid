@@ -1,0 +1,1333 @@
+/**
+ * context_compress - Free up context space by compaction, archiving, or deep-clean.
+ *
+ * One tool for context_compact, context_archive, context_prune, and the
+ * tag-based/percentage/keepRecentTurns range params.
+ *
+ * Capabilities:
+ *   - Tag-based archive range (startTag / endTag / beforeTag)
+ *   - Percentage-based range (range: "80%")
+ *   - Keep-recent-turns shortcut (keepRecentTurns: 20)
+ *   - Token-savings feedback after archive
+ *   - "deep_clean" meta-action: tag + archive + compact in one call
+ */
+
+import { Type } from "typebox";
+import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getExtensionState, readExtensionState } from "../../../../../lib/state/extension-state.js";
+import { onEvent } from "../../../../../lib/events/event-types.js";
+import {
+  TOOL_EXECUTION_START,
+  TOOL_EXECUTION_END,
+  AGENT_SETTLED,
+  TURN_END,
+} from "../../../../../lib/core/event-names.js";
+import { analyzeSession } from "../../analysis.js";
+import * as timerMod from "../../../../scheduling/timer/index.js";
+import { getState } from "../../../../enforcement/state.js";
+import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/context-thresholds.js";
+import { getCmState, isCompactionActive, log, recordNavigationAction } from "../shared.js";
+import { snapBoundaryOutsideToolBatch } from "../tool-batch-boundary.js";
+import { formatTokensK } from "../../../../../lib/detection/context-usage.js";
+import { formatLocalTime } from "../../../../../lib/utils/local-time.js";
+import {
+  getAutoCompactConfig,
+  type ResolvedAutoCompactConfig,
+} from "../../../../../lib/config/braid-settings.js";
+
+// Helpers
+
+/**
+ * Resolve a tag name to a branch entry index by scanning the session branch
+ * for entries whose label matches `tagName`. Returns -1 if not found.
+ */
+function resolveTagToIndex(ctx: any, tagName: string): number {
+  try {
+    const sm = ctx.sessionManager;
+    if (!sm) return -1;
+    const branch = sm.getBranch() ?? [];
+    for (let i = 0; i < branch.length; i++) {
+      const label = sm.getLabel?.(branch[i].id);
+      if (label === tagName) return i;
+    }
+    return -1;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Capture current context usage for pre/post feedback.
+ */
+function captureUsage(ctx: any): { percent: number; tokens: number; contextWindow: number } | null {
+  try {
+    const audit = analyzeSession(ctx);
+    return audit.usage;
+  } catch {
+    return null;
+  }
+}
+
+// Batch-settle compaction scheduler.
+// Contract: the tool returns its result FIRST (execute() resolves before a
+// compaction is armed), but ctx.compact() — which aborts the turn — fires only
+// at a safe boundary: agent_settled (the run fully settled, abort a clean
+// no-op) or turn_end inside a live run (the turn's messages and tool results
+// are already persisted; the abort lands between turns, where a queued steer
+// is appended before the loop polls the abort signal and its turn runs on the
+// post-compaction resume). Firing on the first tool_execution_end where
+// inFlight reaches 0 aborts a still-live run (the agent is streaming its
+// response to the context_compress result), surfacing a spurious "This
+// operation was aborted" error in the TUI and tearing the finishing turn.
+// agent_settled alone never drains a run kept alive by continuous steers —
+// the armed compaction stalls behind live work while usage keeps climbing,
+// hence the turn_end boundary.
+
+interface PendingCompaction {
+  /** Which action armed this entry. */
+  kind: "compact" | "archive" | "deep_clean" | "slide";
+  trigger: () => void;
+  armedAt: number;
+  /** Slide entry: branch id of the first kept entry (the deterministic cut). */
+  cutEntryId?: string;
+  /** Archive entry: branch id of the first kept entry (the declared boundary). */
+  firstKeptEntryId?: string;
+}
+
+interface BatchSettleState {
+  /** In-flight tool executions for the current batch (per session). */
+  inFlight: number;
+  /** Pending compactions armed by context_compress actions, drained at settle. */
+  pending: PendingCompaction[];
+}
+
+/**
+ * The pending list is bounded: one entry per armed action, capped so a
+ * pathological re-arming loop cannot grow it without bound. Beyond the cap the
+ * NEWEST entry is dropped (log) — at drain time the FIRST-armed entry is the
+ * one that fires (first-armed-wins for LLM-class, earliest-cut for slides), so
+ * dropping the oldest would discard the very compaction the queue exists to
+ * land. Slides beyond the first are redundant by construction (the drain
+ * coalesces to the earliest cut), so a dropped newest entry loses nothing.
+ */
+const PENDING_COMPACT_QUEUE_MAX = 8;
+
+function getBatchSettleState(ctx: any): BatchSettleState {
+  return getExtensionState(ctx, "context-manager/batch-settle", () => ({
+    inFlight: 0,
+    pending: [],
+  }));
+}
+
+/**
+ * Read the pending queue without creating state (inspect surfaces it).
+ * Exported so context_inspect and the heartbeat advisory can report
+ * armed-but-unfired compactions.
+ */
+export function readPendingCompactions(ctx: any): Array<{ kind: string; armedAt: number }> {
+  try {
+    const st = readExtensionState<BatchSettleState>(ctx, "context-manager/batch-settle");
+    return (st?.pending ?? []).map(({ kind, armedAt }) => ({ kind, armedAt }));
+  } catch {
+    return [];
+  }
+}
+
+/** LLM-class kinds carry a declared range/anchor state at arm time. */
+function isLlmClass(kind: string): boolean {
+  return kind === "compact" || kind === "archive" || kind === "deep_clean";
+}
+
+/**
+ * True when an LLM-class compaction is already armed and unfired. A second
+ * LLM-class arm must be refused BEFORE it writes its own range/anchor state:
+ * the drain fires the first-armed trigger, so a later arm would silently
+ * overwrite the range state the first trigger consumes (clobber-class loss).
+ */
+export function hasPendingLlmCompaction(ctx: any): boolean {
+  return readPendingCompactions(ctx).some((p) => isLlmClass(p.kind));
+}
+
+/**
+ * One pending-state line for the armed-but-unfired compaction queue
+ * ("slide armed 17:28 — fires at the next turn boundary; live usage drops
+ * when it lands"). Null when nothing is pending: no surface may fabricate an
+ * expectation of a drop that is not armed. Shared by context_inspect and the
+ * heartbeat advisory so both state the same fact the same way.
+ */
+export function formatPendingCompactionsLine(ctx: any): string | null {
+  const pending = readPendingCompactions(ctx);
+  if (pending.length === 0) return null;
+  const newest = pending.reduce((a, b) => (b.armedAt > a.armedAt ? b : a));
+  const kinds = [...new Set(pending.map((p) => p.kind))].join("+");
+  const armedClock = formatLocalTime(new Date(newest.armedAt));
+  return (
+    `${kinds} armed ${armedClock} — fires at the next turn boundary (turn end or run settle); ` +
+    `until then live usage reads pre-compaction state`
+  );
+}
+
+/**
+ * Coalesce a multi-entry queue into ONE deterministic slide compaction:
+ * the cut lands at the EARLIEST declared boundary (a pending slide's cut or
+ * an archive's firstKeptEntryId), so everything each declaration promised to
+ * keep stays live, and the archive anchor/summary record (appended to the
+ * session at arm time, inside the kept span) survives. Returns the trigger
+ * to fire, or null when no cut point resolves (fire-first fallback).
+ */
+function coalesceIntoSlide(ctx: any, queue: PendingCompaction[]): { trigger: () => void } | null {
+  try {
+    const branch: Array<{ id: string }> = ctx?.sessionManager?.getBranch?.() ?? [];
+    const indexById = new Map(branch.map((e, i) => [e.id, i] as const));
+    let cutIndex = -1;
+    for (const entry of queue) {
+      const id = entry.kind === "slide" ? entry.cutEntryId : entry.firstKeptEntryId;
+      if (!id) continue;
+      const idx = indexById.get(id);
+      if (idx !== undefined && (cutIndex === -1 || idx < cutIndex)) cutIndex = idx;
+    }
+    if (cutIndex < 0) return null;
+    // The coalesced cut is a supplied boundary: snap it out of any tool batch
+    // it lands in (HTTP 400: a kept slice that opens with a tool result has no
+    // preceding tool_calls).
+    const snappedIndex = snapBoundaryOutsideToolBatch(branch, cutIndex);
+    const cutEntryId = branch[snappedIndex].id;
+    // Re-point the slide state the SLIDE_MODE compaction branch consumes.
+    getCmState(ctx).slideMode = {
+      active: true,
+      cutEntryId,
+      keepCount: branch.length - snappedIndex,
+      droppedCount: snappedIndex,
+      timestamp: Date.now(),
+    };
+    const slideEntry = queue.find((p) => p.kind === "slide")!;
+    return { trigger: slideEntry.trigger };
+  } catch {
+    return null;
+  }
+}
+
+function firePendingCompactionsIfSettled(ctx: any, st: BatchSettleState): void {
+  if (st.pending.length === 0 || st.inFlight > 0) return;
+  const queue = st.pending;
+  st.pending = [];
+  let trigger = queue[0].trigger;
+  let summary = queue.map((p) => p.kind).join(", ");
+  if (queue.length > 1) {
+    const coalesced = queue.some((p) => p.kind === "slide") ? coalesceIntoSlide(ctx, queue) : null;
+    if (coalesced) {
+      trigger = coalesced.trigger;
+      summary = `slide subsuming (${summary})`;
+    } else if (queue.some((p) => p.kind === "slide")) {
+      // Slide present but no cut point resolved: the slide trigger still runs
+      // (its own slide state was armed at arm time).
+      trigger = queue.find((p) => p.kind === "slide")!.trigger;
+      summary = `slide-first (${summary})`;
+    } else {
+      // LLM-class only (compact/archive/deep_clean): the FIRST armed wins.
+      // Its range/anchor state was persisted at arm time and steers the
+      // compaction it fires; a second back-to-back LLM compaction would run
+      // on the first's output for nothing.
+      summary = `first-armed (${summary})`;
+    }
+    log.info(
+      `[context-compress] ${queue.length} pending compactions coalesced at settle: ${summary}`,
+    );
+  }
+  // Defer to a macrotask so the current batch's tool-result messages (emitted
+  // right after each tool_execution_end) land before the aborting compact.
+  setTimeout(() => {
+    try {
+      trigger();
+    } catch {
+      // Tool already disconnected - non-fatal
+    }
+  }, 0);
+}
+
+/**
+ * Bounded deferral for the DEGRADED compaction path (batch-settle bookkeeping
+ * unavailable): a few ticks so a still-executing parallel sibling has a chance
+ * to land its result, but NEVER a raw setTimeout(0) — that is the exact
+ * mid-batch abort race this scheduler exists to remove. Exported (with
+ * `scheduleDegradedCompact`) so the deferral contract is directly testable.
+ */
+export const DEGRADED_DEFERRAL_MS = 150;
+
+/** Schedule `trigger` on the bounded degraded deferral (see DEGRADED_DEFERRAL_MS). */
+export function scheduleDegradedCompact(trigger: () => void): void {
+  setTimeout(trigger, DEGRADED_DEFERRAL_MS);
+}
+
+/**
+ * Arm a one-shot compaction at a safe boundary (next turn end or run settle).
+ * Returns "pending-exists" when an LLM-class compaction is already armed: the
+ * caller must NOT have written its own range/anchor state in that case (the
+ * drain fires the first-armed trigger with the FIRST declaration's state).
+ * If batch-settle bookkeeping is unavailable (extension state failed), falls
+ * back to a bounded DEGRADED_DEFERRAL_MS deferral so a sibling still executing
+ * at schedule time has a chance to land its result before the aborting compact
+ * fires — never a raw setTimeout(0) (the mid-batch abort race this scheduler
+ * removes).
+ */
+function scheduleCompactionAtBatchSettle(
+  pi: ExtensionAPI,
+  ctx: any,
+  options: CompactOptions,
+  meta: { kind: PendingCompaction["kind"]; cutEntryId?: string; firstKeptEntryId?: string } = {
+    kind: "compact",
+  },
+): "queued" | "pending-exists" {
+  const trigger = () => {
+    try {
+      // Signal to session_compact handler that this is agent-initiated
+      // compaction (via context_compress tool), so it should auto-resume.
+      // If user typed /compress, this flag is NOT set.
+      getState(ctx).autoResumeAfterCompaction = true;
+    } catch {
+      // Non-fatal - enforcement state unavailable
+    }
+    ctx.compact(options);
+  };
+  try {
+    const st = getBatchSettleState(ctx);
+    // LLM-class dedup at arm: a second LLM-class arm while one is pending is
+    // refused here so its range/anchor state never clobbers the first's (the
+    // drain fires the first-armed trigger). Slides always queue — the drain
+    // coalesces them to the earliest cut.
+    if (isLlmClass(meta.kind) && st.pending.some((p) => isLlmClass(p.kind))) {
+      log.info(
+        `[context-compress] ${meta.kind} arm refused: an LLM-class compaction is ` +
+          `already armed and will fire at the next boundary.`,
+      );
+      return "pending-exists";
+    }
+    st.pending.push({ trigger, armedAt: Date.now(), ...meta });
+    if (st.pending.length > PENDING_COMPACT_QUEUE_MAX) {
+      const dropped = st.pending.pop();
+      log.warn(
+        `[context-compress] Pending queue overflow: dropped the newest armed ${dropped?.kind}` +
+          ` (cap ${PENDING_COMPACT_QUEUE_MAX}); the first-armed entry still fires.`,
+      );
+    }
+    firePendingCompactionsIfSettled(ctx, st);
+    return "queued";
+  } catch {
+    // Degraded path: batch-settle bookkeeping is unavailable (extension state
+    // failed), so we cannot track in-flight tool executions. Do NOT fall back
+    // to a raw setTimeout(0) — that is the exact mid-batch abort race this
+    // scheduler exists to remove (a still-running parallel sibling's result
+    // would be discarded). Use the bounded DEGRADED_DEFERRAL_MS deferral
+    // instead so a sibling still executing at schedule time has a chance to
+    // land its result before the aborting compact fires; the compact is still
+    // best-effort here, but the race window is materially narrowed.
+    scheduleDegradedCompact(trigger);
+    return "queued";
+  }
+}
+
+/**
+ * Arm a deterministic slide compaction (no LLM call): cut the oldest entries
+ * so the most recent `keepCount` stay live. Shared by the slide tool action
+ * and the usage-driven auto-arm, so both produce the same cut shape: the
+ * boundary is snapped out of any tool batch, the slide state is persisted for
+ * the SLIDE_MODE compaction branch, an audit entry is appended, and the
+ * trigger is queued for the next safe boundary. Returns null when the branch
+ * is not longer than the keep window (nothing to slide).
+ */
+function armSlideCompaction(
+  pi: ExtensionAPI,
+  ctx: any,
+  keepCount: number,
+): { cutEntryId: string; keptCount: number; droppedCount: number } | null {
+  const sm = ctx.sessionManager;
+  if (!sm || typeof sm.getBranch !== "function") return null;
+  const branch = sm.getBranch() ?? [];
+  if (branch.length <= keepCount) return null;
+
+  // The slide cut is a supplied boundary: snap it out of any tool batch it
+  // lands in (HTTP 400: a kept slice that opens with a tool result has no
+  // preceding tool_calls).
+  const cutIndex = snapBoundaryOutsideToolBatch(branch, branch.length - keepCount);
+  const cutEntryId = branch[cutIndex].id;
+  const keptCount = branch.length - cutIndex;
+  const droppedCount = cutIndex;
+
+  // Persist slide-mode state for session_before_compact to consume.
+  try {
+    getCmState(ctx).slideMode = {
+      active: true,
+      cutEntryId,
+      keepCount: keptCount,
+      droppedCount,
+      timestamp: Date.now(),
+    };
+  } catch {
+    log.warn("[context-compress] Failed to persist slideMode");
+  }
+
+  // Record the slide operation as a custom entry for audit trail.
+  try {
+    pi.appendEntry("context_compress_slide", {
+      keep: keepCount,
+      dropped: droppedCount,
+      branchLength: branch.length,
+      timestamp: Date.now(),
+    });
+  } catch {
+    // Non-fatal - audit trail is best-effort
+  }
+
+  // Cancel stale resume timers from previous compaction cycles.
+  try {
+    const sessionId =
+      (
+        ctx as { sessionManager?: { getSessionId?: () => string } }
+      )?.sessionManager?.getSessionId?.() ?? "anonymous";
+    timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+    timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+  } catch {
+    // Non-fatal
+  }
+
+  scheduleCompactionAtBatchSettle(
+    pi,
+    ctx,
+    { customInstructions: "SLIDE_MODE:true" },
+    { kind: "slide", cutEntryId },
+  );
+  return { cutEntryId, keptCount, droppedCount };
+}
+
+/** Per-session hysteresis counter for the usage-driven auto-arm. */
+interface AutoArmState {
+  aboveCount: number;
+}
+
+/**
+ * Keep window for an auto-armed slide: the recent HALF of the branch, floor
+ * 10 kept entries. Entry-proportional because the arming trigger is usage,
+ * not size — a fixed keep (the slide tool's 50) refuses on small fat branches
+ * and over-cuts relative to a session's own scale; halving a sustained-
+ * over-threshold branch lands post-cut usage near the low band, and the
+ * dropped span stays recoverable in the session file.
+ */
+export function resolveAutoSlideKeep(branchLength: number): number {
+  return Math.max(10, Math.ceil(branchLength / 2));
+}
+
+function getAutoArmState(ctx: any): AutoArmState {
+  return getExtensionState(ctx, "context-manager/auto-arm", () => ({ aboveCount: 0 }));
+}
+
+/**
+ * Usage-driven auto-arm: when live usage sits above the configured threshold
+ * for `confirmTicks` consecutive observations, arm ONE deterministic slide so
+ * a session that never gets a manual cleanup still gets relief. Reuses the
+ * accounting context_inspect computes (analyzeSession), the same pending
+ * queue the tool arms drain through, and the same boundary discipline: arming
+ * only queues; the compaction itself still fires at the next turn boundary or
+ * settle, never mid-run.
+ *
+ * Called from the heartbeat tick — the only cadence that runs while a session
+ * works. Returns what happened and why, so the caller can log it.
+ */
+export function maybeArmAutoCompaction(
+  pi: ExtensionAPI,
+  ctx: any,
+): { armed: boolean; reason: string } {
+  const config: ResolvedAutoCompactConfig = getAutoCompactConfig();
+  if (!config.enabled) return { armed: false, reason: "disabled" };
+  if (isCompactionActive(ctx)) return { armed: false, reason: "compaction-active" };
+  if (readPendingCompactions(ctx).length > 0) {
+    return { armed: false, reason: "already-pending" };
+  }
+  const usage = captureUsage(ctx);
+  if (!usage) return { armed: false, reason: "usage-unavailable" };
+  if (usage.percent < config.armPercent) {
+    getAutoArmState(ctx).aboveCount = 0;
+    return { armed: false, reason: `below-arm-percent (${usage.percent.toFixed(1)}%)` };
+  }
+  const st = getAutoArmState(ctx);
+  st.aboveCount += 1;
+  if (st.aboveCount < config.confirmTicks) {
+    return { armed: false, reason: `warming ${st.aboveCount}/${config.confirmTicks}` };
+  }
+  const branchLength = ctx?.sessionManager?.getBranch?.().length ?? 0;
+  const keep = resolveAutoSlideKeep(branchLength);
+  const armed = armSlideCompaction(pi, ctx, keep);
+  st.aboveCount = 0;
+  if (!armed) return { armed: false, reason: "branch-too-short" };
+  log.info(
+    `[context-compress] Auto-arm: usage sustained at ${usage.percent.toFixed(1)}% ` +
+      `(>= ${config.armPercent}% for ${config.confirmTicks} observations) — slide armed ` +
+      `(${armed.droppedCount} entries before the cut), fires at the next boundary.`,
+  );
+  return { armed: true, reason: `usage ${usage.percent.toFixed(1)}% sustained` };
+}
+
+// Schema
+
+export const contextCompressSchema = Type.Object({
+  action: Type.String({
+    enum: ["compact", "archive", "deep_clean", "slide"],
+    description:
+      "compact = remove obsolete/duplicate entries (like context_compact). " +
+      "archive = compress a range of messages into a topic summary (like context_archive). " +
+      "deep_clean = tag current position, archive everything before the tag, then compact. All-in-one. " +
+      "slide = deterministic sliding-window compaction. Drops oldest entries, keeps recent N intact. No LLM summarization.",
+  }),
+  // compact params (also used by slide)
+  keep: Type.Optional(
+    Type.Number({
+      description:
+        "Messages to preserve: action=compact (token-based LLM) or action=slide (deterministic, no LLM). Default slide: 50.",
+    }),
+  ),
+  // archive params (original numeric range)
+  startIndex: Type.Optional(
+    Type.Number({
+      description: "First message index to compress (auto when omitted); action=archive only.",
+    }),
+  ),
+  endIndex: Type.Optional(
+    Type.Number({
+      description: "Last message index to compress (auto when omitted); action=archive only.",
+    }),
+  ),
+  // archive params (tag-based range)
+  startTag: Type.Optional(
+    Type.String({
+      description: "Archive start-boundary tag; overrides startIndex; action=archive only.",
+    }),
+  ),
+  endTag: Type.Optional(
+    Type.String({
+      description: "Archive end-boundary tag; overrides endIndex; action=archive only.",
+    }),
+  ),
+  beforeTag: Type.Optional(
+    Type.String({
+      description:
+        "Archive all entries before this tag; equals startTag+endIndex; action=archive only.",
+    }),
+  ),
+  // percentage-based range,
+  range: Type.Optional(
+    Type.String({
+      description:
+        'Percent of session to archive (e.g. "80%"); overrides startIndex/endIndex; action=archive only.',
+    }),
+  ),
+  // keep-recent-turns shortcut,
+  keepRecentTurns: Type.Optional(
+    Type.Number({
+      description:
+        "Keep last N user turns, archive the rest; overrides startIndex/endIndex; action=archive only.",
+    }),
+  ),
+  // archive params (shared)
+  topic: Type.Optional(
+    Type.String({
+      description: "Topic label; required for action=archive and action=deep_clean.",
+    }),
+  ),
+  summary: Type.Optional(
+    Type.String({
+      description:
+        "Summary of what was accomplished; required for archive/deep_clean. Use explicit speaker labels to prevent misattribution.",
+    }),
+  ),
+  // deep_clean params
+  tagName: Type.Optional(
+    Type.String({
+      description: "Tag to create at current position; deep_clean only. Default: 'before-cleanup'.",
+    }),
+  ),
+});
+
+export function registerContextCompress(pi: ExtensionAPI): void {
+  // Batch-settle scheduling: track in-flight tool executions per session and
+  // fire the deferred compaction ONLY at agent_settled — the moment the whole
+  // agent run settles (session idle/promptable). Never mid-batch (would drop
+  // a parallel sibling's result) and never at tool_execution_end (the run is
+  // still live there — an aborting compact would surface a spurious
+  // "This operation was aborted" error and tear the finishing turn).
+  onEvent(pi, TOOL_EXECUTION_START, (_event: any, ctx: any) => {
+    try {
+      getBatchSettleState(ctx).inFlight++;
+    } catch {
+      // Settle tracking is unavailable — the pending compact then only fires
+      // via AGENT_SETTLED below, which is the conservative path.
+    }
+  });
+  onEvent(pi, TOOL_EXECUTION_END, (_event: any, ctx: any) => {
+    try {
+      const st = getBatchSettleState(ctx);
+      if (st.inFlight > 0) st.inFlight--;
+      // NOTE: do NOT fire here. The run is still active (the agent is
+      // processing this tool's result and streaming its next response); an
+      // aborting compact now would surface a spurious "This operation was
+      // aborted" error and tear the finishing turn. Safe boundaries are
+      // turn_end (below) and agent_settled.
+    } catch {
+      // Settle tracking unavailable — see TOOL_EXECUTION_START above; the
+      // AGENT_SETTLED handler remains the conservative trigger.
+    }
+  });
+  onEvent(pi, TURN_END, (_event: any, ctx: any) => {
+    // Between-turns boundary: the turn's assistant message and tool results
+    // are already persisted when turn_end fires, so the abort inside
+    // ctx.compact() cannot tear a live turn or drop a sibling result. A run
+    // kept alive by continuous steers never reaches agent_settled — this
+    // boundary keeps an armed compaction from stalling behind live work. A
+    // steer queued at this moment survives: the loop appends it before the
+    // aborted response stream, and its turn runs on the post-compaction
+    // resume. inFlight is NOT reset here (only agent_settled owns that
+    // backstop); a missed tool_execution_end keeps the boundary conservative.
+    try {
+      const st = getBatchSettleState(ctx);
+      if (st.pending.length === 0 || st.inFlight > 0) return;
+      if (isCompactionActive(ctx)) return;
+      firePendingCompactionsIfSettled(ctx, st);
+    } catch {
+      // A failed boundary drain must not tear the turn_end event pipeline;
+      // the pending compactions retry on the next boundary.
+    }
+  });
+  onEvent(pi, AGENT_SETTLED, (_event: any, ctx: any) => {
+    // Backstop boundary: the run has fully settled, so ctx.compact()'s
+    // abort() is a clean no-op — no spurious abort error, no torn turn, and
+    // the post-compaction resume wake lands when the session is
+    // idle/promptable. The whole pending queue drains here (coalesced);
+    // inFlight is reset so parked compactions always fire even if a
+    // sibling's end event never arrived. Turn boundaries drain first when a
+    // run stays alive; this handler catches everything they cannot reach.
+    try {
+      const st = getBatchSettleState(ctx);
+      st.inFlight = 0;
+      firePendingCompactionsIfSettled(ctx, st);
+    } catch {
+      // A failed settle trigger must not tear down the AGENT_SETTLED event
+      // pipeline; the pending compactions retry on the next settle cycle.
+    }
+  });
+
+  pi.registerTool({
+    name: "context_compress",
+    label: "Context Compress",
+    promptSnippet:
+      "Free context space by compaction or archiving; archive first, slide or compact when it can run safely",
+    description:
+      "Free up context space; prefer archive over compact. " +
+      "For long sessions, tag your position with context_navigate(action=tag) and archive deliberately with " +
+      "context_compress(action=archive) BEFORE considering compaction — compaction is a bounded safety net " +
+      "(substantive, skippable when input unchanged, verifiable, originals recoverable). " +
+      "Never in a parallel batch (it aborts the turn). Use explicit speaker labels in summaries.",
+    parameters: contextCompressSchema,
+    execute: async (
+      _toolCallId: string,
+      params: any,
+      _signal: any,
+      _onUpdate: any,
+      ctx: any,
+    ): Promise<any> => {
+      const action = params.action;
+
+      // COMPACT
+      if (action === "compact") {
+        try {
+          const usage = captureUsage(ctx);
+
+          // SAFETY GUARD: compaction (action="compact") causes "max call stack" errors
+          // when context exceeds the CONTEXT_COMPACT_REFUSE_PERCENT threshold (owner:
+          // lib/detection/context-thresholds.ts). The destructive AI-supervised compaction can
+          // leave the session in an unstable state (corrupted messages, 403 blocks).
+          // Use action="slide" instead — it's deterministic, entry-based, no LLM call.
+          if (usage && usage.percent > CONTEXT_COMPACT_REFUSE_PERCENT) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `**Compact refused — context at ${usage.percent.toFixed(1)}% (>${CONTEXT_COMPACT_REFUSE_PERCENT}% threshold).**`,
+                    `Destructive AI-supervised compaction (action="compact") causes max-call-stack`,
+                    `crashes and session corruption above ${CONTEXT_COMPACT_REFUSE_PERCENT}% usage.`,
+                    ``,
+                    `Use **action="slide"** instead — deterministic, entry-based, no LLM:`,
+                    `  context_compress(action="slide")`,
+                    `  context_compress(action="slide", keep=80)  # keep recent 80 entries`,
+                    ``,
+                    `Run context_inspect(detail="quick") first to assess current state.`,
+                  ].join("\n"),
+                },
+              ],
+              details: {
+                action,
+                refused: true,
+                reason: `context ${usage.percent.toFixed(1)}% > ${CONTEXT_COMPACT_REFUSE_PERCENT}% threshold`,
+                suggestion: { tool: "context_compress", action: "slide" },
+              },
+            };
+          }
+
+          const usageLine2 = usage
+            ? `${usage.percent.toFixed(1)}% used (${formatTokensK(usage.tokens)} tokens)`
+            : "unknown";
+
+          const result = {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Compaction scheduled.**`,
+                  `  Before: ${usageLine2}`,
+                  `  Keep recent: ${params?.keep ?? "auto"}`,
+                  ``,
+                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action,
+              compactionTriggered: true,
+              keep: params?.keep ?? "auto",
+              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
+            },
+          };
+
+          try {
+            // Cancel any stale resume timer from a previous compaction cycle.
+            const sessionId =
+              (
+                ctx as { sessionManager?: { getSessionId?: () => string } }
+              )?.sessionManager?.getSessionId?.() ?? "anonymous";
+            timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+            timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+          } catch {
+            // Non-fatal - timer unavailable
+          }
+
+          const options: CompactOptions = {};
+          if (params?.keep != null) {
+            options.customInstructions = `Keep the most recent ${params.keep} messages.`;
+          }
+
+          // Skip compact if context is already low — pi-core returns
+          // "nothing to compact" as a whisper, which is confusing noise.
+          if (usage && usage.percent < 30) {
+            return {
+              ...result,
+              content: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `**Compact skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
+                    `No compaction needed. Use context_inspect(action="quick") to verify.`,
+                  ].join("\n"),
+                },
+              ],
+              details: {
+                ...result.details,
+                skipped: true,
+                reason: `context ${usage.percent.toFixed(1)}% < 30% threshold`,
+              },
+            };
+          }
+
+          scheduleCompactionAtBatchSettle(pi, ctx, options, { kind: "compact" });
+
+          // Compact was scheduled (a real compaction is armed) — count it.
+          recordNavigationAction(ctx, "compact");
+          return result;
+        } catch (e: any) {
+          return {
+            content: [{ type: "text" as const, text: `Failed to compact: ${e.message}` }],
+            details: { action, error: e.message },
+          };
+        }
+      }
+
+      // ARCHIVE
+      if (action === "archive") {
+        const { topic, summary } = params;
+        if (!topic || !summary) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "topic and summary are required for action=archive",
+              },
+            ],
+            details: { action, error: "missing required params" },
+          };
+        }
+
+        // LLM-class dedup: refuse BEFORE any state write. An already-armed
+        // compaction fires at the next boundary with the FIRST declaration's
+        // range; a second arm here would overwrite rangeMode (clobber-class
+        // loss) and queue an entry that can never fire.
+        if (hasPendingLlmCompaction(ctx)) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Archive skipped — a compaction is already armed and will fire at the next turn boundary.**`,
+                  `Nothing was recorded for "${topic}"; the pending compaction covers the cleanup.`,
+                  `After it lands, re-run this archive if the range still needs a record.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action,
+              skipped: true,
+              reason: "compaction-already-pending",
+              topic,
+            },
+          };
+        }
+
+        const usageBefore = captureUsage(ctx);
+        const sessionLength = analyzeSession(ctx).branchLength;
+
+        // Resolve range via priority: startTag/endTag > beforeTag > range > keepRecentTurns > startIndex/endIndex > auto
+        let startIndex: number | undefined = params.startIndex;
+        let endIndex: number | undefined = params.endIndex;
+
+        // Priority 1: Tag-based range
+        if (params.startTag !== undefined) {
+          const idx = resolveTagToIndex(ctx, params.startTag);
+          if (idx < 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Tag '${params.startTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                },
+              ],
+              details: { action, error: `tag not found: ${params.startTag}` },
+            };
+          }
+          startIndex = idx;
+
+          if (params.endTag !== undefined) {
+            const idxEnd = resolveTagToIndex(ctx, params.endTag);
+            if (idxEnd < 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Tag '${params.endTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                  },
+                ],
+                details: { action, error: `tag not found: ${params.endTag}` },
+              };
+            }
+            endIndex = idxEnd;
+          }
+        }
+
+        // Priority 1b: beforeTag convenience (archive everything before this tag)
+        if (startIndex === undefined && params.beforeTag !== undefined) {
+          const idx = resolveTagToIndex(ctx, params.beforeTag);
+          if (idx < 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Tag '${params.beforeTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                },
+              ],
+              details: { action, error: `tag not found: ${params.beforeTag}` },
+            };
+          }
+          startIndex = 0;
+          endIndex = Math.max(0, idx - 1);
+        }
+
+        // Priority 2: Percentage-based range
+        if (params.range !== undefined && (startIndex === undefined || endIndex === undefined)) {
+          const match = String(params.range).match(/^(\d+)%$/);
+          if (!match) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Invalid range format: '${params.range}'. Use 'N%' e.g. '80%'.`,
+                },
+              ],
+              details: { action, error: `invalid range: ${params.range}` },
+            };
+          }
+          const pct = parseInt(match[1], 10);
+          if (pct <= 0 || pct > 100) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Range must be 1-100%. Got ${pct}%.`,
+                },
+              ],
+              details: { action, error: `invalid percentage: ${pct}` },
+            };
+          }
+          const count = Math.max(1, Math.floor((sessionLength * pct) / 100));
+          startIndex = 0;
+          endIndex = count - 1;
+        }
+
+        // Priority 3: Keep-recent-turns
+        if (
+          (startIndex === undefined || endIndex === undefined) &&
+          params.keepRecentTurns !== undefined
+        ) {
+          const keep = params.keepRecentTurns;
+          if (keep <= 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "keepRecentTurns must be >= 1.",
+                },
+              ],
+              details: { action, error: "invalid keepRecentTurns" },
+            };
+          }
+
+          const sm = ctx.sessionManager;
+          const branch = sm.getBranch() ?? [];
+          // Branch entries wrap the message: a user turn is
+          // entry.type === "message" with entry.message.role === "user".
+          // Matching entry.type/entry.role directly never matches, which
+          // collapsed every keepRecentTurns span to [0..0].
+          let userMessagesSeen = 0;
+          let cutIndex = 0;
+          for (let i = branch.length - 1; i >= 0; i--) {
+            const entry = branch[i];
+            if (entry?.type === "message" && (entry as any).message?.role === "user") {
+              userMessagesSeen++;
+              if (userMessagesSeen >= keep) {
+                cutIndex = i;
+                break;
+              }
+            }
+          }
+          startIndex = 0;
+          endIndex = Math.max(0, cutIndex - 1);
+        }
+
+        // Default: auto-select oldest ~20%
+        if (startIndex === undefined || endIndex === undefined) {
+          const archiveCount = Math.min(Math.max(Math.floor(sessionLength * 0.2), 10), 100);
+          startIndex = 0;
+          endIndex = archiveCount - 1;
+        }
+
+        if (startIndex < 0 || endIndex < startIndex) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Invalid range: startIndex must be >= 0 and endIndex must be >= startIndex",
+              },
+            ],
+            details: { action, error: true },
+          };
+        }
+
+        const sm = ctx.sessionManager;
+
+        // Persist range-mode state so session_before_compact honors the declared
+        // range as the real compaction boundary (commitment-preserving anchor).
+        const branch: Array<{ id: string; type?: string; message?: unknown }> =
+          typeof sm.getBranch === "function" ? (sm.getBranch() ?? []) : [];
+        // The declared boundary is a supplied one: snap it out of any tool
+        // batch it lands in (HTTP 400: a kept slice that opens with a tool
+        // result has no preceding tool_calls). A boundary at the branch end
+        // stays undefined - there is no entry to keep.
+        const candidateBoundary = endIndex + 1;
+        const boundaryIndex =
+          candidateBoundary < branch.length
+            ? snapBoundaryOutsideToolBatch(branch, candidateBoundary)
+            : candidateBoundary;
+        const firstKeptEntryId = branch[boundaryIndex]?.id;
+        try {
+          const cmState = getCmState(ctx);
+          cmState.rangeMode = {
+            active: true,
+            startIndex,
+            endIndex,
+            summary,
+            topic,
+            firstKeptEntryId,
+            boundaryIsBranchEnd: boundaryIndex >= branch.length,
+            timestamp: Date.now(),
+          };
+        } catch {
+          log.warn("[context-compress] Failed to persist rangeMode");
+        }
+
+        pi.appendEntry("context_compression", {
+          topic,
+          startIndex,
+          endIndex,
+          summary,
+          timestamp: Date.now(),
+        });
+
+        // Honest-by-understatement feedback.
+        // The declared range + summary are recorded as the archive anchor
+        // (audit metadata entry + rangeMode), but the feedback NEVER claims a
+        // specific removed range ("entries N..M removed" / "Compressed N
+        // messages") and never promises a specific boundary — the actual cut
+        // is pi-core's compaction decision, so the tool reports an ESTIMATED
+        // cut only. Contract: claim less than what happened, never more. The
+        // REAL before-% is still reported (no fabricated post-% — a
+        // linear-token estimate would be misleading).
+        const count = endIndex - startIndex + 1;
+        const feedbackLines: string[] = [
+          `Archive recorded: "${topic}" — ~${count} entries before the archive point, estimated.`,
+        ];
+        if (usageBefore) {
+          feedbackLines.push(
+            `  Before: ${usageBefore.percent.toFixed(1)}% used (${formatTokensK(usageBefore.tokens)} tokens)`,
+          );
+        }
+        feedbackLines.push(
+          "",
+          "Compaction is armed and fires at the next turn boundary (turn end or run settle) — it may " +
+            "land while the run stays alive; live usage will NOT drop until it fires.",
+          "Verify after it lands: context_inspect(detail='quick') shows the drop and any still-pending arm.",
+        );
+
+        // Cancel any stale resume timer from a previous compaction cycle.
+        try {
+          const sessionId =
+            (
+              ctx as { sessionManager?: { getSessionId?: () => string } }
+            )?.sessionManager?.getSessionId?.() ?? "anonymous";
+          timerMod.cancelTimersByTag(sessionId, "compaction-resume");
+          timerMod.cancelTimersByTag(sessionId, "auto-compaction-resume");
+        } catch {
+          // Non-fatal - timer unavailable
+        }
+
+        // Skip follow-up compact only when REAL usage is genuinely low (<30%).
+        // Never skip on a linear-token estimate — that drops a needed
+        // compaction while claiming a freed percentage.
+        let compactionTriggered = true;
+        if (usageBefore && usageBefore.percent < 30) {
+          compactionTriggered = false;
+          feedbackLines.push(
+            "",
+            `  Skipped follow-up compact (real context ${usageBefore.percent.toFixed(1)}% — already low). No estimation used.`,
+          );
+        } else {
+          scheduleCompactionAtBatchSettle(
+            pi,
+            ctx,
+            {},
+            {
+              kind: "archive",
+              firstKeptEntryId,
+            },
+          );
+        }
+
+        // The archive range was declared and compaction armed — count it.
+        recordNavigationAction(ctx, "archive");
+
+        // An untagged session just archived without a
+        // navigation checkpoint — gently remind that tagging before archiving
+        // makes recovery lossless. Only on the archive SUCCESS path, only when
+        // the session has zero recorded tags (adopters are not nagged).
+        if ((getCmState(ctx).navigationAdoption?.tags ?? 0) === 0) {
+          feedbackLines.push(
+            "",
+            "Tip: context_navigate(action=tag) before archives makes recovery lossless.",
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: feedbackLines.join("\n"),
+            },
+          ],
+          details: {
+            action,
+            compressed: count,
+            topic,
+            startIndex,
+            endIndex,
+            honorRange: true,
+            compactionTriggered,
+            nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
+          },
+        };
+      }
+
+      // DEEP_CLEAN
+      if (action === "deep_clean") {
+        const topic = params.topic;
+        const summary = params.summary;
+        if (!topic || !summary) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "topic and summary are required for action=deep_clean",
+              },
+            ],
+            details: { action, error: "missing required params" },
+          };
+        }
+
+        // LLM-class dedup (same contract as archive): an armed compaction
+        // fires at the next boundary; refuse before writing the tag or the
+        // archive anchor so the first declaration stands unmodified.
+        if (hasPendingLlmCompaction(ctx)) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Deep clean skipped — a compaction is already armed and will fire at the next turn boundary.**`,
+                  `Nothing was tagged for "${topic}"; the pending compaction covers the cleanup.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action,
+              skipped: true,
+              reason: "compaction-already-pending",
+              topic,
+            },
+          };
+        }
+
+        const tagName = params.tagName ?? "before-cleanup";
+        const usageBefore = captureUsage(ctx);
+
+        try {
+          const sm = ctx.sessionManager;
+          const branch = sm.getBranch() ?? [];
+          const currentLeaf = branch.length > 0 ? branch[branch.length - 1].id : null;
+          if (currentLeaf) {
+            sm.appendLabelChange(currentLeaf, tagName);
+          }
+
+          const tagIndex = currentLeaf ? resolveTagToIndex(ctx, tagName) : -1;
+          const archiveEnd = tagIndex > 0 ? tagIndex - 1 : -1;
+
+          if (archiveEnd >= 0) {
+            pi.appendEntry("context_compression", {
+              topic,
+              startIndex: 0,
+              endIndex: archiveEnd,
+              summary,
+              timestamp: Date.now(),
+              fromDeepClean: true,
+            });
+          }
+
+          const options: CompactOptions = {};
+          scheduleCompactionAtBatchSettle(pi, ctx, options, { kind: "deep_clean" });
+
+          // The deep-clean pipeline actually ran (tag + archive + compact).
+          recordNavigationAction(ctx, "deep_clean");
+
+          const count = archiveEnd >= 0 ? archiveEnd + 1 : 0;
+          const usageLine = usageBefore ? ` (before: ${usageBefore.percent.toFixed(1)}%)` : "";
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Deep clean triggered.**`,
+                  `  1. Tagged '${tagName}' at current position`,
+                  `  2. ~${count} entries before the tag point, estimated`,
+                  `  3. Compaction scheduled${usageLine}`,
+                  "",
+                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
+                  "",
+                  `Topic: ${topic}`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action: "deep_clean",
+              tagName,
+              archived: count,
+              compactionTriggered: true,
+              topic,
+              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
+            },
+          };
+        } catch (e: any) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Failed to deep clean: ${e.message}`,
+              },
+            ],
+            details: { action, error: e.message },
+          };
+        }
+      }
+
+      // SLIDE
+      if (action === "slide") {
+        try {
+          const sm = ctx.sessionManager;
+          if (!sm || typeof sm.getBranch !== "function") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Session manager not available.",
+                },
+              ],
+              details: { action, error: "no session manager" },
+            };
+          }
+
+          const keepCount = params?.keep != null ? params.keep : 50;
+          if (typeof keepCount !== "number" || keepCount < 1 || !Number.isFinite(keepCount)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "keep must be a positive integer >= 1.",
+                },
+              ],
+              details: { action, error: "invalid keep" },
+            };
+          }
+
+          const branch = sm.getBranch() ?? [];
+          if (branch.length <= keepCount) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Branch has ${branch.length} entries, which is <= keep (${keepCount}). Nothing to slide.`,
+                },
+              ],
+              details: {
+                action,
+                keep: keepCount,
+                branchLength: branch.length,
+                slid: 0,
+              },
+            };
+          }
+
+          const usage = captureUsage(ctx);
+          const usageLine = usage
+            ? `${usage.percent.toFixed(1)}% used (${formatTokensK(usage.tokens)} tokens)`
+            : "unknown";
+
+          // Skip slide compact if context is already low — pi-core returns
+          // "nothing to compact" as a confusing whisper. Checked BEFORE any
+          // state write: a skipped slide must not leave slideMode armed for a
+          // later compaction cycle to consume.
+          if (usage && usage.percent < 30) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `**Slide skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
+                    `No entries need dropping. Use context_inspect(action="quick") to verify.`,
+                  ].join("\n"),
+                },
+              ],
+              details: {
+                action,
+                skipped: true,
+                reason: `context ${usage.percent.toFixed(1)}% < 30% threshold`,
+                branchLength: branch.length,
+              },
+            };
+          }
+
+          const armedSlide = armSlideCompaction(pi, ctx, keepCount);
+          if (!armedSlide) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Session manager not available.",
+                },
+              ],
+              details: { action, error: "no session manager" },
+            };
+          }
+          const { keptCount, droppedCount } = armedSlide;
+
+          // Slide window armed — count it as navigation adoption.
+          recordNavigationAction(ctx, "slide");
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `**Slide window compaction triggered.**`,
+                  `  Keep recent: ${keptCount} entries`,
+                  `  ~${droppedCount} entries before the slide point, estimated`,
+                  `  Before: ${usageLine}`,
+                  ``,
+                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Agent will resume automatically after compaction completes.`,
+                  `Run context_inspect(detail='quick') after resume to verify.`,
+                ].join("\n"),
+              },
+            ],
+            details: {
+              action,
+              slideTriggered: true,
+              keep: keepCount,
+              dropped: droppedCount,
+              branchLength: branch.length,
+              nextStep: {
+                tool: "context_inspect",
+                detail: "quick",
+                note: "after auto-resume",
+              },
+            },
+          };
+        } catch (e: any) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Failed to slide: ${e.message}`,
+              },
+            ],
+            details: { action, error: e.message },
+          };
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "Unknown action. Use compact, archive, deep_clean, or slide.",
+          },
+        ],
+        details: { action, error: true },
+      };
+    },
+  });
+}

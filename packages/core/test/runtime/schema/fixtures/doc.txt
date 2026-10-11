@@ -1,0 +1,8 @@
+# Fixture config reference
+
+| key | type | default | status | description | read at (file:line) |
+| --- | --- | --- | --- | --- | --- |
+| `braid.ctx.cap.enabled` | boolean | `true` | ACTIVE | gate | reader.ts:6 |
+| `braid.ctx.cap.maxChars` | number | `4000` | ACTIVE | cap | reader.ts:7 |
+| `braid.ctx.cap.windowMs` | number (ms) | `1200000` | ACTIVE | window | reader.ts:8 |
+| `braid.ctx.cap.limit` | number | `1234` | DEPRECATED | limit | reader.ts:11 |

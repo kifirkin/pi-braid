@@ -1,0 +1,46 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["eslint.config.js"],
+  "ignore": ["examples/**"],
+  "ignoreBinaries": ["diff", "rg", "wmic", "pdftotext", "strings", "textutil"],
+  "ignoreDependencies": [
+    "@earendil-works/pi-coding-agent",
+    "@eslint/js",
+    "eslint-config-prettier",
+    "eslint-plugin-prettier",
+    "typescript-eslint"
+  ],
+  "workspaces": {
+    "packages/core": {
+      "entry": [
+        "src/index.ts",
+        "src/lib/public.ts",
+        "scripts/**/*.mjs",
+        "test/**/*.mjs"
+      ],
+      "project": ["src/**/*.ts"],
+      "ignoreExportsUsedInFile": true
+    },
+    "packages/contrib": {
+      "entry": [
+        "index.ts",
+        "*/index.ts",
+        "logger.ts",
+        "*/test.ts",
+        "test-repl.ts"
+      ],
+      "project": ["**/*.ts"],
+      "ignoreDependencies": ["pi-braid"]
+    },
+    "packages/providers": {
+      "entry": ["index.ts", "scripts/**/*.mjs", "test/**/*.mjs"],
+      "project": ["**/*.ts"]
+    },
+    "packages/telegram": {
+      "entry": ["src/index.ts", "test/**/*.mjs"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@earendil-works/pi-ai"]
+    }
+  },
+  "rules": { "exports": "warn", "files": "warn" }
+}

@@ -1,0 +1,14 @@
+{
+  "_note": "Session profiles example for ~/.pi/agent/braid/config.json (the braid config file, read fresh per session start). The first entry whose cwd matches the session directory — the directory itself or anything under it; ~ expands against home — classifies the session. hint is a one-shot steer the skills tool delivers on the session's first non-empty prompt. name: 1-64 chars of [A-Za-z0-9._-], starting alphanumeric. Entries failing the shape are dropped whole.",
+  "sessionProfiles": [
+    {
+      "name": "work",
+      "cwd": "~/work",
+      "hint": "Sessions under this directory are for the work monorepo; keep assumptions, conventions, and priorities anchored there."
+    },
+    {
+      "name": "personal",
+      "cwd": "~/projects/personal"
+    }
+  ]
+}

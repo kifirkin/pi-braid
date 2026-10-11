@@ -1,0 +1,138 @@
+/**
+ * Timer poller - real-time 1s polling that fires expired timers
+ * independently of turn_end.
+ *
+ * The poller is the primary fire mechanism
+ * (turn_end is a backup). Each pi instance gets its own poller to
+ * support multiple concurrent sessions.
+ *
+ * The busy guard prevents firing mid-tool-execution (which can chain
+ * into synchronous re-entry and overflow the stack).
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
+
+const POLL_INTERVAL_MS = 1000;
+
+export class TimerPoller {
+  pollHandle: ReturnType<typeof setInterval> | null = null;
+  piRef: ExtensionAPI | null = null;
+  // busy guard: when true, the poller skips fireTimer() to prevent whisper
+  // injection mid-tool-execution (which can chain into synchronous re-entry
+  // and overflow the stack - see issue: stack overflow on scratchpad after
+  // compaction). Set true on TOOL_CALL, false on TURN_END.
+  busy = false;
+
+  constructor(
+    private sessionId: string,
+    private onCheckExpired: (sessionId: string, now: number) => ScheduledTimer[],
+    private onFire: (timer: ScheduledTimer, pi: ExtensionAPI) => void,
+    private log: { info: (msg: string) => void },
+    // Optional drain hook for the failed-wake retry queue. Invoked on
+    // the same non-busy ticks that fire expired timers (poll tick + the
+    // TOOL_EXECUTION_END / TURN_END fireExpired path), so a retried wake
+    // fire never waits for a user turn. The callback itself defers each
+    // redelivery via setTimeout(0) — the macrotask discipline below applies
+    // to it equally (it performs triggerTurn:true sends).
+    private onDrainWakeRetries?: () => void,
+  ) {}
+
+  setPiRef(pi: ExtensionAPI): void {
+    this.piRef = pi;
+  }
+
+  start(): void {
+    if (this.pollHandle) return;
+    this.pollHandle = setInterval(() => this.poll(), POLL_INTERVAL_MS);
+    // Unref: the poller must not keep the process alive on its own (same
+    // reasoning as the wake-gate fail-safe timer). A session that ends
+    // without a clean shutdown (test failure, crash path) would otherwise
+    // hang the process on this interval alone.
+    const handle = this.pollHandle as unknown as { unref?: () => void };
+    if (typeof handle.unref === "function") handle.unref();
+    this.log.info(
+      `[timer] polling started (session=${this.sessionId}, every ${POLL_INTERVAL_MS}ms)`,
+    );
+  }
+
+  stop(): void {
+    if (this.pollHandle) {
+      clearInterval(this.pollHandle);
+      this.pollHandle = null;
+    }
+  }
+
+  setBusy(busy: boolean): void {
+    this.busy = busy;
+  }
+
+  private poll(): void {
+    const pi = this.piRef;
+    if (!pi) return;
+    if (this.busy) return; // bail - defer fire to next non-busy tick or TURN_END
+    const expired = this.onCheckExpired(this.sessionId, Date.now());
+    for (const timer of expired) {
+      // Defer fire to after the current synchronous stack unwinds to break
+      // the synchronous chain from setInterval into pi-core's
+      // sendMessage(triggerTurn:true) -> _runAgentPrompt -> tool dispatch.
+      // Without this, a poller fire during an agent turn (or immediately after
+      // compaction) can chain into pi-core's synchronous tool dispatch and
+      // overflow the V8 stack.
+      //
+      // setTimeout(0) creates a macrotask boundary: the current call stack
+      // fully unwinds before the deferred fire runs. This is critical because
+      // onFire calls sendTrackedMessage(triggerTurn:true) → pi.sendMessage →
+      // _runAgentPrompt, which is synchronous when isStreaming is false.
+      // queueMicrotask does NOT break the stack — microtasks run in the same
+      // event loop turn, so the stack can still overflow.
+      setTimeout(() => {
+        this.onFire(timer, pi);
+      }, 0);
+    }
+    // Drain due failed-wake retries on the poll tick too (the retry
+    // callback owns its own setTimeout(0) deferral per redelivery).
+    this.onDrainWakeRetries?.();
+  }
+
+  isRunning(): boolean {
+    return this.pollHandle !== null;
+  }
+
+  /** Fire any expired timers now (called from TOOL_EXECUTION_END / TURN_END).
+   *
+   * Each fire is deferred to after the current synchronous stack unwinds
+   * (via setTimeout(0)) to break the synchronous chain from
+   * TOOL_EXECUTION_END -> fireExpired -> fireTimer ->
+   * sendTrackedMessage(triggerTurn:true) -> pi.sendMessage -> synchronous
+   * agent turn -> tool dispatch -> TOOL_EXECUTION_END -> ...
+   *
+   * Without this guard, a timer that fires during TOOL_EXECUTION_END can
+   * re-enter the tool dispatch loop and overflow the V8 stack. The poll()
+   * method (setInterval callback) already has this guard; fireExpired()
+   * was missed in the previous fix round.
+   *
+   * The one-tick delay is acceptable: the timer already expired, and the
+   * deferred fire will be caught on the next tick. The return value is
+   * returned immediately (before the deferred fires) so callers can still
+   * inspect which timers are about to fire.
+   */
+  fireExpired(): ScheduledTimer[] {
+    if (!this.piRef) return [];
+    const expired = this.onCheckExpired(this.sessionId, Date.now());
+    const pi = this.piRef;
+    for (const timer of expired) {
+      // Defer fire to after the current synchronous stack unwinds to break
+      // the synchronous chain from TOOL_EXECUTION_END / TURN_END into
+      // pi-core's sendMessage -> synchronous agent turn -> tool dispatch.
+      // Same pattern as poll() — setTimeout(0) for macrotask boundary.
+      setTimeout(() => {
+        this.onFire(timer, pi);
+      }, 0);
+    }
+    // Drain due failed-wake retries on the TOOL_EXECUTION_END /
+    // TURN_END path as well (backup to the poll tick).
+    this.onDrainWakeRetries?.();
+    return expired;
+  }
+}

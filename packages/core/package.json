@@ -1,0 +1,96 @@
+{
+  "name": "pi-braid",
+  "version": "0.40.0",
+  "description": "Metacognitive extension suite for pi-coding-agent: enforcement, memory, reasoning, self-improvement, and structured cognitive signals.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./lib": "./dist/lib/public.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "src/",
+    "docs/",
+    "skills/",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "tsconfig.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kifirkin/pi-braid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kifirkin/pi-braid/issues"
+  },
+  "homepage": "https://github.com/kifirkin/pi-braid#readme",
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "prepublishOnly": "npm run typecheck && npm run build",
+    "typecheck": "tsc --noEmit",
+    "prebuild": "npm run clean",
+    "build": "tsc",
+    "test": "npm run build && node scripts/run-tests.mjs",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint src/ --max-warnings 0",
+    "lint:fix": "eslint src/ --fix",
+    "check:deps": "node scripts/check-deps.mjs",
+    "check:labels": "node scripts/check-labels.mjs",
+    "check:docs": "node scripts/check-doc-status.mjs",
+    "check:doc-drift": "node scripts/check-doc-drift.mjs",
+    "check:doc-index": "node scripts/check-doc-index.mjs",
+    "check:schema": "node scripts/check-braid-schema.mjs",
+    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:doc-index && npm run check:deps && npm run check:labels && npx tsc --noEmit && npm test",
+    "release:local": "node scripts/publish-local.mjs",
+    "publish:local": "node scripts/publish-local.mjs",
+    "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "25.6.0",
+    "eslint": "10.2.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.5",
+    "prettier": "3.8.3",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.59.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "llm-agent",
+    "cognitive-systems",
+    "enforcement",
+    "planning",
+    "metacognition",
+    "self-improvement",
+    "memory-management"
+  ],
+  "author": "kifirkin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

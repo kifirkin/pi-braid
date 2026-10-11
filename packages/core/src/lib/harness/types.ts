@@ -1,0 +1,122 @@
+/**
+ * Types for the Self-Harness Loop (LP-1).
+ *
+ * Failure signatures represent concrete failure events detected during
+ * agent operation. Weakness clusters group similar signatures to identify
+ * systemic patterns. Inspired by the Self-Harness paper (2606.09498) and
+ * Opik's trace→test-suite pipeline.
+ */
+
+// ── Failure Signature Types ─────────────────────────────────────────────────
+
+export type FailureSignatureType =
+  | "tool-loop" // Repetitive same-tool calls (from tool-loop-detector)
+  | "error-burst" // Consecutive error turns (from error-tracking)
+  | "turn-failure" // Failed turn outcome (from turn-outcome detector)
+  | "degradation" // Performance degradation detected
+  | "validation-failure"; // Failed verification/validation
+
+// ── Failure Signature ───────────────────────────────────────────────────────
+
+/**
+ * A single failure event detected during agent operation.
+ * Records the source, type, and context of the failure.
+ */
+export interface FailureSignature {
+  /** Unique identifier for this signature */
+  id: string;
+  /** Type of failure */
+  type: FailureSignatureType;
+  /** Source detector/extension that produced this signature */
+  source: string;
+  /** The tool name involved (if applicable, e.g. tool-loop on "read") */
+  toolName?: string;
+  /** How many times the failure occurred (e.g. 8 consecutive calls) */
+  count: number;
+  /** Turn number when this was recorded */
+  turn: number;
+  /** Human-readable description of the failure */
+  message: string;
+  /** ISO timestamp of when this was recorded */
+  timestamp: string;
+  /** Optional severity override (0-1). Computed from count if absent. */
+  severity?: number;
+  /** Optional error message prefix for error clustering */
+  errorPrefix?: string;
+}
+
+// ── Weakness Cluster ────────────────────────────────────────────────────────
+
+/**
+ * A cluster of similar failure signatures, representing a systemic weakness.
+ * Clusters are the output of Weakness Mining and the input to Harness Proposal.
+ */
+export interface WeaknessCluster {
+  /** Unique identifier for this cluster */
+  id: string;
+  /** Human-readable label describing the weakness pattern */
+  label: string;
+  /** Type of failures in this cluster */
+  type: FailureSignatureType;
+  /** The failure signatures that form this cluster */
+  signatures: FailureSignature[];
+  /** How many times this pattern has appeared */
+  frequency: number;
+  /** Severity score 0-1 (based on frequency, count, and individual severities) */
+  severity: number;
+  /** Which editable surface this weakness targets (system prompt, tool desc, etc.) */
+  suggestedSurface: HarnessTargetSurface;
+  /** Turn when first signature was recorded */
+  firstSeen: number;
+  /** Turn when last signature was recorded */
+  lastSeen: number;
+}
+
+// ── Harness Target Surfaces ─────────────────────────────────────────────────
+
+/**
+ * Editable surfaces that a harness proposal can target.
+ * These are the components of the agent that can be modified
+ * to fix systemic weaknesses.
+ */
+export type HarnessTargetSurface =
+  | "system-prompt" // identity.ts invariants
+  | "tool-description" // Individual tool descriptions
+  | "enforcement-signal" // Enforcement signal thresholds/logic
+  | "heuristic" // Heuristic rules (via evolver)
+  | "whisper-message" // Whisper messages (injection-tracker)
+  | "unknown"; // Not yet classified
+
+// ── Harness State ───────────────────────────────────────────────────────────
+
+/**
+ * Persistent state for the Self-Harness Loop module.
+ * Stored in extension state via getExtensionState.
+ */
+export interface HarnessState {
+  /** Accumulated failure signatures from this session */
+  signatures: FailureSignature[];
+  /** Weakness clusters mined from signatures */
+  clusters: WeaknessCluster[];
+  /** Turn when the last mining occurred */
+  lastMiningTurn: number;
+  /** Total signatures collected (monotonically increasing) */
+  totalCollected: number;
+  /** Whether mining has been run at least once */
+  hasMined: boolean;
+  /** Dedup set: set of (type, toolName-or-errorPrefix) tuples already seen */
+  seenPatterns: string[];
+}
+
+// ── Factory ─────────────────────────────────────────────────────────────────
+
+export function createHarnessState(): HarnessState {
+  return {
+    signatures: [],
+    clusters: [],
+    lastMiningTurn: -1,
+    totalCollected: 0,
+    hasMined: false,
+    seenPatterns: [],
+  };
+}

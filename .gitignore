@@ -1,0 +1,49 @@
+# Build output
+dist/
+packages/core/dist/
+packages/lib/dist/
+*.d.ts.map
+*.js.map
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Test results
+test/runtime/results/
+
+# Session data
+*.jsonl
+
+# Archives
+.archive/
+
+# Braid work artifacts (deliverables, session metadata)
+.braid/
+
+# OS / temp
+.DS_Store
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# modules
+node_modules/
+__pycache__/
+
+# Pi /export
+pi-session-*
+
+# Session HTML exports
+pi-session-*.html
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Package artifacts
+*.tgz

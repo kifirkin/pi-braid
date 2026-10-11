@@ -1,0 +1,95 @@
+{
+  "name": "pi-braid",
+  "version": "0.3.2",
+  "private": true,
+  "description": "Metacognitive extension suite for pi-coding-agent: enforcement, memory, reasoning, self-improvement, and structured cognitive signals.",
+  "workspaces": [
+    "packages/core",
+    "packages/skills",
+    "packages/contrib",
+    "packages/providers",
+    "packages/telegram"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kifirkin/pi-braid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kifirkin/pi-braid/issues"
+  },
+  "homepage": "https://github.com/kifirkin/pi-braid#readme",
+  "scripts": {
+    "build": "npm run build -w packages/core",
+    "typecheck": "npm run typecheck -w packages/core -w packages/providers -w pi-braid-contrib -w pi-braid-telegram",
+    "test": "npm run test -w packages/core",
+    "clean": "npm run clean -w packages/core",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint \"packages/core/src/**/*.ts\" \"packages/providers/**/*.ts\" \"packages/contrib/**/*.ts\" \"packages/telegram/src/**/*.ts\" \"packages/*/test/**/*.mjs\" \"packages/*/scripts/**/*.mjs\" \"scripts/**/*.mjs\" --max-warnings 0 --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint \"packages/core/src/**/*.ts\" \"packages/providers/**/*.ts\" \"packages/contrib/**/*.ts\" \"packages/telegram/src/**/*.ts\" \"packages/*/test/**/*.mjs\" \"packages/*/scripts/**/*.mjs\" \"scripts/**/*.mjs\" --fix --no-error-on-unmatched-pattern",
+    "check:deps": "node packages/core/scripts/check-deps.mjs",
+    "check:labels": "node packages/core/scripts/check-labels.mjs",
+    "check:docs": "node packages/core/scripts/check-doc-status.mjs",
+    "check:doc-drift": "node packages/core/scripts/check-doc-drift.mjs",
+    "check:doc-index": "node packages/core/scripts/check-doc-index.mjs",
+    "check:schema": "node packages/core/scripts/check-braid-schema.mjs",
+    "check:suite-coverage": "node packages/core/scripts/check-suite-coverage.mjs",
+    "check:ci-chain": "node packages/core/scripts/check-ci-chain.mjs",
+    "check:doc-links": "node packages/core/scripts/check-doc-links.mjs",
+    "check:prose-punctuation": "node packages/core/scripts/check-prose-punctuation.mjs",
+    "check:doc-dates": "node packages/core/scripts/check-doc-dates.mjs",
+    "check:markers": "node packages/core/scripts/check-source-markers.mjs",
+    "report:context-heartbeat": "node packages/core/scripts/context-heartbeat-report.mjs",
+    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:doc-index && npm run check:doc-links && npm run check:prose-punctuation && npm run check:doc-dates && npm run check:markers && npm run check:deps && npm run check:labels && npm run check:private-data && npm run check:placement -- --strict && npm run check:extension-api -- --strict && npm run check:schema && npm run check:suite-coverage && npm run check:ci-chain && npm run release:check && npm run lint && npm run format:check && npm run typecheck && npm run typecheck -w packages/contrib && npm test && npm run test -w packages/providers && npm run test -w packages/telegram && npm run test -w packages/contrib && npm run test -w packages/skills",
+    "release:check": "node packages/core/scripts/check-release.mjs",
+    "release:local": "node packages/core/scripts/publish-local.mjs",
+    "release:update": "node packages/core/scripts/update-pipeline.mjs",
+    "release:update:verify": "node packages/core/scripts/update-pipeline.mjs --verify",
+    "release:update:apply": "node packages/core/scripts/update-pipeline.mjs --apply",
+    "release:update:runtime": "node packages/core/scripts/update-pipeline.mjs --apply --runtime",
+    "publish:local": "node packages/core/scripts/publish-local.mjs",
+    "publish:local:telegram": "node packages/core/scripts/publish-local.mjs telegram",
+    "publish:local:providers": "node packages/core/scripts/publish-local.mjs providers",
+    "publish:local:skills": "node packages/core/scripts/publish-local.mjs skills",
+    "publish:local:contrib": "node packages/core/scripts/publish-local.mjs contrib",
+    "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid",
+    "check:private-data": "node packages/core/scripts/check-private-data.mjs",
+    "check:placement": "node packages/core/scripts/check-placement.mjs",
+    "check:extension-api": "node packages/core/scripts/check-extension-api.mjs",
+    "check:deadcode": "knip --reporter json --no-exit-code",
+    "memory:metrics": "node packages/core/scripts/memory-write-log-metrics.mjs",
+    "memory:junk-scan": "node packages/core/scripts/memory-junk-scan.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "25.6.0",
+    "eslint": "10.2.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "5.5.5",
+    "knip": "6.35.1",
+    "prettier": "3.8.3",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.59.1"
+  },
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "llm-agent",
+    "cognitive-systems",
+    "enforcement",
+    "planning",
+    "metacognition",
+    "self-improvement",
+    "memory-management"
+  ],
+  "author": "kifirkin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0"
+  }
+}

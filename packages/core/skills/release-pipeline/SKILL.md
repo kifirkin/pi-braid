@@ -1,0 +1,191 @@
+---
+name: release-pipeline
+description: "Generic local npm release pipeline for braid packages. Covers: building, packing, installing to local registry, and verifying packages. Extensible for remote publication to npm."
+trigger: "releasing packages, npm publish, local package install, building packages, packing npm packages, package verification"
+validated: 2026-08-16
+verdict: IMPROVE
+---
+
+# Release Pipeline
+
+Generic local npm release pipeline for braid packages. Extensible for remote publication.
+
+## Principles
+
+1. **Isolation** - workers operate on git worktrees, never the live repo
+2. **Hygiene** - worktrees and .tgz files are cleaned up after release
+3. **Traceability** - every release has a version, commit, and timestamp
+4. **Extensibility** - local release is the default; remote publication is a flag
+
+## Worktree Management
+
+Create an isolated worktree for release work:
+
+```
+git worktree add ../<package>-release-<version> <branch-or-commit>
+```
+
+After the release, remove the worktree:
+
+```
+git worktree remove ../<package>-release-<version>
+```
+
+Worktrees are cheap (no copy, just a working tree + index). They prevent
+accidental edits to the live repo. Multiple workers can have concurrent
+worktrees on different branches.
+
+## Local Release Pipeline
+
+### Step 0: build from a pristine tree
+
+A release worktree that was also used for failing-first verification is not pristine: `git checkout
+<commit>~1 -- <path>` restores what the parent had, but it does NOT delete files the commit removed,
+so a deleted module comes back and gets compiled into the tarball (observed: a handler the commit
+had deleted shipped in the package). Before building, run `git status` in the worktree - it must be
+clean apart from a symlinked `node_modules` - and remove any resurrected path (`git rm --cached` +
+`rm`). If in doubt, add a fresh worktree for the release instead of reusing the verification one.
+
+### Step 1: Build
+
+```
+cd <package-dir>
+npm run build
+```
+
+Verify: `npm run typecheck` (or `npx tsc --noEmit`).
+
+### Step 2: Pack
+
+```
+npm pack
+```
+
+Produces `<package>-<version>.tgz`.
+
+### Step 3: Install to Local Registry
+
+```
+cp <package>-<version>.tgz ~/.pi/agent/local-packages/
+cd ~/.pi/agent/local-packages
+npm install ./<package>-<version>.tgz
+```
+
+The package is now available at `~/.pi/agent/local-packages/node_modules/<package>/`.
+
+### Step 4: Update Pi Config
+
+Update `~/.pi/agent/settings.json`:
+
+```json
+{
+  "packages": [
+    "/Users/<user>/.pi/agent/local-packages/node_modules/<package>",
+    ...
+  ]
+}
+```
+
+Update `~/.pi/agent/trust.json`:
+
+```json
+{
+  "/Users/<user>/.pi/agent/local-packages/node_modules/<package>": true
+}
+```
+
+### Step 5: Verify
+
+Spawn a worker at the target CWD and confirm the package loads:
+
+```
+herdr workspace_create label=verify-<package> cwd=<target-cwd>
+herdr run pane=<pane> command="pi"
+# Wait for idle, then verify the package version
+```
+
+## Updating the runtime
+
+The pi runtime is updated by its own pipeline, and the pipeline is dry-run
+first:
+
+```bash
+node packages/core/scripts/update-pipeline.mjs                          # plan (default): read-only
+node packages/core/scripts/update-pipeline.mjs --help                   # usage; does no work
+node packages/core/scripts/update-pipeline.mjs --verify                 # static smoke half (standalone)
+node packages/core/scripts/update-pipeline.mjs --apply --yes            # edit + reconcile + publish; runtime untouched
+node packages/core/scripts/update-pipeline.mjs --apply --runtime --yes  # ... then `pi update`
+```
+
+Rules the script enforces:
+
+- **Default mode cannot write.** `plan` resolves the upstream version and
+  prints every pin it would change (file, field, from -> to), the braid version
+  bump, the publish commands, the runtime command, and the rollback commands.
+  It touches nothing, and it never launches a pi session to inspect the world.
+- **`--apply` needs `--yes`.** Without the flag the script refuses before doing
+  any work and names what the run would have done: rewrite the repo pins, run
+  `npm install` in the repo and in local-packages, bump the braid version,
+  publish all five packages, and stage the rollback. The publishes and installs
+  are unreachable without it.
+- **Runtime last, and only on request.** `--runtime` is refused unless `--apply`
+  is also given, so the runtime can never move on its own. braid resolves the pi
+  family from `~/.pi/agent/local-packages`, so the pins there must be realigned
+  and braid republished before the runtime moves.
+- **Both sides reconcile.** `--apply` rewrites the repo pins and then runs
+  `npm install` at the repo root, so the repo's `node_modules` and lockfile
+  resolution follow the pins; a re-run of `plan` reports no repo drift. It does
+  the same for `local-packages` before republishing.
+- **Rollback before edits.** `--apply` stages
+  `<local-packages>/backup-<date>-pre<ver>/` (the installed `pi-braid*` copies
+  plus a `VERSIONS.txt`) before writing anything. To roll back: restore each
+  backed-up directory over `node_modules/<name>`, then `npm install` in
+  local-packages, then reinstall the previous runtime with
+  `npm --prefix <global-prefix> install -g @earendil-works/pi-coding-agent@<version>`.
+- **Publish, do not repack.** `--apply` composes `publish-local.mjs` per braid
+  package; it never packs inline.
+- **Verify is static.** `--verify` reads the installed tree, evaluates every
+  item (it does not short-circuit), and exits non-zero if any item failed; the
+  live-session checks are printed as a checklist for a real session rather than
+  automated. It is standalone: it refuses to combine with `--apply`/`--runtime`.
+
+## Remote Publication
+
+To publish to npm (instead of local), override Step 3:
+
+```
+npm publish
+```
+
+Pre-requisites:
+
+- `npm login` completed
+- Version bumped (`npm version patch|minor|major`)
+- CHANGELOG.md updated
+- Git tag created (`git tag v<version>`)
+
+## Disk Hygiene
+
+After release:
+
+1. Remove the worktree: `git worktree remove ../<package>-release-<version>`
+2. Remove old .tgz files: `rm -f ~/.pi/agent/local-packages/<package>-*.tgz`
+3. The npm install only keeps the latest; old versions in node_modules are
+   cleaned up by the next `npm install`
+
+## Version Convention
+
+- Local releases use the same version as the source package.json
+- Bump version before remote publication only
+- Use `npm version` for semver bumps: `npm version patch`
+- Tag the commit: `git tag v<version> && git push origin v<version>`
+
+## CWD Scoping
+
+Timers and release artifacts are scoped by CWD:
+
+- Timer files: `~/.pi/agent/braid/projects/<sanitized-cwd>/pending-timers.jsonl`
+- Release artifacts are in the package directory, not the pi config directory
+
+This ensures independent timer pools per project and prevents cross-project
+interference.

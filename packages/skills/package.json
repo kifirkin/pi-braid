@@ -1,0 +1,42 @@
+{
+  "name": "pi-braid-skills",
+  "version": "0.2.0-main.1",
+  "description": "Standalone skill pack for pi — markdown-only, no runtime dependencies",
+  "keywords": [
+    "pi-package",
+    "skills",
+    "pi",
+    "pi-coding-agent",
+    "agent-skills"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "node test/skills-contract.mjs"
+  },
+  "files": [
+    "skills/",
+    "!skills/.archive",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kifirkin/pi-braid.git",
+    "directory": "packages/skills"
+  },
+  "bugs": {
+    "url": "https://github.com/kifirkin/pi-braid/issues"
+  },
+  "homepage": "https://github.com/kifirkin/pi-braid/tree/main/packages/skills",
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  },
+  "author": "kifirkin",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

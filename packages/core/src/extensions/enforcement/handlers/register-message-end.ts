@@ -1,0 +1,477 @@
+/**
+ * register-message-end - Conflict detection -> message analysis -> verification judge.
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { onEvent } from "../../../lib/events/event-types.js";
+import {
+  getUnresolvedConflicts,
+  detectConflicts,
+  formatConflictMessage,
+  resolveConflict,
+  pruneResolvedEvidence,
+  classifyConflictsWithLLM,
+  detectSemanticConflicts,
+} from "../../../lib/store/evidence-pool.js";
+import {
+  processConflicts as processConflictQAs,
+  formatConflictWhisper,
+  checkResponseForResolution,
+} from "../../../lib/store/conflict-qa.js";
+import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
+import { detectMalformedToolCalls } from "../detection/malformed.js";
+import { analyzeMessage } from "./message-analysis.js";
+import { sendEnforcementWhisper } from "../whisper.js";
+import { getState, ERROR_BURST_THRESHOLD, startJudge, completeJudge } from "../state.js";
+import { runVerificationJudge, formatVerificationNudge } from "../verification-judge.js";
+import {
+  collectTaskEvidence,
+  renderTaskEvidence,
+  summarizeTaskEvidence,
+} from "../task-evidence.js";
+import { isWakeRedeliveryInFlight } from "../../scheduling/timer/wake-retry.js";
+import { enforcementSignals } from "../signals.js";
+import { createLogger } from "../../../lib/core/logger.js";
+import { MESSAGE_END } from "../../../lib/core/event-names.js";
+import { getDeliverablesFilePath } from "../../../lib/config/braid-paths.js";
+import { mapInsertBounded } from "../../../lib/utils/bounded.js";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as crypto from "node:crypto";
+import * as path from "node:path";
+
+const log = createLogger("enforcement:message-end");
+
+export function registerMessageEndHandler(pi: ExtensionAPI): void {
+  onEvent(pi, MESSAGE_END, async (event: any, ctx: any) => {
+    if (!getState(ctx).enforcementActive) return;
+    const isBurst = getState(ctx).consecutiveErrorTurns >= ERROR_BURST_THRESHOLD;
+
+    // Part 1: Conflict detection
+    if (!isBurst) {
+      const newConflicts = detectConflicts(ctx);
+      if (newConflicts.length > 0) {
+        const msg = formatConflictMessage(newConflicts[0]);
+        sendEnforcementWhisper(pi, ctx, msg);
+        emitSignal(
+          ctx,
+          "conflict",
+          "detected",
+          newConflicts[0]?.for[0]?.confidence > 0.7 ? "warn" : "info",
+          false,
+          { conflictId: newConflicts[0]?.id },
+        );
+      }
+
+      const unresolved = getUnresolvedConflicts(ctx);
+      if (unresolved.length > 0) {
+        emitSignal(ctx, "conflict", "unresolved", "info", false, { count: unresolved.length });
+      }
+      if (unresolved.length > 0 && unresolved.length % 5 === 0) {
+        sendEnforcementWhisper(
+          pi,
+          ctx,
+          `[conflict] ${unresolved.length} unresolved source conflicts. ` +
+            `Consider resolving: memory_store content with conflict_verified tag.`,
+        );
+      }
+
+      // Non-blocking LLM re-classification: upgrade heuristic "implication"
+      // conflicts to "direct" when the triple-critic system detects a
+      // real contradiction. Runs in background -- does not await.
+      if (newConflicts.length > 0) {
+        classifyConflictsWithLLM(ctx, newConflicts).catch((e) => {
+          log.warn(
+            `[conflict] background LLM re-classification failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+      }
+
+      // Non-blocking semantic conflict detection: catch evidence pairs that
+      // the 30% token-overlap heuristic pre-filter missed (same topic,
+      // different wording). Limited to 10 LLM checks per turn.
+      detectSemanticConflicts(ctx).catch((e) => {
+        log.warn(
+          `[conflict] background semantic detection failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+
+      const newQAs = processConflictQAs(ctx);
+      for (const qa of newQAs) {
+        sendEnforcementWhisper(pi, ctx, formatConflictWhisper(qa));
+        // Bridge qa-xxx -> c-xxx ID space: store conflictId so resolveConflict() can find it
+        const cId = qa.conflictId || qa.id;
+        if (!getState(ctx).pendingConflictIds.includes(cId)) {
+          getState(ctx).pendingConflictIds.push(cId);
+          // ConflictDetectionTurn grows one entry per conflict id and
+          // was never pruned (pool-side conflicts ARE capped 20->10, so old
+          // ids here referenced evicted conflicts anyway). Bounded FIFO at 50
+          // — far above the ~10 live conflicts the pool keeps.
+          mapInsertBounded(getState(ctx).conflictDetectionTurn, cId, getState(ctx).currentTurn, 50);
+        }
+      }
+
+      if (event.message?.role === "assistant") {
+        const textContent = Array.isArray(event.message.content)
+          ? event.message.content
+              .filter((c: any) => c?.type === "text")
+              .map((c: any) => c?.text || "")
+              .join(" ")
+          : String(event.message.content ?? "");
+
+        if (textContent.length > 50 && getState(ctx).pendingConflictIds.length > 0) {
+          const verdict = await checkResponseForResolution(ctx, textContent);
+          if (verdict) {
+            for (const conflictId of getState(ctx).pendingConflictIds) {
+              resolveConflict(ctx, conflictId, verdict, "agent");
+              log.info(`[conflict] Resolved ${conflictId} (${verdict}) from agent response`);
+            }
+            getState(ctx).pendingConflictIds = [];
+          }
+        }
+
+        // Periodic evidence pool cleanup - prune evidence tied to resolved conflicts
+        if (getState(ctx).currentTurn % 5 === 0) {
+          const pruned = pruneResolvedEvidence(ctx);
+          if (pruned > 0) {
+            log.debug(`[evidence-pool] Pruned ${pruned} evidence entries from resolved conflicts`);
+          }
+        }
+
+        const currentTurn = getState(ctx).currentTurn;
+        for (const id of getState(ctx).pendingConflictIds) {
+          const detectedTurn = getState(ctx).conflictDetectionTurn.get(id) ?? 0;
+          if (currentTurn - detectedTurn >= 5) {
+            sendEnforcementWhisper(
+              pi,
+              ctx,
+              `[conflict] Conflict ${id} unresolved for ${currentTurn - detectedTurn} turns. ` +
+                `Consider resolving explicitly.`,
+            );
+          }
+        }
+      }
+    }
+
+    // Part 2: Message analysis + verification judge
+    if (event.message.role !== "assistant") return;
+
+    const textContent = event.message.content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => (c as { type: "text"; text: string }).text)
+      .join("\n");
+
+    const thinkingContent = event.message.content
+      .filter((c: any) => c.type === "thinking")
+      .map((c: any) => (c as { type: "thinking"; thinking: string }).thinking)
+      .join("\n");
+
+    const fullContent = thinkingContent
+      ? `## REASONING\n${thinkingContent}\n\n## RESPONSE\n${textContent}`
+      : textContent;
+
+    if (textContent.length < 100) return;
+
+    const analysisSignals = await analyzeMessage(textContent, thinkingContent, getState(ctx), ctx);
+    getState(ctx).lastUserMessage = "";
+    const signalEntries = analysisSignals as Record<
+      string,
+      { turn: number; text: string; acted: boolean }
+    >;
+    for (const [key, signal] of Object.entries(signalEntries)) {
+      if (signal?.text) {
+        (enforcementSignals as Record<string, { turn: number; text: string; acted: boolean }>)[
+          key
+        ] = signal;
+        if (key === "stability") {
+          emitSignal(ctx, "stability", "decline", "warn", false, {
+            overlap: signal.text.match(/overlap=([0-9.]+)/)?.[1] ?? 0,
+            reason: signal.text,
+          });
+        }
+      }
+    }
+
+    const turnState = getState(ctx).turnHistory.get(getState(ctx).currentTurn);
+    if (turnState) {
+      detectMalformedToolCalls(textContent, pi, ctx);
+
+      // When the agent calls verify_claim/conflict_qa and produces a structured
+      // markdown response (headings, lists, code blocks) but doesn't call
+      // finalize, suggest recording the phase.
+      const usedVerificationTools = turnState.actualTools.some((t: string) =>
+        ["verify_claim", "conflict_qa"].includes(t),
+      );
+      const calledFinalize = turnState.actualTools.includes("finalize");
+      const hasStructuredMarkdown = /^#{1,6}\s|^[*-]\s|^\d+\.\s|```/.test(textContent);
+
+      if (
+        usedVerificationTools &&
+        !calledFinalize &&
+        hasStructuredMarkdown &&
+        textContent.length > 200
+      ) {
+        const finalizeAfterVerifyCooldown = 10;
+        if (
+          getState(ctx).currentTurn - getState(ctx).lastFinalizeNudge >=
+          finalizeAfterVerifyCooldown
+        ) {
+          getState(ctx).lastFinalizeNudge = getState(ctx).currentTurn;
+          sendEnforcementWhisper(
+            pi,
+            ctx,
+            `**Research summary detected** after verify_claim/conflict_qa analysis.\n\n` +
+              `Consider calling \`finalize(completed=true, summary="...")\` to record this phase ` +
+              `before moving on. This preserves your findings across sessions and compaction.`,
+            false,
+            { triggerTurn: false },
+          );
+        }
+      }
+
+      // Finalize enforcement: text-only response after significant work
+      // When the agent responds with text only (no tool calls) after a series
+      // of edits/writes without calling finalize, suggest recording completion.
+      // This catches the pattern where the agent wraps up with a summary but
+      // forgets to call finalize, unlike the turn-end handler's per-turn nudge
+      // (which was suppressed by D-57 as a static instruction).
+      const isTextOnly = turnState.actualTools.length === 0;
+      if (isTextOnly && textContent.length > 200) {
+        let recentWorkTurns = 0;
+        let recentHasFinalize = false;
+        const currentT = getState(ctx).currentTurn;
+        // Look back up to 5 turns for significant work
+        for (let i = 1; i <= 5; i++) {
+          const prev = getState(ctx).turnHistory.get(currentT - i);
+          if (prev) {
+            if (prev.actualTools.includes("finalize")) {
+              recentHasFinalize = true;
+              break;
+            }
+            if (prev.actualTools.some((t: string) => ["edit", "write"].includes(t))) {
+              recentWorkTurns++;
+            }
+          }
+        }
+
+        if (recentWorkTurns >= 2 && !recentHasFinalize) {
+          const finalizeCooldown = 10;
+          if (currentT - getState(ctx).lastFinalizeNudge >= finalizeCooldown) {
+            getState(ctx).lastFinalizeNudge = currentT;
+            sendEnforcementWhisper(
+              pi,
+              ctx,
+              `**Work completed without finalize.** You made changes across ${recentWorkTurns} turns and responded with a summary, but did not call \`finalize()\`.\n\n` +
+                `Call \`finalize(completed=true, summary="...")\` to record this work ` +
+                `across sessions. Without finalize, this progress may be lost on ` +
+                `session shutdown.`,
+              false,
+              { triggerTurn: false },
+            );
+          }
+        }
+      }
+    }
+
+    if (getState(ctx).verificationJudgeRunning) return;
+
+    const currentTurn = getState(ctx).currentTurn;
+    const turnsSinceLastJudge = currentTurn - getState(ctx).lastVerificationJudgeTurn;
+    const timeSinceLastJudge = Date.now() - getState(ctx).lastJudgeTime;
+
+    // Judge triggers (first one wins):
+    // 1. Always judge on finalize - agent is declaring done
+    // 2. Judge after code changes with reasonable gap (5+ turns)
+    // 3. Periodic check every 15 turns regardless
+    const shouldJudge =
+      getState(ctx).pendingFinalize ||
+      (getState(ctx).hasCodeChanges && turnsSinceLastJudge >= 5 && timeSinceLastJudge > 30_000) ||
+      (turnsSinceLastJudge >= 15 && timeSinceLastJudge > 60_000);
+
+    // Skip the judge on wake-retry redelivery turns. A turn broken by a
+    // redelivery leaves this handler auditing the redelivered TAIL turn;
+    // judging it would treat a fragment as the whole task.
+    const isRedeliveryTurn = isWakeRedeliveryInFlight();
+    if (shouldJudge && isRedeliveryTurn) {
+      log.info(
+        "[verification-judge] skipping judge: wake-retry redelivery turn (redelivery in flight)",
+      );
+    }
+
+    if (shouldJudge && !isRedeliveryTurn) {
+      startJudge(getState(ctx));
+
+      const toolLog: string[] = [];
+      for (const [, turn] of getState(ctx).turnHistory) {
+        if (turn.actualTools.length > 0) {
+          const toolLine = `Turn ${turn.turnIndex}: [${turn.actualTools.join(", ")}]`;
+          // Include truncated tool output so the verification judge can see actual results
+          const outputLines = (turn.toolOutputs || []).slice(0, 8); // limit to 8 outputs per turn
+          toolLog.push(
+            toolLine +
+              (outputLines.length > 0 ? "\n" + outputLines.map((o) => `  -> ${o}`).join("\n") : ""),
+          );
+        }
+      }
+
+      // Resolve the project root ONCE and scope every git command to it —
+      // an unscoped git log falls back to the daemon's cwd, not the project.
+      const cwd = ctx.cwd ?? process.cwd();
+      let repoRoot = cwd;
+      let foundGit = false;
+      while (repoRoot !== path.dirname(repoRoot)) {
+        if (fs.existsSync(path.join(repoRoot, ".git"))) {
+          foundGit = true;
+          break;
+        }
+        repoRoot = path.dirname(repoRoot);
+      }
+
+      // Capture git history for the judge so it has verification evidence
+      // that survives across reloads and compactions (tool log is truncated).
+      let gitHistory: string | undefined;
+      try {
+        gitHistory =
+          execSync("git log --oneline -5 --no-merges", {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            timeout: 3000,
+            stdio: ["ignore", "pipe", "pipe"],
+          }).trim() || undefined;
+      } catch {
+        // Not a git repo or git unavailable — judge will work without it
+      }
+
+      // Disk-check deliverables so the judge has ground truth that survives
+      // tool-log truncation / compaction. Stat the current working tree (git-changed
+      // files) directly; the finalize tool also persists a project-scoped
+      // manifest under the braid home (a global shared file would pollute
+      // unrelated projects).
+      let deliverables: { path: string; exists: boolean; sha256Match?: boolean }[] | undefined;
+      try {
+        const checks: { path: string; exists: boolean; sha256Match?: boolean }[] = [];
+        // 1) current working-tree changes (most direct ground truth)
+        let changed: string[] = [];
+        try {
+          const tracked = execSync("git diff --name-only HEAD", {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            timeout: 5000,
+            stdio: ["ignore", "pipe", "pipe"],
+          })
+            .split("\n")
+            .filter(Boolean);
+          const untracked = execSync("git ls-files --others --exclude-standard", {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            timeout: 5000,
+            stdio: ["ignore", "pipe", "pipe"],
+          })
+            .split("\n")
+            .filter(Boolean);
+          changed = [...new Set([...tracked, ...untracked])];
+        } catch {
+          /* not a git repo */
+        }
+        for (const f of changed.slice(0, 200)) {
+          const abs = path.join(repoRoot, f);
+          const exists = fs.existsSync(abs);
+          // No baseline sha256 for raw working-tree checks (nothing to compare
+          // against) — sha256Match stays undefined. This used
+          // to hardcode `sha256Match = true` inside a try that could never
+          // throw, which reported a fabricated "match" the judge trusted.
+          checks.push({ path: f, exists });
+        }
+        // 2) persisted manifest entries (intent + recorded sha256). Project-scoped
+        //    read only — never the global home-dir file, so this project's checks
+        //    cannot pull other projects' entries. Entries are further filtered by
+        //    their recorded session (repoRoot) as defense in depth.
+        const dPath = getDeliverablesFilePath(repoRoot);
+        if (foundGit && fs.existsSync(dPath)) {
+          const lines = fs.readFileSync(dPath, "utf-8").split("\n").filter(Boolean);
+          for (const line of lines) {
+            try {
+              const rec = JSON.parse(line);
+              if (rec.session !== repoRoot) continue;
+              for (const f of rec.files || []) {
+                const abs = path.join(repoRoot, f.path);
+                const exists = fs.existsSync(abs);
+                let sha256Match: boolean | undefined;
+                if (exists && f.sha256) {
+                  try {
+                    sha256Match =
+                      crypto.createHash("sha256").update(fs.readFileSync(abs)).digest("hex") ===
+                      f.sha256;
+                  } catch {
+                    sha256Match = undefined;
+                  }
+                }
+                checks.push({ path: f.path, exists, sha256Match });
+              }
+            } catch {
+              /* skip malformed line */
+            }
+          }
+        }
+        if (checks.length > 0) deliverables = checks;
+      } catch {
+        /* best-effort */
+      }
+
+      const judgeCtx: any = {
+        userRequest: getState(ctx).originalRequest || getState(ctx).lastUserMessage || "",
+        toolsUsed: Array.from(getState(ctx).uniqueToolsUsed),
+        toolLog,
+        hasCodeChanges: getState(ctx).hasCodeChanges,
+        gitHistory,
+        deliverables,
+        lastResponse: fullContent,
+        thinking: thinkingContent,
+      };
+
+      // Rebuild evidence since the task's last user message from the
+      // session store. The turnHistory log above only records at
+      // turn_end and is scoped to enforcement state, so a turn broken by a
+      // wake-retry redelivery leaves it with only the tail turn. The session
+      // store survives turn breaks (task-evidence.ts); fall back silently to
+      // toolLog-only when the store is unavailable (stale ctx).
+      const taskEvidence = collectTaskEvidence(ctx, { cap: false });
+      if (taskEvidence) {
+        // Over the cap: older chunks are compacted by parallel LLM
+        // sub-summaries (the newest chunk stays raw) so the judge keeps
+        // full-log coverage at a bounded prompt cost. Any sub-call
+        // failure returns null here and the legacy drop-oldest render
+        // below takes over — the judge never blocks on chunking.
+        judgeCtx.taskEvidence =
+          (await summarizeTaskEvidence(ctx, taskEvidence, {
+            ...(ctx.signal ? { signal: ctx.signal } : {}),
+          })) ?? renderTaskEvidence(taskEvidence);
+      }
+
+      const result = await runVerificationJudge(ctx, judgeCtx, {
+        timeoutMs: 120_000,
+        // Thread ctx.signal so ESC / session shutdown aborts the
+        // judge cleanly. The MESSAGE_END handler runs while the
+        // session is still active (subsequent assistant messages
+        // may follow, or the agent may finalize); without this the
+        // judge runs to its 30s timeout even after the user cancels.
+        // ctx.signal is undefined when the agent is idle, in which
+        // case the 30s timeout is the only abort path - which is
+        // the right behavior for a background audit.
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      });
+
+      getState(ctx).pendingFinalize = false;
+      completeJudge(getState(ctx), getState(ctx).currentTurn);
+
+      if (result) {
+        if (result.verdict === "fail" || result.verdict === "warn") {
+          sendEnforcementWhisper(pi, ctx, formatVerificationNudge(result));
+          if (result.verdict === "fail") {
+            getState(ctx).validationFailures++;
+          }
+        }
+      }
+    }
+  });
+}

@@ -1,0 +1,35 @@
+# Why this file exists: prettier does not honour a nested package's
+# .prettierignore when it is invoked from the repo root (which is how the CI
+# quality gate runs: `npx prettier --check .`). Without this file the root
+# gate checked files that packages/core exempts in its own gate
+# (`cd packages/core && npm run format:check`), so the two gates disagreed
+# and CI showed red on files the package gate considers out of scope.
+#
+# Policy: this ignore mirrors packages/core/.prettierignore exactly — its
+# core-owned .js/.mjs exemption, its artifact directories, and its entry for
+# the generated braid.* schema — and nothing more. Do not widen it into a
+# blanket *.js/*.mjs ignore: .js/.mjs files outside packages/core
+# (packages/providers, packages/telegram, packages/contrib) are
+# prettier-clean and stay checked by the root gate.
+
+# Core-owned .js/.mjs: mirrors the package-level exemption in
+# packages/core/.prettierignore so both gates treat these paths the same.
+packages/core/**/*.js
+packages/core/**/*.mjs
+
+# Build, coverage, and scratch artifacts (same set as packages/core).
+node_modules/
+dist/
+coverage/
+.tmp/
+.eslintcache
+
+# Deck HTML is shipped byte-for-byte from the standalone deck repo
+# (pi-braid-present); prettier's HTML formatter must not rewrite it.
+presentation/*.html
+
+# Generated braid.* schema (packages/core/.prettierignore carries the same
+# entry): the generator's output is the canonical form and
+# check-braid-schema.mjs byte-compares against it, so prettier must not
+# rewrite the artifact.
+packages/core/schema/braid.schema.json

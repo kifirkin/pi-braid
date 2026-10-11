@@ -1,0 +1,60 @@
+{
+  "name": "pi-braid-telegram",
+  "version": "0.1.4-main.4",
+  "description": "Bidirectional Telegram channel for pi-braid: telegram_send tool (outbound) + inbound long-poll injector (backward channel)",
+  "type": "module",
+  "files": [
+    "dist/**/*.js",
+    "src/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "bot",
+    "extension",
+    "telegram",
+    "channel",
+    "messaging"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "prepublishOnly": "npm run typecheck && npm run build",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node test/run-tests.mjs",
+    "check:doc-index": "node ../../packages/core/scripts/check-doc-index.mjs",
+    "publish:local": "node ../../packages/core/scripts/publish-local.mjs telegram"
+  },
+  "devDependencies": {
+    "typescript": "6.0.2",
+    "typebox": "1.1.38"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "author": "kifirkin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kifirkin/pi-braid.git",
+    "directory": "packages/telegram"
+  },
+  "bugs": {
+    "url": "https://github.com/kifirkin/pi-braid/issues"
+  },
+  "homepage": "https://github.com/kifirkin/pi-braid/tree/main/packages/telegram",
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

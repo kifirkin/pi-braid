@@ -1,0 +1,79 @@
+{
+  "name": "pi-braid-contrib",
+  "version": "0.1.0-main.1",
+  "description": "Standalone contrib extensions for pi — browser, codebase, diff, healthcheck, network-monitor, observatory, path-security, rate-limiter, repl, sleep, system-monitor, tool-config",
+  "type": "module",
+  "files": [
+    "index.ts",
+    "logger.ts",
+    "browser/",
+    "codebase/",
+    "diff/",
+    "healthcheck/",
+    "network-monitor/",
+    "!network-monitor/test.ts",
+    "observatory/",
+    "path-security/",
+    "rate-limiter/",
+    "repl/",
+    "sleep/",
+    "system-monitor/",
+    "tool-config/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types network-monitor/test.ts"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-coding-agent",
+    "tools",
+    "extensions"
+  ],
+  "dependencies": {
+    "acorn": "^8.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "author": "kifirkin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kifirkin/pi-braid.git",
+    "directory": "packages/contrib"
+  },
+  "bugs": {
+    "url": "https://github.com/kifirkin/pi-braid/issues"
+  },
+  "homepage": "https://github.com/kifirkin/pi-braid/tree/main/packages/contrib",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./browser/index.ts",
+      "./codebase/index.ts",
+      "./diff/index.ts",
+      "./healthcheck/index.ts",
+      "./network-monitor/index.ts",
+      "./observatory/index.ts",
+      "./path-security/index.ts",
+      "./rate-limiter/index.ts",
+      "./repl/index.ts",
+      "./sleep/index.ts",
+      "./system-monitor/index.ts",
+      "./tool-config/index.ts"
+    ]
+  }
+}

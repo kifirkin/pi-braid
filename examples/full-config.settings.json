@@ -1,0 +1,77 @@
+{
+  "_note": "Full braid.* settings example for ~/.pi/agent/settings.json (or <project>/.pi/settings.json). Keys verified against the source; most users need only a few of them. Reference: packages/core/docs/SETUP.md § Configuration reference. Provider secrets live in the environment — see .env.example.",
+  "packages": [
+    "file:~/pi-braid/packages/core",
+    "file:~/pi-braid/packages/skills",
+    "file:~/pi-braid/packages/contrib",
+    "file:~/pi-braid/packages/providers",
+    "file:~/pi-braid/packages/telegram"
+  ],
+  "braid": {
+    "modules": {
+      "error-tracking": true,
+      "health-maintenance": true
+    },
+    "suppressNudges": false,
+    "timezone": "Europe/Moscow",
+    "enforcement": {
+      "nudgeConfigs": {
+        "validation": { "baseCooldownMs": 30000, "deduplicate": false },
+        "malformed": { "escalateAfter": 2 }
+      }
+    },
+    "memory": {
+      "writeGate": {
+        "enabled": true,
+        "cooldownMs": 1200000,
+        "mode": "enforce"
+      }
+    },
+    "timers": { "maxWakeAttempts": 3 },
+    "context": {
+      "contextLimitTokens": 262000,
+      "toolResultSizeCap": { "enabled": true, "maxChars": 262144 },
+      "staleToolResultOffload": {
+        "enabled": false,
+        "minChars": 4000,
+        "stalenessTurns": 40,
+        "keepRecentTurns": 20,
+        "maxOffloadCharsPerRun": 65536
+      },
+      "contextEmergencyOffload": {
+        "enabled": true,
+        "minChars": 262144,
+        "maxCharsPerRun": 1048576,
+        "keepRecentTurns": 1
+      }
+    },
+    "telegram": {
+      "sendMaxChars": 4096,
+      "notifyMaxChars": 1200
+    },
+    "contrib": {
+      "browser": true,
+      "browserAdvanced": false,
+      "codebase": true,
+      "diff": true,
+      "healthcheck": true,
+      "networkMonitor": {
+        "profileName": "v2RayTun",
+        "autoReconnect": true
+      },
+      "observatory": { "record": false },
+      "pathSecurity": { "block": false },
+      "rate-limiter": {
+        "rpm": 60,
+        "tpm": 1000000,
+        "providers": {
+          "groq": { "rpm": 20 }
+        }
+      },
+      "repl": true,
+      "sleep": true,
+      "systemMonitor": true,
+      "toolConfig": true
+    }
+  }
+}

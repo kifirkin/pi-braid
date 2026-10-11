@@ -1,0 +1,499 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "braid settings (settings.json → braid.*)",
+  "description": "Derived from the braid.* readers by packages/core/scripts/gen-braid-schema.mjs; regenerate rather than edit by hand.",
+  "type": "object",
+  "properties": {
+    "braid": {
+      "description": "Braid settings under the top-level braid key.",
+      "properties": {
+        "context": {
+          "properties": {
+            "contextAutoCompact": {
+              "properties": {
+                "armPercent": {
+                  "default": 60,
+                  "description": "Usage percent at or above which an observation counts toward arming.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:885"
+                },
+                "confirmTicks": {
+                  "default": 2,
+                  "description": "Consecutive above-threshold observations required before arming.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:885"
+                },
+                "enabled": {
+                  "default": true,
+                  "description": "Usage-driven auto-arm of a deterministic slide compaction.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:885"
+                }
+              },
+              "type": "object"
+            },
+            "contextEmergencyOffload": {
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "description": "On a 413, shrink the largest tool results and retry once.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:716"
+                },
+                "keepRecentTurns": {
+                  "default": 1,
+                  "description": "Keep the latest tool result visible in an emergency.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:716"
+                },
+                "maxCharsPerRun": {
+                  "default": 1048576,
+                  "description": "Per-run offload budget.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:716"
+                },
+                "minChars": {
+                  "default": 262144,
+                  "description": "Size floor (chars) for emergency eligibility.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:716"
+                }
+              },
+              "type": "object"
+            },
+            "contextLimitTokens": {
+              "description": "Effective window braid computes with (unset falls through to the provider window).",
+              "type": "number",
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:1167"
+            },
+            "presendGuard": {
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "description": "Pre-send shrink guard against a model's context window.",
+                  "type": "boolean",
+                  "x-source": "packages/providers/presend-guard.ts:64"
+                }
+              },
+              "type": "object"
+            },
+            "staleToolResultOffload": {
+              "properties": {
+                "enabled": {
+                  "default": false,
+                  "description": "Age/size offload of stale large tool results; OFF unless opted in.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:610"
+                },
+                "keepRecentTurns": {
+                  "default": 20,
+                  "description": "Never touch the last N tool results.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:610"
+                },
+                "maxOffloadCharsPerRun": {
+                  "default": 65536,
+                  "description": "Per-LLM-call offload budget.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:610"
+                },
+                "minChars": {
+                  "default": 4000,
+                  "description": "Minimum result size (chars) to be eligible.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:610"
+                },
+                "stalenessTurns": {
+                  "default": 40,
+                  "description": "Minimum age (tool results since) to be eligible.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:610"
+                }
+              },
+              "type": "object"
+            },
+            "toolResultSizeCap": {
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "description": "Capture-time cap: oversized tool results flushed to disk + stubbed.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:792"
+                },
+                "maxChars": {
+                  "default": 262144,
+                  "description": "Size above which a captured tool result is flushed + stubbed.",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:792"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "contrib": {
+          "patternProperties": {
+            "^.+$": {
+              "properties": {
+                "enabled": {
+                  "description": "Per-tool enable list for one extension (all tools when unset).",
+                  "type": "array",
+                  "x-source": "packages/core/src/lib/config/per-tool-settings.ts:145"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "description": "Extension toggles and per-extension config.",
+          "properties": {
+            "_global": {
+              "properties": {
+                "enabled": {
+                  "description": "Cross-extension tool enable list (all tools when unset).",
+                  "type": "array",
+                  "x-source": "packages/core/src/lib/config/per-tool-settings.ts:189"
+                }
+              },
+              "type": "object"
+            },
+            "browserAdvanced": {
+              "default": false,
+              "description": "Opt in to the heavy browser tools (off by default).",
+              "type": "boolean",
+              "x-source": "packages/contrib/browser/index.ts:75"
+            },
+            "networkMonitor": {
+              "default": true,
+              "description": "Tunnel watch/reconnect probe; false disables, an object tunes it.",
+              "properties": {
+                "autoReconnect": {
+                  "default": true,
+                  "description": "Reconnect automatically when the tunnel is down.",
+                  "type": "boolean",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "autoWatch": {
+                  "default": true,
+                  "description": "Watch the tunnel state without an explicit trigger.",
+                  "type": "boolean",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "connectTimeoutMs": {
+                  "default": 30000,
+                  "description": "Timeout for the reconnect attempt.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "cooldownMs": {
+                  "default": 60000,
+                  "description": "Cooldown between reconnect actions.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "curlTimeoutSecs": {
+                  "default": 6,
+                  "description": "Per-probe curl timeout.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "disconnectDelayMs": {
+                  "default": 2000,
+                  "description": "Delay between detecting a drop and declaring it.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "logFile": {
+                  "default": "",
+                  "description": "Append-only log file for watcher lines (empty = off).",
+                  "type": "string",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "maxAttemptsPerOutage": {
+                  "default": 3,
+                  "description": "Reconnect attempts before an outage escalates.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "pollIntervalMs": {
+                  "default": 2000,
+                  "description": "Tunnel-state poll interval.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "probeIntervalMs": {
+                  "default": 90000,
+                  "description": "Background probe interval.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "profileName": {
+                  "default": "v2RayTun",
+                  "description": "Tunnel profile name the probe watches.",
+                  "type": "string",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "reachabilityUrl": {
+                  "default": "https://api.telegram.org",
+                  "description": "URL the probe fetches to decide reachability.",
+                  "type": "string",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                },
+                "reconnectCooldownMs": {
+                  "default": 60000,
+                  "description": "Cooldown after a successful reconnect.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/index.ts:141"
+                }
+              },
+              "type": [
+                "boolean",
+                "object"
+              ],
+              "x-source": "packages/contrib/network-monitor/index.ts:141"
+            },
+            "observatory": {
+              "description": "Observatory extension toggle and config.",
+              "properties": {
+                "record": {
+                  "default": false,
+                  "description": "Persist observatory events to disk (opt-in).",
+                  "type": "boolean",
+                  "x-source": "packages/contrib/observatory/index.ts:70"
+                }
+              },
+              "type": [
+                "boolean",
+                "object"
+              ],
+              "x-source": "packages/contrib/observatory/index.ts:67"
+            },
+            "pathSecurity": {
+              "default": true,
+              "description": "Path guard; false disables the extension, an object tunes it.",
+              "properties": {
+                "block": {
+                  "default": false,
+                  "description": "Hard-block dangerous paths instead of warn-and-allow.",
+                  "type": "boolean",
+                  "x-source": "packages/contrib/path-security/index.ts:87"
+                }
+              },
+              "type": [
+                "boolean",
+                "object"
+              ],
+              "x-source": "packages/contrib/path-security/index.ts:79"
+            },
+            "rate-limiter": {
+              "description": "Deprecated alias for braid.contrib.rateLimiter (removed after this release).",
+              "type": "object",
+              "x-source": "packages/contrib/rate-limiter/settings.ts:61"
+            },
+            "rateLimiter": {
+              "description": "LLM request/token ceilings. Canonical camelCase key.",
+              "properties": {
+                "rpm": {
+                  "default": 30,
+                  "description": "Global requests-per-minute ceiling.",
+                  "type": "number",
+                  "x-source": "packages/contrib/rate-limiter/settings.ts:34"
+                },
+                "tpm": {
+                  "default": 500000,
+                  "description": "Global tokens-per-minute ceiling.",
+                  "type": "number",
+                  "x-source": "packages/contrib/rate-limiter/settings.ts:34"
+                }
+              },
+              "type": "object",
+              "x-source": "packages/contrib/rate-limiter/settings.ts:59"
+            }
+          },
+          "type": "object",
+          "x-source": "packages/contrib/index.ts:98"
+        },
+        "enforcement": {
+          "properties": {
+            "nudgeConfigs": {
+              "default": {},
+              "description": "Per-nudge-type overrides, validated by the NudgeManager.",
+              "type": "object",
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:356"
+            },
+            "overCorrectionGate": {
+              "properties": {
+                "mode": {
+                  "default": "off",
+                  "description": "Accusation-triggered irreversible-action gate: \"off\" (inert, default), \"shadow\" (whisper only), \"on\" (whisper + block).",
+                  "enum": [
+                    "off",
+                    "shadow",
+                    "on"
+                  ],
+                  "type": "string",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:415"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "memory": {
+          "properties": {
+            "writeGate": {
+              "properties": {
+                "cooldownMs": {
+                  "default": 1200000,
+                  "description": "Minimum interval between gated heartbeat writes (anti-thrash).",
+                  "type": "number",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:429"
+                },
+                "enabled": {
+                  "default": true,
+                  "description": "Review-before-write quality gate on durable episode writes.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:429"
+                },
+                "mode": {
+                  "default": "enforce",
+                  "description": "Apply gate decisions (\"enforce\") or log them and write anyway (\"warn\").",
+                  "enum": [
+                    "enforce",
+                    "warn"
+                  ],
+                  "type": "string",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:429"
+                },
+                "sites": {
+                  "default": {},
+                  "description": "Per-writer opt-out; unknown site keys are dropped (all sites gated).",
+                  "type": "object",
+                  "x-source": "packages/core/src/lib/memory/write-quality.ts:84"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "modules": {
+          "description": "Per-extension-ref enable/disable overlay (manifest defaults when unset).",
+          "type": "object",
+          "x-source": "packages/core/src/loader/loader.ts:199"
+        },
+        "providers": {
+          "properties": {
+            "fallback": {
+              "description": "Legacy fallback provider/model on a ring death; inert when routes are set.",
+              "type": "object",
+              "x-source": "packages/providers/ring-lifecycle.ts:548"
+            },
+            "lastResort": {
+              "default": {},
+              "description": "Legacy source→leg provider map for dead rings; inert when routes are set.",
+              "type": "object",
+              "x-source": "packages/providers/ring-lifecycle.ts:550"
+            },
+            "routes": {
+              "description": "Ordered provider route table; the only registration-order source when set.",
+              "type": "array",
+              "x-source": "packages/providers/ring-lifecycle.ts:543"
+            }
+          },
+          "type": "object"
+        },
+        "session": {
+          "properties": {
+            "terminalBreaker": {
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "description": "Terminal-error wake breaker; false disables the gate entirely.",
+                  "type": "boolean",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:997"
+                },
+                "threshold": {
+                  "default": 3,
+                  "description": "Terminal-class errors before timer wakes stop starting turns.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:997"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "suppressNudges": {
+          "default": false,
+          "description": "Disable all braid cognitive nudges (enforcement, heartbeat, feedback).",
+          "type": "boolean",
+          "x-source": "packages/core/src/lib/config/braid-settings.ts:333"
+        },
+        "telegram": {
+          "properties": {
+            "notifyMaxChars": {
+              "default": 1200,
+              "description": "Craft target + guard for turn-end notifications.",
+              "type": "number",
+              "x-source": "packages/telegram/src/lib/telegram-settings.ts:73"
+            },
+            "pauseStateFile": {
+              "description": "Override the Telegram pause-state file location (built-in path when unset).",
+              "type": "string",
+              "x-source": "packages/telegram/src/lib/pause-control.ts:81"
+            },
+            "sendMaxChars": {
+              "default": 4096,
+              "description": "Default cap for telegram_send plain text.",
+              "type": "number",
+              "x-source": "packages/telegram/src/lib/telegram-settings.ts:72"
+            }
+          },
+          "type": "object"
+        },
+        "timers": {
+          "properties": {
+            "maxWakeAttempts": {
+              "default": 3,
+              "description": "Redelivery bound for a failed timer wake fire before drop.",
+              "type": "integer",
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:935"
+            },
+            "wakeAlert": {
+              "properties": {
+                "mode": {
+                  "default": "on",
+                  "description": "Feed timer wake-stall facts to the watchdog; \"off\" disables the feed.",
+                  "enum": [
+                    "on",
+                    "off"
+                  ],
+                  "type": "string",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1071"
+                },
+                "outcomeTimeouts": {
+                  "default": 2,
+                  "description": "Outcome timeouts for one fire before the early stall page.",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1071"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "timezone": {
+          "default": "Europe/Moscow",
+          "description": "Owner time zone (IANA) for local-time rendering.",
+          "type": "string",
+          "x-source": "packages/core/src/lib/config/braid-settings.ts:481"
+        }
+      },
+      "type": "object"
+    }
+  }
+}
