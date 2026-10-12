@@ -15,36 +15,57 @@
  * lives in that package's own mirror with a read fallback. Screenshots,
  * observatory recordings and the browser scratch profile were never
  * read back by braid, so they simply start in the new root.
+ *
+ * Refusal contract: `braidDir()` returns null when BRAID_HOME is unset and
+ * `os.homedir()` does not resolve an absolute path (a relative or blank HOME
+ * would otherwise put the whole tree beside the cwd). Every derived accessor
+ * returns null with it; callers refuse instead of writing somewhere unowned
+ * and report the refusal through their own logger.
  */
 
 import * as os from "node:os";
 import * as path from "node:path";
 
-/** Braid home root; BRAID_HOME wins. Read per call, like core's braidDir(). */
-export function braidDir(): string {
+/**
+ * Braid home root; BRAID_HOME wins. Read per call, like core's braidDir().
+ * Null when no absolute root can be derived: see the refusal contract above.
+ */
+export function braidDir(): string | null {
   const override = process.env.BRAID_HOME;
-  return override && override.trim()
-    ? path.resolve(override)
-    : path.join(os.homedir(), ".pi", "agent", "braid");
+  if (override && override.trim()) return path.resolve(override);
+  let home: string;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  if (!home || !path.isAbsolute(home)) return null;
+  return path.join(home, ".pi", "agent", "braid");
 }
 
 /** Observatory session recordings (`<session>.jsonl`, one file per session). */
-export function observatorySessionsDir(): string {
-  return path.join(braidDir(), "observatory", "sessions");
+export function observatorySessionsDir(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "observatory", "sessions");
 }
 
 /** Browser screenshots (disposable captures referenced by tool results). */
-export function browserScreenshotsDir(): string {
-  return path.join(braidDir(), "browser", "screenshots");
+export function browserScreenshotsDir(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "browser", "screenshots");
 }
 
 /** Chrome profile scratch for the scraping browser (disposable; no session
  *  data is synced into it and braid never reads it back). */
-export function browserProfileDir(): string {
-  return path.join(braidDir(), "browser", "profile-scratch");
+export function browserProfileDir(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "browser", "profile-scratch");
 }
 
 /** Cross-process reconnect lock for the network monitor. */
-export function reconnectLockFile(): string {
-  return path.join(braidDir(), "network-monitor", "reconnect.lock");
+export function reconnectLockFile(): string | null {
+  const root = braidDir();
+  return root === null
+    ? null
+    : path.join(root, "network-monitor", "reconnect.lock");
 }

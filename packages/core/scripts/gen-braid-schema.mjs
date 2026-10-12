@@ -537,7 +537,7 @@ const OVERLAY_ROWS = [
     description: "Override the Telegram pause-state file location (built-in path when unset).",
     read: {
       file: "packages/telegram/src/lib/pause-control.ts",
-      line: 78,
+      line: 82,
       evidence: "parsed?.braid?.telegram?.pauseStateFile",
     },
   },

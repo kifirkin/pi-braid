@@ -45,7 +45,7 @@ all 12 are listed individually in `package.json` → `pi.extensions` for native 
 ## Code layout notes
 
 - **Settings helper:** `packages/core/src/lib/config/per-tool-settings.ts` reads/writes `~/.pi/agent/settings.json` under the `braid.contrib.*` namespace. New extensions that need per-extension config should use this helper rather than rolling their own file IO.
-- **Path constants:** `state-paths.ts` is this package's own mirror of core's `braidDir()` and roots every contrib-owned state dir under the braid home (`BRAID_HOME` relocates the whole tree): observatory sessions, browser screenshots and scratch profile, the network-monitor reconnect lock. User-wide config is in `~/.pi/agent/settings.json` (use the core helper); the healthcheck report dir still comes from core's `HEALTHCHECK_DIR`.
+- **Path constants:** `state-paths.ts` is this package's own mirror of core's `braidDir()` and roots every contrib-owned state dir under the braid home (`BRAID_HOME` relocates the whole tree): observatory sessions, browser screenshots and scratch profile, the network-monitor reconnect lock. One exception: the healthcheck report dir (and the filesystem probes beside it) comes from core's `HEALTHCHECK_DIR`, a module-load constant that does **not** follow `BRAID_HOME`; a pinned test or CI run writes those files into the live tree. User-wide config is in `~/.pi/agent/settings.json` (use the core helper).
 
 ## Per-extension settings reference
 

@@ -95,9 +95,20 @@ interface ObservatoryEvent {
   [key: string]: unknown;
 }
 
+let warnedNoRoot = false;
+
 function appendEvent(event: ObservatoryEvent, maxEvents: number): void {
   try {
     const sessionsDir = observatorySessionsDir();
+    if (sessionsDir === null) {
+      if (!warnedNoRoot) {
+        warnedNoRoot = true;
+        log.warn(
+          "[observatory] state root is underivable (BRAID_HOME unset and no absolute home); events are not recorded",
+        );
+      }
+      return;
+    }
     fs.mkdirSync(sessionsDir, { recursive: true });
     const sessionKey = event.sessionId || "default";
     const file = path.join(
@@ -151,6 +162,7 @@ function resolveSessionId(ctx: ExtensionContext): string {
 function tailEvents(n: number): ObservatoryEvent[] {
   const out: ObservatoryEvent[] = [];
   const sessionsDir = observatorySessionsDir();
+  if (sessionsDir === null) return out;
   try {
     if (!fs.existsSync(sessionsDir)) return out;
     const files = fs
@@ -233,7 +245,7 @@ export default function observatoryExtension(pi: ExtensionAPI): void {
     });
 
     log.info(
-      `Observatory recording enabled. Events written to ${observatorySessionsDir()} (cap ${settings.maxEvents}/session).`,
+      `Observatory recording enabled. Events written to ${observatorySessionsDir() ?? "(state root underivable)"} (cap ${settings.maxEvents}/session).`,
     );
   } else {
     log.info(
@@ -271,7 +283,7 @@ export default function observatoryExtension(pi: ExtensionAPI): void {
           // some extensions may not expose this; ignore
         }
         const sessionsDir = settings.record
-          ? observatorySessionsDir()
+          ? (observatorySessionsDir() ?? "(state root underivable)")
           : "(recording disabled)";
         const text =
           `📊 Observatory Status\n` +

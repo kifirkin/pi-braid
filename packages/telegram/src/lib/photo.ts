@@ -15,7 +15,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { defaultMediaDir } from "./state-paths.js";
+import { defaultMediaDir, warnUnderivableRoot } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -97,15 +97,18 @@ export async function materializePhoto(opts: {
   baseUrl?: string;
   mediaDir?: string;
 }): Promise<MaterializePhotoResult> {
-  const {
-    token,
-    updateId,
-    photo,
-    fetchFn,
-    baseUrl,
-    mediaDir = defaultMediaDir(),
-  } = opts;
+  const { token, updateId, photo, fetchFn, baseUrl } = opts;
   const fileId = photo.file_id;
+  const mediaDir = opts.mediaDir ?? defaultMediaDir();
+  if (mediaDir === null) {
+    warnUnderivableRoot("photo download refused");
+    return {
+      ok: false,
+      fileId,
+      error:
+        "braid media directory is underivable (BRAID_HOME unset and no absolute home); photo not saved",
+    };
+  }
 
   const fileInfo = await getFile(token, fileId, { fetch: fetchFn, baseUrl });
   const filePathOnTelegram = fileInfo.ok ? fileInfo.file?.file_path : undefined;

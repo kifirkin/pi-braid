@@ -13,7 +13,7 @@
  */
 
 import { getUpdates, type TelegramFetch } from "./telegram-client.js";
-import { defaultStateFilePath } from "./state-paths.js";
+import { defaultStateFilePath, warnUnderivableRoot } from "./state-paths.js";
 import {
   loadState,
   saveState,
@@ -108,12 +108,24 @@ export async function fetchInbox(
   const {
     token,
     allowedUsers,
-    stateFile = defaultStateFilePath(),
     fetchFn = globalThis.fetch as TelegramFetch,
     mediaDir,
     timeout = 30,
     log = () => {},
   } = options;
+  const stateFile = options.stateFile ?? defaultStateFilePath();
+  if (stateFile === null) {
+    warnUnderivableRoot("telegram_inbox refused");
+    return {
+      ok: false,
+      error:
+        "braid telegram state file is underivable (BRAID_HOME unset and no absolute home); refusing to fetch without offset persistence",
+      messages: [],
+      fetched: 0,
+      rejected: 0,
+      offset: 0,
+    };
+  }
 
   // 1. Load the persisted offset so we don't re-fetch confirmed messages.
   const state: PollerState = await loadState(stateFile);

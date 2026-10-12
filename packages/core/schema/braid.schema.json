@@ -443,7 +443,7 @@
             "pauseStateFile": {
               "description": "Override the Telegram pause-state file location (built-in path when unset).",
               "type": "string",
-              "x-source": "packages/telegram/src/lib/pause-control.ts:78"
+              "x-source": "packages/telegram/src/lib/pause-control.ts:82"
             },
             "sendMaxChars": {
               "default": 4096,

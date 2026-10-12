@@ -4,11 +4,14 @@
  * pause state) stay read-compatible with their pre-move location.
  *
  * The containment case is the runtime half of the write-scope evidence: with
- * BRAID_HOME pinned to one temp tree and cwd set to another, a real inbound
+ * BRAID_HOME pinned to one temp tree and the process chdir'd into another
+ * (restored in a finally and in the file-level after hook), a real inbound
  * voice download (fake fetch, no network) must land in the pinned tree and
  * leave the cwd tree byte-for-byte unchanged. The process HOME is pinned to a
  * third tree before the modules load, so the legacy-location assertions can
- * never touch the live tree.
+ * never touch the live tree. The hostile-HOME case runs the same writers in a
+ * child whose HOME is "", "." or a relative path: every default must refuse
+ * (null) and the throwaway cwd must gain nothing.
  */
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
@@ -22,13 +25,17 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { BOT_TOKEN, jsonResponse, makeFakeFetch } from "./fixtures.mjs";
 
 const REAL_HOME = process.env.HOME;
 const REAL_BRAID_HOME = process.env.BRAID_HOME;
+const REAL_CWD = process.cwd();
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 let pin;
 let projectDir;
@@ -59,6 +66,7 @@ before(async () => {
 });
 
 after(() => {
+  process.chdir(REAL_CWD);
   if (REAL_HOME === undefined) delete process.env.HOME;
   else process.env.HOME = REAL_HOME;
   if (REAL_BRAID_HOME === undefined) delete process.env.BRAID_HOME;
@@ -135,34 +143,43 @@ test("an inbound voice download writes into the pin and never the cwd", async ()
     throw new Error(`unexpected url: ${url}`);
   });
   const updateId = 918273645;
+  // The download must run with the throwaway project AS the process cwd,
+  // otherwise the containment assertions below watch a directory no writer
+  // can reach. Restored even when an assertion throws.
+  process.chdir(projectDir);
   const cwdTree = treeOf(projectDir);
   const cwdMtime = statSync(projectDir).mtimeMs;
 
-  const result = await voice.materializeVoice({
-    token: BOT_TOKEN,
-    updateId,
-    voice: { file_id: "v1" },
-    fetchFn,
-  });
+  let result;
+  try {
+    result = await voice.materializeVoice({
+      token: BOT_TOKEN,
+      updateId,
+      voice: { file_id: "v1" },
+      fetchFn,
+    });
 
-  assert.equal(result.ok, true, result.error);
-  assert.equal(
-    result.filePath,
-    join(pin, "telegram", "media", `${updateId}.ogg`),
-  );
-  assert.deepEqual(
-    new Uint8Array(readFileSync(result.filePath)),
-    new Uint8Array(bytes),
-  );
-  // Containment: the cwd tree is untouched (names + mtimes).
-  assert.deepEqual(treeOf(projectDir), cwdTree);
-  assert.equal(statSync(projectDir).mtimeMs, cwdMtime);
-  assert.equal(existsSync(join(projectDir, ".pi")), false);
-  // The pre-move media root received nothing.
-  assert.equal(
-    existsSync(join(paths.legacyMediaDir(), `${updateId}.ogg`)),
-    false,
-  );
+    assert.equal(result.ok, true, result.error);
+    assert.equal(
+      result.filePath,
+      join(pin, "telegram", "media", `${updateId}.ogg`),
+    );
+    assert.deepEqual(
+      new Uint8Array(readFileSync(result.filePath)),
+      new Uint8Array(bytes),
+    );
+    // Containment: the cwd tree is untouched (names + mtimes).
+    assert.deepEqual(treeOf(projectDir), cwdTree);
+    assert.equal(statSync(projectDir).mtimeMs, cwdMtime);
+    assert.equal(existsSync(join(projectDir, ".pi")), false);
+    // The pre-move media root received nothing.
+    assert.equal(
+      existsSync(join(paths.legacyMediaDir(), `${updateId}.ogg`)),
+      false,
+    );
+  } finally {
+    process.chdir(REAL_CWD);
+  }
 });
 
 test("media reads prefer the braid root and fall back to the pre-move file", () => {
@@ -209,4 +226,41 @@ test("pause state writes to the braid root and reads the pre-move file first", a
     paused: true,
     updatedAt: 1,
   });
+});
+
+test("a hostile HOME refuses every default and writes nothing into the cwd", () => {
+  for (const home of ["", ".", "rel-home"]) {
+    const project = mkdtempSync(join(tmpdir(), "tg-hostile-cwd-"));
+    const env = { ...process.env, HOME: home };
+    delete env.BRAID_HOME;
+    try {
+      const r = spawnSync("node", [join(HERE, "hostile-home-driver.mjs")], {
+        cwd: project,
+        env,
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+      assert.equal(r.status, 0, `${JSON.stringify(home)}: ${r.stderr}`);
+      const out = JSON.parse(r.stdout.trim().split("\n").pop());
+      for (const [name, value] of Object.entries(out.paths)) {
+        assert.equal(
+          value,
+          null,
+          `${JSON.stringify(home)}: ${name} -> ${value}`,
+        );
+      }
+      assert.equal(
+        out.voice.ok,
+        false,
+        `${JSON.stringify(home)}: the voice writer must refuse`,
+      );
+      assert.deepEqual(
+        readdirSync(project),
+        [],
+        `${JSON.stringify(home)}: the cwd gained ${readdirSync(project)}`,
+      );
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
 });

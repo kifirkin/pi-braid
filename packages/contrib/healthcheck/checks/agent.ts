@@ -31,6 +31,13 @@ export function testAgentConfiguration(): CheckResult[] {
   checks.push(
     check("Agent", "session-management", () => {
       const root = braidDir();
+      if (root === null) {
+        return {
+          status: "fail",
+          message:
+            "braid state root is underivable: BRAID_HOME is unset and no absolute home resolves",
+        };
+      }
       try {
         if (!fs.existsSync(root)) {
           return {

@@ -1212,6 +1212,7 @@ test("telegram_inbox tool: registered and returns pending messages via fetchInbo
     }),
   ];
   const fetchFn = makeFakeFetch(makeUpdatesServer(updates));
+  let result;
   await withEnv(
     {
       BRAID_TG_BOT_TOKEN: BOT_TOKEN,
@@ -1225,13 +1226,11 @@ test("telegram_inbox tool: registered and returns pending messages via fetchInbo
     },
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
+      assert.ok(inboxTool, "telegram_inbox tool registered");
+      result = await inboxTool.execute("id", {}, undefined, undefined);
     },
   );
-
-  const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
-  assert.ok(inboxTool, "telegram_inbox tool registered");
-
-  const result = await inboxTool.execute("id", {}, undefined, undefined);
   const text = result.content[0].text;
   assert.match(text, /telegram_inbox: 2 message\(s\)/);
   assert.match(
@@ -1455,6 +1454,7 @@ test("factory: STT defaults to Venice chat/input_audio on AGENT_ZERO_API_KEY (no
     sttBody: { choices: [{ message: { content: "привет мир" } }] },
   });
   const fetchFn = makeFakeFetch(server);
+  let result;
   await withEnv(
     {
       BRAID_TG_BOT_TOKEN: BOT_TOKEN,
@@ -1476,11 +1476,10 @@ test("factory: STT defaults to Venice chat/input_audio on AGENT_ZERO_API_KEY (no
     },
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
+      result = await inboxTool.execute("id", {}, undefined, undefined);
     },
   );
-
-  const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
-  const result = await inboxTool.execute("id", {}, undefined, undefined);
 
   assert.equal(
     server.sttCalls.length,
@@ -1516,6 +1515,7 @@ test("factory: BRAID_TG_STT_MODE=transcriptions opts back to the OpenAI /audio/t
     sttBody: { text: "hello" },
   });
   const fetchFn = makeFakeFetch(server);
+  let result;
   await withEnv(
     {
       BRAID_TG_BOT_TOKEN: BOT_TOKEN,
@@ -1536,11 +1536,10 @@ test("factory: BRAID_TG_STT_MODE=transcriptions opts back to the OpenAI /audio/t
     },
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
+      result = await inboxTool.execute("id", {}, undefined, undefined);
     },
   );
-
-  const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
-  const result = await inboxTool.execute("id", {}, undefined, undefined);
 
   assert.equal(
     server.sttCalls.length,
@@ -1568,6 +1567,7 @@ test("factory: mode=transcriptions with NO explicit key does NOT leak the Venice
     sttBody: { text: "hello" },
   });
   const fetchFn = makeFakeFetch(server);
+  let result;
   await withEnv(
     {
       BRAID_TG_BOT_TOKEN: BOT_TOKEN,
@@ -1589,11 +1589,10 @@ test("factory: mode=transcriptions with NO explicit key does NOT leak the Venice
     },
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
+      result = await inboxTool.execute("id", {}, undefined, undefined);
     },
   );
-
-  const inboxTool = pi.tools.find((t) => t.name === "telegram_inbox");
-  const result = await inboxTool.execute("id", {}, undefined, undefined);
 
   assert.equal(
     server.sttCalls.length,

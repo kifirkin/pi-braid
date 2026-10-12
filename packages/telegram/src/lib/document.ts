@@ -26,7 +26,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { defaultMediaDir } from "./state-paths.js";
+import { defaultMediaDir, warnUnderivableRoot } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -92,15 +92,18 @@ export async function materializeDocument(opts: {
   baseUrl?: string;
   mediaDir?: string;
 }): Promise<MaterializeDocumentResult> {
-  const {
-    token,
-    updateId,
-    document,
-    fetchFn,
-    baseUrl,
-    mediaDir = defaultMediaDir(),
-  } = opts;
+  const { token, updateId, document, fetchFn, baseUrl } = opts;
   const fileId = document.file_id;
+  const mediaDir = opts.mediaDir ?? defaultMediaDir();
+  if (mediaDir === null) {
+    warnUnderivableRoot("document download refused");
+    return {
+      ok: false,
+      fileId,
+      error:
+        "braid media directory is underivable (BRAID_HOME unset and no absolute home); document not saved",
+    };
+  }
 
   // Size guard: getFile refuses files above 20 MB — refuse BEFORE the network
   // call when the message declares an over-limit file_size.

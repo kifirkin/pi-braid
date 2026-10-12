@@ -734,24 +734,45 @@ async function browserEval(input: Static<typeof evalParams>) {
 }
 
 /**
- * Get the screenshots directory, creating it if needed.
+ * Get the screenshots directory, creating it if needed. Null when no absolute
+ * braid root resolves: the caller reports the refusal instead of writing
+ * beside the cwd.
  */
-function getScreenshotsDir(): string {
+function getScreenshotsDir(): string | null {
   const dir = browserScreenshotsDir();
+  if (dir === null) return null;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
   return dir;
 }
 
+/** Warned once per process: a screenshot loop must not repeat this line. */
+let warnedNoRoot = false;
+
+/** The refusal a missing (non-absolute) braid root produces. */
+function warnNoRoot(what: string): void {
+  if (warnedNoRoot) return;
+  warnedNoRoot = true;
+  log.warn(
+    `[browser] ${what}: braid state root is underivable (BRAID_HOME unset and no absolute home); nothing was written beside the cwd`,
+  );
+}
+
 /**
  * Save base64 image data to a file and return the path + decoded byte size.
+ * Null when no absolute braid root resolves (nothing is written). Exported
+ * so the containment test can drive the real write without a live browser.
  */
-function saveScreenshotToFile(
+export function saveScreenshotToFile(
   base64Data: string,
   format: string,
-): { filePath: string; bytes: number } {
+): { filePath: string; bytes: number } | null {
   const dir = getScreenshotsDir();
+  if (dir === null) {
+    warnNoRoot("screenshot not saved");
+    return null;
+  }
   const timestamp = Date.now();
   const filename = `screenshot_${timestamp}.${format}`;
   const filepath = path.join(dir, filename);
@@ -861,8 +882,10 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
     let bytes = 0;
     try {
       const saved = saveScreenshotToFile(result.data, format);
-      filePath = saved.filePath;
-      bytes = saved.bytes;
+      if (saved !== null) {
+        filePath = saved.filePath;
+        bytes = saved.bytes;
+      }
     } catch (err) {
       log.error("Failed to save screenshot:", err);
     }

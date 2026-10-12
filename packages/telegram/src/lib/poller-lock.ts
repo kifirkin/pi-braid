@@ -16,9 +16,11 @@ import { dirname, join } from "node:path";
 import { braidDir } from "./state-paths.js";
 
 /** Default lock location: beside the other braid-owned telegram state
- *  (~/.pi/agent/braid, BRAID_HOME-overridable). */
-export function defaultPollerLockPath(): string {
-  return join(braidDir(), "telegram-poller.lock");
+ *  (~/.pi/agent/braid, BRAID_HOME-overridable). Null when no absolute braid
+ *  root resolves: the poller refuses to start rather than lock beside the cwd. */
+export function defaultPollerLockPath(): string | null {
+  const root = braidDir();
+  return root === null ? null : join(root, "telegram-poller.lock");
 }
 
 /** Who holds the lock: the pid is the liveness key; startedAt/role/startedBy

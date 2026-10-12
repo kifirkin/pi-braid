@@ -129,8 +129,9 @@ export const TRACKED_DONE_TEXT_REPORT_SENT = "✅ Done — report above.";
  *  report (abort/error). Honest, distinct from TRACKED_DONE_TEXT. */
 export const TRACKED_TERMINAL_TEXT = "⏹️ Turn ended without a report";
 
-/** Live-update state file path (mirrors inbound-poller state-file conventions). */
-export function defaultLiveUpdateStateFile(): string {
+/** Live-update state file path (mirrors inbound-poller state-file conventions).
+ *  Null when no absolute braid root resolves; the caller refuses the tracker. */
+export function defaultLiveUpdateStateFile(): string | null {
   return defaultLiveUpdateFilePath();
 }
 

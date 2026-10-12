@@ -173,15 +173,28 @@ function probeOptions(s: NetworkMonitorSettings): ProbeOptions {
   };
 }
 
-function reconnectOptions(s: NetworkMonitorSettings): ReconnectOptions {
+function reconnectOptions(s: NetworkMonitorSettings): ReconnectOptions | null {
+  const lockFile = reconnectLockFile();
+  if (lockFile === null) {
+    if (!warnedNoLockPath) {
+      warnedNoLockPath = true;
+      log.warn(
+        "[network-monitor] reconnect lock path is underivable (BRAID_HOME unset and no absolute home); reconnect cycles refuse rather than toggle without the cross-process lock",
+      );
+    }
+    return null;
+  }
   return {
     ...probeOptions(s),
     disconnectDelayMs: s.disconnectDelayMs,
     connectTimeoutMs: s.connectTimeoutMs,
     pollIntervalMs: s.pollIntervalMs,
-    lockFile: reconnectLockFile(),
+    lockFile,
   };
 }
+
+/** Warned once per process: an outage loop must not repeat this line. */
+let warnedNoLockPath = false;
 
 // Reconnect cooldown (session-scoped)
 
@@ -378,7 +391,21 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
       }
 
       info("[network-monitor] reconnect: disconnect -> connect (deep links)");
-      const outcome = await reconnectTunnel(reconnectOptions(settings), {
+      const reconnectOpts = reconnectOptions(settings);
+      if (reconnectOpts === null) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text:
+                "Reconnect refused: no absolute braid root for the reconnect lock " +
+                "(BRAID_HOME is unset and no absolute home resolves). Nothing was toggled.",
+            },
+          ],
+          details: { ok: false, reason: "lock-path-underivable" },
+        };
+      }
+      const outcome = await reconnectTunnel(reconnectOpts, {
         exec: defaultExec,
         sleep: defaultSleep,
       });
@@ -459,7 +486,17 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
           info(
             "[network-monitor] watcher: reconnect flow starting (deep links)",
           );
-          return reconnectTunnel(reconnectOptions(settings), {
+          const reconnectOpts = reconnectOptions(settings);
+          if (reconnectOpts === null) {
+            return Promise.resolve({
+              ok: false,
+              attempts: 0,
+              final: null,
+              reason:
+                "reconnect lock path is underivable (BRAID_HOME unset and no absolute home)",
+            });
+          }
+          return reconnectTunnel(reconnectOpts, {
             exec: defaultExec,
             sleep: defaultSleep,
           });

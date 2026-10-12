@@ -33,7 +33,7 @@
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { defaultStateFilePath } from "./state-paths.js";
+import { defaultStateFilePath, warnUnderivableRoot } from "./state-paths.js";
 import {
   getUpdates,
   getMe,
@@ -691,7 +691,10 @@ export async function extractIncomingMessage(
 
 // State file (offset persistence across restarts)
 
-export function defaultStateFile(): string {
+/** Default state file. Null when no absolute braid root resolves: a poller
+ *  without offset persistence would re-deliver, so createInboundPoller
+ *  refuses to build on it. */
+export function defaultStateFile(): string | null {
   return defaultStateFilePath();
 }
 
@@ -768,7 +771,6 @@ export function createInboundPoller(
   const {
     token,
     allowedUsers,
-    stateFile = defaultStateFile(),
     fetchFn = globalThis.fetch,
     mediaDir,
     intervalMs = DEFAULT_POLL_INTERVAL_MS,
@@ -780,6 +782,14 @@ export function createInboundPoller(
     onError,
     log = () => {},
   } = options;
+  const resolvedStateFile = options.stateFile ?? defaultStateFile();
+  if (resolvedStateFile === null) {
+    warnUnderivableRoot("inbound poller refused");
+    throw new Error(
+      "braid telegram state file is underivable (BRAID_HOME unset and no absolute home); refusing to start the inbound poller without offset persistence",
+    );
+  }
+  const stateFile: string = resolvedStateFile;
 
   const allowList: Array<number | string> = [...allowedUsers];
   const maxRetries = options.maxRetries ?? 5;

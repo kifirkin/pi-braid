@@ -33,7 +33,11 @@ import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
-import { defaultPauseStateFile, legacyPauseStateFile } from "./state-paths.js";
+import {
+  defaultPauseStateFile,
+  legacyPauseStateFile,
+  warnUnderivableRoot,
+} from "./state-paths.js";
 import type { TelegramClient, TelegramReplyMarkup } from "./telegram-client.js";
 
 export { defaultPauseStateFile, legacyPauseStateFile };
@@ -88,9 +92,10 @@ function configuredPauseStateFile(): string | undefined {
 /**
  * Write resolution: `braid.telegram.pauseStateFile` when configured, else the
  * braid-root default. Every write goes here — the pre-move agent-dir file is
- * read-only history.
+ * read-only history. Null when no absolute root resolves: the caller refuses
+ * to persist instead of writing beside the cwd.
  */
-export function resolvePauseStateFile(): string {
+export function resolvePauseStateFile(): string | null {
   return configuredPauseStateFile() ?? defaultPauseStateFile();
 }
 
@@ -98,19 +103,23 @@ export function resolvePauseStateFile(): string {
  * Read resolution: the configured override, else the braid-root file when it
  * exists, else the pre-move agent-dir file when that exists (so a pause set
  * before the relocation keeps holding), else the braid-root path (a miss the
- * caller treats as "not paused").
+ * caller treats as "not paused"). Null when no absolute root resolves.
  */
-export function resolvePauseStateReadFile(): string {
+export function resolvePauseStateReadFile(): string | null {
   const configured = configuredPauseStateFile();
   if (configured) return configured;
   const current = defaultPauseStateFile();
-  if (existsSync(current)) return current;
+  if (current !== null && existsSync(current)) return current;
   const legacy = legacyPauseStateFile();
-  return existsSync(legacy) ? legacy : current;
+  if (legacy !== null && existsSync(legacy)) return legacy;
+  return current;
 }
 
 /** Read the pause state; a missing/corrupt file means "not paused" (never throws). */
-export async function loadPauseState(stateFile: string): Promise<PauseState> {
+export async function loadPauseState(
+  stateFile: string | null,
+): Promise<PauseState> {
+  if (stateFile === null) return { paused: false, updatedAt: 0 };
   try {
     const raw = await readFile(stateFile, "utf8");
     const parsed = JSON.parse(raw) as Partial<PauseState>;
@@ -149,7 +158,7 @@ export async function savePauseState(
  * settings/default path. Never throws.
  */
 export async function getPauseState(
-  stateFile: string = resolvePauseStateReadFile(),
+  stateFile: string | null = resolvePauseStateReadFile(),
 ): Promise<PauseState> {
   return loadPauseState(stateFile);
 }
@@ -286,8 +295,9 @@ export interface PauseCallbackQuery {
 export interface PauseControlDeps {
   client: Pick<TelegramClient, "answerCallbackQuery" | "editMessageText">;
   token: string;
-  /** Path to the pause-state file (persistence). */
-  stateFile: string;
+  /** Path to the pause-state file (persistence). Null when no absolute braid
+   *  root resolves: reads degrade to "not paused", writes are refused. */
+  stateFile: string | null;
   log?: (
     level: "debug" | "info" | "warn" | "error",
     message: string,
@@ -367,17 +377,25 @@ export async function handlePauseCallbackQuery(
   }
 
   if (data === CALLBACK_PAUSE && !state.paused) {
-    await savePauseState(stateFile, { paused: true, updatedAt: Date.now() });
-    log(
-      "info",
-      `telegram pause: agent paused via callback (${callbackQuery.id})`,
-    );
+    if (stateFile === null) {
+      warnUnderivableRoot("pause-state write refused");
+    } else {
+      await savePauseState(stateFile, { paused: true, updatedAt: Date.now() });
+      log(
+        "info",
+        `telegram pause: agent paused via callback (${callbackQuery.id})`,
+      );
+    }
   } else if (data === CALLBACK_RESUME && state.paused) {
-    await savePauseState(stateFile, { paused: false, updatedAt: Date.now() });
-    log(
-      "info",
-      `telegram pause: agent resumed via callback (${callbackQuery.id})`,
-    );
+    if (stateFile === null) {
+      warnUnderivableRoot("pause-state write refused");
+    } else {
+      await savePauseState(stateFile, { paused: false, updatedAt: Date.now() });
+      log(
+        "info",
+        `telegram pause: agent resumed via callback (${callbackQuery.id})`,
+      );
+    }
   }
   // Re-read so `paused` reflects the persisted truth (idempotent re-taps).
   const current = await loadPauseState(readFile);

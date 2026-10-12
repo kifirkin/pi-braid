@@ -17,7 +17,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { defaultMediaDir } from "./state-paths.js";
+import { defaultMediaDir, warnUnderivableRoot } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -88,15 +88,18 @@ export async function materializeVoice(opts: {
   baseUrl?: string;
   mediaDir?: string;
 }): Promise<MaterializeVoiceResult> {
-  const {
-    token,
-    updateId,
-    voice,
-    fetchFn,
-    baseUrl,
-    mediaDir = defaultMediaDir(),
-  } = opts;
+  const { token, updateId, voice, fetchFn, baseUrl } = opts;
   const fileId = voice.file_id;
+  const mediaDir = opts.mediaDir ?? defaultMediaDir();
+  if (mediaDir === null) {
+    warnUnderivableRoot("voice download refused");
+    return {
+      ok: false,
+      fileId,
+      error:
+        "braid media directory is underivable (BRAID_HOME unset and no absolute home); voice not saved",
+    };
+  }
 
   const fileInfo = await getFile(token, fileId, { fetch: fetchFn, baseUrl });
   const filePathOnTelegram = fileInfo.ok ? fileInfo.file?.file_path : undefined;

@@ -13,70 +13,146 @@
  * pre-move location: a read falls back to the old copy when the new one is
  * absent (`resolveMediaReadPath`, `legacyPauseStateFile`), a write never
  * touches it.
+ *
+ * Refusal contract: `braidDir()` returns null when BRAID_HOME is unset and
+ * `os.homedir()` does not resolve an absolute path (a relative or blank HOME
+ * would otherwise put the whole tree beside the cwd). Every derived accessor
+ * returns null with it; callers refuse instead of writing somewhere unowned,
+ * and `warnUnderivableRoot` reports the refusal once per process through the
+ * extension's TUI-safe log sink (never console.*).
  */
 
 import * as os from "node:os";
 import * as path from "node:path";
 import { existsSync } from "node:fs";
 
-/** Braid home root; BRAID_HOME wins. Read on every call so tests can pin
- *  the whole tree into a tmpdir (mirrors pi-braid core's braidDir()). */
-export function braidDir(): string {
+/**
+ * Braid home root; BRAID_HOME wins. Read on every call so tests can pin the
+ * whole tree into a tmpdir (mirrors pi-braid core's braidDir()). Null when no
+ * absolute root can be derived: see the refusal contract above.
+ */
+export function braidDir(): string | null {
   const override = process.env.BRAID_HOME;
-  return override && override.trim()
-    ? path.resolve(override)
-    : path.join(os.homedir(), ".pi", "agent", "braid");
+  if (override && override.trim()) return path.resolve(override);
+  let home: string;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  if (!home || !path.isAbsolute(home)) return null;
+  return path.join(home, ".pi", "agent", "braid");
+}
+
+/** Warn sink for a refused default path. The extension factory binds it to
+ *  the TUI-safe log; unset it is silent, exactly like log() itself. */
+let refusalSink: ((message: string) => void) | undefined;
+
+/** Bind (or clear) the sink a path refusal is reported through. */
+export function setPathRefusalSink(
+  sink: ((message: string) => void) | undefined,
+): void {
+  refusalSink = sink;
+}
+
+let warnedRefusal = false;
+
+/**
+ * Report one refused default path, once per process: a request loop must not
+ * repeat the line, and the caller still refuses. Silent with no sink bound
+ * (headless/print runs), so the TUI input line never sees it.
+ */
+export function warnUnderivableRoot(what: string): void {
+  if (warnedRefusal) return;
+  warnedRefusal = true;
+  refusalSink?.(
+    `${what}: BRAID_HOME is unset and no absolute home resolves, so braid's ` +
+      `state directory cannot be derived without writing beside the cwd. ` +
+      `Set BRAID_HOME (or HOME) to an absolute directory.`,
+  );
 }
 
 /** Telegram state dir under the braid root: media, pause state, future
  *  sinks. The offset/live-update files predate it and stay at the root. */
-export function telegramStateDir(): string {
-  return path.join(braidDir(), "telegram");
+export function telegramStateDir(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "telegram");
 }
 
 /** Default inbound offset/lock state file. */
-export function defaultStateFilePath(): string {
-  return path.join(braidDir(), "telegram-state.json");
+export function defaultStateFilePath(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "telegram-state.json");
 }
 
 /** Default live-update tracker state file (beside the offset state). */
-export function defaultLiveUpdateFilePath(): string {
-  return path.join(braidDir(), "telegram-live-update.json");
+export function defaultLiveUpdateFilePath(): string | null {
+  const root = braidDir();
+  return root === null ? null : path.join(root, "telegram-live-update.json");
 }
 
 /** Media dir for downloaded photo/voice/document bytes. */
-export function defaultMediaDir(): string {
-  return path.join(telegramStateDir(), "media");
+export function defaultMediaDir(): string | null {
+  const dir = telegramStateDir();
+  return dir === null ? null : path.join(dir, "media");
 }
 
-/** Pre-move media dir directly under pi's agent directory. Read-only
- *  fallback for files recorded before the relocation; never a write target. */
-export function legacyMediaDir(): string {
-  return path.join(os.homedir(), ".pi", "agent", "telegram-media");
+/**
+ * Pre-move media dir directly under pi's agent directory. Read-only fallback
+ * for files recorded before the relocation; never a write target. Null when
+ * no absolute home resolves (a relative fallback would read the cwd).
+ *
+ * This accessor and `resolveMediaReadPath` ship with no production caller:
+ * they are the documented read seam for pre-move media, kept for the
+ * compatibility contract and exercised by the package's tests.
+ */
+export function legacyMediaDir(): string | null {
+  let home: string;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  if (!home || !path.isAbsolute(home)) return null;
+  return path.join(home, ".pi", "agent", "telegram-media");
 }
 
 /**
  * Read-side resolution for one stored media file: the braid-root copy when it
  * exists, else the pre-move copy of the same name when that exists, else the
  * current-root path (so a caller reports the miss against the write target).
- * Writes always go to `defaultMediaDir()`.
+ * Writes always go to `defaultMediaDir()`. Null when neither root resolves.
  */
-export function resolveMediaReadPath(fileName: string): string {
+export function resolveMediaReadPath(fileName: string): string | null {
   const current = path.isAbsolute(fileName)
     ? fileName
-    : path.join(defaultMediaDir(), fileName);
-  if (existsSync(current)) return current;
-  const legacy = path.join(legacyMediaDir(), path.basename(fileName));
-  return existsSync(legacy) ? legacy : current;
+    : (() => {
+        const dir = defaultMediaDir();
+        return dir === null ? null : path.join(dir, fileName);
+      })();
+  if (current !== null && existsSync(current)) return current;
+  const legacyDir = legacyMediaDir();
+  const legacy =
+    legacyDir === null ? null : path.join(legacyDir, path.basename(fileName));
+  if (legacy !== null && existsSync(legacy)) return legacy;
+  return current;
 }
 
 /** Pause-state file under the braid root (the write target). */
-export function defaultPauseStateFile(): string {
-  return path.join(telegramStateDir(), "pause-state.json");
+export function defaultPauseStateFile(): string | null {
+  const dir = telegramStateDir();
+  return dir === null ? null : path.join(dir, "pause-state.json");
 }
 
 /** Pre-move pause-state file directly under pi's agent directory. Read-only
- *  fallback; never a write target. */
-export function legacyPauseStateFile(): string {
-  return path.join(os.homedir(), ".pi", "agent", "telegram-pause-state.json");
+ *  fallback; never a write target. Null when no absolute home resolves. */
+export function legacyPauseStateFile(): string | null {
+  let home: string;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  if (!home || !path.isAbsolute(home)) return null;
+  return path.join(home, ".pi", "agent", "telegram-pause-state.json");
 }

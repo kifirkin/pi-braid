@@ -18,6 +18,13 @@ export function testMemoryAndState(): CheckResult[] {
   checks.push(
     check("State", "braid-root", () => {
       const root = braidDir();
+      if (root === null) {
+        return {
+          status: "fail",
+          message:
+            "braid state root is underivable: BRAID_HOME is unset and no absolute home resolves",
+        };
+      }
       if (!fs.existsSync(root)) {
         return { status: "fail", message: `braid state root missing: ${root}` };
       }
@@ -29,6 +36,13 @@ export function testMemoryAndState(): CheckResult[] {
   checks.push(
     check("State", "braid-writable", () => {
       const root = braidDir();
+      if (root === null) {
+        return {
+          status: "fail",
+          message:
+            "braid state root is underivable: BRAID_HOME is unset and no absolute home resolves",
+        };
+      }
       if (!fs.existsSync(root)) {
         return { status: "fail", message: `braid state root missing: ${root}` };
       }

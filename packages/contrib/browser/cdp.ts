@@ -360,23 +360,40 @@ export function killStaleScrapingChrome(opts: {
   return killable;
 }
 
+/**
+ * Create the scraping profile dir and clear its singleton locks, returning
+ * the dir. This is the write half of spawnChrome, exported so the
+ * containment test can drive it without launching Chrome. Throws when no
+ * absolute braid root resolves: the caller refuses rather than creating a
+ * profile beside the cwd.
+ */
+export function prepareScrapingProfile(profileDir?: string): string {
+  const SCRAPING_DIR = profileDir ?? browserProfileDir();
+  if (SCRAPING_DIR === null) {
+    throw new Error(
+      "braid browser profile dir is underivable (BRAID_HOME unset and no absolute home); refusing to create a scraping profile beside the cwd",
+    );
+  }
+  execSync(`mkdir -p "${SCRAPING_DIR}"`, { stdio: "ignore" });
+  execSync(
+    `rm -f "${SCRAPING_DIR}/SingletonLock" "${SCRAPING_DIR}/SingletonSocket" "${SCRAPING_DIR}/SingletonCookie"`,
+    { stdio: "ignore" },
+  );
+  return SCRAPING_DIR;
+}
+
 /** Spawn Chrome with remote debugging and return the port it started on. */
 export async function spawnChrome(
   opts: { useProfile?: boolean; port?: number; profileDir?: string } = {},
 ): Promise<number> {
   // Scratch profile under the braid root (disposable; BRAID_HOME relocates
   // it). An explicit profileDir stays authoritative.
-  const SCRAPING_DIR = opts.profileDir ?? browserProfileDir();
+  const SCRAPING_DIR = prepareScrapingProfile(opts.profileDir);
   const port = opts.port ?? 9222;
 
-  // Clean up singleton locks and replace the scraping Chrome from a previous
-  // run. Only a process whose command line carries the debugging flag and this
-  // profile is ever signalled; the owner's Chrome and this process are not.
-  execSync(`mkdir -p "${SCRAPING_DIR}"`, { stdio: "ignore" });
-  execSync(
-    `rm -f "${SCRAPING_DIR}/SingletonLock" "${SCRAPING_DIR}/SingletonSocket" "${SCRAPING_DIR}/SingletonCookie"`,
-    { stdio: "ignore" },
-  );
+  // Replace the scraping Chrome from a previous run. Only a process whose
+  // command line carries the debugging flag and this profile is ever
+  // signalled; the owner's Chrome and this process are not.
   killStaleScrapingChrome({ port, profileDir: SCRAPING_DIR });
 
   if (opts.useProfile) {

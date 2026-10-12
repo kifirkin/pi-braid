@@ -110,7 +110,11 @@ import {
   DEFAULT_LIVE_UPDATE_MAX_PER_MIN,
   type LiveUpdateTracker,
 } from "./lib/notify/live-update.js";
-import { defaultStateFilePath } from "./lib/state-paths.js";
+import {
+  defaultStateFilePath,
+  setPathRefusalSink,
+  warnUnderivableRoot,
+} from "./lib/state-paths.js";
 import {
   acquirePollerLock,
   defaultPollerLockPath,
@@ -444,13 +448,16 @@ let pollerWanted = false;
 /**
  * Why a start attempt did not start: `already-running` (this process's own
  * singleton), `role-forbidden` (worker session — the seat owns the poller),
- * or `lock-held` (another LIVE process owns the machine-wide lock; `holder`
- * names it). Callers render the reason for their own surface.
+ * `lock-held` (another LIVE process owns the machine-wide lock; `holder`
+ * names it), or `lock-path-underivable` (no absolute braid root, so the
+ * ownership lock has no home). Callers render the reason for their own
+ * surface.
  */
 type PollerStartRefusal =
   | { started: false; reason: "already-running" }
   | { started: false; reason: "role-forbidden" }
-  | { started: false; reason: "lock-held"; holder: PollerLockInfo };
+  | { started: false; reason: "lock-held"; holder: PollerLockInfo }
+  | { started: false; reason: "lock-path-underivable" };
 type PollerStartOutcome = { started: true } | PollerStartRefusal;
 
 /** Refusal body call sites append to their own surface-specific prefix. */
@@ -460,6 +467,9 @@ function describePollerStartRefusal(outcome: PollerStartRefusal): string {
   }
   if (outcome.reason === "role-forbidden") {
     return "worker role — the orchestrator seat owns the Telegram poller";
+  }
+  if (outcome.reason === "lock-path-underivable") {
+    return "no absolute braid root for the ownership lock (set BRAID_HOME)";
   }
   return `already running (started by ${pollerStartedBy ?? "unknown"})`;
 }
@@ -518,9 +528,20 @@ function startSingletonPoller(opts: {
   }
   // Machine-wide ownership lock: refuse while a live foreign pid holds the
   // getUpdates singleton; our own pid (reload cycles) and stale locks (dead
-  // pid, unreadable file) are taken over silently.
+  // pid, unreadable file) are taken over silently. An underivable lock path
+  // refuses the start: without the lock two processes could poll the same bot.
+  const lockPath = pollerLockFile();
+  if (lockPath === null) {
+    warnUnderivableRoot("poller lock refused");
+    log(
+      "warn",
+      "telegram poller not started: the ownership lock path cannot be derived " +
+        "(BRAID_HOME is unset and no absolute home resolves)",
+    );
+    return { started: false, reason: "lock-path-underivable" };
+  }
   const acquired = acquirePollerLock(
-    pollerLockFile(),
+    lockPath,
     {
       pid: process.pid,
       startedAt: Date.now(),
@@ -571,8 +592,9 @@ function startSingletonPoller(opts: {
   return { started: true };
 }
 
-/** Lock file path: explicit env override first, then the braid-home default. */
-function pollerLockFile(): string {
+/** Lock file path: explicit env override first, then the braid-home default.
+ *  Null when the default root cannot be derived. */
+function pollerLockFile(): string | null {
   return env(ENV_POLLER_LOCK_FILE) ?? defaultPollerLockPath();
 }
 
@@ -586,7 +608,8 @@ function stopSingletonPoller(): boolean {
   // An explicit disable gives the channel up machine-wide; the reload-path
   // shutdown does NOT release — the session_start re-arm re-acquires our own
   // pid's lock without a window where another process could claim it.
-  releasePollerLock(pollerLockFile());
+  const lockPath = pollerLockFile();
+  if (lockPath !== null) releasePollerLock(lockPath);
   log("info", "telegram poller stopped");
   return true;
 }
@@ -630,6 +653,10 @@ export default async function telegramExtension(
   (globalThis as Record<string, unknown>)[TELEGRAM_POLLER_LIVENESS_KEY] = () =>
     Boolean(activePoller?.isRunning());
 
+  // Route a refused braid path through the TUI-safe log (never console.*),
+  // exactly like log() itself: silent until a session binds the notify sink.
+  setPathRefusalSink((message) => log("warn", message));
+
   // if-has-token guard
   const token = env(ENV_TOKEN);
   if (!token) {
@@ -644,6 +671,21 @@ export default async function telegramExtension(
   const chatIdEnv = env(ENV_CHAT_ID);
   const allowedUsers = parseAllowedUsers(env(ENV_ALLOWED_USERS));
   const stateFile = env(ENV_STATE_FILE) ?? defaultStateFilePath();
+  // No absolute braid root and no explicit BRAID_TG_STATE_FILE: every inbound
+  // surface here needs offset persistence (a poller without it re-delivers,
+  // an inbox pull without it duplicates), so the channel refuses to register
+  // instead of running with state that cannot be written. Same shape as the
+  // token guard above; a pinned deployment is unaffected.
+  if (stateFile === null) {
+    warnUnderivableRoot("telegram channel refused");
+    log(
+      "error",
+      "telegram channel NOT registered: no braid state file can be derived " +
+        "(BRAID_HOME is unset and no absolute home resolves). Set BRAID_HOME " +
+        `(or ${ENV_STATE_FILE}) to an absolute path.`,
+    );
+    return;
+  }
   // The delivery hold (see the delivery block below) is a file beside the offset
   // state, so BRAID_TG_STATE_FILE governs both and a deployment or test that
   // redirects the state directory redirects the hold with it — one knob, no
@@ -1019,58 +1061,66 @@ export default async function telegramExtension(
   const liveUpdateEnabled = env(ENV_LIVE_UPDATE_ENABLED) !== "0";
   const liveUpdateMaxPerMin =
     Number(env(ENV_LIVE_UPDATE_MAX_PER_MIN)) || DEFAULT_LIVE_UPDATE_MAX_PER_MIN;
-  const liveUpdate: LiveUpdateTracker | undefined = liveUpdateEnabled
-    ? (() => {
-        const liveStateFile =
-          env(ENV_LIVE_UPDATE_STATE_FILE) ?? defaultLiveUpdateStateFile();
-        const tracker = createLiveUpdateTracker({
-          client,
-          token,
-          // Resolve the owner chat at call time (captured from the first
-          // inbound owner message; BRAID_TG_CHAT_ID env is only the fallback).
-          chatId: resolveChatId,
-          stateFile: liveStateFile,
-          maxPerWindow: liveUpdateMaxPerMin,
-          log,
-        });
-        log(
-          "info",
-          `telegram live-update enabled (default-on; ${ENV_LIVE_UPDATE_ENABLED}=0 to disable, max ${liveUpdateMaxPerMin}/min edits, state: ${liveStateFile})`,
-        );
-        // turn_end lifecycle keyed on the ACTIVE-WORK REFCOUNT: each turn is
-        // one unit of work behind the "Working…".
-        //  - terminal non-completed turn (abort/error, or no assistant report):
-        //    end("no-report") — on 1→0 the indicator is edited to the honest
-        //    terminal state ("⏹️ Turn ended without a report") + state cleared;
-        //  - completed plain-text answer: end("done") — on 1→0 it is edited to
-        //    "✅ Done" and the final rich summary is delivered;
-        //  - trailing-tool-call (toolUse) turns: no end() — work continues next
-        //    turn, the indicator stays active (never cleared mid-tool).
-        // The refcount means a queue of inbound messages counts as N units and
-        // the indicator only resolves when the LAST one completes. If this
-        // mapping misses (the agent settles without a clean completion — the
-        // Freeze), the agent_settled safety-net below forces the
-        // honest completion — the indicator NEVER stays at "Working…" forever.
-        pi.on("turn_end", async (event: unknown, ctx: any) => {
-          if (isTerminalNoReportTurn(event)) {
-            await tracker.end("no-report");
-            return;
-          }
-          if (!shouldNotifyTurnEnd(event)) return; // toolUse etc → stays active
-          const finalText = extractFinalText(event);
-          if (!finalText) return;
-          const craftRich = ctx
-            ? createRichCraftHook(
-                ctx?.modelRegistry ?? {},
-                ctx?.model,
-                env(ENV_NOTIFY_MODEL),
-              )
-            : undefined;
-          await tracker.end("done", { resultText: finalText, craftRich });
-        });
-        return tracker;
-      })()
-    : undefined;
+  const liveUpdate: LiveUpdateTracker | undefined = (() => {
+    if (!liveUpdateEnabled) return undefined;
+    const liveStateFile =
+      env(ENV_LIVE_UPDATE_STATE_FILE) ?? defaultLiveUpdateStateFile();
+    if (liveStateFile === null) {
+      warnUnderivableRoot("live-update tracker refused");
+      log(
+        "warn",
+        "telegram live-update disabled: the state file cannot be derived " +
+          "(BRAID_HOME is unset and no absolute home resolves)",
+      );
+      return undefined;
+    }
+    const tracker = createLiveUpdateTracker({
+      client,
+      token,
+      // Resolve the owner chat at call time (captured from the first
+      // inbound owner message; BRAID_TG_CHAT_ID env is only the fallback).
+      chatId: resolveChatId,
+      stateFile: liveStateFile,
+      maxPerWindow: liveUpdateMaxPerMin,
+      log,
+    });
+    log(
+      "info",
+      `telegram live-update enabled (default-on; ${ENV_LIVE_UPDATE_ENABLED}=0 to disable, max ${liveUpdateMaxPerMin}/min edits, state: ${liveStateFile})`,
+    );
+    // turn_end lifecycle keyed on the ACTIVE-WORK REFCOUNT: each turn is
+    // one unit of work behind the "Working…".
+    //  - terminal non-completed turn (abort/error, or no assistant report):
+    //    end("no-report") — on 1→0 the indicator is edited to the honest
+    //    terminal state ("⏹️ Turn ended without a report") + state cleared;
+    //  - completed plain-text answer: end("done") — on 1→0 it is edited to
+    //    "✅ Done" and the final rich summary is delivered;
+    //  - trailing-tool-call (toolUse) turns: no end() — work continues next
+    //    turn, the indicator stays active (never cleared mid-tool).
+    // The refcount means a queue of inbound messages counts as N units and
+    // the indicator only resolves when the LAST one completes. If this
+    // mapping misses (the agent settles without a clean completion — the
+    // Freeze), the agent_settled safety-net below forces the
+    // honest completion — the indicator NEVER stays at "Working…" forever.
+    pi.on("turn_end", async (event: unknown, ctx: any) => {
+      if (isTerminalNoReportTurn(event)) {
+        await tracker.end("no-report");
+        return;
+      }
+      if (!shouldNotifyTurnEnd(event)) return; // toolUse etc → stays active
+      const finalText = extractFinalText(event);
+      if (!finalText) return;
+      const craftRich = ctx
+        ? createRichCraftHook(
+            ctx?.modelRegistry ?? {},
+            ctx?.model,
+            env(ENV_NOTIFY_MODEL),
+          )
+        : undefined;
+      await tracker.end("done", { resultText: finalText, craftRich });
+    });
+    return tracker;
+  })();
 
   // Inbound delivery: owner messages steer, coalesced
   // pi.sendUserMessage always forwards its deliverAs as prompt()'s
