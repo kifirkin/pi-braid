@@ -9,6 +9,11 @@
  *     mirrors core's `braidDir()`;
  *   - the real writers land in `<HOME>/.pi/agent/` (the location they always
  *     had) and create nothing in the cwd;
+ *   - a hostile `HOME` (`""` or `"."`) reaches no writer: every changed
+ *     helper refuses (null, or a run with no persistence), the throwaway cwd
+ *     gains nothing, and `presend-guard`'s skip is visible through the
+ *     package's log sink. Those cases run in child processes because each
+ *     helper reads the environment per call;
  *   - `presend-guard`'s flush root follows a pinned `BRAID_HOME`, so the two
  *     offload roots (core's and this package's) move together.
  *
@@ -25,6 +30,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -99,7 +105,12 @@ function tree(root) {
   return out.sort();
 }
 
-const load = loadModules(["state-paths.ts", "key-ring.ts", "route-state.ts"]);
+const load = loadModules([
+  "state-paths.ts",
+  "key-ring.ts",
+  "route-state.ts",
+  "outage-watch.ts",
+]);
 
 console.log("=== provider state paths ===\n");
 
@@ -122,6 +133,15 @@ delete process.env.USERPROFILE;
 delete process.env.PI_CODING_AGENT_DIR;
 
 const agentDir = statePaths.homedirAgentDir();
+// The outage claim record is the other changed export with a refusal
+// contract: its own file under the agent directory, never a cwd write.
+const outage = load("outage-watch");
+check(
+  "defaultOutageClaimPath() resolves the claim file under the pinned HOME",
+  outage.defaultOutageClaimPath() ===
+    join(pinnedHome, ".pi", "agent", ".provider-outage-notify.json"),
+  String(outage.defaultOutageClaimPath()),
+);
 check(
   "homedirAgentDir() is absolute (never relative, never the cwd)",
   agentDir !== null &&
@@ -236,9 +256,16 @@ process.chdir(cwdBefore);
 
 // ── the presend flush root follows BRAID_HOME ─────────────────────────────────
 
-const guard = loadModules(["presend-guard.ts", "log.ts", "state-paths.ts"])(
-  "presend-guard",
-);
+// The full module set is compiled once more: the hostile-home children below
+// load every changed helper from this build directory.
+const buildAll = loadModules([
+  "state-paths.ts",
+  "key-ring.ts",
+  "route-state.ts",
+  "outage-watch.ts",
+  "presend-guard.ts",
+]);
+const guard = buildAll("presend-guard");
 const doomed = {
   model: "test-model",
   messages: [
@@ -261,6 +288,141 @@ check(
   presendFiles.length === 1 && presendFiles[0].endsWith(".txt"),
   JSON.stringify(presendFiles),
 );
+
+// ── a non-absolute HOME reaches no writer ─────────────────────────────────────
+
+/**
+ * One child process under a hostile HOME (`""` or `"."`), cwd a throwaway
+ * project: every changed helper must refuse (null, or a run with no
+ * persistence), the project must gain nothing, and the presend refusal must
+ * be visible through the sink the package logs to. The child is a separate
+ * process because each helper reads the environment per call, and the cwd is
+ * a temp dir because a file appearing there is exactly the hazard.
+ */
+const HOSTILE_DRIVER = `
+const { join } = require("node:path");
+const BUILD = process.env.PROV_DRIVER_BUILD;
+const statePaths = require(join(BUILD, "state-paths.js"));
+const keyRing = require(join(BUILD, "key-ring.js"));
+const routeState = require(join(BUILD, "route-state.js"));
+const outage = require(join(BUILD, "outage-watch.js"));
+const presend = require(join(BUILD, "presend-guard.js"));
+const log = require(join(BUILD, "log.js"));
+
+const out = {
+  home: process.env.HOME,
+  homedirAgentDir: statePaths.homedirAgentDir(),
+  piAgentDir: statePaths.piAgentDir(),
+  braidDataRoot: statePaths.braidDataRoot(),
+  outageClaimPath: outage.defaultOutageClaimPath(),
+  logs: [],
+};
+log.setProvidersLogSink((message, type) => out.logs.push({ message, type }));
+
+process.env.PROV_HOSTILE_KEY = "k0";
+try {
+  const ring = keyRing.createKeyRing({
+    prefix: "PROV_HOSTILE_KEY",
+    stateFile: "w-hostile",
+    now: () => 1_700_000_000_000,
+  });
+  ring.exhaustActiveKey();
+  out.ringRan = true;
+} catch (e) {
+  out.ringError = String(e && e.message);
+}
+try {
+  routeState.recordProbe("hostile-route", { state: "alive", at: 1_700_000_000_000 });
+  out.routeRan = true;
+} catch (e) {
+  out.routeError = String(e && e.message);
+}
+try {
+  const shrink = presend.shrinkDoomedPayload(
+    {
+      model: "test-model",
+      messages: [
+        { role: "user", content: "fix the build" },
+        { role: "user", content: "B".repeat(500000) },
+      ],
+    },
+    { resolveContextWindow: () => 100000, clock: () => 1_700_000_000_000 },
+  );
+  out.shrink = { wasDoomed: shrink.wasDoomed, shrunk: shrink.shrunk, reason: shrink.reason };
+} catch (e) {
+  out.shrinkError = String(e && e.message);
+}
+console.log(JSON.stringify(out));
+`;
+
+/** Drive the hostile child; return its status, observation and project tree. */
+function hostileHomeChild(home) {
+  const dir = mkdtempSync(join(tmpdir(), "prov-hostile-"));
+  const project = join(dir, "proj");
+  mkdirSync(project, { recursive: true });
+  const driver = join(dir, "hostile-driver.cjs");
+  writeFileSync(driver, HOSTILE_DRIVER);
+  const env = { ...process.env, HOME: home, PROV_DRIVER_BUILD: buildDir };
+  delete env.USERPROFILE;
+  delete env.PI_CODING_AGENT_DIR;
+  delete env.BRAID_HOME;
+  const r = spawnSync("node", [driver], {
+    cwd: project,
+    env,
+    encoding: "utf-8",
+  });
+  const projectTree = tree(project);
+  const lastLine = (r.stdout || "")
+    .split("\n")
+    .filter((l) => l.trim())
+    .pop();
+  let obs = null;
+  try {
+    obs = JSON.parse(lastLine);
+  } catch {
+    /* a driver that died prints nothing: the case reports status + stderr */
+  }
+  rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, stderr: r.stderr, obs, projectTree };
+}
+
+for (const [label, home] of [
+  ["blank", ""],
+  ["relative", "."],
+]) {
+  const child = hostileHomeChild(home);
+  check(
+    `HOME=${JSON.stringify(home)} (${label}): the child ran clean and every helper refused`,
+    child.status === 0 &&
+      child.obs?.homedirAgentDir === null &&
+      child.obs?.piAgentDir === null &&
+      child.obs?.braidDataRoot === null &&
+      child.obs?.outageClaimPath === null,
+    JSON.stringify({
+      status: child.status,
+      stderr: (child.stderr || "").slice(-300),
+      obs: child.obs,
+    }),
+  );
+  check(
+    `HOME=${JSON.stringify(home)} (${label}): the writers ran without leaving a file in the project`,
+    child.obs?.ringRan === true &&
+      child.obs?.routeRan === true &&
+      child.obs?.ringError === undefined &&
+      child.obs?.routeError === undefined &&
+      child.projectTree.length === 0,
+    JSON.stringify({ tree: child.projectTree, obs: child.obs }),
+  );
+  check(
+    `HOME=${JSON.stringify(home)} (${label}): the presend flush refused visibly instead of writing`,
+    child.obs?.shrink?.wasDoomed === true &&
+      child.obs?.shrink?.shrunk === 0 &&
+      (child.obs?.logs ?? []).some(
+        (l) => l.type === "warning" && l.message.includes("BRAID_HOME"),
+      ),
+    JSON.stringify({ shrink: child.obs?.shrink, logs: child.obs?.logs }),
+  );
+}
 
 // ── restore + report ──────────────────────────────────────────────────────────
 

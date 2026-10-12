@@ -47,9 +47,10 @@ directory tree.
 
 The runtime loader is `src/loader/loader.ts`. Config sources (highest
 priority first): subagent API (persisted into braid's module-overrides store)
-→ `braid.modules` read from pi's global settings file, then a project-scoped
-pi settings file, then braid's own store → `BRAID_MODULES` env var → manifest
-defaults.
+→ `braid.modules` read from pi's agent-directory settings file, then braid's
+own store → `BRAID_MODULES` env var → manifest defaults. A project-scoped
+`<cwd>/.pi/settings.json` is not a source: it is pi's file, behind pi's
+project-trust gate, and that answer is not available while extensions load.
 
 ### Common `BRAID_MODULES` patterns
 

@@ -72,7 +72,7 @@
                   "default": true,
                   "description": "Pre-send shrink guard against a model's context window.",
                   "type": "boolean",
-                  "x-source": "packages/providers/presend-guard.ts:68"
+                  "x-source": "packages/providers/presend-guard.ts:88"
                 }
               },
               "type": "object"
@@ -381,7 +381,7 @@
         "modules": {
           "description": "Per-extension-ref enable/disable overlay (manifest defaults when unset).",
           "type": "object",
-          "x-source": "packages/core/src/loader/loader.ts:236"
+          "x-source": "packages/core/src/loader/loader.ts:197"
         },
         "providers": {
           "properties": {

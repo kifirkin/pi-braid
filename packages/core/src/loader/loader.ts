@@ -5,12 +5,26 @@
  * layers below per-id, the env var is a complete spec over the defaults):
  *   1. Runtime overrides - /modules-toggle, /modules-enable, /modules-disable
  *      (in-session; the toggle commands also persist them into `braid.modules`)
- *   2. `braid.modules` settings - three sources, later wins per id: pi's global
- *      settings file, pi's project settings file (read-only compatibility) and
- *      braid's own module-overrides store, which is where toggles persist
+ *   2. `braid.modules` settings - two sources, later wins per id: pi's
+ *      agent-directory settings file (`<agent dir>/settings.json`) and braid's
+ *      own module-overrides store, which is where toggles persist
  *      (getModuleOverridesFilePath). true enables an opt-in id, false disables
- *      a default-enabled one. Braid writes only its own store: a project
- *      settings file is pi's artifact, behind pi's project-trust gate.
+ *      a default-enabled one. Braid writes only its own store.
+ *
+ *      A project-scoped `<cwd>/.pi/settings.json` is deliberately NOT a source.
+ *      That file is pi's artifact, and pi applies it only when it trusts the
+ *      project (its SettingsManager keeps `{}` for an untrusted one); the
+ *      resolution below cannot ask pi which it is, because it runs while
+ *      extensions load - where pi's runtime is unbound (`pi.getSettings()`
+ *      throws "Extension runtime not initialized") and pi's project settings
+ *      are forced empty for the pre-trust pass. The trust answer arrives with
+ *      the session, after the load decision it would have to inform, and a
+ *      gate braid reconstructed on its own (trust store + defaultProjectTrust
+ *      + the project_trust event + an explicit override) would be a second
+ *      implementation of a pi-owned policy, wrong in either direction the day
+ *      the two drift. So a `braid.modules` block authored in a project file
+ *      stops applying: pin module state in the agent-directory settings file,
+ *      or toggle, which persists to braid's store.
  *   3. Environment variable - BRAID_MODULES (+id to enable, -id to disable)
  *   4. Default - all extensions enabled (except opt-in/disabledByDefault)
  *
@@ -23,10 +37,17 @@
  *   - A module group name (e.g. "core", "memory") - expands to all member IDs
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
+import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../lib/core/logger.js";
 import { initModels } from "../lib/ai/models-init.js";
@@ -51,19 +72,6 @@ const log = createLogger("modules");
  *  read path. */
 const GLOBAL_SETTINGS = join(homedir(), ".pi", "agent", "settings.json");
 
-/** Pi's project settings file for the process cwd, at the path pi's own
- *  SettingsManager resolves (`join(resolve(cwd), CONFIG_DIR_NAME,
- *  "settings.json")`). Read-only: the file is pi's artifact, so braid reads a
- *  `braid.modules` block out of it and never writes it. `process.cwd()` throws
- *  when the working directory has been removed, hence the guard. */
-function getProjectSettingsPath(): string {
-  try {
-    return join(resolve(process.cwd()), CONFIG_DIR_NAME, "settings.json");
-  } catch {
-    return "";
-  }
-}
-
 /** Braid's own `braid.modules` store for the process cwd ("" when the cwd is
  *  unavailable). Durable write state under braidDir(), so BRAID_HOME pinning
  *  moves it; the user's project is never written. */
@@ -79,6 +87,8 @@ const BRAID_KEY = "braid";
 
 interface BraidSettings {
   modules?: Record<string, boolean>;
+  /** The source that decided `modules` (see readBraidSettings). */
+  source?: "settings-json" | "store";
 }
 
 // ──── Runtime config store ───────────────────────────────────────────────────
@@ -165,26 +175,33 @@ function warnUnreadableSettings(path: string, e: unknown): void {
 /**
  * Read `braid.modules` from every source that may carry it. Sources apply in
  * order, later wins per key:
- *   1. pi's global settings file
- *   2. pi's project settings file (<cwd>/.pi/settings.json) - read-only
- *      compatibility with the historical write target: a project-scoped block
- *      authored there keeps applying, braid just never writes that file
- *   3. braid's module-overrides store - what the toggle commands persist
+ *   1. pi's agent-directory settings file (user-owned, always trusted)
+ *   2. braid's module-overrides store - what the toggle commands persist
+ *
+ * The returned `source` names the LAST source that contributed a key, which is
+ * the layer whose values survived the merge; it feeds the user-facing
+ * `config:` line, so a store-decided state is not reported as a settings-file
+ * decision.
  */
 function readBraidSettings(): BraidSettings {
   const global_ = readSettingsFile(GLOBAL_SETTINGS);
-  const projectPath = getProjectSettingsPath();
-  const project_ = projectPath ? readSettingsFile(projectPath) : {};
   const storePath = getModuleStorePath();
   const store_ = storePath ? readSettingsFile(storePath) : {};
 
   const merged: Record<string, boolean> = {};
-  for (const source of [global_, project_, store_]) {
-    const modules = (source[BRAID_KEY] as BraidSettings)?.modules ?? {};
-    for (const [k, v] of Object.entries(modules)) merged[k] = v;
+  let source: BraidSettings["source"];
+  for (const [label, doc] of [
+    ["settings-json", global_],
+    ["store", store_],
+  ] as const) {
+    const modules = (doc[BRAID_KEY] as BraidSettings)?.modules ?? {};
+    const entries = Object.entries(modules);
+    if (entries.length === 0) continue;
+    for (const [k, v] of entries) merged[k] = v;
+    source = label;
   }
 
-  return { modules: Object.keys(merged).length > 0 ? merged : undefined };
+  return Object.keys(merged).length > 0 ? { modules: merged, source } : { modules: undefined };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -221,19 +238,52 @@ function writeBraidSettings(modules: Record<string, boolean>): void {
   const existingBraid = isPlainObject(all[BRAID_KEY]) ? all[BRAID_KEY] : {};
   const existingModules = isPlainObject(existingBraid.modules) ? existingBraid.modules : {};
   all[BRAID_KEY] = { ...existingBraid, modules: { ...existingModules, ...modules } };
+  const tmp = `${storePath}.tmp.${process.pid}`;
   try {
     mkdirSync(dirname(storePath), { recursive: true });
-    const tmp = `${storePath}.tmp.${process.pid}`;
+    sweepStaleStoreTemps(storePath);
     writeFileSync(tmp, JSON.stringify(all, null, 2), "utf-8");
     renameSync(tmp, storePath);
   } catch (e) {
+    // This write's own temp must not outlive it: a failed rename would leave
+    // a file nothing collects until the age-gated sweep runs.
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* never created, or already gone */
+    }
     log.warn(`Failed to write braid module overrides: ${(e as Error).message}`);
   }
 }
 
-function readModuleOverridesFromSettings(): Record<string, boolean> {
-  const braid = readBraidSettings();
-  return braid.modules ?? {};
+/** Age after which a `<store>.tmp.<pid>` left by a crashed write is garbage. */
+const STALE_TEMP_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Collect the temp files crashed earlier writes left behind: the rename never
+ * ran, so the temp is complete and unowned, and nothing else ever removes it.
+ * Only temps older than a day go - a live writer's temp must survive a
+ * concurrent sweep, and every write here is a synchronous write-plus-rename.
+ */
+function sweepStaleStoreTemps(storePath: string): void {
+  const dir = dirname(storePath);
+  const prefix = `${basename(storePath)}.tmp.`;
+  const cutoff = Date.now() - STALE_TEMP_MS;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(prefix)) continue;
+    const candidate = join(dir, entry.name);
+    try {
+      if (statSync(candidate).mtimeMs < cutoff) unlinkSync(candidate);
+    } catch {
+      /* gone, or a concurrent writer owns it: leave it alone */
+    }
+  }
 }
 
 function saveModuleOverridesToFile(overrides: Map<string, boolean>): void {
@@ -270,7 +320,7 @@ function allConfigRefs(): string[] {
 
 export interface ResolvedConfig {
   enabled: string[];
-  source: "runtime-api" | "settings-json" | "env-var" | "defaults";
+  source: "runtime-api" | "settings-json" | "store" | "env-var" | "defaults";
 }
 
 /** Resolve which extensions are enabled, tracing the config source. */
@@ -335,18 +385,20 @@ function resolveFromSources(env: string | null): ResolvedConfig {
     source = "env-var";
   }
 
-  // Priority 2: Pi's settings.json -> braid.modules. Refs expand regardless
-  // of the value, so a persisted false disables a default-enabled extension;
-  // a true enables an opt-in id.
-  const settingsOverrides = readModuleOverridesFromSettings();
-  if (Object.keys(settingsOverrides).length > 0) {
-    for (const [ref, val] of Object.entries(settingsOverrides)) {
+  // Priority 2: pi's agent-directory settings file, then braid's own store.
+  // Refs expand regardless of the value, so a persisted false disables a
+  // default-enabled extension; a true enables an opt-in id. The reported
+  // label comes from the read ("store" for a stored decision), so the
+  // user-facing `config:` line does not call one a settings-file decision.
+  const settings = readBraidSettings();
+  if (settings.modules && Object.keys(settings.modules).length > 0) {
+    for (const [ref, val] of Object.entries(settings.modules)) {
       for (const id of expandRef(ref)) {
         if (val) enabled.add(id);
         else enabled.delete(id);
       }
     }
-    source = "settings-json";
+    source = settings.source ?? "settings-json";
   }
 
   return { enabled: [...enabled], source };

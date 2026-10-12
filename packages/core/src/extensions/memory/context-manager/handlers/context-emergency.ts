@@ -11,7 +11,7 @@
 //   1. `runContextEmergencyOffload(ctx, reason)` — error-driven, deterministic
 //      (pure char-count, no LLM): plans the LARGEST eligible toolResults,
 //      flushes their FULL content (JSON, lossless — text and images) to disk
-//      under OFFLOAD_DIR, and records a stub for each into CmState.
+//      under offloadDir(), and records a stub for each into CmState.
 //   2. A `context` event handler applies those stubs to the PER-REQUEST
 //      context on every LLM call (pi-core's transformContext path, same
 //      proven mechanism as the stale offloader). The session file stays

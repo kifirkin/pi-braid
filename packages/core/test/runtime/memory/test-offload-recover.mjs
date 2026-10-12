@@ -19,6 +19,8 @@
  * G. Budget: a maxChars override is clamped to the cap; a tiny budget is an
  *    honest refusal rather than a re-offload.
  * H. Registration + internal classification.
+ * I. Pin: the reader's containment root follows BRAID_HOME (a flush under the
+ *    pin is addressable, and the unpinned default root is refused).
  *
  * HOME redirected before the dist imports (capture-cap test pattern).
  */
@@ -26,7 +28,7 @@
 import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 // Isolate settings AND offload storage: temp home. MUST precede imports.
@@ -367,6 +369,47 @@ test("registration: schema requires the flush path; classified internal", () => 
   assert.ok(INTERNAL_TOOLS.has("offload_recover"), "classified internal (offloaders skip it)");
   const json = JSON.stringify(tool.parameters);
   assert.ok(json.includes('"path"'), "schema names the path param");
+});
+
+// ── I. BRAID_HOME pin: the reader's containment root follows it ──────────────
+
+test("pinned BRAID_HOME: the reader's root is the pin, and the old root is refused", async () => {
+  const tool = recoverTool();
+  const pinned = mkdtempSync(join(tmpdir(), "offrecov-pinned-"));
+  const previous = process.env.BRAID_HOME;
+  process.env.BRAID_HOME = pinned;
+  try {
+    // A flush file under the pin is addressable: the reader resolves its
+    // containment root per call, so writer and reader share the pinned tree.
+    const dir = join(pinned, "offload", "offrecov");
+    mkdirSync(dir, { recursive: true });
+    const inside = join(dir, "pinned.txt");
+    writeFileSync(inside, JSON.stringify([{ type: "text", text: "under the pin" }]));
+    const accepted = await tool.execute("rec_call_12", { path: inside }, null, null, FAKE_CTX);
+    assert.ok(
+      accepted.content[0].text.includes(inside),
+      `a flush file under the pin is addressable: ${accepted.content[0].text}`,
+    );
+    assert.ok(
+      !accepted.content[0].text.includes("outside the offload directory"),
+      "a path under the pin is inside the containment root",
+    );
+
+    // The unpinned default root is a different tree under a pin, so the same
+    // containment rule that refuses a stranger's path must refuse it.
+    const outside = join(OFFLOAD_DIR, "offrecov", "old-root.txt");
+    mkdirSync(dirname(outside), { recursive: true });
+    writeFileSync(outside, JSON.stringify([{ type: "text", text: "old root" }]));
+    const refused = await tool.execute("rec_call_13", { path: outside }, null, null, FAKE_CTX);
+    assert.ok(
+      refused.content[0].text.includes("outside the offload directory"),
+      `the pre-pin root must not be readable under a pin: ${refused.content[0].text}`,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.BRAID_HOME;
+    else process.env.BRAID_HOME = previous;
+    rmSync(pinned, { recursive: true, force: true });
+  }
 });
 
 await chain;

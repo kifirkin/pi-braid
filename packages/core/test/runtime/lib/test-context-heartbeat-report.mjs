@@ -15,11 +15,14 @@
  *   6. the default sink path matches the producer's accessor, in the default
  *      tree and under a pinned BRAID_HOME, so the mirrored resolution cannot
  *      drift silently
+ *   7. the entry guard compares realpaths: a symlinked script path still runs
+ *      the report (an unresolved `process.argv[1]` spelling used to exit 0
+ *      with no output)
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -135,6 +138,28 @@ test("bad usage exits 2", () => {
   const { status, out } = run(["--limit", "lots"]);
   assert.equal(status, 2, out);
   assert.match(out, /--limit needs a non-negative integer/);
+});
+
+test("a symlinked script path still runs the report", () => {
+  // The entry guard compares the caller's argv spelling with the module's own
+  // URL. A path with a symlinked component (/tmp is one, on macOS) never
+  // matched, so the script exited 0 having printed nothing - the fixture
+  // below is invoked through a symlink for exactly that reason.
+  const dir = mkdtempSync(join(tmpdir(), "hbreport-link-"));
+  const fixtureDir = mkdtempSync(join(tmpdir(), "hbreport-sym-"));
+  const link = join(dir, "context-heartbeat-report.mjs");
+  const file = join(fixtureDir, "context-heartbeat.jsonl");
+  try {
+    symlinkSync(SCRIPT, link);
+    writeFileSync(file, `${FIXTURE}\n`);
+    const r = spawnSync("node", [link, "--file", file], { encoding: "utf8" });
+    const out = (r.stdout ?? "") + (r.stderr ?? "");
+    assert.equal(r.status, 0, out);
+    assert.match(out, /session sess-alpha/, "a symlinked entry point must produce the report");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
 });
 
 test("the default sink path matches the producer's accessor (pinned and unpinned)", async () => {

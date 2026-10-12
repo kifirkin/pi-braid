@@ -31,6 +31,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
 
 // ── Isolation, before any dist import ──────────────────────────────────────
+// HOME is pinned too, also before any dist import: a regression that resolves
+// a state path through a module-load `os.homedir()` would otherwise write
+// into the developer's live tree while this case fails, which makes the
+// failure part of the damage.
+process.env.HOME = mkdtempSync(join(tmpdir(), "braid-home-home-"));
 const BRAID_HOME = mkdtempSync(join(tmpdir(), "braid-home-contain-"));
 const PROJECT = mkdtempSync(join(tmpdir(), "braid-home-project-"));
 process.env.BRAID_HOME = BRAID_HOME;
@@ -131,17 +136,21 @@ console.log("braid-home containment test\n");
 
 await test("(a) the relocated sinks resolve under the pinned braid home", () => {
   const expected = {
-    moduleStore: join(BRAID_HOME, "module-overrides.json"),
     moduleStoreForCwd: join(BRAID_HOME, "projects"),
     offloadDir: join(BRAID_HOME, "offload"),
     adherence: join(BRAID_HOME, "adherence"),
     telemetry: join(BRAID_HOME, "telemetry"),
   };
-  assert.equal(paths.getModuleOverridesFilePath(), expected.moduleStore);
-  assert.equal(paths.offloadDir(), expected.offloadDir);
-  assert.ok(
+  assert.equal(
     paths.getModuleOverridesFilePath(PROJECT).startsWith(expected.moduleStoreForCwd + sep),
+    true,
     "the per-cwd store must live under the pinned projects/ tree",
+  );
+  assert.equal(paths.offloadDir(), expected.offloadDir);
+  assert.throws(
+    () => paths.getModuleOverridesFilePath(),
+    /cwd/,
+    "the store path requires a project cwd: a braid-root store has no writer",
   );
   assert.ok(
     paths.getOffloadFilePath("sess", "call", "bash").startsWith(expected.offloadDir + sep),
@@ -158,7 +167,6 @@ await test("(b) with BRAID_HOME unset the sinks resolve the default tree, unchan
     delete process.env.BRAID_HOME;
     assert.equal(paths.braidDir(), defaultRoot);
     assert.equal(paths.offloadDir(), join(defaultRoot, "offload"));
-    assert.equal(paths.getModuleOverridesFilePath(), join(defaultRoot, "module-overrides.json"));
     assert.equal(adherenceDir(), join(defaultRoot, "adherence"));
     assert.equal(contextHeartbeatFilePath(), join(defaultRoot, "telemetry", "context-heartbeat.jsonl"));
   } finally {
@@ -192,6 +200,11 @@ await test("(c) a tag and a resume file land under the pin", async () => {
   );
   const tagFiles = tree(join(BRAID_HOME, "tags"));
   assert.equal(tagFiles.length, 1, `exactly one tag file expected, got ${JSON.stringify(tagFiles)}`);
+  assert.equal(
+    tagFiles[0],
+    `${paths.tagsSlugFromCwd(PROJECT)}.json`,
+    "the tag file must carry the name the discoverability reader looks for",
+  );
   assert.ok(
     Object.keys(
       JSON.parse(readFileSync(join(BRAID_HOME, "tags", tagFiles[0]), "utf-8")),

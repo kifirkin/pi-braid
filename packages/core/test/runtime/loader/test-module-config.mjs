@@ -19,12 +19,20 @@
  *     settings
  *   - containment: a module write lands in the braid tree (BRAID_HOME) and
  *     the project directory gains nothing - no `.pi/`, no file, ever
+ *   - a project-scoped `braid.modules` block is not a source: pi owns that
+ *     file and its trust gate, so the read order is the agent-directory
+ *     settings file and braid's store only
+ *   - the reported `source` names the store when a stored value decided
+ *   - a non-absolute HOME refuses the store: the toggle still applies in
+ *     memory, the refusal warns, and nothing lands in the project
+ *   - a crashed write's stale temp is collected on the next write; a live
+ *     writer's temp survives the sweep
  *
  * Each case runs in its own child process with a fake HOME, a pinned
  * BRAID_HOME and a throwaway project dir: the loader resolves its settings
  * paths from `homedir()` and `process.cwd()` at module load, so isolation
- * requires a fresh process with a controlled environment (same shape as the
- * audit's /tmp probes).
+ * requires a fresh process with a controlled environment, the same
+ * child-process shape the loader's own tests use.
  *
  * The cases share nothing the others read - each child owns its HOME, its
  * BRAID_HOME, its cwd and its tmp dir - so they are driven a few at a time by
@@ -74,8 +82,8 @@ const BRAID_PATHS_PATH = join(here, "..", "..", "..", "dist", "lib", "config", "
 // asserts so a driver bug cannot masquerade as a passed expectation).
 const DRIVER = `
 const scenario = process.argv[2];
-process.env.HOME = process.env.FAKE_HOME;
-const { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } = await import("node:fs");
+process.env.HOME = process.env.DRIVER_HOME !== undefined ? process.env.DRIVER_HOME : process.env.FAKE_HOME;
+const { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync, utimesSync } = await import("node:fs");
 const { dirname, join } = await import("node:path");
 const loader = await import(process.env.LOADER_PATH);
 const { getLogBuffer } = await import(process.env.LOGGER_PATH);
@@ -228,6 +236,39 @@ const scenarios = {
     out.afterReset = snap();
     return out;
   },
+  "hostile-home": () => {
+    // HOME is the relative or blank spelling DRIVER_HOME named (the driver
+    // applied it before the loader import) and BRAID_HOME is unset: the store
+    // path must refuse, not resolve under the cwd. The toggle still applies in
+    // memory for this process.
+    delete process.env.BRAID_HOME;
+    const out = { disabled: loader.disableModule("topic-drift") };
+    out.store = readStore();
+    out.warns = getLogBuffer()
+      .filter((e) => e.level === "warn")
+      .map((e) => e.message);
+    out.projectTree = tree(process.cwd());
+    return out;
+  },
+  "stale-temp-sweep": () => {
+    // A crashed earlier write left its temp behind (old mtime); a live
+    // writer's temp is current. Only the first may be collected.
+    const store = braidPaths.getModuleOverridesFilePath(process.cwd());
+    mkdirSync(dirname(store), { recursive: true });
+    writeFileSync(store, JSON.stringify({ braid: { modules: {} } }), "utf-8");
+    const stale = store + ".tmp.4242";
+    writeFileSync(stale, "crashed write", "utf-8");
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    utimesSync(stale, old, old);
+    const live = store + ".tmp.31337";
+    writeFileSync(live, "a live writer", "utf-8");
+    const out = { disabled: loader.disableModule("topic-drift") };
+    out.storeDirFiles = tree(dirname(store));
+    out.staleSurvives = existsSync(stale);
+    out.liveSurvives = existsSync(live);
+    out.store = readStore();
+    return out;
+  },
 };
 if (!scenarios[scenario]) {
   console.error(JSON.stringify({ error: "unknown scenario", scenario }));
@@ -305,6 +346,9 @@ async function runScenario(scenario, { home, homeRaw, project, projectRaw, env =
       BRAID_SETTINGS_PATH,
       BRAID_PATHS_PATH,
     };
+    // `BRAID_HOME: null` in `env` asks for an unset override: a scenario that
+    // drives a non-absolute HOME needs no pin to fall back to.
+    if (env.BRAID_HOME === null) delete childEnv.BRAID_HOME;
     delete childEnv.BRAID_MODULES;
     if (env.BRAID_MODULES !== undefined) childEnv.BRAID_MODULES = env.BRAID_MODULES;
     const result = await runDriver([driverPath, scenario], {
@@ -371,7 +415,7 @@ test("a persisted false entry disables a default-enabled extension on boot", asy
 
 test("runtime overrides overlay the resolved base (settings additions and opt-in enables survive)", async () => {
   const obs = await runScenario("runtime-branch", {
-    project: { braid: { modules: { "error-tracking": true } } },
+    home: { braid: { modules: { "error-tracking": true } } },
   });
   assert.equal(obs.boot.source, "settings-json");
   assert.equal(obs.boot.errorTracking, true);
@@ -386,9 +430,9 @@ test("runtime overrides overlay the resolved base (settings additions and opt-in
   assert.equal(obs.stateErrorTracking, obs.afterDisable.errorTracking, "getModuleStates must agree with the resolver");
   assert.equal(obs.stateTopicDrift, obs.afterDisable.topicDrift, "getModuleStates must agree with the resolver");
   // The toggle that persisted during this run went to the store, not to the
-  // project file the same run read its settings from.
+  // agent-directory settings file the same run read its settings from.
   assertStoreShape(obs.store);
-  assertProjectUntouched(obs, true);
+  assertProjectUntouched(obs, false);
 });
 
 test("toggle flips the effective state of a default-enabled extension", async () => {
@@ -411,15 +455,19 @@ test("BRAID_MODULES resolution survives a runtime override", async () => {
   assert.equal(obs.after.topicDrift, false);
 });
 
-test("the read order is global, then project, then the store (later wins per id)", async () => {
+test("the read order is the settings file, then the store; a project block is ignored", async () => {
   const obs = await runScenario("precedence-three-sources", {
     home: { braid: { modules: { enforcement: false, "health-maintenance": true } } },
     project: { braid: { modules: { enforcement: true, "topic-drift": false } } },
   });
-  assert.equal(obs.boot.enforcement, true, "the project file must still win over the global file");
-  assert.equal(obs.boot.healthMaintenance, true, "a global-only entry must still apply");
+  // The project file says enforcement: true. It is pi's artifact, behind pi's
+  // trust gate, and pi's answer is not available while extensions load: braid
+  // does not read it, so the settings-file value stands.
+  assert.equal(obs.boot.enforcement, false, "the project file must not decide a module state");
+  assert.equal(obs.boot.healthMaintenance, true, "a settings-file entry must still apply");
   assert.equal(obs.boot.topicDrift, true, "the store must win over the project file for the same id");
   assert.equal(obs.boot.errorTracking, true, "a store-only entry must apply");
+  assert.equal(obs.boot.source, "store", "the store decided the effective values, so it is named");
   assert.equal(obs.disabled, true);
   assert.equal(obs.afterToggle.errorTracking, false, "a persisted toggle must win over the store's own earlier value");
   assert.equal(obs.afterToggle.topicDrift, true, "an id the toggle run did not touch keeps its stored value");
@@ -480,9 +528,37 @@ test("reset clears the runtime layer without destroying persisted settings", asy
   assertStoreShape(obs.store);
   assert.equal(obs.store.doc.braid.modules["error-tracking"], true, "reset must not destroy persisted module entries");
   assert.equal(obs.store.doc.braid.modules["topic-drift"], false);
-  assert.equal(obs.afterReset.source, "settings-json", "persisted settings keep applying after a reset");
+  assert.equal(obs.afterReset.source, "store", "the store keeps applying after a reset, and is named");
   assert.equal(obs.afterReset.errorTracking, true);
   assert.equal(obs.afterReset.topicDrift, false);
+});
+
+test("a non-absolute HOME refuses the store instead of writing into the project", async () => {
+  for (const homeValue of [".", ""]) {
+    const obs = await runScenario("hostile-home", {
+      env: { DRIVER_HOME: homeValue, BRAID_HOME: null },
+    });
+    const where = `HOME=${JSON.stringify(homeValue)}`;
+    assert.equal(obs.disabled, true, `${where}: the in-memory toggle still applies`);
+    assert.deepEqual(obs.store.files, [], `${where}: no store file may be written`);
+    assert.deepEqual(obs.projectTree, [], `${where}: the project must gain nothing`);
+    assert.ok(
+      obs.warns.some((m) => /store path/.test(m)),
+      `${where}: the refusal must be visible in the log: ${JSON.stringify(obs.warns)}`,
+    );
+  }
+});
+
+test("a crashed write's stale temp is collected; a live writer's temp survives", async () => {
+  const obs = await runScenario("stale-temp-sweep");
+  assert.equal(obs.disabled, true);
+  assert.equal(obs.staleSurvives, false, "a temp older than a day is a crash leftover");
+  assert.equal(obs.liveSurvives, true, "a concurrent writer's temp must not be swept");
+  assert.ok(
+    !obs.storeDirFiles.some((f) => f.endsWith(".tmp.4242")),
+    `the stale temp must be gone: ${JSON.stringify(obs.storeDirFiles)}`,
+  );
+  assertStoreShape(obs.store);
 });
 
 // Registration order decides the report order; completion order is the pool's

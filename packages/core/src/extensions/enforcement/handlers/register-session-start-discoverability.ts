@@ -48,6 +48,7 @@ import {
   SEMANTIC_MEMORY_FILE,
   AGENT,
   braidDir,
+  tagsSlugFromCwd,
 } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -201,9 +202,11 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
-      // 6. Cross-session tags from prior sessions
+      // 6. Cross-session tags from prior sessions. The same slug rule the tag
+      // writer uses (tagsSlugFromCwd), never the scratchpad/sessions form: a
+      // reader on a second spelling reads a file that was never written.
       try {
-        const slug = projectSlugFromCwd(cwd);
+        const slug = tagsSlugFromCwd(cwd);
         const tagsFile = path.join(braidDir(), "tags", `${slug}.json`);
         if (existsSync(tagsFile)) {
           const content = readFileSync(tagsFile, "utf-8");

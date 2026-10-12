@@ -93,8 +93,9 @@ runtime provides pi-ai at runtime - it's not bundled here.
 directory (`homedirAgentDir()`, or `piAgentDir()` where `PI_CODING_AGENT_DIR`
 was already honored) and the braid data root the `presend` flushes use
 (`braidDataRoot()`, core's `braidDir()` mirrored). Neither falls back to a
-relative path: a base that cannot be resolved absolutely is refused, and the
-caller warns instead of writing beside the cwd.
+relative path: a base that cannot be resolved absolutely comes back as `null`,
+each writer refuses to write without it, and the presend guard skips its flush
+with one warn instead of writing beside the cwd.
 
 `~/.pi/agent/settings.json` (owner-owned, read-only here) is read fresh on
 every consultation through ONE reader - `readProvidersSettingsFromSettings`

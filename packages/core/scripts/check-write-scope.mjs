@@ -14,12 +14,18 @@
  * `import.meta.url`, (b) has a bare relative string literal as its base, or
  * (c) carries an unresolved `|| "."` / `?? "."` fallback, is a finding.
  * Identifiers bound in the same file are expanded (bounded depth) so a path
- * laundered through one local `const` still reports.
+ * laundered through one local `const` still reports. A write-family name
+ * imported under an alias (`import { writeFileSync as wf } from "node:fs"`)
+ * is resolved from the file's own import lines and scanned as the write it
+ * is; without that, renaming the callee slipped the whole call past the scan
+ * (the reviewer's plant was not even counted as a write site).
  *
  * Documented bound: a target resolved through a helper function is out of
- * reach — `writeJSON(p, obj)` is the sanctioned caller-supplied-path generic
- * writer, and the same shape launders an offender past a lexical scan. The
- * runtime containment tests are the other half of the evidence.
+ * reach - `writeJSON(p, obj)` is the sanctioned caller-supplied-path generic
+ * writer, and the same shape launders an offender past a lexical scan. So is
+ * a write-family name rebound by destructuring (`const { writeFileSync: wf }
+ * = fs`): the alias pass reads import specifiers, not destructuring patterns.
+ * The runtime containment tests are the other half of the evidence.
  *
  * Scope: production sources only. `packages/<pkg>/src` and
  * `packages/<pkg>/scripts` for every workspace, plus the whole trees of
@@ -75,7 +81,40 @@ const WRITE_CALLS = [
   "rm",
   "open",
 ];
-const WRITE_RE = new RegExp(`\\b(?:${WRITE_CALLS.join("|")})\\s*\\(`, "g");
+
+/**
+ * The write-call matcher for one file: the write-family names plus any local
+ * aliases its own import lines bind to them, longest name first so `rm` never
+ * shadows `rmSync`.
+ */
+function writeCallRe(aliases) {
+  const names = [...WRITE_CALLS, ...aliases.keys()];
+  return new RegExp(`\\b(?:${names.join("|")})\\s*\\(`, "g");
+}
+
+/**
+ * Named-import aliases of write-family names, map local name -> canonical.
+ * `import { writeFileSync as wf } from "node:fs"` makes `wf(...)` the write
+ * `writeFileSync(...)` is; the scan reads the import specifiers rather than
+ * trusting the callee's spelling.
+ */
+function writeFamilyAliases(text) {
+  const aliases = new Map();
+  const IMPORT_RE = /\bimport\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["'](?:node:fs|fs)["']/g;
+  let m;
+  while ((m = IMPORT_RE.exec(text))) {
+    for (const spec of m[1].split(",")) {
+      const [imported, local] = spec
+        .trim()
+        .split(/\s+as\s+/)
+        .map((s) => s.trim());
+      if (!imported || !local || imported === local) continue;
+      if (WRITE_CALLS.includes(imported)) aliases.set(local, imported);
+    }
+  }
+  return aliases;
+}
+
 /** `open`/`openSync` are writes only when the mode is not a read mode. */
 const OPEN_CALLS = new Set(["open", "openSync"]);
 const READ_MODES = new Set(["r", "rs", "sr"]);
@@ -350,10 +389,12 @@ const files = productionFiles();
 for (const file of files) {
   const text = readFileSync(join(root, file), "utf8");
   const bindings = fileBindings(text);
-  WRITE_RE.lastIndex = 0;
+  const aliases = writeFamilyAliases(text);
+  const writeRe = writeCallRe(aliases);
   let match;
-  while ((match = WRITE_RE.exec(text))) {
-    const name = match[0].slice(0, match[0].indexOf("(")).trim();
+  while ((match = writeRe.exec(text))) {
+    const callee = match[0].slice(0, match[0].indexOf("(")).trim();
+    const name = aliases.get(callee) ?? callee;
     const open = match.index + match[0].length - 1;
     const args = readArgs(text, open);
     const raw = (args[0] ?? "").trim();

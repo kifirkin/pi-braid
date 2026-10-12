@@ -54,9 +54,29 @@ const CHARS_PER_TOKEN = 4;
 /** Presend flush root: the `presend/` subdirectory of the same offload root
  *  core writes into (core's getOffloadFilePath resolves `braidDir()/offload`),
  *  so a pinned BRAID_HOME moves both roots together and an unpinned process
- *  resolves the directory it always did. */
-function presendOffloadDir(): string {
-  return join(braidDataRoot(), "offload", "presend");
+ *  resolves the directory it always did. `null` when no absolute braid data
+ *  root can be resolved: the caller then skips the flush rather than writing
+ *  one beside the cwd. */
+function presendOffloadDir(): string | null {
+  const root = braidDataRoot();
+  return root === null ? null : join(root, "offload", "presend");
+}
+
+/** Warned once per process: a request loop must not repeat this line. */
+let warnedNoFlushRoot = false;
+
+/** The refusal a missing (non-absolute) braid data root produces. */
+function warnNoFlushRoot(): void {
+  if (warnedNoFlushRoot) return;
+  warnedNoFlushRoot = true;
+  providerLog(
+    "warn",
+    SCOPE,
+    "BRAID_HOME is unset and no absolute home resolves: the presend flush root " +
+      "is underivable, so this payload was not flushed (writing it would land " +
+      "beside the cwd). Set BRAID_HOME to an absolute directory to restore " +
+      "the lossless flush.",
+  );
 }
 
 /** Read braid.context.presendGuard.enabled fresh from settings.json. */
@@ -333,6 +353,15 @@ export function shrinkDoomedPayload(
   const stamp = clock().toString(36);
   const modelSlug = modelId.replace(/[^a-zA-Z0-9._-]/g, "-");
   const offloadDir = presendOffloadDir();
+  if (offloadDir === null) {
+    warnNoFlushRoot();
+    return {
+      wasDoomed: true,
+      stillOver: true,
+      shrunk: 0,
+      reason: "no absolute braid data root to flush to",
+    };
+  }
   const newMessages = [...(messages as unknown[])];
   let tokens = estTokens;
   let shrunk = 0;

@@ -14,20 +14,57 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { realpathSync } from "node:fs";
 
+// The module-load constants below are the PRECOMPUTED DEFAULT for the paths
+// declared from them. They are read-side compatibility, not a base to write
+// from: `os.homedir()` is folded once, at import, so a home that is relative
+// or blank makes every one of them relative to whatever cwd the process has.
+// Durable-write callers must resolve through the accessors (braidDir(),
+// offloadDir(), getTimerFilePath(), ...) instead.
 const HOME = os.homedir();
 const PI = path.join(HOME, ".pi");
 const AGENT = path.join(PI, "agent");
 const BRAID = path.join(AGENT, "braid");
+
+/** `os.homedir()` when it resolves an absolute path, else null. */
+function absoluteHome(): string | null {
+  let home: string;
+  try {
+    home = os.homedir();
+  } catch {
+    return null;
+  }
+  return home && path.isAbsolute(home) ? home : null;
+}
 
 /**
  * Root for braid's persistent state, overridable per process via BRAID_HOME
  * (read on every call). Callers that WRITE durable state must resolve through
  * this accessor instead of a precomputed const, so test harnesses can pin
  * the whole braid tree into a tmpdir and prove the live tree was untouched.
+ *
+ * The no-override leg is derived here, on every call, and must be absolute:
+ * with `HOME=.` or `HOME=""` the old module-load fallback produced a RELATIVE
+ * root, so a module toggle (or any other default-leg writer) created
+ * `.pi/agent/braid/...` inside the user's project. A root that is not
+ * absolute names no directory braid owns, so this throws instead of returning
+ * one; callers that can skip (a writer) or degrade (a reader) decide what to
+ * do with the refusal. BRAID_HOME still wins whenever it is set; a relative
+ * BRAID_HOME is resolved against the cwd by `path.resolve`, which is fine
+ * because it is explicit.
  */
 export function braidDir(): string {
   const override = process.env.BRAID_HOME;
-  return override && override.trim() ? path.resolve(override) : BRAID;
+  if (override && override.trim()) return path.resolve(override);
+  const home = absoluteHome();
+  if (home === null) {
+    throw new Error(
+      "braid: BRAID_HOME is not set and os.homedir() does not resolve an " +
+        "absolute path, so braid's state directory cannot be derived without " +
+        "writing beside the cwd. Set BRAID_HOME (or HOME) to an absolute " +
+        "directory.",
+    );
+  }
+  return path.join(home, ".pi", "agent", "braid");
 }
 
 // ── Base directories ────────────────────────────────────────────────────────
@@ -138,6 +175,19 @@ function sanitizeSegment(s: string): string {
     .slice(0, 100);
 }
 
+/** File name (sans `.json`) of the cross-session tag file for one project.
+ *  One rule for the three sites that touch that file: the tag writer
+ *  (register-tool-call), the context-lifecycle proposal merge and the
+ *  session-start discoverability signal. It lived inline at those sites, so a
+ *  second spelling split the file in two: the writer's, which the proposal
+ *  merge matched, and the discoverability reader's `--wrapped--` form (the
+ *  scratchpad/sessions convention), which matched nothing the writer ever
+ *  wrote and silently muted the `tags_prior` signal. */
+export function tagsSlugFromCwd(cwd?: string): string {
+  if (!cwd) return "default";
+  return cwd.split("/").filter(Boolean).join("-") || "default";
+}
+
 /**
  * Get the lossless flush file path for one offloaded tool result.
  * Layout: <offload dir>/<sessionId>/<toolName>-<toolCallId>.txt.
@@ -171,10 +221,17 @@ export function getTimerFilePath(cwd?: string): string {
  *  toggle persisted), kept out of the user's project: writing it into
  *  `<cwd>/.pi/settings.json` made braid create files in a stranger's repo.
  *  Resolves through braidDir() — durable write state, so BRAID_HOME pinning
- *  must move it. A `braid.modules` block in pi's settings files stays an
- *  INPUT (see the loader's read order); it is never written. */
-export function getModuleOverridesFilePath(cwd?: string): string {
-  if (!cwd) return path.join(braidDir(), "module-overrides.json");
+ *  must move it. A `braid.modules` block in pi's agent-directory settings file
+ *  stays an INPUT (see the loader's read order); it is never written. The cwd
+ *  is required: a store at the braid root names no project and has no writer
+ *  in production, so it would only be a second, silently divergent location. */
+export function getModuleOverridesFilePath(cwd: string): string {
+  if (!cwd) {
+    throw new Error(
+      "getModuleOverridesFilePath needs the project cwd: the module store is " +
+        "per project, and a store at the braid root names none.",
+    );
+  }
   const projectDir = sanitizePathForDir(cwd);
   return path.join(braidDir(), "projects", projectDir, "module-overrides.json");
 }

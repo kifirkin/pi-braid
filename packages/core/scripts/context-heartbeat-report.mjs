@@ -39,10 +39,10 @@
  * test-context-heartbeat-report.mjs pins the two resolved values together, so
  * it cannot drift silently.
  */
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /** Mirror of core's braidDir() (braid-paths.ts): BRAID_HOME wins when pinned. */
 function braidDir() {
@@ -414,6 +414,24 @@ function main(argv) {
   console.log(renderReport(summary, { file: opts.file, malformed, limit: opts.limit }));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/**
+ * True when this file is the process's entry point.
+ *
+ * Both sides are realpathed: `process.argv[1]` carries the spelling the
+ * caller used, so an absolute path with a symlinked component (macOS `/tmp`,
+ * for one) never equals the module's own URL and the script exited 0 having
+ * printed nothing. The suite only ever invoked it through a canonical path,
+ * which is why the failure was invisible there.
+ */
+function isEntryPoint() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main(process.argv.slice(2));
 }

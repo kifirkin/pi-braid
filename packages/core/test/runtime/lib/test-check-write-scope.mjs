@@ -14,6 +14,8 @@
  *   5. the same cwd base laundered through a local `const` -> exit 1
  *   6. `openSync(path, "r")` is a read -> exit 0; a write mode -> exit 1
  *   7. a test-tree file with the same cwd write is out of scope -> exit 0
+ *   8. a write-family call through a named import alias -> exit 1 naming the line
+ *   9. an aliased `openSync` with a read mode is not a write -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -128,6 +130,27 @@ test("a test-tree file is out of the production scope", () => {
 import { join } from "node:path";
 writeFileSync(join(process.cwd(), "x.json"), "{}");`,
   );
+  assert.equal(status, 0, out);
+  assert.match(out, /check-write-scope: clean/);
+});
+
+test("a write-family call through a named import alias is still the write it is", () => {
+  const content = `import { writeFileSync as wf } from "node:fs";
+import { join as j } from "node:path";
+export function probe() { wf(j(process.cwd(), "x.json"), "x"); }`;
+  const { status, out } = runCase("packages/core/src/alias.ts", content);
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/alias\.ts:3/, out);
+  assert.match(out, /process\.cwd\(\)/);
+  assert.match(out, /1 write\(s\) can resolve into the project/);
+});
+
+test("an aliased openSync keeps its read mode (a read is not a write)", () => {
+  const content = `import { openSync as o, closeSync as c } from "node:fs";
+import { join as j } from "node:path";
+const fd = o(j(process.cwd(), "log.txt"), "r");
+c(fd);`;
+  const { status, out } = runCase("packages/core/src/alias-read.ts", content);
   assert.equal(status, 0, out);
   assert.match(out, /check-write-scope: clean/);
 });

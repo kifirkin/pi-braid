@@ -131,7 +131,14 @@ export interface OutageRouteTarget {
   readonly url?: string;
 }
 
-/** Settings file location, mirroring the watchdog config convention. */
+/** Settings file location, mirroring the watchdog config convention
+ *  (core's `extensions/self/watchdog/config.ts`: `PI_CODING_AGENT_DIR` when
+ *  set, else `~/.pi/agent`). The read deliberately accepts any override,
+ *  relative included, because pi's own `getAgentDir()` passes one through and
+ *  a settings read must look where pi looks. The claim path below is a WRITE
+ *  and therefore stricter: it goes through `piAgentDir()`, which refuses an
+ *  override that names no absolute directory, so a state file can never land
+ *  beside the cwd. */
 export function defaultOutageSettingsPath(): string {
   const dir =
     process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");

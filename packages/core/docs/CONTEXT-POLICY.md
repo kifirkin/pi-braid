@@ -65,7 +65,7 @@ from [`src/extensions/core/polyfill/index.ts`](../src/extensions/core/polyfill/i
 | `braid.context.contextEmergencyOffload` | ON               | on a context-window (413) error: offload the largest results, retry once (minChars 262144, 1048576/run)   |
 
 Offloaded payloads land at `<braid home>/offload/<sessionId>/<toolName>-<toolCallId>.txt`
-(`OFFLOAD_DIR` / `getOffloadFilePath` in
+(`offloadDir()` / `getOffloadFilePath` in
 [`src/lib/config/braid-paths.ts`](../src/lib/config/braid-paths.ts)); the stub names
 the path, so retrieval is a plain `read` and the flush is lossless.
 

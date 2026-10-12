@@ -11,9 +11,11 @@
 // Both used to be re-derived per file, and the agent-directory form ended in
 // `process.env.HOME || process.env.USERPROFILE || "."`: with neither variable
 // set, that last leg made a state file relative to the cwd, so a provider
-// could write into a stranger's project. There is no relative leg any more. A
-// base that cannot be derived absolutely is reported as null, and the caller
-// refuses to write and warns instead of writing somewhere unowned.
+// could write into a stranger's project. There is no relative leg any more on
+// either resolution: an agent directory that cannot be derived absolutely is
+// reported as null, and the braid data root mirrors that guard. A caller that
+// gets null refuses to write (or warns and skips) instead of writing
+// somewhere unowned.
 //
 // The resolutions are mirrored, not imported: packages/providers is a
 // standalone package with no pi-braid (or pi-core) dependency, so core's
@@ -60,14 +62,24 @@ export function piAgentDir(): string | null {
  * to a non-blank value (path.resolve()d, exactly as core resolves it), else
  * the default tree under the pi agent dir. With BRAID_HOME unset this is the
  * directory core resolves, so a file this package reports and the file core
- * wrote cannot come from two different roots. One bound worth stating: core's
- * fallback leg is a module-load constant and this one resolves per call, so if
- * a process reassigns HOME after both modules are loaded, core keeps the
- * original home and this follows the new one (this resolution is the more
- * faithful one to pi, whose own getAgentDir() reads the environment per call).
+ * wrote cannot come from two different roots. `null` when no override is set
+ * and no absolute home can be resolved: a root that is not absolute names no
+ * directory this package owns, so callers refuse instead of resolving a state
+ * file against the process cwd. One bound worth stating: core's fallback leg
+ * is a module-load constant and this one resolves per call, so if a process
+ * reassigns HOME after both modules are loaded, core keeps the original home
+ * and this follows the new one (this resolution is the more faithful one to
+ * pi, whose own getAgentDir() reads the environment per call).
  */
-export function braidDataRoot(): string {
+export function braidDataRoot(): string | null {
   const override = process.env.BRAID_HOME;
   if (override && override.trim()) return resolve(override);
-  return join(homedir(), ".pi", "agent", "braid");
+  let home: string;
+  try {
+    home = homedir();
+  } catch {
+    return null;
+  }
+  if (!home || !isAbsolute(home)) return null;
+  return join(home, ".pi", "agent", "braid");
 }
