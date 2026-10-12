@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { CheckResult } from "./types.js";
 import { check } from "./helpers.js";
+import { braidDir } from "../../state-paths.js";
 
 export function testAgentConfiguration(): CheckResult[] {
   const checks: CheckResult[] = [];
@@ -26,17 +25,29 @@ export function testAgentConfiguration(): CheckResult[] {
     }),
   );
 
-  // Test: Session management accessible
+  // Test: Session management accessible. Probes braid's state root (session
+  // state lives under it) without creating anything: the old form mkdir'd
+  // ~/.pi, a directory outside braid's tree.
   checks.push(
     check("Agent", "session-management", () => {
+      const root = braidDir();
       try {
-        const piDir = path.join(os.homedir(), ".pi");
-        if (!fs.existsSync(piDir)) {
-          fs.mkdirSync(piDir, { recursive: true });
+        if (!fs.existsSync(root)) {
+          return {
+            status: "fail",
+            message: `braid state root missing: ${root}`,
+          };
         }
-        return { status: "pass", message: "Session directory accessible" };
-      } catch {
-        return { status: "fail", message: "Cannot access session directory" };
+        fs.readdirSync(root);
+        return {
+          status: "pass",
+          message: `braid state root readable: ${root}`,
+        };
+      } catch (err) {
+        return {
+          status: "fail",
+          message: `Cannot access braid state root: ${err instanceof Error ? err.message : String(err)}`,
+        };
       }
     }),
   );

@@ -6,6 +6,7 @@
   "files": [
     "index.ts",
     "logger.ts",
+    "state-paths.ts",
     "browser/",
     "codebase/",
     "diff/",
@@ -28,7 +29,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types network-monitor/test.ts"
+    "test": "node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts"
   },
   "keywords": [
     "pi-package",

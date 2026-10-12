@@ -23,6 +23,7 @@ import { truncateHead } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../logger.js";
+import { browserScreenshotsDir } from "../state-paths.js";
 const log = createLogger("browser");
 import {
   CdpClient,
@@ -736,7 +737,7 @@ async function browserEval(input: Static<typeof evalParams>) {
  * Get the screenshots directory, creating it if needed.
  */
 function getScreenshotsDir(): string {
-  const dir = path.join(os.homedir(), ".pi", "screenshots");
+  const dir = browserScreenshotsDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

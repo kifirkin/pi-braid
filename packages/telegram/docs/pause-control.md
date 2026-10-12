@@ -49,10 +49,13 @@ settings/env keys; the gate activates purely on `getPauseState().paused`.
 
 ## Decision 2: config via settings, not process.env
 
-No new `BRAID_TG_*` env keys. The state file defaults to `~/.pi/agent/telegram-pause-state.json`
-(fixed by the brief) and can be overridden via `braid.telegram.pauseStateFile` in
+No new `BRAID_TG_*` env keys. The state file defaults to
+`<braidDir>/telegram/pause-state.json` (`~/.pi/agent/braid/telegram/pause-state.json`, relocated
+by `BRAID_HOME`) and can be overridden via `braid.telegram.pauseStateFile` in
 `~/.pi/agent/settings.json` (mirrors `packages/core/src/lib/config/braid-settings.ts`).
-`resolvePauseStateFile()` / `getPauseState()` reflect that resolution.
+`resolvePauseStateFile()` is the write target; `resolvePauseStateReadFile()` / `getPauseState()`
+prefer the braid-root file and fall back to the pre-move `~/.pi/agent/telegram-pause-state.json`
+until the first post-move write.
 
 ## Decision 3: atomic persistence
 

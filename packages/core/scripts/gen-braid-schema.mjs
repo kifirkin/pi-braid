@@ -296,7 +296,7 @@ function networkMonitorRows() {
     description,
     read: {
       file: "packages/contrib/network-monitor/index.ts",
-      line: 141,
+      line: 137,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
     mech: { const: "DEFAULTS", prop: leaf },
@@ -427,7 +427,7 @@ const OVERLAY_ROWS = [
     description: "Opt in to the heavy browser tools (off by default).",
     read: {
       file: "packages/contrib/browser/index.ts",
-      line: 75,
+      line: 76,
       evidence: "parsed.braid?.contrib?.browserAdvanced === true",
     },
   },
@@ -504,7 +504,7 @@ const OVERLAY_ROWS = [
     description: "Observatory extension toggle and config.",
     read: {
       file: "packages/contrib/observatory/index.ts",
-      line: 67,
+      line: 69,
       evidence: "parsed.braid?.contrib?.observatory",
     },
   },
@@ -515,7 +515,7 @@ const OVERLAY_ROWS = [
     description: "Persist observatory events to disk (opt-in).",
     read: {
       file: "packages/contrib/observatory/index.ts",
-      line: 70,
+      line: 72,
       evidence: "return { enabled: true, record: false, maxEvents: MAX_EVENTS_PER_SESSION };",
     },
   },
@@ -526,7 +526,7 @@ const OVERLAY_ROWS = [
     description: "Tunnel watch/reconnect probe; false disables, an object tunes it.",
     read: {
       file: "packages/contrib/network-monitor/index.ts",
-      line: 141,
+      line: 137,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
   },
@@ -537,7 +537,7 @@ const OVERLAY_ROWS = [
     description: "Override the Telegram pause-state file location (built-in path when unset).",
     read: {
       file: "packages/telegram/src/lib/pause-control.ts",
-      line: 81,
+      line: 78,
       evidence: "parsed?.braid?.telegram?.pauseStateFile",
     },
   },

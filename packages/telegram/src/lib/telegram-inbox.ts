@@ -67,7 +67,7 @@ export interface FetchInboxOptions {
   stateFile?: string;
   /** Injectable fetch (tests use a recorded-fixture fake). */
   fetchFn?: TelegramFetch;
-  /** Directory where downloaded photo/voice/document bytes are saved. Default ~/.pi/agent/telegram-media. */
+  /** Directory where downloaded photo/voice/document bytes are saved. Default `<braidDir>/telegram/media`. */
   mediaDir?: string;
   /** STT (speech-to-text) config for voice transcription (optional). */
   stt?: SttConfig;

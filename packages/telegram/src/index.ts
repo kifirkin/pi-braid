@@ -670,7 +670,9 @@ export default async function telegramExtension(
   // The pause flag is a signal for the CONSUMER (the orchestrator reads it via
   // the exported getPauseState()); this handler only persists the flag and
   // keeps the control keyboard in sync — it never blocks the poller or the
-  // core loop. Config via settings (braid.telegram.pauseStateFile), not env.
+  // core loop. Config via settings (braid.telegram.pauseStateFile), not env;
+  // the default file lives under the braid root (see lib/state-paths.ts) and
+  // reads fall back to the pre-move agent-dir copy.
   const pauseStateFile = resolvePauseStateFile();
   const handleCallbackQuery = async (update: TelegramUpdate): Promise<void> => {
     const cq = update.callback_query;
@@ -1794,6 +1796,7 @@ export default async function telegramExtension(
 export {
   defaultPauseStateFile,
   getPauseState,
+  resolvePauseStateReadFile,
   resolvePauseStateFile,
   sendControlKeyboard,
   placeControlKeyboard,

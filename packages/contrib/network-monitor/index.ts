@@ -56,6 +56,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger, setLoggerContext } from "../logger.js";
+import { reconnectLockFile } from "../state-paths.js";
 import { createLogFileSink } from "./log-file.js";
 import { getExtensionState } from "pi-braid/lib";
 import {
@@ -107,14 +108,9 @@ const DEFAULTS: Omit<NetworkMonitorSettings, "enabled"> = {
 
 /**
  * Cross-process lockfile serializing reconnect cycles from every pi process
- * on this machine (one file, one owner; see lock.ts).
+ * on this machine (one file, one owner; see lock.ts). Resolved per call under
+ * the braid root (`state-paths.ts`), so BRAID_HOME relocates it.
  */
-const RECONNECT_LOCK_FILE = path.join(
-  os.homedir(),
-  ".pi",
-  "agent",
-  "network-monitor-reconnect.lock",
-);
 
 function num(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
@@ -183,7 +179,7 @@ function reconnectOptions(s: NetworkMonitorSettings): ReconnectOptions {
     disconnectDelayMs: s.disconnectDelayMs,
     connectTimeoutMs: s.connectTimeoutMs,
     pollIntervalMs: s.pollIntervalMs,
-    lockFile: RECONNECT_LOCK_FILE,
+    lockFile: reconnectLockFile(),
   };
 }
 

@@ -7,6 +7,7 @@ import { execSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import { createLogger } from "../logger.js";
+import { browserProfileDir } from "../state-paths.js";
 
 const log = createLogger("browser:cdp");
 
@@ -363,8 +364,9 @@ export function killStaleScrapingChrome(opts: {
 export async function spawnChrome(
   opts: { useProfile?: boolean; port?: number; profileDir?: string } = {},
 ): Promise<number> {
-  const home = process.env.HOME ?? os.tmpdir();
-  const SCRAPING_DIR = opts.profileDir ?? `${home}/.cache/browser-tools`;
+  // Scratch profile under the braid root (disposable; BRAID_HOME relocates
+  // it). An explicit profileDir stays authoritative.
+  const SCRAPING_DIR = opts.profileDir ?? browserProfileDir();
   const port = opts.port ?? 9222;
 
   // Clean up singleton locks and replace the scraping Chrome from a previous
@@ -379,6 +381,7 @@ export async function spawnChrome(
 
   if (opts.useProfile) {
     // Sync Chrome profile (without session data)
+    const home = os.homedir();
     execSync(
       `rsync -a --delete ` +
         `--exclude='SingletonLock' --exclude='SingletonSocket' --exclude='SingletonCookie' ` +

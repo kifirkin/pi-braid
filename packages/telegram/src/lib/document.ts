@@ -25,8 +25,8 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultMediaDir } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -45,14 +45,6 @@ export interface TelegramDocument {
 
 /** Telegram Bot API cap: getFile refuses files above 20 MB. */
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
-
-/** Default media storage dir: ~/.pi/agent/telegram-media/<update_id>.<ext>. */
-export const DEFAULT_MEDIA_DIR = join(
-  homedir(),
-  ".pi",
-  "agent",
-  "telegram-media",
-);
 
 /** True when a message carries a usable `document` object (document inbound). */
 export function hasDocument(message: unknown): boolean {
@@ -106,7 +98,7 @@ export async function materializeDocument(opts: {
     document,
     fetchFn,
     baseUrl,
-    mediaDir = DEFAULT_MEDIA_DIR,
+    mediaDir = defaultMediaDir(),
   } = opts;
   const fileId = document.file_id;
 

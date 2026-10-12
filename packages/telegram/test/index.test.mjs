@@ -231,6 +231,17 @@ function tmpStateFile(prefix) {
   );
 }
 
+/**
+ * A throwaway directory for a test that would otherwise resolve a braid
+ * default into the live tree (media downloads, live-update state).
+ */
+function tmpDir(prefix) {
+  return join(
+    tmpdir(),
+    `tg-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+}
+
 test("env alias: TELEGRAM_POLL_DISABLED resolves; BRAID_TG_POLL_DISABLED wins when both set", () => {
   withEnv(
     { BRAID_TG_POLL_DISABLED: undefined, TELEGRAM_POLL_DISABLED: "1" },
@@ -1454,6 +1465,9 @@ test("factory: STT defaults to Venice chat/input_audio on AGENT_ZERO_API_KEY (no
       TELEGRAM_POLL_DISABLED: undefined,
       BRAID_TG_STATE_FILE: tmpStateFile("stt-chat"),
       TELEGRAM_STATE_FILE: undefined,
+      BRAID_TG_MEDIA_DIR: tmpDir("stt-chat-media"),
+      TELEGRAM_MEDIA_DIR: undefined,
+      BRAID_HOME: tmpDir("stt-chat-braid"),
       BRAID_TG_STT_API_KEY: undefined,
       TELEGRAM_STT_API_KEY: undefined,
       AGENT_ZERO_API_KEY: "venice-key",
@@ -1512,6 +1526,9 @@ test("factory: BRAID_TG_STT_MODE=transcriptions opts back to the OpenAI /audio/t
       TELEGRAM_POLL_DISABLED: undefined,
       BRAID_TG_STATE_FILE: tmpStateFile("stt-transcriptions"),
       TELEGRAM_STATE_FILE: undefined,
+      BRAID_TG_MEDIA_DIR: tmpDir("stt-transcriptions-media"),
+      TELEGRAM_MEDIA_DIR: undefined,
+      BRAID_HOME: tmpDir("stt-transcriptions-braid"),
       BRAID_TG_STT_API_KEY: "sk-test",
       TELEGRAM_STT_API_KEY: undefined,
       BRAID_TG_STT_MODE: "transcriptions",
@@ -1561,6 +1578,9 @@ test("factory: mode=transcriptions with NO explicit key does NOT leak the Venice
       TELEGRAM_POLL_DISABLED: undefined,
       BRAID_TG_STATE_FILE: tmpStateFile("stt-modegate"),
       TELEGRAM_STATE_FILE: undefined,
+      BRAID_TG_MEDIA_DIR: tmpDir("stt-modegate-media"),
+      TELEGRAM_MEDIA_DIR: undefined,
+      BRAID_HOME: tmpDir("stt-modegate-braid"),
       BRAID_TG_STT_API_KEY: undefined,
       TELEGRAM_STT_API_KEY: undefined,
       AGENT_ZERO_API_KEY: "venice-key",
@@ -2735,7 +2755,9 @@ test("callback routing: a pause tap still hits the pause handler (state persiste
     home,
     ".pi",
     "agent",
-    "telegram-pause-state.json",
+    "braid",
+    "telegram",
+    "pause-state.json",
   );
   const answered = [];
   const updates = makeUpdatesServer([makeCallbackUpdate(211, "pause")]);
@@ -2750,6 +2772,7 @@ test("callback routing: a pause tap still hits the pause handler (state persiste
   await withEnv(
     {
       HOME: home,
+      BRAID_HOME: undefined,
       BRAID_TG_BOT_TOKEN: BOT_TOKEN,
       TELEGRAM_BOT_TOKEN: undefined,
       BRAID_TG_ALLOWED_USERS: String(OWNER_ID),
@@ -2779,8 +2802,9 @@ test("callback routing: a pause tap still hits the pause handler (state persiste
     );
     assert.equal(r.details.running, true);
 
-    // The pause handler persists the flag to the HOME-scoped state file and
-    // answers the tap; a control tap never becomes a user message.
+    // The pause handler persists the flag under the braid root (BRAID_HOME
+    // unset → the HOME-scoped braid home) and answers the tap; a control tap
+    // never becomes a user message.
     const state = await waitForJson(
       pauseStateFile,
       (parsed) => parsed.paused === true,

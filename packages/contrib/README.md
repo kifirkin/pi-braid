@@ -65,7 +65,7 @@ Then toggle extensions and behavior from `~/.pi/agent/settings.json` under `brai
 | ----------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
 | `braid.contrib.browserAdvanced: true`                 | `false`             | Enables the 7 advanced browser tools and the `/browser-tabs` command; core browser tools always load |
 | `braid.contrib.pathSecurity: { block: true }`         | `false` (soft-warn) | Hard-blocks dangerous bash/write operations instead of warning                                       |
-| `braid.contrib.observatory: { record: true }`         | `false`             | Writes session lifecycle events to `~/.pi/observatory/sessions/*.jsonl`                              |
+| `braid.contrib.observatory: { record: true }`         | `false`             | Writes session lifecycle events to `<braidDir>/observatory/sessions/*.jsonl`                         |
 | `braid.contrib.rate-limiter: { rpm, tpm, providers }` | built-in defaults   | Per-provider RPM/TPM ceilings and max-wait                                                           |
 | `braid.contrib.<name>: false`                         | `true`              | Disables an entire extension                                                                         |
 

@@ -47,3 +47,6 @@ pi-session-*.html
 
 # Package artifacts
 *.tgz
+# Pack-time provenance record (written by publish-local.mjs, removed after the
+# pack); ignored so an interrupted publish cannot leave the checkout dirty
+build-info.json

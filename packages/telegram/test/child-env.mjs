@@ -22,9 +22,14 @@
  *   braid-home default. The TELEGRAM_POLLER_LOCK_FILE alias is stripped —
  *   once the canonical name is pinned, the alias is a redundant ambient
  *   input that could resurface in a test that unsets the canonical.
+ * - BRAID_HOME is pinned to a per-file tmp path: every default braid state
+ *   path (offset, live-update, downloaded media, pause state) resolves
+ *   through it, so a test that forgets to pin its own state file writes
+ *   into a fixture instead of the live seat's braid tree. Suites that
+ *   assert the default tree set their own pin and restore it.
  *
  * Everything else passes through untouched; suites pin or delete their
- * own remaining inputs (credentials, state files, cadence).
+ * own remaining inputs (credentials, cadence).
  */
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,6 +52,10 @@ export function childEnv(file, base = process.env) {
   env.BRAID_TG_POLLER_LOCK_FILE = join(
     tmpdir(),
     `tg-poller-lock-${file}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  env.BRAID_HOME = join(
+    tmpdir(),
+    `tg-braid-home-${file}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   return env;
 }

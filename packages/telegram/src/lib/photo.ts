@@ -14,8 +14,8 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultMediaDir } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -30,14 +30,6 @@ export interface TelegramPhotoSize {
   height?: number;
   file_size?: number;
 }
-
-/** Default media storage dir: ~/.pi/agent/telegram-media/<update_id>.<ext>. */
-export const DEFAULT_MEDIA_DIR = join(
-  homedir(),
-  ".pi",
-  "agent",
-  "telegram-media",
-);
 
 /** True when a message carries a non-empty `photo` array (photo inbound). */
 export function hasPhoto(message: unknown): boolean {
@@ -111,7 +103,7 @@ export async function materializePhoto(opts: {
     photo,
     fetchFn,
     baseUrl,
-    mediaDir = DEFAULT_MEDIA_DIR,
+    mediaDir = defaultMediaDir(),
   } = opts;
   const fileId = photo.file_id;
 

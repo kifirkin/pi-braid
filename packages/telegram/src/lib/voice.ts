@@ -16,8 +16,8 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultMediaDir } from "./state-paths.js";
 import {
   getFile,
   downloadFile,
@@ -32,14 +32,6 @@ export interface TelegramVoice {
   mime_type?: string;
   file_size?: number;
 }
-
-/** Default media storage dir: ~/.pi/agent/telegram-media/<update_id>.<ext>. */
-export const DEFAULT_MEDIA_DIR = join(
-  homedir(),
-  ".pi",
-  "agent",
-  "telegram-media",
-);
 
 /** True when a message carries a usable `voice` object (voice inbound). */
 export function hasVoice(message: unknown): boolean {
@@ -102,7 +94,7 @@ export async function materializeVoice(opts: {
     voice,
     fetchFn,
     baseUrl,
-    mediaDir = DEFAULT_MEDIA_DIR,
+    mediaDir = defaultMediaDir(),
   } = opts;
   const fileId = voice.file_id;
 

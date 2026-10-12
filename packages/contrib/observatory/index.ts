@@ -4,7 +4,8 @@
  *
  * What it does:
  *   - PASSIVELY records session lifecycle events (session_start,
- *     session_shutdown) to JSONL files under ~/.pi/observatory/. Recording
+ *     session_shutdown) to JSONL files under `<braidDir>/observatory/sessions/`
+ *     (`~/.pi/agent/braid` by default; BRAID_HOME relocates it). Recording
  *     is OPT-IN via `braid.contrib.observatory.record: true` (default off).
  *   - EXPOSES a `observatory` tool with three read-only actions:
  *       status  — current session state (model, cwd, tool/extension count)
@@ -16,10 +17,12 @@
  *   - Cross-session aggregation with metrics over time
  *   - Hot-path tracing of tool calls (we only record lifecycle)
  *
- * Storage: ~/.pi/observatory/sessions/*.jsonl  (one file per session-id
+ * Storage: <braidDir>/observatory/sessions/*.jsonl  (one file per session-id
  * or "default" if no session id is exposed). Rotation: capped at
  * MAX_EVENTS_PER_SESSION events (oldest dropped). Recordings are never
- * sent anywhere — only written to local disk for later inspection.
+ * sent anywhere — only written to local disk for later inspection. Earlier
+ * recordings under ~/.pi/observatory/ are not migrated: they were never read
+ * back by braid.
  */
 
 import * as fs from "node:fs";
@@ -32,12 +35,11 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.js";
+import { observatorySessionsDir } from "../state-paths.js";
 import { registerSessionStartHandler, SessionPhase } from "pi-braid/lib";
 
 const log = createLogger("observatory");
 
-const OBSERVATORY_DIR = path.join(os.homedir(), ".pi", "observatory");
-const SESSIONS_DIR = path.join(OBSERVATORY_DIR, "sessions");
 const MAX_EVENTS_PER_SESSION = 5000; // tail-cap; oldest dropped if exceeded
 
 interface ContribSettings {
@@ -95,10 +97,11 @@ interface ObservatoryEvent {
 
 function appendEvent(event: ObservatoryEvent, maxEvents: number): void {
   try {
-    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    const sessionsDir = observatorySessionsDir();
+    fs.mkdirSync(sessionsDir, { recursive: true });
     const sessionKey = event.sessionId || "default";
     const file = path.join(
-      SESSIONS_DIR,
+      sessionsDir,
       `${sanitizeForFilename(sessionKey)}.jsonl`,
     );
     const line = JSON.stringify(event) + "\n";
@@ -147,16 +150,17 @@ function resolveSessionId(ctx: ExtensionContext): string {
 
 function tailEvents(n: number): ObservatoryEvent[] {
   const out: ObservatoryEvent[] = [];
+  const sessionsDir = observatorySessionsDir();
   try {
-    if (!fs.existsSync(SESSIONS_DIR)) return out;
+    if (!fs.existsSync(sessionsDir)) return out;
     const files = fs
-      .readdirSync(SESSIONS_DIR)
+      .readdirSync(sessionsDir)
       .filter((f) => f.endsWith(".jsonl"))
       .sort()
       .reverse();
     for (const f of files) {
       if (out.length >= n) break;
-      const content = fs.readFileSync(path.join(SESSIONS_DIR, f), "utf-8");
+      const content = fs.readFileSync(path.join(sessionsDir, f), "utf-8");
       const lines = content.split("\n").filter(Boolean);
       for (let i = lines.length - 1; i >= 0 && out.length < n; i--) {
         try {
@@ -229,7 +233,7 @@ export default function observatoryExtension(pi: ExtensionAPI): void {
     });
 
     log.info(
-      `Observatory recording enabled. Events written to ${SESSIONS_DIR} (cap ${settings.maxEvents}/session).`,
+      `Observatory recording enabled. Events written to ${observatorySessionsDir()} (cap ${settings.maxEvents}/session).`,
     );
   } else {
     log.info(
@@ -267,7 +271,7 @@ export default function observatoryExtension(pi: ExtensionAPI): void {
           // some extensions may not expose this; ignore
         }
         const sessionsDir = settings.record
-          ? SESSIONS_DIR
+          ? observatorySessionsDir()
           : "(recording disabled)";
         const text =
           `📊 Observatory Status\n` +

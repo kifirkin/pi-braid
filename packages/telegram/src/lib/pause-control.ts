@@ -10,8 +10,11 @@
  *    status → reply the current state; every tap is answered via
  *    answerCallbackQuery and the keyboard is updated in place via
  *    editMessageText (paused shows ▶ Resume, running shows ⏸ Pause);
- *  - a persisted pause state file (default `~/.pi/agent/telegram-pause-state.json`,
- *    atomic write-temp-rename) that survives restarts;
+ *  - a persisted pause state file (default
+ *    `<braidDir>/telegram/pause-state.json`, atomic write-temp-rename) that
+ *    survives restarts; the pre-move `~/.pi/agent/telegram-pause-state.json`
+ *    stays readable until the first post-move write replaces it (reads prefer
+ *    the braid-root file, writes only ever land there);
  *  - `getPauseState()` — the exported read seam for the CONSUMER (the
  *    orchestrator decides how to honor the flag; this module never blocks the
  *    poller or the core loop).
@@ -30,7 +33,10 @@ import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
+import { defaultPauseStateFile, legacyPauseStateFile } from "./state-paths.js";
 import type { TelegramClient, TelegramReplyMarkup } from "./telegram-client.js";
+
+export { defaultPauseStateFile, legacyPauseStateFile };
 
 // Callback actions (button callback_data)
 
@@ -50,29 +56,20 @@ export interface PauseState {
   updatedAt: number;
 }
 
-/** Fixed default state file (brief): ~/.pi/agent/telegram-pause-state.json. */
-export function defaultPauseStateFile(): string {
-  return join(homedir(), ".pi", "agent", "telegram-pause-state.json");
-}
-
 /** settings.json (pi-native) — braid.telegram block, mirrors braid-settings.ts. */
 const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
 interface BraidSettings {
   braid?: {
     telegram?: {
-      /** Override for the pause-state file path (default: DEFAULT_PAUSE_STATE_FILE). */
+      /** Override for the pause-state file path (default: defaultPauseStateFile()). */
       pauseStateFile?: string;
     };
   };
 }
 
-/**
- * Resolve the pause-state file path: `braid.telegram.pauseStateFile` in
- * `~/.pi/agent/settings.json` when set, else the fixed default. Config via
- * settings (pi philosophy), not process.env. Never throws.
- */
-export function resolvePauseStateFile(): string {
+/** The `braid.telegram.pauseStateFile` override, or undefined. Never throws. */
+function configuredPauseStateFile(): string | undefined {
   try {
     if (existsSync(SETTINGS_PATH)) {
       const parsed = JSON.parse(
@@ -85,7 +82,31 @@ export function resolvePauseStateFile(): string {
   } catch {
     // non-fatal — fall through to the default
   }
-  return defaultPauseStateFile();
+  return undefined;
+}
+
+/**
+ * Write resolution: `braid.telegram.pauseStateFile` when configured, else the
+ * braid-root default. Every write goes here — the pre-move agent-dir file is
+ * read-only history.
+ */
+export function resolvePauseStateFile(): string {
+  return configuredPauseStateFile() ?? defaultPauseStateFile();
+}
+
+/**
+ * Read resolution: the configured override, else the braid-root file when it
+ * exists, else the pre-move agent-dir file when that exists (so a pause set
+ * before the relocation keeps holding), else the braid-root path (a miss the
+ * caller treats as "not paused").
+ */
+export function resolvePauseStateReadFile(): string {
+  const configured = configuredPauseStateFile();
+  if (configured) return configured;
+  const current = defaultPauseStateFile();
+  if (existsSync(current)) return current;
+  const legacy = legacyPauseStateFile();
+  return existsSync(legacy) ? legacy : current;
 }
 
 /** Read the pause state; a missing/corrupt file means "not paused" (never throws). */
@@ -128,7 +149,7 @@ export async function savePauseState(
  * settings/default path. Never throws.
  */
 export async function getPauseState(
-  stateFile: string = resolvePauseStateFile(),
+  stateFile: string = resolvePauseStateReadFile(),
 ): Promise<PauseState> {
   return loadPauseState(stateFile);
 }
@@ -316,7 +337,14 @@ export async function handlePauseCallbackQuery(
   const data =
     typeof callbackQuery.data === "string" ? callbackQuery.data.trim() : "";
   const stateFile = deps.stateFile;
-  const state = await loadPauseState(stateFile);
+  // Reads prefer the braid-root file but fall back to the pre-move agent-dir
+  // copy while the braid-root file does not exist yet; the writes below always
+  // target `stateFile` (the braid-root default or the configured override).
+  const readFile =
+    stateFile === resolvePauseStateFile()
+      ? resolvePauseStateReadFile()
+      : stateFile;
+  const state = await loadPauseState(readFile);
 
   // Unknown action: answer with a hint, no state change, no keyboard edit.
   if (
@@ -352,7 +380,7 @@ export async function handlePauseCallbackQuery(
     );
   }
   // Re-read so `paused` reflects the persisted truth (idempotent re-taps).
-  const current = await loadPauseState(stateFile);
+  const current = await loadPauseState(readFile);
 
   const statusText = current.paused ? "⏸ Agent paused" : "▶ Agent running";
   const answered = await answerCallback(deps, callbackQuery.id, statusText);
