@@ -28,7 +28,7 @@ import { applyWhisperEnvelope } from "../../../lib/utils/whisper-format.js";
 import { formatTokensK } from "../../../lib/detection/context-usage.js";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
+import { braidDir } from "../../../lib/config/braid-paths.js";
 import {
   registerSessionStartHandler,
   SessionPhase,
@@ -975,7 +975,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
         const cwd = (ctx as { cwd?: string }).cwd ?? "";
         const slug = cwd.split("/").filter(Boolean).join("-") || "default";
-        const tagsFile = path.join(os.homedir(), ".pi", "agent", "braid", "tags", `${slug}.json`);
+        const tagsFile = path.join(braidDir(), "tags", `${slug}.json`);
         let fileTags: string[] = [];
         try {
           if (existsSync(tagsFile)) {

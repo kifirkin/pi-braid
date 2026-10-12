@@ -41,8 +41,17 @@ export const ERROR_DIR = path.join(BRAID, "errors");
 export const SCRATCHPAD_DIR = path.join(BRAID, "scratchpads");
 export const METRICS_DIR = path.join(BRAID, "metrics");
 export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
-/** Lossless flush target for offloaded stale tool results. */
+/** Lossless flush target for offloaded stale tool results. Precomputed from
+ *  the default root: a caller that WRITES here must resolve through
+ *  `offloadDir()` so BRAID_HOME pinning applies (see braidDir()). */
 export const OFFLOAD_DIR = path.join(BRAID, "offload");
+
+/** Offload root, resolved on every call (BRAID_HOME pinning honored). Also
+ *  the containment root `offload_recover` accepts stub paths under, so writer
+ *  and reader can never disagree about where a flush landed. */
+export function offloadDir(): string {
+  return path.join(braidDir(), "offload");
+}
 
 // ── File paths ─────────────────────────────────────────────────────────────
 
@@ -140,7 +149,7 @@ export function getOffloadFilePath(
   toolName: string,
 ): string {
   return path.join(
-    OFFLOAD_DIR,
+    offloadDir(),
     sanitizeSegment(sessionId || "anonymous"),
     `${sanitizeSegment(toolName || "unknown")}-${sanitizeSegment(toolCallId || "unknown")}.txt`,
   );
@@ -155,6 +164,19 @@ export function getTimerFilePath(cwd?: string): string {
   if (!cwd) return path.join(braidDir(), "pending-timers.jsonl");
   const projectDir = sanitizePathForDir(cwd);
   return path.join(braidDir(), "projects", projectDir, "pending-timers.jsonl");
+}
+
+/** Get the per-CWD module overrides store path.
+ *  Braid's own record of the runtime module toggles (`braid.modules` values a
+ *  toggle persisted), kept out of the user's project: writing it into
+ *  `<cwd>/.pi/settings.json` made braid create files in a stranger's repo.
+ *  Resolves through braidDir() — durable write state, so BRAID_HOME pinning
+ *  must move it. A `braid.modules` block in pi's settings files stays an
+ *  INPUT (see the loader's read order); it is never written. */
+export function getModuleOverridesFilePath(cwd?: string): string {
+  if (!cwd) return path.join(braidDir(), "module-overrides.json");
+  const projectDir = sanitizePathForDir(cwd);
+  return path.join(braidDir(), "projects", projectDir, "module-overrides.json");
 }
 
 /** Get the per-CWD lock file path. */

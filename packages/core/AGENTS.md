@@ -46,8 +46,10 @@ label used by the subagent API to enable/disable a group of extensions
 directory tree.
 
 The runtime loader is `src/loader/loader.ts`. Config sources (highest
-priority first): subagent API → `~/.pi/agent/settings.json` under `braid.modules`
-→ `BRAID_MODULES` env var → manifest defaults.
+priority first): subagent API (persisted into braid's module-overrides store)
+→ `braid.modules` read from pi's global settings file, then a project-scoped
+pi settings file, then braid's own store → `BRAID_MODULES` env var → manifest
+defaults.
 
 ### Common `BRAID_MODULES` patterns
 

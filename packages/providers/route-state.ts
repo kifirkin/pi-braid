@@ -46,6 +46,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { createThrottledLogger, providerLog } from "./log";
+import { homedirAgentDir } from "./state-paths";
 
 // Types
 
@@ -158,9 +159,14 @@ function emptyEntry(): RouteStateEntry {
   };
 }
 
-function defaultPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || ".";
-  return join(home, ".pi", "agent", ".provider-route-state.json");
+/**
+ * Store location, or `null` when no absolute state directory can be resolved.
+ * With no path, reads see the empty document and mutations stay in memory:
+ * the store is never written relative to the cwd.
+ */
+function defaultPath(): string | null {
+  const dir = homedirAgentDir();
+  return dir ? join(dir, ".provider-route-state.json") : null;
 }
 
 /**
@@ -168,7 +174,7 @@ function defaultPath(): string {
  * path (a different HOME) drops the cache and loads the new file, so two paths
  * never share memory.
  */
-function file(): string {
+function file(): string | null {
   const path = defaultPath();
   if (path !== boundPath) {
     boundPath = path;
@@ -247,17 +253,40 @@ export function setWarmModels(
 
 // Mutation
 
+/** Said once per process: repeated mutation attempts must not flood the log. */
+let warnedMemoryOnly = false;
+
+function warnMemoryOnlyOnce(): void {
+  if (warnedMemoryOnly) return;
+  warnedMemoryOnly = true;
+  providerLog(
+    "warn",
+    "providers/route-state",
+    "[route-state] no absolute state directory (os.homedir() unavailable) - route state is memory-only for this process",
+  );
+}
+
 /**
  * Apply one entry mutation under the lock with a fresh read-merge-write: the
  * newest on-disk snapshot replaces the in-memory document, the mutation runs,
  * and the result is written with a CAS `rev` — and only when the mutation
  * reports a change, so a no-op does not bump the counter.
+ *
+ * With no resolvable store path (no absolute home) the mutation still applies
+ * to the in-memory document and is reported once as memory-only: refusing the
+ * mutation would break live routing to avoid a write nobody asked for.
  */
 function mutate(
   providerId: string,
   apply: (entry: RouteStateEntry) => boolean,
 ): void {
   const path = file();
+  if (!path) {
+    warnMemoryOnlyOnce();
+    const entry = state.routes[providerId] ?? emptyEntry();
+    if (apply(entry)) state.routes[providerId] = entry;
+    return;
+  }
   withLockedMutation(path, () => {
     const entry = state.routes[providerId] ?? emptyEntry();
     const changed = apply(entry);

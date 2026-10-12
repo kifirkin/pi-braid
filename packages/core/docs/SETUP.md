@@ -153,7 +153,7 @@ Settings:
 }
 ```
 
-Project-scoped wins on collision with user-global (per pi's resolution order).
+Project-scoped wins on collision with user-global (per pi's resolution order). This file is yours or pi's: braid reads a `braid.modules` block from it and never writes it - its own toggle store lives under `~/.pi/agent/braid/`.
 
 ### 4. Once-per-session flag (no install)
 
@@ -243,12 +243,13 @@ skills rather than globally ([§ Skills](#skills)).
 braid reads configuration from the standard pi locations, with a dedicated `braid` namespace:
 
 ```
-~/.pi/agent/settings.json       # user-global (default location)
-<cwd>/.pi/settings.json         # project-scoped (overrides user-global)
-~/.pi/agent/braid/config.json   # braid-owned config file (session profiles)
+~/.pi/agent/settings.json                                    # user-global (default location)
+<cwd>/.pi/settings.json                                      # project-scoped, pi's own file (read input)
+~/.pi/agent/braid/config.json                                # braid-owned config file (session profiles)
+~/.pi/agent/braid/projects/<project>/module-overrides.json   # braid-owned module toggles
 ```
 
-The user-global file always exists; the project one is optional. `braid.modules` merges both (project wins per key); every other `braid.*` reader reads the user-global file only. Copy-ready examples live in the repo's [`examples/`](../../../examples) directory.
+The user-global file always exists; the project one is optional and belongs to pi (braid neither creates it nor writes it). `braid.modules` is read from three sources, later source wins per key: the user-global file, the project-scoped file, and braid's own `module-overrides.json` store, which is where `/modules-toggle` and friends persist. Every other `braid.*` reader reads the user-global file only. Copy-ready examples live in the repo's [`examples/`](../../../examples) directory.
 
 ### Schema
 
@@ -330,7 +331,7 @@ First match wins - a match is the profile `cwd` itself or any directory under it
 braid's loader follows a four-tier precedence (high → low):
 
 1. **Runtime API** - `/modules-toggle`, `/modules-enable`, `/modules-disable` (in-session)
-2. **Settings file** - `braid.modules` in `~/.pi/agent/settings.json` (or project-scoped)
+2. **Settings** - `braid.modules`, later source wins per id: `~/.pi/agent/settings.json`, then a project-scoped `<cwd>/.pi/settings.json` (an input only - braid never writes pi's files), then braid's own `~/.pi/agent/braid/projects/<project>/module-overrides.json`, where the toggle commands persist
 3. **Env var** - `BRAID_MODULES=...`
 4. **Defaults** - all extensions whose manifest does not have `disabledByDefault: true`
 
@@ -392,7 +393,8 @@ All braid-specific data lives under `~/.pi/agent/braid/`:
 ├── config.json  # braid-owned config (session profiles)
 ├── memory/      # three-store memory files
 ├── snapshots/   # workspace snapshots
-└── sessions/    # session-level state
+├── sessions/    # session-level state
+└── projects/    # per-project state (module-overrides.json, timers, locks)
 ```
 
 Constants in [`src/lib/config/braid-paths.ts`](../src/lib/config/braid-paths.ts) own the path logic. Don't hardcode paths.
@@ -413,7 +415,7 @@ Run `pi` with `--verbose` and check the startup log. Common causes:
 
 ### Settings have no effect
 
-- User-global `~/.pi/agent/settings.json` is loaded for every pi session. Project-scoped `<cwd>/.pi/settings.json` wins on collision for `braid.modules`; the other `braid.*` readers use the user-global file only.
+- User-global `~/.pi/agent/settings.json` is loaded for every pi session. `braid.modules` is read from there, then from a project-scoped `<cwd>/.pi/settings.json` (a read-only input: braid never writes pi's files), then from braid's own module-overrides store under `~/.pi/agent/braid/projects/<project>/`; the other `braid.*` readers use the user-global file only.
 - Both files are pure JSON - comments and trailing commas are not allowed (use a JSON validator if unsure).
 - Most braid settings re-read the file on every call, so an edit applies without a restart. Extension loading (`packages`, `braid.modules`) is resolved once at load - restart pi for those.
 
@@ -446,7 +448,7 @@ ls node_modules/@earendil-works/ 2>/dev/null
 
 ### Disabling and restarts
 
-The in-session `/modules-disable` persists the choice to `braid.modules`; the change takes effect at the next session start (already-loaded extensions keep running). A persisted `false` entry removes a default-enabled extension at boot, so the choice survives restarts. The equivalent env-var route is `export BRAID_MODULES="-<id>"` (module values are real JSON booleans - `false`, not `0` or `"off"`).
+The in-session `/modules-disable` persists the choice to braid's own `braid.modules` store (`~/.pi/agent/braid/projects/<project>/module-overrides.json`); the change takes effect at the next session start (already-loaded extensions keep running). A persisted `false` entry removes a default-enabled extension at boot, so the choice survives restarts. The equivalent env-var route is `export BRAID_MODULES="-<id>"` (module values are real JSON booleans - `false`, not `0` or `"off"`).
 
 ---
 

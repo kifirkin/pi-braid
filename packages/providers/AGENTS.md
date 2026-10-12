@@ -14,18 +14,19 @@ runtime provides pi-ai at runtime - it's not bundled here.
 
 ## Files
 
-| File                | Purpose                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `index.ts`          | Registers the configured routes + wires the key-ring and rotation handlers                                   |
-| `venice-catalog.ts` | Userland catalog seam: loads the owner-private venice model catalog + gateway URL                            |
-| `venice-direct.ts`  | The `venice-direct` route module: constants, direct key ring, model configs (rotation is the engine's job)   |
-| `probe.ts`          | Non-billable route probes: the provider-agnostic runner plus the adapter table                               |
-| `outage-watch.ts`   | Out-of-loop connectivity watch: failure classification, circuit breaker, bounded recovery probe, stall lines |
-| `route-state.ts`    | Cross-session route state (probe/death/fail-back/warm-model records) over a shared, CAS-guarded file         |
-| `ring-health.ts`    | Read-only health surface over the key-ring and route-state files: hash-only summaries, never a writer        |
-| `ring-provider.ts`  | Ring-backed api-key auth, and the re-pointing of a pi-ai provider definition onto a route's ring             |
-| `package.json`      | `@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai` devDeps, `pi-ai` peerDep                         |
-| `tsconfig.json`     | TypeScript config for type checking                                                                          |
+| File                | Purpose                                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`          | Registers the configured routes + wires the key-ring and rotation handlers                                                                                                      |
+| `venice-catalog.ts` | Userland catalog seam: loads the owner-private venice model catalog + gateway URL                                                                                               |
+| `venice-direct.ts`  | The `venice-direct` route module: constants, direct key ring, model configs (rotation is the engine's job)                                                                      |
+| `probe.ts`          | Non-billable route probes: the provider-agnostic runner plus the adapter table                                                                                                  |
+| `outage-watch.ts`   | Out-of-loop connectivity watch: failure classification, circuit breaker, bounded recovery probe, stall lines                                                                    |
+| `route-state.ts`    | Cross-session route state (probe/death/fail-back/warm-model records) over a shared, CAS-guarded file                                                                            |
+| `state-paths.ts`    | Every state-file location this package writes: pi's agent directory, absolute-or-nothing (never relative to the cwd), plus the braid data root that mirrors core's `braidDir()` |
+| `ring-health.ts`    | Read-only health surface over the key-ring and route-state files: hash-only summaries, never a writer                                                                           |
+| `ring-provider.ts`  | Ring-backed api-key auth, and the re-pointing of a pi-ai provider definition onto a route's ring                                                                                |
+| `package.json`      | `@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai` devDeps, `pi-ai` peerDep                                                                                            |
+| `tsconfig.json`     | TypeScript config for type checking                                                                                                                                             |
 
 ## Local contracts
 
@@ -87,6 +88,13 @@ runtime provides pi-ai at runtime - it's not bundled here.
   predicate (`deathInForce`), never with an age test of its own.
 
 ## Settings surface
+
+`state-paths.ts` owns every state-file location this package writes: pi's agent
+directory (`homedirAgentDir()`, or `piAgentDir()` where `PI_CODING_AGENT_DIR`
+was already honored) and the braid data root the `presend` flushes use
+(`braidDataRoot()`, core's `braidDir()` mirrored). Neither falls back to a
+relative path: a base that cannot be resolved absolutely is refused, and the
+caller warns instead of writing beside the cwd.
 
 `~/.pi/agent/settings.json` (owner-owned, read-only here) is read fresh on
 every consultation through ONE reader - `readProvidersSettingsFromSettings`

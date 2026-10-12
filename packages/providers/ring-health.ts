@@ -32,6 +32,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createThrottledLogger } from "./log";
+import { homedirAgentDir } from "./state-paths";
 import { readRouteState } from "./route-state";
 import type {
   RouteFailbackRecord,
@@ -134,13 +135,12 @@ export interface DeathFreshness {
 const RING_FILE_PREFIX = ".key-ring-state-";
 const RING_FILE_SUFFIX = ".json";
 
-/**
- * The directory the pi agent keeps its state files in. Same derivation as
- * key-ring.ts and route-state.ts, so the reader looks where the writers wrote.
- */
-function defaultStateDir(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || ".";
-  return join(home, ".pi", "agent");
+/** The directory the pi agent keeps its state files in: the writers' base
+ *  (providers/state-paths.ts), so the reader looks where the writers wrote.
+ *  `null` when no absolute home can be resolved - then there is no state
+ *  directory to read, and the absent-file shape follows. */
+function defaultStateDir(): string | null {
+  return homedirAgentDir();
 }
 
 /**
@@ -152,7 +152,8 @@ function ringFileName(providerId: string): string {
 }
 
 /** Provider ids discoverable from ring files in `stateDir`, sorted. */
-function ringProvidersIn(stateDir: string): string[] {
+function ringProvidersIn(stateDir: string | null): string[] {
+  if (!stateDir) return [];
   let names: string[];
   try {
     names = readdirSync(stateDir);
@@ -208,9 +209,9 @@ export function ringHealth(
   providerId: string,
   opts: RingHealthOptions = {},
 ): RingHealth {
-  const file =
-    opts.file ??
-    join(opts.stateDir ?? defaultStateDir(), ringFileName(providerId));
+  const dir = opts.stateDir ?? defaultStateDir();
+  const file = opts.file ?? (dir ? join(dir, ringFileName(providerId)) : null);
+  if (!file) return { provider: providerId, present: false };
   const persisted = readRingState(file);
   if (!persisted) return { provider: providerId, present: false };
   return {
@@ -317,7 +318,7 @@ export function routeHealth(opts: RouteHealthOptions = {}): RouteHealth[] {
     const entry = routeState.routes[provider];
     return {
       provider,
-      ring: ringHealth(provider, { stateDir }),
+      ring: ringHealth(provider, stateDir ? { stateDir } : {}),
       lastProbe: entry?.lastProbe ? { ...entry.lastProbe } : null,
       deathClass: entry?.deathClass ?? null,
       deathAt: entry?.deathAt ?? 0,

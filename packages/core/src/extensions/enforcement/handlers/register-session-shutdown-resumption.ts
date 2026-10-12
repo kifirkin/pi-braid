@@ -11,18 +11,17 @@
  * next session to provide a "resume here" signal -- not auto-loading,
  * but discoverability so the agent knows prior work exists.
  *
- * File location: ~/.pi/agent/braid/sessions/<projectSlug>/resume.json
+ * File location: <braidDir()>/sessions/<projectSlug>/resume.json
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { execSync } from "node:child_process";
 import { createLogger } from "../../../lib/core/logger.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { getState } from "../state.js";
-import { SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
+import { SCRATCHPAD_DIR, braidDir } from "../../../lib/config/braid-paths.js";
 import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -115,7 +114,7 @@ export function registerSessionShutdownResumption(pi: ExtensionAPI): void {
         verificationCount,
       };
 
-      const sessionsDir = path.join(os.homedir(), ".pi", "agent", "braid", "sessions", slug);
+      const sessionsDir = path.join(braidDir(), "sessions", slug);
       if (!existsSync(sessionsDir)) {
         mkdirSync(sessionsDir, { recursive: true });
       }

@@ -32,21 +32,26 @@
  * This is an advisory reader, not a gate: it is named `report:` in
  * package.json and is not a member of the ci:check chain.
  *
- * The default path mirrors the producer's module-local CONTEXT_HEARTBEAT_FILE
- * constant (that constant is a candidate to move to braid-paths; see the
- * producer's header). test-context-heartbeat-report.mjs pins the two together,
- * so the mirror cannot drift silently.
+ * The default path mirrors the producer's `contextHeartbeatFilePath()`: both
+ * resolve `<braid dir>/telemetry/context-heartbeat.jsonl`, where the braid dir
+ * is BRAID_HOME when pinned and `<pi agent dir>/braid` otherwise. The mirror
+ * exists because this script cannot import the TS module;
+ * test-context-heartbeat-report.mjs pins the two resolved values together, so
+ * it cannot drift silently.
  */
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/** Mirror of core's braidDir() (braid-paths.ts): BRAID_HOME wins when pinned. */
+function braidDir() {
+  const override = process.env.BRAID_HOME;
+  return override && override.trim() ? resolve(override) : join(homedir(), ".pi", "agent", "braid");
+}
+
 export const CONTEXT_HEARTBEAT_FILE = join(
-  homedir(),
-  ".pi",
-  "agent",
-  "braid",
+  braidDir(),
   "telemetry",
   "context-heartbeat.jsonl",
 );

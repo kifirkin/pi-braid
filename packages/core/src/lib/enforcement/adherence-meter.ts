@@ -26,9 +26,9 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { createLogger } from "../core/logger.js";
+import { braidDir } from "../config/braid-paths.js";
 import { INJECTION_ENTRY_TYPE, reprimeBodyKey } from "../utils/injection-tracker.js";
 
 const log = createLogger("adherence-meter");
@@ -81,9 +81,10 @@ export const ADHERENCE_REPORT_SCHEMA = "braid-adherence-report/1";
 const ADHERENCE_DIR_NAME = "adherence";
 const ADHERENCE_REPORT_FILE_NAME = "report.jsonl";
 
-/** Default report directory (same convention as telemetry/metrics sinks). */
+/** Default report directory. Resolved through braidDir() on every call, so a
+ *  BRAID_HOME-pinned run writes into the pinned tree, not the live one. */
 export function adherenceDir(): string {
-  return path.join(os.homedir(), ".pi", "agent", "braid", ADHERENCE_DIR_NAME);
+  return path.join(braidDir(), ADHERENCE_DIR_NAME);
 }
 
 /** Stable report path; injectable base dir for fixtures. */

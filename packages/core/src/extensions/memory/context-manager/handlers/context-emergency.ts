@@ -39,7 +39,7 @@ import {
   getContextEmergencyOffloadConfig,
   type ResolvedContextEmergencyOffloadConfig,
 } from "../../../../lib/config/braid-settings.js";
-import { getOffloadFilePath, OFFLOAD_DIR } from "../../../../lib/config/braid-paths.js";
+import { getOffloadFilePath, offloadDir } from "../../../../lib/config/braid-paths.js";
 import {
   setContextEmergencyOffloadRunner,
   type ContextEmergencyOffloadResult,
@@ -428,7 +428,7 @@ export async function runContextEmergencyOffload(
     log.info(
       `[context-emergency] (${reason}) offloaded ${applied.offloaded} oversized ` +
         `toolResult(s): ${applied.charsSaved} in-context chars freed. ` +
-        `Full content flushed to ${OFFLOAD_DIR}. The next LLM call sends stubs.`,
+        `Full content flushed to ${offloadDir()}. The next LLM call sends stubs.`,
     );
     return { offloaded: applied.offloaded, charsSaved: applied.charsSaved };
   } catch (err) {

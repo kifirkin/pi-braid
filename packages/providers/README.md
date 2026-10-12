@@ -22,7 +22,10 @@ Each provider gets its own key ring with **exponential backoff**:
   request serves the next healthy key.
 - **Persisted state.** Exhausted-key state persists to
   `~/.pi/agent/.key-ring-state-<provider>.json`, so restarts skip known-dead
-  keys instead of retrying them and hitting the same 403.
+  keys instead of retrying them and hitting the same 403. The file lives in
+  pi's agent directory (`state-paths.ts` owns the resolution); if no absolute
+  home can be resolved, the ring refuses to persist and says so rather than
+  writing a path relative to the cwd.
 - **Self-healing turn retry.** When a turn fails and a fresh key remains, an
   explicit marker is appended so pi-core re-runs the turn on the next key
   automatically. Fatal account-level errors (quota exhausted, billing, balance)

@@ -193,7 +193,7 @@ const MECHANICAL_ROWS = [
     description: "Pre-send shrink guard against a model's context window.",
     read: {
       file: "packages/providers/presend-guard.ts",
-      line: 64,
+      line: 68,
       evidence: "raw?.braid?.context?.presendGuard?.enabled",
     },
     mech: { const: "PRESGUARD_DEFAULT_ENABLED", prop: null },
@@ -388,7 +388,7 @@ const OVERLAY_ROWS = [
     type: "object",
     default: null,
     description: "Per-extension-ref enable/disable overlay (manifest defaults when unset).",
-    read: { file: `${CORE}/src/loader/loader.ts`, line: 199, evidence: "braid.modules ?? {}" },
+    read: { file: `${CORE}/src/loader/loader.ts`, line: 236, evidence: "braid.modules ?? {}" },
   },
   {
     path: "braid.contrib",

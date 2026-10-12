@@ -28,7 +28,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, statSync, readFileSync, readdirSync } from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { createLogger } from "../../../lib/core/logger.js";
 import {
   registerSessionStartHandler,
@@ -48,6 +47,7 @@ import {
   EPISODES_FILE,
   SEMANTIC_MEMORY_FILE,
   AGENT,
+  braidDir,
 } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -175,15 +175,7 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // 5. Resume file from prior session
       try {
         const slug = projectSlugFromCwd(cwd);
-        const resumeFile = path.join(
-          os.homedir(),
-          ".pi",
-          "agent",
-          "braid",
-          "sessions",
-          slug,
-          "resume.json",
-        );
+        const resumeFile = path.join(braidDir(), "sessions", slug, "resume.json");
         if (existsSync(resumeFile)) {
           const content = readFileSync(resumeFile, "utf-8");
           const parsed = JSON.parse(content);
@@ -212,7 +204,7 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // 6. Cross-session tags from prior sessions
       try {
         const slug = projectSlugFromCwd(cwd);
-        const tagsFile = path.join(os.homedir(), ".pi", "agent", "braid", "tags", `${slug}.json`);
+        const tagsFile = path.join(braidDir(), "tags", `${slug}.json`);
         if (existsSync(tagsFile)) {
           const content = readFileSync(tagsFile, "utf-8");
           const tags = JSON.parse(content);

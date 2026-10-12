@@ -34,6 +34,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { providerLog } from "./log";
+import { braidDataRoot } from "./state-paths";
 
 /** Scope for providerLog lines from this guard. */
 const SCOPE = "providers/presend-guard";
@@ -50,9 +51,12 @@ const CONTEXT_HEADROOM = 0.9;
 /** chars → tokens heuristic (conservative for English/code prose). */
 const CHARS_PER_TOKEN = 4;
 
-/** Canonical offload dir (core's braid-paths OFFLOAD_DIR; seam-duplicated). */
+/** Presend flush root: the `presend/` subdirectory of the same offload root
+ *  core writes into (core's getOffloadFilePath resolves `braidDir()/offload`),
+ *  so a pinned BRAID_HOME moves both roots together and an unpinned process
+ *  resolves the directory it always did. */
 function presendOffloadDir(): string {
-  return join(homedir(), ".pi", "agent", "braid", "offload", "presend");
+  return join(braidDataRoot(), "offload", "presend");
 }
 
 /** Read braid.context.presendGuard.enabled fresh from settings.json. */

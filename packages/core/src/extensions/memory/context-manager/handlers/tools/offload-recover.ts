@@ -23,7 +23,7 @@ import { Type } from "typebox";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getToolResultSizeCapConfig } from "../../../../../lib/config/braid-settings.js";
-import { OFFLOAD_DIR } from "../../../../../lib/config/braid-paths.js";
+import { offloadDir } from "../../../../../lib/config/braid-paths.js";
 
 /** Chars held back from the image budget for the note block that leads the result. */
 const NOTE_MARGIN_CHARS = 1024;
@@ -59,10 +59,11 @@ function clampPath(p: string): string {
 /**
  * Resolve the flush path the stub named. Only files inside the offload
  * directory are readable here: the agent supplies the path, so containment
- * is the security boundary.
+ * is the security boundary. The root is resolved per call (offloadDir()) so
+ * it is the same directory the flushes were written to under BRAID_HOME.
  */
 function resolveRecoverablePath(requested: string): string | undefined {
-  const root = resolve(OFFLOAD_DIR);
+  const root = resolve(offloadDir());
   const p = resolve(requested);
   if (p === root || p.startsWith(root + sep)) return p;
   return undefined;

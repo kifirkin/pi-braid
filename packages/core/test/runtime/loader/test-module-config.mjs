@@ -4,26 +4,31 @@
  *
  * Verifies that the settings surface tells the truth and never destroys data:
  *   - a persisted `false` entry disables a default-enabled extension on boot
+ *   - the read order is pi global -> pi project (read-only compatibility) ->
+ *     braid's module-overrides store, later source wins per id
  *   - runtime overrides overlay the resolved base (settings additions and
  *     env-var enables survive an unrelated toggle; getModuleStates agrees
  *     with resolveEnabledExtensions in the same process)
  *   - toggle flips the effective state, not just the runtime map
- *   - persisted writes merge into the existing settings file (sibling keys
- *     and untouched module entries survive), create `.pi/` when missing,
- *     and refuse to overwrite an unreadable file
+ *   - a persisted write merges into the store (sibling keys and untouched
+ *     module entries survive), creates the store directory when missing, and
+ *     refuses to overwrite an unreadable store
  *   - an unreadable settings file warns once per process instead of
  *     silently reverting every braid setting
  *   - /modules-reset clears the runtime layer without destroying persisted
  *     settings
+ *   - containment: a module write lands in the braid tree (BRAID_HOME) and
+ *     the project directory gains nothing - no `.pi/`, no file, ever
  *
- * Each case runs in its own child process with a fake HOME and a throwaway
- * project dir: the loader resolves its settings paths from `homedir()` and
- * `process.cwd()` at module load, so isolation requires a fresh process with
- * a controlled environment (same shape as the audit's /tmp probes).
+ * Each case runs in its own child process with a fake HOME, a pinned
+ * BRAID_HOME and a throwaway project dir: the loader resolves its settings
+ * paths from `homedir()` and `process.cwd()` at module load, so isolation
+ * requires a fresh process with a controlled environment (same shape as the
+ * audit's /tmp probes).
  *
- * The cases share nothing the others read - each child owns its HOME, its cwd
- * and its tmp dir - so they are driven a few at a time by the pool below.
- * What cost ~4s per case was the queue, not the isolation.
+ * The cases share nothing the others read - each child owns its HOME, its
+ * BRAID_HOME, its cwd and its tmp dir - so they are driven a few at a time by
+ * the pool below. What cost ~4s per case was the queue, not the isolation.
  */
 
 import { strict as assert } from "node:assert";
@@ -37,7 +42,7 @@ import { runBounded } from "../../helpers/bounded-pool.mjs";
 // more children, and each child's wall time is what the cap below measures
 // (on an 8-core box: five at a time puts a healthy driver at 6.4-7.1s at load
 // 15 and at 9.5-11.3s at load 32; running all nine at once pushed each past
-// 11s). Not fewer: nine cases in two waves is the minimum width.
+// 11s). Not fewer: the cases in two waves is the minimum width.
 const CASE_CONCURRENCY = 5;
 
 // The cap is a hang detector, not a performance budget. A healthy driver's
@@ -58,24 +63,61 @@ const here = dirname(fileURLToPath(import.meta.url));
 const LOADER_PATH = join(here, "..", "..", "..", "dist", "loader", "loader.js");
 const LOGGER_PATH = join(here, "..", "..", "..", "dist", "lib", "core", "logger.js");
 const BRAID_SETTINGS_PATH = join(here, "..", "..", "..", "dist", "lib", "config", "braid-settings.js");
+const BRAID_PATHS_PATH = join(here, "..", "..", "..", "dist", "lib", "config", "braid-paths.js");
 
 // Scenario driver, materialized into each throwaway dir and run as a child.
 // HOME is reassigned BEFORE the loader import: os.homedir() reads $HOME on
-// POSIX, and the loader computes its settings paths at module load. Each
-// scenario prints one JSON object of observations (no assertions here; the
-// parent asserts so a driver bug cannot masquerade as a passed expectation).
+// POSIX, and the loader computes its settings paths at module load. The store
+// is discovered by walking BRAID_HOME, never by re-deriving its path here:
+// containment is then asserted against the pinned tree itself. Each scenario
+// prints one JSON object of observations (no assertions here; the parent
+// asserts so a driver bug cannot masquerade as a passed expectation).
 const DRIVER = `
 const scenario = process.argv[2];
 process.env.HOME = process.env.FAKE_HOME;
-const { readFileSync, existsSync } = await import("node:fs");
-const { join } = await import("node:path");
+const { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync } = await import("node:fs");
+const { dirname, join } = await import("node:path");
 const loader = await import(process.env.LOADER_PATH);
 const { getLogBuffer } = await import(process.env.LOGGER_PATH);
 const braidSettings = await import(process.env.BRAID_SETTINGS_PATH);
+const braidPaths = await import(process.env.BRAID_PATHS_PATH);
 const warnCount = () => getLogBuffer().filter((e) => e.level === "warn").length;
 const projectPath = () => join(process.cwd(), ".pi", "settings.json");
-const readProject = () => { try { return JSON.parse(readFileSync(projectPath(), "utf-8")); } catch { return null; } };
 const readProjectRaw = () => { try { return readFileSync(projectPath(), "utf-8"); } catch { return null; } };
+const BRAID = process.env.BRAID_HOME;
+/** Relative paths of every file under a root (sorted); [] when absent. */
+const tree = (root) => {
+  const out = [];
+  const walk = (dir, rel) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const childRel = rel ? rel + "/" + e.name : e.name;
+      if (e.isDirectory()) walk(join(dir, e.name), childRel);
+      else out.push(childRel);
+    }
+  };
+  walk(root, "");
+  return out.sort();
+};
+const storeFiles = () => tree(BRAID).filter((p) => p.endsWith("module-overrides.json"));
+const readStore = () => {
+  const hits = storeFiles();
+  if (hits.length !== 1) return { files: hits, doc: null, raw: null };
+  let raw = null;
+  try { raw = readFileSync(join(BRAID, hits[0]), "utf-8"); } catch { /* absent */ }
+  let doc = null;
+  try { doc = JSON.parse(raw); } catch { /* corrupt fixture */ }
+  return { files: hits, doc, raw };
+};
+/** Seed the store before the loader reads it (fixture, via the package's own
+ *  accessor: containment is asserted against the BRAID_HOME walk instead). */
+const seedStore = (content) => {
+  const path = braidPaths.getModuleOverridesFilePath(process.cwd());
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, typeof content === "string" ? content : JSON.stringify(content, null, 2), "utf-8");
+  return path;
+};
 const snap = () => {
   const r = loader.resolveEnabledExtensions();
   return {
@@ -87,7 +129,7 @@ const snap = () => {
   };
 };
 const scenarios = {
-  "settings-false-entry": () => ({ boot: snap() }),
+  "settings-false-entry": () => ({ boot: snap(), projectTree: tree(process.cwd()) }),
   "runtime-branch": () => {
     const out = { boot: snap() };
     out.enableOptIn = loader.enableModule("health-maintenance");
@@ -98,12 +140,16 @@ const scenarios = {
     out.stateErrorTracking = states["error-tracking"].enabled;
     out.stateHealthMaintenance = states["health-maintenance"].enabled;
     out.stateTopicDrift = states["topic-drift"].enabled;
+    out.store = readStore();
+    out.projectTree = tree(process.cwd());
     return out;
   },
   "toggle-default": () => {
     const out = { before: snap() };
     out.toggled = loader.toggleModule("topic-drift");
     out.after = snap();
+    out.store = readStore();
+    out.projectTree = tree(process.cwd());
     return out;
   },
   "env-precedence": () => {
@@ -112,16 +158,38 @@ const scenarios = {
     out.after = snap();
     return out;
   },
+  "precedence-three-sources": () => {
+    // Store seeded with a value that contradicts the project file for the same
+    // id, and with an id no other source names.
+    seedStore({
+      braid: { modules: { "topic-drift": true, "error-tracking": true }, telegram: { maxChars: 2000 } },
+      unrelated: { keep: true },
+    });
+    const out = { boot: snap() };
+    // A toggle persists into the same store: its value must beat both settings
+    // files on the next resolve, and the seeded siblings must survive it.
+    out.disabled = loader.disableModule("error-tracking");
+    out.afterToggle = snap();
+    out.store = readStore();
+    out.projectTree = tree(process.cwd());
+    return out;
+  },
   "merge-write": () => {
+    seedStore({
+      braid: { modules: { "error-tracking": true }, telegram: { maxChars: 2000 } },
+      unrelated: { keep: true },
+    });
     const out = { disabled: loader.disableModule("topic-drift") };
-    out.file = readProject();
+    out.store = readStore();
+    out.projectTree = tree(process.cwd());
     return out;
   },
   "mkdir-write": () => {
     const out = { piExistedBefore: existsSync(join(process.cwd(), ".pi")) };
+    out.braidExistedBefore = existsSync(BRAID);
     out.disabled = loader.disableModule("topic-drift");
-    out.fileExistsAfter = existsSync(projectPath());
-    out.file = readProject();
+    out.store = readStore();
+    out.projectTree = tree(process.cwd());
     return out;
   },
   "unreadable-warn": () => {
@@ -144,16 +212,19 @@ const scenarios = {
     return { before, afterLoader, nudgesDisabled, afterBraid, final };
   },
   "corrupt-write": () => {
-    const out = { rawBefore: readProjectRaw() };
+    const path = seedStore("{ this store is not json");
+    const out = { rawBefore: readStore().raw };
+    out.seededAt = path;
     out.disabled = loader.disableModule("topic-drift");
-    out.rawAfter = readProjectRaw();
+    out.store = readStore();
     out.warns = warnCount();
     return out;
   },
   "reset-preserves": () => {
+    seedStore({ braid: { modules: { "error-tracking": true } } });
     const out = { disabled: loader.disableModule("topic-drift") };
     loader.resetModuleOverrides();
-    out.file = readProject();
+    out.store = readStore();
     out.afterReset = snap();
     return out;
   },
@@ -207,6 +278,7 @@ async function runScenario(scenario, { home, homeRaw, project, projectRaw, env =
   const dir = mkdtempSync(join(process.env.TMPDIR || "/tmp", "loader-config-test-"));
   const homeDir = join(dir, "home");
   const projectDir = join(dir, "proj");
+  const braidHome = join(dir, "braid");
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(projectDir, { recursive: true });
   const driverPath = join(dir, "driver.mjs");
@@ -223,8 +295,18 @@ async function runScenario(scenario, { home, homeRaw, project, projectRaw, env =
     writeFileSync(join(projectDir, ".pi", "settings.json"), projectRaw);
   }
   try {
-    const childEnv = { ...process.env, ...env, FAKE_HOME: homeDir, LOADER_PATH, LOGGER_PATH, BRAID_SETTINGS_PATH };
-    if (env.BRAID_MODULES === undefined) delete childEnv.BRAID_MODULES;
+    const childEnv = {
+      ...process.env,
+      ...env,
+      FAKE_HOME: homeDir,
+      BRAID_HOME: braidHome,
+      LOADER_PATH,
+      LOGGER_PATH,
+      BRAID_SETTINGS_PATH,
+      BRAID_PATHS_PATH,
+    };
+    delete childEnv.BRAID_MODULES;
+    if (env.BRAID_MODULES !== undefined) childEnv.BRAID_MODULES = env.BRAID_MODULES;
     const result = await runDriver([driverPath, scenario], {
       cwd: projectDir,
       env: childEnv,
@@ -244,6 +326,30 @@ async function runScenario(scenario, { home, homeRaw, project, projectRaw, env =
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * The containment rule, asserted for every scenario: the project directory is
+ * exactly what the fixture put there (a `.pi/settings.json` fixture, or
+ * nothing), and every file the loader wrote is under the pinned braid tree.
+ */
+function assertProjectUntouched(obs, projectFixture) {
+  const expected = projectFixture ? [".pi/settings.json"] : [];
+  assert.deepEqual(
+    obs.projectTree,
+    expected,
+    "a module toggle must not create anything in the project (no .pi/, no settings.json)",
+  );
+}
+
+/** One store file, under the pinned tree, carrying a `braid.modules` block. */
+function assertStoreShape(store) {
+  assert.equal(store.files.length, 1, `exactly one module-overrides store expected, got ${JSON.stringify(store.files)}`);
+  assert.ok(
+    store.files[0].startsWith("projects/") || store.files[0] === "module-overrides.json",
+    `the store must live under the pinned braid tree, got ${store.files[0]}`,
+  );
+  assert.equal(typeof store.doc?.braid?.modules, "object", "the store must carry a braid.modules block");
 }
 
 const cases = [];
@@ -279,6 +385,10 @@ test("runtime overrides overlay the resolved base (settings additions and opt-in
   assert.equal(obs.stateHealthMaintenance, obs.afterEnable.healthMaintenance, "getModuleStates must agree with the resolver");
   assert.equal(obs.stateErrorTracking, obs.afterDisable.errorTracking, "getModuleStates must agree with the resolver");
   assert.equal(obs.stateTopicDrift, obs.afterDisable.topicDrift, "getModuleStates must agree with the resolver");
+  // The toggle that persisted during this run went to the store, not to the
+  // project file the same run read its settings from.
+  assertStoreShape(obs.store);
+  assertProjectUntouched(obs, true);
 });
 
 test("toggle flips the effective state of a default-enabled extension", async () => {
@@ -287,6 +397,9 @@ test("toggle flips the effective state of a default-enabled extension", async ()
   assert.equal(obs.before.source, "defaults");
   assert.equal(obs.toggled, false, "toggling an enabled extension must turn it OFF");
   assert.equal(obs.after.topicDrift, false);
+  assertStoreShape(obs.store);
+  assert.equal(obs.store.doc.braid.modules["topic-drift"], false, "the toggle must be readable back from the store");
+  assertProjectUntouched(obs, false);
 });
 
 test("BRAID_MODULES resolution survives a runtime override", async () => {
@@ -298,26 +411,47 @@ test("BRAID_MODULES resolution survives a runtime override", async () => {
   assert.equal(obs.after.topicDrift, false);
 });
 
-test("a persisted write merges: sibling keys and untouched module entries survive", async () => {
-  const obs = await runScenario("merge-write", {
-    project: {
-      braid: { telegram: { maxChars: 2000 }, modules: { "error-tracking": true } },
-      unrelated: { keep: true },
-    },
+test("the read order is global, then project, then the store (later wins per id)", async () => {
+  const obs = await runScenario("precedence-three-sources", {
+    home: { braid: { modules: { enforcement: false, "health-maintenance": true } } },
+    project: { braid: { modules: { enforcement: true, "topic-drift": false } } },
   });
+  assert.equal(obs.boot.enforcement, true, "the project file must still win over the global file");
+  assert.equal(obs.boot.healthMaintenance, true, "a global-only entry must still apply");
+  assert.equal(obs.boot.topicDrift, true, "the store must win over the project file for the same id");
+  assert.equal(obs.boot.errorTracking, true, "a store-only entry must apply");
   assert.equal(obs.disabled, true);
-  assert.deepEqual(obs.file.unrelated, { keep: true }, "top-level siblings must survive a module write");
-  assert.deepEqual(obs.file.braid.telegram, { maxChars: 2000 }, "braid siblings must survive a module write");
-  assert.equal(obs.file.braid.modules["error-tracking"], true, "untouched module entries must survive a module write");
-  assert.equal(obs.file.braid.modules["topic-drift"], false);
+  assert.equal(obs.afterToggle.errorTracking, false, "a persisted toggle must win over the store's own earlier value");
+  assert.equal(obs.afterToggle.topicDrift, true, "an id the toggle run did not touch keeps its stored value");
+  assertStoreShape(obs.store);
+  assert.equal(obs.store.doc.braid.modules["topic-drift"], true, "the seeded store entry must survive the write");
+  assert.equal(obs.store.doc.braid.modules["error-tracking"], false);
+  assert.deepEqual(obs.store.doc.braid.telegram, { maxChars: 2000 }, "braid siblings must survive a module write");
+  assert.deepEqual(obs.store.doc.unrelated, { keep: true }, "top-level siblings must survive a module write");
+  assertProjectUntouched(obs, true);
 });
 
-test("a persisted write creates the .pi directory when missing", async () => {
+test("a persisted write merges: sibling keys and untouched module entries survive", async () => {
+  const obs = await runScenario("merge-write", {
+    project: { braid: { telegram: { maxChars: 3000 }, modules: { "error-tracking": true } } },
+  });
+  assert.equal(obs.disabled, true);
+  assertStoreShape(obs.store);
+  assert.equal(obs.store.doc.braid.modules["error-tracking"], true, "untouched module entries must survive a module write");
+  assert.equal(obs.store.doc.braid.modules["topic-drift"], false);
+  assert.deepEqual(obs.store.doc.braid.telegram, { maxChars: 2000 }, "store siblings must survive a module write");
+  assert.deepEqual(obs.store.doc.unrelated, { keep: true }, "top-level siblings must survive a module write");
+  assertProjectUntouched(obs, true);
+});
+
+test("a persisted write creates the store directory and never .pi in the project", async () => {
   const obs = await runScenario("mkdir-write");
   assert.equal(obs.piExistedBefore, false);
+  assert.equal(obs.braidExistedBefore, false, "the fixture leaves the pinned braid tree absent");
   assert.equal(obs.disabled, true);
-  assert.equal(obs.fileExistsAfter, true, "the write must create .pi/ instead of failing silently");
-  assert.equal(obs.file.braid.modules["topic-drift"], false);
+  assertStoreShape(obs.store);
+  assert.equal(obs.store.doc.braid.modules["topic-drift"], false);
+  assertProjectUntouched(obs, false);
 });
 
 test("an unreadable settings file warns once per process, not silently", async () => {
@@ -331,11 +465,10 @@ test("an unreadable settings file warns once per process, not silently", async (
   assert.equal(obs.final["braid-settings"], obs.afterBraid["braid-settings"], "a second braid-settings read must not warn again (once per process)");
 });
 
-test("a toggle never overwrites an unreadable project settings file", async () => {
-  const corrupt = "{ not json";
-  const obs = await runScenario("corrupt-write", { projectRaw: corrupt });
-  assert.equal(obs.rawBefore, corrupt);
-  assert.equal(obs.rawAfter, corrupt, "an unreadable file must be left untouched, not overwritten");
+test("a toggle never overwrites an unreadable store", async () => {
+  const obs = await runScenario("corrupt-write");
+  assert.equal(obs.rawBefore, "{ this store is not json");
+  assert.equal(obs.store.raw, obs.rawBefore, "an unreadable store must be left untouched, not overwritten");
   assert.ok(obs.warns >= 1, "the refusal must be visible in the log");
 });
 
@@ -344,8 +477,9 @@ test("reset clears the runtime layer without destroying persisted settings", asy
     project: { braid: { modules: { "error-tracking": true } } },
   });
   assert.equal(obs.disabled, true);
-  assert.equal(obs.file.braid.modules["error-tracking"], true, "reset must not destroy persisted module entries");
-  assert.equal(obs.file.braid.modules["topic-drift"], false);
+  assertStoreShape(obs.store);
+  assert.equal(obs.store.doc.braid.modules["error-tracking"], true, "reset must not destroy persisted module entries");
+  assert.equal(obs.store.doc.braid.modules["topic-drift"], false);
   assert.equal(obs.afterReset.source, "settings-json", "persisted settings keep applying after a reset");
   assert.equal(obs.afterReset.errorTracking, true);
   assert.equal(obs.afterReset.topicDrift, false);

@@ -5,8 +5,12 @@
  * layers below per-id, the env var is a complete spec over the defaults):
  *   1. Runtime overrides - /modules-toggle, /modules-enable, /modules-disable
  *      (in-session; the toggle commands also persist them into `braid.modules`)
- *   2. Pi's native settings - `braid.modules` property in ~/.pi/agent/settings.json
- *      (true enables an opt-in id, false disables a default-enabled one)
+ *   2. `braid.modules` settings - three sources, later wins per id: pi's global
+ *      settings file, pi's project settings file (read-only compatibility) and
+ *      braid's own module-overrides store, which is where toggles persist
+ *      (getModuleOverridesFilePath). true enables an opt-in id, false disables
+ *      a default-enabled one. Braid writes only its own store: a project
+ *      settings file is pi's artifact, behind pi's project-trust gate.
  *   3. Environment variable - BRAID_MODULES (+id to enable, -id to disable)
  *   4. Default - all extensions enabled (except opt-in/disabledByDefault)
  *
@@ -19,13 +23,15 @@
  *   - A module group name (e.g. "core", "memory") - expands to all member IDs
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../lib/core/logger.js";
 import { initModels } from "../lib/ai/models-init.js";
 import { recordToolRegistration } from "../lib/state/tool-provenance.js";
+import { getModuleOverridesFilePath } from "../lib/config/braid-paths.js";
 
 import {
   MANIFEST,
@@ -38,13 +44,32 @@ import {
 
 const log = createLogger("modules");
 
-// ──── Pi's native settings paths ─────────────────────────────────────────────
+// ──── Settings sources ──────────────────────────────────────────────────────
 
+/** Pi's global settings file. Built from homedir() at module load, so a
+ *  relocated agent directory (PI_CODING_AGENT_DIR) is not honored on this
+ *  read path. */
 const GLOBAL_SETTINGS = join(homedir(), ".pi", "agent", "settings.json");
 
+/** Pi's project settings file for the process cwd, at the path pi's own
+ *  SettingsManager resolves (`join(resolve(cwd), CONFIG_DIR_NAME,
+ *  "settings.json")`). Read-only: the file is pi's artifact, so braid reads a
+ *  `braid.modules` block out of it and never writes it. `process.cwd()` throws
+ *  when the working directory has been removed, hence the guard. */
 function getProjectSettingsPath(): string {
   try {
-    return join(process.cwd(), ".pi", "settings.json");
+    return join(resolve(process.cwd()), CONFIG_DIR_NAME, "settings.json");
+  } catch {
+    return "";
+  }
+}
+
+/** Braid's own `braid.modules` store for the process cwd ("" when the cwd is
+ *  unavailable). Durable write state under braidDir(), so BRAID_HOME pinning
+ *  moves it; the user's project is never written. */
+function getModuleStorePath(): string {
+  try {
+    return getModuleOverridesFilePath(process.cwd());
   } catch {
     return "";
   }
@@ -137,17 +162,26 @@ function warnUnreadableSettings(path: string, e: unknown): void {
   );
 }
 
+/**
+ * Read `braid.modules` from every source that may carry it. Sources apply in
+ * order, later wins per key:
+ *   1. pi's global settings file
+ *   2. pi's project settings file (<cwd>/.pi/settings.json) - read-only
+ *      compatibility with the historical write target: a project-scoped block
+ *      authored there keeps applying, braid just never writes that file
+ *   3. braid's module-overrides store - what the toggle commands persist
+ */
 function readBraidSettings(): BraidSettings {
   const global_ = readSettingsFile(GLOBAL_SETTINGS);
   const projectPath = getProjectSettingsPath();
   const project_ = projectPath ? readSettingsFile(projectPath) : {};
+  const storePath = getModuleStorePath();
+  const store_ = storePath ? readSettingsFile(storePath) : {};
 
-  const globalModules = (global_[BRAID_KEY] as BraidSettings)?.modules ?? {};
-  const projectModules = (project_[BRAID_KEY] as BraidSettings)?.modules ?? {};
-
-  const merged: Record<string, boolean> = { ...globalModules };
-  for (const [k, v] of Object.entries(projectModules)) {
-    merged[k] = v;
+  const merged: Record<string, boolean> = {};
+  for (const source of [global_, project_, store_]) {
+    const modules = (source[BRAID_KEY] as BraidSettings)?.modules ?? {};
+    for (const [k, v] of Object.entries(modules)) merged[k] = v;
   }
 
   return { modules: Object.keys(merged).length > 0 ? merged : undefined };
@@ -158,28 +192,29 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Merge `modules` into the project settings file, destroying nothing: only
- * the `braid.modules` keys being written change; sibling keys (braid.* and
- * top-level) and untouched module entries survive.
+ * Merge `modules` into braid's module-overrides store, destroying nothing:
+ * only the `braid.modules` keys being written change; sibling keys in the
+ * store and untouched module entries survive. Installed as a same-directory
+ * temp file plus rename, so a reader never observes a torn file.
  *
- * An unreadable existing file is never overwritten - content we could not
+ * An unreadable existing store is never overwritten - content we could not
  * read must not be replaced from a partial view; the write aborts with the
  * once-per-process unreadable-settings warning instead.
  */
 function writeBraidSettings(modules: Record<string, boolean>): void {
-  const projectPath = getProjectSettingsPath();
-  if (!projectPath) {
-    log.warn("Cannot determine project path for settings write");
+  const storePath = getModuleStorePath();
+  if (!storePath) {
+    log.warn("Cannot determine the module-overrides store path");
     return;
   }
   let all: Record<string, unknown>;
   try {
-    all = JSON.parse(readFileSync(projectPath, "utf-8")) as Record<string, unknown>;
+    all = JSON.parse(readFileSync(storePath, "utf-8")) as Record<string, unknown>;
   } catch (e) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") {
       all = {};
     } else {
-      warnUnreadableSettings(projectPath, e);
+      warnUnreadableSettings(storePath, e);
       return;
     }
   }
@@ -187,10 +222,12 @@ function writeBraidSettings(modules: Record<string, boolean>): void {
   const existingModules = isPlainObject(existingBraid.modules) ? existingBraid.modules : {};
   all[BRAID_KEY] = { ...existingBraid, modules: { ...existingModules, ...modules } };
   try {
-    mkdirSync(dirname(projectPath), { recursive: true });
-    writeFileSync(projectPath, JSON.stringify(all, null, 2), "utf-8");
+    mkdirSync(dirname(storePath), { recursive: true });
+    const tmp = `${storePath}.tmp.${process.pid}`;
+    writeFileSync(tmp, JSON.stringify(all, null, 2), "utf-8");
+    renameSync(tmp, storePath);
   } catch (e) {
-    log.warn(`Failed to write braid settings: ${(e as Error).message}`);
+    log.warn(`Failed to write braid module overrides: ${(e as Error).message}`);
   }
 }
 

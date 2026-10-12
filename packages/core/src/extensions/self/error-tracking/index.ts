@@ -8,7 +8,8 @@ import { nextId } from "../../../lib/utils/id.js";
  * 1. tool_execution_end events with isError=true
  * 2. turn_end events with errored tools
  *
- * Logs to: ~/.pi/agent/errors/error-log.jsonl
+ * Logs to: braidDir()/errors/errors.jsonl (braid-paths ERROR_LOG_FILE; the
+ * legacy ~/.pi/agent/errors/error-log.jsonl file is not written any more)
  *
  * Tools provided (consolidated to one tool with 4 actions):
  * - error action=list:   List recent errors with counts

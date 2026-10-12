@@ -21,7 +21,7 @@ import { TOOL_CALL } from "../../../lib/core/event-names.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
+import { braidDir } from "../../../lib/config/braid-paths.js";
 import {
   recordToolCall as recordLoopToolCall,
   getToolLoopState,
@@ -110,7 +110,7 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
       try {
         const cwd = (ctx as { cwd?: string }).cwd ?? "";
         const slug = cwd.split("/").filter(Boolean).join("-") || "default";
-        const tagsDir = path.join(os.homedir(), ".pi", "agent", "braid", "tags");
+        const tagsDir = path.join(braidDir(), "tags");
         if (!existsSync(tagsDir)) mkdirSync(tagsDir, { recursive: true });
         const tagsFile = path.join(tagsDir, `${slug}.json`);
 

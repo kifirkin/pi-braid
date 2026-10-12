@@ -77,6 +77,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { isWafBlockError, isKeyRotationError } from "./ring-lifecycle";
 import { providerLog, type ProvidersLogLevel } from "./log";
+import { piAgentDir } from "./state-paths";
 
 // Cross-package notify seam
 /**
@@ -137,12 +138,12 @@ export function defaultOutageSettingsPath(): string {
   return join(dir, "settings.json");
 }
 
-/** The machine-global notify floor record (dedupe only, never state-of-truth). */
-export function defaultOutageClaimPath(): string {
-  const dir =
-    process.env.PI_CODING_AGENT_DIR ??
-    join(process.env.HOME || process.env.USERPROFILE || ".", ".pi", "agent");
-  return join(dir, ".provider-outage-notify.json");
+/** The machine-global notify floor record (dedupe only, never state-of-truth),
+ *  or `null` when no absolute state directory can be resolved: the watcher
+ *  then notifies without a claim file rather than writing one beside the cwd. */
+export function defaultOutageClaimPath(): string | null {
+  const dir = piAgentDir();
+  return dir ? join(dir, ".provider-outage-notify.json") : null;
 }
 
 function positiveFinite(v: unknown): number | undefined {
@@ -551,6 +552,13 @@ export function createOutageWatch(deps: OutageWatchDeps): ProviderOutageWatch {
       providerLog(level, scope, message));
   const probe = deps.probe ?? httpReachable;
   const claimPath = deps.claimPath ?? defaultOutageClaimPath();
+  if (!claimPath) {
+    log(
+      "warn",
+      LOG_SCOPE,
+      "no absolute state directory (PI_CODING_AGENT_DIR / os.homedir()): outage notifications run without the notify-floor claim file",
+    );
+  }
   const targets = new Map<string, OutageRouteTarget>();
   for (const t of deps.targets) targets.set(t.providerId, t);
 
@@ -622,9 +630,16 @@ export function createOutageWatch(deps: OutageWatchDeps): ProviderOutageWatch {
       );
       return "absent";
     }
-    if (!claimNotify(claimPath, providerId, kind, at, config.notifyFloorMs)) {
+    if (
+      claimPath &&
+      !claimNotify(claimPath, providerId, kind, at, config.notifyFloorMs)
+    ) {
       return "recent";
     }
+    /** Release a claim: a no-op when there is no claim file to release. */
+    const releaseClaim = (): void => {
+      if (claimPath) releaseNotifyClaim(claimPath, providerId, at);
+    };
     try {
       const delivered = send(text);
       if (delivered instanceof Promise) {
@@ -633,18 +648,18 @@ export function createOutageWatch(deps: OutageWatchDeps): ProviderOutageWatch {
           .then((ok) => {
             const s = routes.get(providerId);
             if (s) s.notify = ok ? "sent" : "failed";
-            if (!ok) releaseNotifyClaim(claimPath, providerId, at);
+            if (!ok) releaseClaim();
           })
           .catch(() => {
-            releaseNotifyClaim(claimPath, providerId, at);
+            releaseClaim();
           });
         return "pending";
       }
       if (delivered) return "sent";
-      releaseNotifyClaim(claimPath, providerId, at);
+      releaseClaim();
       return "failed";
     } catch {
-      releaseNotifyClaim(claimPath, providerId, at);
+      releaseClaim();
       return "failed";
     }
   }

@@ -59,6 +59,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { providerLog, createThrottledLogger } from "./log";
+import { homedirAgentDir } from "./state-paths";
 
 // Types
 
@@ -191,19 +192,30 @@ export function createKeyRing(config: KeyRingConfig): KeyRing {
 
   if (config.stateFile) {
     stateFile = stateFilePath(config.stateFile);
-    try {
-      const persisted = readPersistedState(stateFile);
-      if (persisted) {
-        applyPersistedState(state, persisted);
-        lastSyncedAt = persisted.savedAt;
-        lastSyncedRev = persisted.rev ?? 0;
-      }
-    } catch (e) {
+    if (!stateFile) {
+      // No absolute state directory: persist nothing rather than write a
+      // path relative to the cwd. The ring still works in-process, and the
+      // line says why a restart will not remember this ring.
       providerLog(
         "warn",
         "providers/key-ring",
-        `[key-ring:${prefix}] failed to load persisted state: ${(e as Error).message}`,
+        `[key-ring:${prefix}] no absolute state directory (os.homedir() unavailable) - state persistence disabled`,
       );
+    } else {
+      try {
+        const persisted = readPersistedState(stateFile);
+        if (persisted) {
+          applyPersistedState(state, persisted);
+          lastSyncedAt = persisted.savedAt;
+          lastSyncedRev = persisted.rev ?? 0;
+        }
+      } catch (e) {
+        providerLog(
+          "warn",
+          "providers/key-ring",
+          `[key-ring:${prefix}] failed to load persisted state: ${(e as Error).message}`,
+        );
+      }
     }
   }
 
@@ -752,9 +764,12 @@ function hashKey(key: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-function stateFilePath(name: string): string {
-  const home = process.env.HOME || process.env.USERPROFILE || ".";
-  return join(home, ".pi", "agent", `.key-ring-state-${name}.json`);
+/** Persisted-state path for one ring. `null` when no absolute state
+ *  directory can be resolved: the ring then runs without persistence instead
+ *  of writing a state file relative to the cwd. */
+function stateFilePath(name: string): string | null {
+  const dir = homedirAgentDir();
+  return dir ? join(dir, `.key-ring-state-${name}.json`) : null;
 }
 
 function readPersistedState(file: string): PersistedState | null {

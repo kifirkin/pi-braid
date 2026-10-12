@@ -12,13 +12,14 @@
  *   3. --session filters, --limit bounds the render, --json is parseable
  *   4. a missing sink is reported, exit 0 (a fresh install has not ticked)
  *   5. bad usage exits 2
- *   6. the default sink path matches the producer's own construction, so the
- *      mirrored constant cannot drift silently
+ *   6. the default sink path matches the producer's accessor, in the default
+ *      tree and under a pinned BRAID_HOME, so the mirrored resolution cannot
+ *      drift silently
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -26,7 +27,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
 const SCRIPT = join(ROOT, "scripts", "context-heartbeat-report.mjs");
-const PRODUCER = join(ROOT, "src/lib/telemetry/context-heartbeat.ts");
+const PRODUCER_ACCESSOR = join(ROOT, "dist", "lib", "telemetry", "context-heartbeat.js");
+const BRAID_PATHS_PATH = join(ROOT, "dist", "lib", "config", "braid-paths.js");
 
 const reader = await import(pathToFileURL(SCRIPT).href);
 
@@ -135,23 +137,53 @@ test("bad usage exits 2", () => {
   assert.match(out, /--limit needs a non-negative integer/);
 });
 
-test("the default sink path matches the producer's construction", () => {
-  const source = readFileSync(PRODUCER, "utf-8");
-  const dirLine = source
-    .split("\n")
-    .find((line) => line.includes("const TELEMETRY_DIR = path.join("));
-  const fileLine = source
-    .split("\n")
-    .find((line) => line.includes("export const CONTEXT_HEARTBEAT_FILE = path.join("));
-  assert.ok(dirLine, "producer no longer declares TELEMETRY_DIR");
-  assert.ok(fileLine, "producer no longer declares CONTEXT_HEARTBEAT_FILE");
-
-  const segments = [...dirLine.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  const fileName = [...fileLine.matchAll(/"([^"]+)"/g)].map((m) => m[1]).pop();
-  assert.equal(segments.length, 4, `unexpected TELEMETRY_DIR shape: ${dirLine}`);
+test("the default sink path matches the producer's accessor (pinned and unpinned)", async () => {
+  // The mirror in this script and the producer must resolve one file: equality
+  // is asserted against the producer's own accessor in this process, and
+  // against a pinned BRAID_HOME in a child (this process imported its reader
+  // const unpinned, so the pinned run cannot be faked here).
+  const producer = await import(pathToFileURL(PRODUCER_ACCESSOR).href);
+  const expectedDefault = join(
+    homedir(),
+    ".pi",
+    "agent",
+    "braid",
+    "telemetry",
+    "context-heartbeat.jsonl",
+  );
   assert.equal(
     reader.CONTEXT_HEARTBEAT_FILE,
-    join(homedir(), ...segments, fileName),
+    producer.contextHeartbeatFilePath(),
     "the reader's default path drifted from the producer's sink",
   );
+  assert.equal(reader.CONTEXT_HEARTBEAT_FILE, expectedDefault, "the default sink location must not move");
+
+  const dir = mkdtempSync(join(tmpdir(), "hbpin-"));
+  const probe = join(dir, "probe.mjs");
+  writeFileSync(
+    probe,
+    [
+      'import { pathToFileURL } from "node:url";',
+      'const reader = await import(pathToFileURL(process.env.READER).href);',
+      'const paths = await import(pathToFileURL(process.env.BRAID_PATHS).href);',
+      "console.log(JSON.stringify({",
+      "  reader: reader.CONTEXT_HEARTBEAT_FILE,",
+      '  braidDir: paths.braidDir(),',
+      "}));",
+    ].join("\n"),
+  );
+  const pin = join(dir, "braid");
+  const r = spawnSync(process.execPath, [probe], {
+    encoding: "utf8",
+    env: { ...process.env, BRAID_HOME: pin, READER: SCRIPT, BRAID_PATHS: BRAID_PATHS_PATH },
+  });
+  assert.equal(r.status, 0, `pinned probe failed: ${r.stdout ?? ""}${r.stderr ?? ""}`);
+  const pinned = JSON.parse(r.stdout.trim());
+  assert.equal(pinned.braidDir, pin, "braidDir() must follow the pinned BRAID_HOME");
+  assert.equal(
+    pinned.reader,
+    join(pin, "telemetry", "context-heartbeat.jsonl"),
+    "a pinned BRAID_HOME must relocate the sink the reader defaults to",
+  );
+  rmSync(dir, { recursive: true, force: true });
 });

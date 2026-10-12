@@ -28,15 +28,16 @@
  *   - Per-tick state lives in getExtensionState (per-session, no module-level
  *     let — lib/state/AGENTS.md contract).
  *
- * Sink: ~/.pi/agent/braid/telemetry/context-heartbeat.jsonl
- * (path follows the braid-paths.ts convention, kept module-local.)
+ * Sink: <braidDir()>/telemetry/context-heartbeat.jsonl, resolved on every
+ * call through braid-paths (a module-load constant would pin the sink to the
+ * default tree and ignore BRAID_HOME).
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../core/logger.js";
+import { braidDir } from "../config/braid-paths.js";
 import { pushRssSample, assessSustainedRssGrowth, RSS_RING_CAP } from "./rss-telemetry.js";
 import { getRssBootTelemetry, setRssBootBaseline } from "../state/global-state.js";
 import {
@@ -49,9 +50,15 @@ import { measureLiveUsage } from "../detection/context-usage.js";
 
 const log = createLogger("context-heartbeat");
 
-/** Sink directory + file (created on first append; see header note). */
-const TELEMETRY_DIR = path.join(os.homedir(), ".pi", "agent", "braid", "telemetry");
-export const CONTEXT_HEARTBEAT_FILE = path.join(TELEMETRY_DIR, "context-heartbeat.jsonl");
+/** Sink directory (created on first append; see header note). */
+export function heartbeatTelemetryDir(): string {
+  return path.join(braidDir(), "telemetry");
+}
+
+/** Sink file for the heartbeat JSONL (see header note). */
+export function contextHeartbeatFilePath(): string {
+  return path.join(heartbeatTelemetryDir(), "context-heartbeat.jsonl");
+}
 
 /** Strings above this length inside an entry are truncated — bounded lines. */
 const MAX_STRING_CHARS = 128;
@@ -75,12 +82,12 @@ function sanitizeScalarValue(val: unknown): number | string | boolean | null | u
  * throwing (callers must never break the tick/check on telemetry).
  *
  * @param entry flat record; non-scalar values are silently dropped
- * @param file  optional override (tests); defaults to CONTEXT_HEARTBEAT_FILE
+ * @param file  optional override (tests); defaults to contextHeartbeatFilePath()
  * @returns true when the line was appended
  */
 export function appendContextHeartbeatLine(
   entry: Record<string, unknown>,
-  file: string = CONTEXT_HEARTBEAT_FILE,
+  file: string = contextHeartbeatFilePath(),
 ): boolean {
   try {
     const clean: Record<string, number | string | boolean | null> = {};
@@ -288,7 +295,7 @@ export interface ContextHeartbeatOptions {
   healthMode?: string;
   /** Line source tag (Hook 1 "heartbeat", Hook 2 "watchdog"). */
   source?: string;
-  /** Sink override (tests); defaults to CONTEXT_HEARTBEAT_FILE. */
+  /** Sink override (tests); defaults to contextHeartbeatFilePath(). */
   sinkFile?: string;
 }
 
