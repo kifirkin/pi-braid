@@ -4,9 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
-[![pi-coding-agent ≥ 0.85](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.85-blueviolet)](https://github.com/earendil-works/pi-coding-agent)
+[![pi-coding-agent ≥ 0.85](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.85-blueviolet)](https://github.com/earendil-works/pi)
 
-Honest self-aware agent with a metacognitive suite and extras on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). The suite adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
+Honest self-aware agent with a metacognitive suite and extras on top of [pi-coding-agent](https://github.com/earendil-works/pi). The suite adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
 
 > **⚠️ Early-stage software.** APIs may change. Not production-hardened.
 
@@ -52,7 +52,8 @@ reference is [`docs/SETUP.md`](docs/SETUP.md).
 
 ## Activation preconditions
 
-- pi-coding-agent installed (braid targets the 0.8x line).
+- pi-coding-agent installed (the `@earendil-works/pi-*` peers are declared as `*` and resolve
+  against the pi in your tree at install time - see [`docs/SETUP.md`](docs/SETUP.md)).
 - Node.js 22+ (pi's own floor).
 - The package registered under `packages` (or installed with `pi install`) so pi loads `pi.extensions`.
 
@@ -139,7 +140,7 @@ sibling packages (see [`../../README.md`](../../README.md) for the full map):
 
 ## What you get
 
-Every extension is opt-in but defaults on. See [`src/extensions/manifest.ts`](src/extensions/manifest.ts) for the flat list. Highlights:
+28 extensions ship; `health-maintenance` and `error-tracking` are off by default. See [`src/extensions/manifest.ts`](src/extensions/manifest.ts) for the flat list. Highlights:
 
 | Tool / Extension                                          | What it adds                                                                                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -156,7 +157,7 @@ Every extension is opt-in but defaults on. See [`src/extensions/manifest.ts`](sr
 | `healthcheck`                                             | Diagnostic across all tools (recursive smoke tests)                                                                                        |
 | `fetch_content`                                           | Web page fetching (pi-web-access): readable markdown, raw text, or a prompt-answered extraction; direct images, GitHub repos, PDFs, videos |
 
-Plus ~12 pi-core built-ins (read, write, edit, bash, grep, find, ls, sleep, …) always available.
+Plus 9 pi-native tools ([`TOOLS.md`](TOOLS.md) is the canonical inventory), always available.
 
 ---
 
@@ -178,7 +179,7 @@ unset BRAID_MODULES                # default: all non-opt-in extensions
 
 export BRAID_MODULES="all,-error-tracking"    # everything except one
 export BRAID_MODULES="-enforcement"           # disable enforcement group
-export BRAID_MODULES="+heartbeat"             # enable the heartbeat group (opt-in)
+export BRAID_MODULES="+heartbeat"             # enable the heartbeat group
 ```
 
 A ref can be either an **extension id** (`enforcement`, `error-tracking`) or a **module group name** (`heartbeat`, `core`, `memory`). Prefixes: `+` to enable, `-` to disable.

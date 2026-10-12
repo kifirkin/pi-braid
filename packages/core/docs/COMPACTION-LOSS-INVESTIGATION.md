@@ -1,17 +1,17 @@
 # Compaction Message-Loss Investigation
 
 <!-- status: historical -->
-<!-- orch11 round 21l. Owner: "our compaction possibly could throw away messages between compress tool calls, investigate this." -->
-<!-- Restored from orphaned history (blob 2b3d4f73, dropped from the tree by a re-squash). Retained as the
-     audit record for the compaction fixes that followed: batch-settle scheduling, honest archive/slide/deep_clean
-     feedback, loss counters. Body describes the pre-fix state at investigation time. -->
+<!-- Restored from orphaned history. Retained as the audit record for the compaction fixes that
+     followed: batch-settle scheduling, honest archive/slide/deep_clean feedback, loss counters.
+     Body describes the pre-fix state at investigation time. -->
 
 ## Verdict (tl;dr)
 
 **The risk is real, but so is the design intent.** The owner's caution is correct: not everything flagged
 below is a bug. Git history and the pi-core event surface show at least two behaviors were deliberate:
 
-- **Range-as-metadata was intentional** (`eb9514d1` "archive now actually frees space"): the
+- **Range-as-metadata was intentional** ("archive now actually frees space" was the deliberate
+  change): the
   `context_compression` entry was always audit/report data; pi-core's independent budget cut is the
   real removal engine. The _actual_ defect is the **misleading tool feedback** (claims a specific range
   was removed when it was not), not the existence of the metadata entry.

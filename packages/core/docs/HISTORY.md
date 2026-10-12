@@ -7,9 +7,10 @@ release notes. Release-level detail lives in the
 [changelog](../../../CHANGELOG.md); what's next is in [ROADMAP.md](ROADMAP.md);
 first-time setup is in [SETUP.md](SETUP.md).
 
-> A note on granularity: the public git history begins with the 2026-08-29
-> monorepo snapshot commit. Milestones before that date are summarized here
-> from the project's own records - dated, but without per-commit references.
+> A note on granularity: the public git history is a single consolidated commit,
+> and the changelog's "Repository history" section records what it condensed.
+> Milestones before the 2026-08-29 monorepo snapshot are summarized here from
+> the project's own records - dated, but without per-commit references.
 
 ## The idea
 
@@ -57,7 +58,7 @@ monorepo (July 27): `core` (the suite), `skills` (a content-only skill pack),
 key ring), and `telegram` (a bidirectional channel). The same period shipped
 the user-facing docs (README rewrite, canonical [SETUP.md](SETUP.md)), a
 versioned local publish pipeline (`publish-local.mjs`, `base-branch.iteration`
-scheme with auto-revert), release guards, and the `0.3.x-main.N` iteration
+scheme with auto-revert), release guards, and the `0.40.0-main.N` iteration
 scheme for weekly releases without semver churn.
 
 ## Reliability (August – September 2026)

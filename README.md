@@ -2,7 +2,7 @@
 
 # pi-braid 🥨
 
-Extension pack for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent): enforcement, three-store memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
+Extension pack for [pi-coding-agent](https://github.com/earendil-works/pi): enforcement, three-store memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
 
 pi is a coding agent with a small built-in toolset. **Extensions** are how pi gains capability: they register tools, listen for session events, and shape the system prompt. pi-braid is a monorepo of five npm workspaces that plug into pi through the `pi.extensions` / `pi.skills` fields in each package's `package.json` - pi does not auto-discover workspaces, so you register the paths you want.
 

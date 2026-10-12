@@ -77,4 +77,4 @@ When a skill needs executable code, extract it to its own package rather than ad
 - **Executable code** → `<name>-<topic>/src/*.mjs` (or `.ts`)
 - **The skill ships with both** - pi discovers skill content; the executable parts are called manually or via `npm run` scripts
 
-See [`pi-looping-clanker`](https://github.com/kifirkin/pi-looping-clanker) for a worked example.
+See the separate `pi-looping-clanker` repo for a worked example.

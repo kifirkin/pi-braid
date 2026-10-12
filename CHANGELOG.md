@@ -17,16 +17,18 @@ Two tag roles, one `v` prefix (adopted 2026-10-11):
   (package.json `0.40.0`). Ordering: `v0.39.0 < v0.40.0-main.1 < v0.40.0`.
 - **Providers** — `1.0.x` line; iteration tags `v1.0.x-main.N`.
 - **Telegram** — `0.1.x` line; iteration tags `v0.1.x-main.N`.
+- **Skills** — `0.2.x` line; iteration tags `v0.2.x-main.N`.
+- **Contrib** — `0.1.x` line; iteration tags `v0.1.x-main.N`.
 
 Nothing is retagged retroactively.
 
 ## Repository history
 
 `main` carries a single consolidated commit as of the 2026-10-12 consolidation.
-The per-iteration series it replaces (380 commits through `26c02a9d`) is
-preserved locally at `refs/archive/main-pre-squash` and in
-`archive/pi-braid-full-history-2026-10-11.bundle` (all refs); a checkout that
-needs line history resolves it from that bundle. This file and
+The per-iteration series it replaces (380 commits) is kept outside this
+repository, in a local-only ref (`refs/archive/main-pre-squash`) plus an
+all-refs bundle; a public clone has the consolidated commit only, so a checkout
+that needs line history needs access to that local archive. This file and
 [`packages/core/docs/HISTORY.md`](packages/core/docs/HISTORY.md) are the
 reader-facing record; the tag scheme above applies unchanged.
 

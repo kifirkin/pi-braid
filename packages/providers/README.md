@@ -2,15 +2,15 @@
 
 Additional LLM providers for `pi-coding-agent`, built on a generalized **API key ring** for multi-key rotation and self-healing.
 
-The `providers` workspace registers providers into pi at session start. The key-ring machinery that both the agent loop and direct extension LLM calls use ships here; the provider itself is the owner-private **`agent-zero`** setup: the multi-vendor gateway that proxies Venice's models.
+The `providers` workspace registers providers into pi at session start. The key-ring machinery that both the agent loop and direct extension LLM calls use ships here; the provider itself is the **`agent-zero`** setup: the multi-vendor gateway that proxies Venice's models, configured from a catalog file resolved at runtime.
 
-> **The provider is owner-private.** The shipped tree registers NO provider:
-> the `agent-zero` model catalog (Venice's models) and gateway URL live in an owner-
-> controlled userland catalog file (see venice-catalog.ts) that is absent
-> from the public repo. Without it the extension loads with the key-ring
-> machinery active and zero registered providers. A synthetic route can be
-> registered through `registerRoute` (ring-lifecycle.ts) - the test suite
-> uses that seam for its multi-route coverage.
+> **A fresh install registers no provider.** The `agent-zero` model catalog
+> (Venice's models) and gateway URL are read from a userland catalog file
+> resolved at runtime (see `venice-catalog.ts`) that this package does not
+> include. Without it the extension loads with the key-ring machinery active
+> and zero registered providers; a synthetic route can be registered through
+> `registerRoute` (`ring-lifecycle.ts`), the seam the test suite uses for its
+> multi-route coverage.
 
 ## The key ring
 
@@ -50,9 +50,9 @@ Or register the workspace in `~/.pi/agent/settings.json`:
 
 ## What this does not do
 
-- It does not ship a provider catalog. The `agent-zero` model list and gateway URL come from an
-  owner-controlled catalog file absent from the public repo; without it the extension loads the
-  key-ring machinery and registers zero providers.
+- It does not ship a provider catalog. The `agent-zero` model list and gateway URL are read from a
+  catalog file resolved at runtime; without it the extension loads the key-ring machinery and
+  registers zero providers.
 - It does not rotate to a route you did not configure - a route is recognized only by the model ids
   it declares.
 - It does not retry a fatal account error (quota exhausted, billing, balance) as if it were transient.
@@ -60,7 +60,7 @@ Or register the workspace in `~/.pi/agent/settings.json`:
 ## Activation preconditions
 
 - `AGENT_ZERO_API_KEY` (or the numbered `AGENT_ZERO_API_KEY_P0`-`P9` rotation keys) set.
-- The owner catalog file present for the `agent-zero` route; otherwise zero providers register and only a
+- A userland catalog file for the `agent-zero` route; otherwise zero providers register and only a
   synthetic route (via `registerRoute`) can serve traffic.
 
 ## Environment variables
@@ -210,7 +210,7 @@ loading pi-ai.
 ```
 providers/
 ├── index.ts           # registers the configured routes + wires key-ring/rotation events
-├── venice-catalog.ts  # userland catalog seam (owner-private models file)
+├── venice-catalog.ts  # userland catalog seam (the models file, resolved at runtime)
 ├── venice-direct.ts   # the venice-direct route module: constants, key ring, model configs
 ├── key-ring.ts        # multi-key rotation + backoff + persistence
 ├── ring-lifecycle.ts  # per-request ring attribution, exhaust/self-heal, route-order rotation engine

@@ -8,11 +8,8 @@ Standalone contrib extensions for [pi](https://pi.dev) - 12 focused extensions t
 pi install npm:pi-braid-contrib
 ```
 
-Or from git:
-
-```bash
-pi install git:github.com/kifirkin/pi-braid
-```
+(There is no git install for this package: it is one workspace inside the
+`pi-braid` monorepo, and a git install of the repo root registers nothing.)
 
 ## What you get
 
@@ -37,8 +34,9 @@ pi install git:github.com/kifirkin/pi-braid
 
 - It does not sandbox its extensions. Each one runs with full system access in your session;
   `path-security` only constrains the blast radius of tool calls, and is soft-warn by default.
-- It does not bundle its own runtime dependencies. At install time deps resolve from the parent
-  pi-braid workspace (see [`AGENTS.md`](AGENTS.md)).
+- It does not bundle its own runtime dependencies. Its declared dependencies (currently `acorn`) are
+  installed by whoever installs the package; the monorepo's hoisted `node_modules` is a developer
+  convenience, not the mechanism (see [`AGENTS.md`](AGENTS.md)).
 - It does not include skills. The default skill catalog ships with `pi-braid`
   (`packages/core/skills`); the on-demand set is the separate `pi-braid-skills` pack.
 

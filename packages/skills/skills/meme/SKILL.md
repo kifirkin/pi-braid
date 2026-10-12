@@ -7,7 +7,7 @@ validated: 2026-09-09
 verdict: DEPRECATE
 ---
 
-> **DEPRECATED (2026-08-16)** - superseded by the [`pi-looping-clanker`](https://github.com/kifirkin/pi-looping-clanker) repo, which ships both skill content and executable code for animated/collaged meme GIFs. Static canvas memes are still generated with the technique below, but new work should start from pi-looping-clanker.
+> **DEPRECATED (2026-08-16)** - superseded by the separate `pi-looping-clanker` repo, which ships both skill content and executable code for animated/collaged meme GIFs. Static canvas memes are still generated with the technique below, but new work should start from pi-looping-clanker.
 
 # Meme Generation Skill
 
@@ -122,7 +122,7 @@ General rule: Place text where the background is clear, not over the subject.
 - `twitter` - posting flow, reply checking, verification, image attachment methods (canonical source)
 - `socratic-irony` - adversarial conversation framing for human audiences
 - `adversarial-engagement` - adversarial framing for defensive systems
-- `pi-looping-clanker` - animated GIF / collage memes with loop+stage-spec+overlay (external repo: https://github.com/kifirkin/pi-looping-clanker)
+- `pi-looping-clanker` - animated GIF / collage memes with loop+stage-spec+overlay (separate repo, content and code)
 
 ## Lessons Learned
 
@@ -147,4 +147,4 @@ General rule: Place text where the background is clear, not over the subject.
 
 ### Animated GIFs
 
-- For animated/collaged meme GIFs with caption safe zones, use the **pi-looping-clanker** repo (https://github.com/kifirkin/pi-looping-clanker)
+- For animated/collaged meme GIFs with caption safe zones, use the **pi-looping-clanker** repo (content and executable code live there)

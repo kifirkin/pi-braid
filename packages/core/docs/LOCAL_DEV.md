@@ -128,12 +128,12 @@ What the script does, in order:
 
 Version scheme: `<base>-<branch>.<iteration>`
 
-- `base` = the workspace's current `package.json` version (e.g. `0.3.2`)
+- `base` = the workspace's current `package.json` version (e.g. `0.40.0`)
 - `branch` = the git branch, sanitized to `[a-zA-Z0-9.-]`
 - `iteration` = commit count on the branch since `main`/`master`
 
-Example: `0.3.2-main.17`. When `package.json` already carries a full
-versioned release string (e.g. `0.3.2-main.17`), it is used verbatim instead
+Example: `0.40.0-main.17`. When `package.json` already carries a full
+versioned release string (e.g. `0.40.0-main.17`), it is used verbatim instead
 of being double-suffixed.
 
 ## Upstream pi update pipeline

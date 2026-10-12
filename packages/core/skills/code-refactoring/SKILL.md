@@ -1,13 +1,14 @@
 ---
 name: code-refactoring
-description: "Use when restructure/move/rename files or symbols across a TypeScript codebase. Covers ast-grep (sg) import path rewrites, file moves, symbol renames, and multi-file batch updates. Always use sg for structural changes over sed/regex."
+description: "Use when restructure/move/rename files or symbols across a TypeScript codebase. Covers ast-grep import path rewrites, file moves, symbol renames, and multi-file batch updates. Always use ast-grep for structural changes over sed/regex."
 validated: 2026-08-16
 verdict: IMPROVE
 ---
 
 # Code Refactoring
 
-Move files, rename symbols, and update imports at scale using **ast-grep** (`sg` 0.41.0+) and the TypeScript compiler. Search first, refactor second - this skill absorbs the former `code-search` skill (merged 2026-08-16).
+Move files, rename symbols, and update imports at scale using **ast-grep** (0.41.0+; the
+older `sg` binary name is deprecated) and the TypeScript compiler. Search first, refactor second - this skill absorbs the former `code-search` skill (merged 2026-08-16).
 
 ---
 
@@ -51,11 +52,11 @@ rg -l "old_name" . | head -20
 
 | Task                                | Tool                                                      | Why                                                 |
 | ----------------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
-| Rename symbol (all files)           | `sg run -p --rewrite --update-all`                        | AST-aware, scope-safe                               |
-| Update import paths after file move | `sg run -p --rewrite --update-all`                        | Precise string matching on import/export statements |
+| Rename symbol (all files)           | `ast-grep run -p --rewrite --update-all`                  | AST-aware, scope-safe                               |
+| Update import paths after file move | `ast-grep run -p --rewrite --update-all`                  | Precise string matching on import/export statements |
 | Find all importers of a file        | `rg "from.*'./path'"`                                     | Fast text search, handles all relative patterns     |
 | Move file to new directory          | `mkdir -p dst && mv src/file.ts dst/` then rewire imports | Simple, then fix refs                               |
-| Bulk text replacement across files  | Node.js script (REAMDE-driven)                            | When sg pattern can't express the change            |
+| Bulk text replacement across files  | Node.js script (REAMDE-driven)                            | When the pattern can't express the change           |
 | Verify no stale refs                | `rg "old-path" src/` after move                           |                                                     |
 
 ---
@@ -95,15 +96,15 @@ npx tsc --noEmit && npm test
 ### Pattern B: Rename a symbol across all files
 
 ```bash
-sg run -p 'oldName($$$)' -r 'newName($$$)' --update-all src/
-sg run -p 'oldName' -r 'newName' --update-all src/ --data-type=string || true
+ast-grep run -p 'oldName($$$)' -r 'newName($$$)' --update-all src/
+ast-grep run -p 'oldName' -r 'newName' --update-all src/ --data-type=string || true
 ```
 
 ### Pattern C: Update imports after file rename
 
 ```bash
 # AST-aware: match exact import string
-sg run -p "'../lib/old-name.js'" -r "'../lib/new-name.js'" src/ --update-all
+ast-grep run -p "'../lib/old-name.js'" -r "'../lib/new-name.js'" src/ --update-all
 ```
 
 ### Pattern E: Barrel file for backward compat (REQUIRED for moved files)
@@ -206,5 +207,5 @@ rg "old-path" src/ # no stale references
 
 - ast-grep matches AST nodes, not arbitrary text - multiline imports need careful patterns
 - For `import { X, Y } from "./path"`, match the entire string, not broken across lines
-- ts-mcp-server (MCP) is not supported by pi - use sg + scripts instead
-- `sg run --update-all` applies changes without confirmation - always `npx tsc --noEmit` after
+- ts-mcp-server (MCP) is not supported by pi - use ast-grep + scripts instead
+- `ast-grep run --update-all` applies changes without confirmation - always `npx tsc --noEmit` after

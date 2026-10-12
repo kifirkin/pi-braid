@@ -13,8 +13,6 @@
  *
  * Out of scope by design, and why:
  *   - `CHANGELOG.md` — release history is dated prose by design.
- *   - `presentation/**` — the bilingual deck ships byte-for-byte from its
- *     standalone repo; its HTML is already prettier-excluded.
  *   - fenced code blocks — a dash inside a sample is code, not prose.
  *   - YAML frontmatter — `description:` feeds the machine-read skill catalog.
  *
@@ -42,10 +40,6 @@ const FENCE = /^\s*(?:```|~~~)/;
 /** Whole-file exclusions; their hits are summarized, never itemized. */
 const FILE_EXCLUSIONS = [
   { path: "CHANGELOG.md", reason: "release history is dated prose by design" },
-  {
-    path: "presentation/",
-    reason: "bilingual deck ships byte-for-byte from its standalone repo",
-  },
 ];
 
 /** Line-level exclusions: a single line where the glyph is the subject. */

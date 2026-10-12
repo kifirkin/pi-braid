@@ -19,11 +19,12 @@
     "LICENSE",
     "AGENTS.md",
     "CONTRIBUTING.md",
-    "tsconfig.json"
+    "TOOLS.md"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kifirkin/pi-braid.git"
+    "url": "git+https://github.com/kifirkin/pi-braid.git",
+    "directory": "packages/core"
   },
   "bugs": {
     "url": "https://github.com/kifirkin/pi-braid/issues"

@@ -378,4 +378,4 @@ The analysis will report detected colors, typography, spacing, and components. C
 | Analyze visual output | `describe_image("screenshot.png", prompt)`             | -                              |
 | Validate output       | Follow visual-validator audit format                   | -                              |
 
-The DESIGN.md format is documented at [Google's design-spec repository](https://github.com/google/design.md).
+The DESIGN.md format is documented at [Google's design-spec repository](https://github.com/google-labs-code/design.md).

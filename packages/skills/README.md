@@ -2,7 +2,7 @@
 
 # pi-braid-skills
 
-Skill pack for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent. This workspace (`packages/skills`) ships **only** markdown content - one `SKILL.md` per skill - with no shipped code and no runtime dependencies. It carries the **on-demand** set for per-project loading; the always-available core skill set ships with `pi-braid` (`packages/core/skills`). Its `test/` directory holds the frontmatter contract test and is not shipped. Pi loads each `SKILL.md` through its skill discovery mechanism and uses the frontmatter (`name`, `description`) to decide when to invoke a skill.
+Skill pack for the [pi](https://github.com/earendil-works/pi) coding agent. This workspace (`packages/skills`) ships **only** markdown content - one `SKILL.md` per skill - with no shipped code and no runtime dependencies. It carries the **on-demand** set for per-project loading; the always-available core skill set ships with `pi-braid` (`packages/core/skills`). Its `test/` directory holds the frontmatter contract test and is not shipped. Pi loads each `SKILL.md` through its skill discovery mechanism and uses the frontmatter (`name`, `description`) to decide when to invoke a skill.
 
 ## Install
 

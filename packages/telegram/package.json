@@ -4,7 +4,6 @@
   "description": "Bidirectional Telegram channel for pi-braid: telegram_send tool (outbound) + inbound long-poll injector (backward channel)",
   "type": "module",
   "files": [
-    "dist/**/*.js",
     "src/",
     "docs/",
     "README.md",

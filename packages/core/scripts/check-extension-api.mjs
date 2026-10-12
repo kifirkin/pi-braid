@@ -16,7 +16,9 @@
  * by exactly one of:
  *
  *   1. pi-core surface — hardcoded member set extracted from the installed
- *      pi-core type declarations (version recorded below). Regenerate with:
+ *      pi-core type declarations of one version, pinned at PI_CORE_BASELINE
+ *      below. The set is frozen: a green run vouches for that baseline, not
+ *      for the pi-core version actually installed. Regenerate with:
  *        awk '/export interface ExtensionContext \{/,/^\}/' + ExtensionAPI +
  *        ExtensionCommandContext over ~/.pi/agent/local-packages/node_modules/
  *        @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts
@@ -42,7 +44,16 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const strict = process.argv.includes("--strict");
 
-/** pi-core 0.85.1 — @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts */
+/**
+ * Frozen baseline: pi-core 0.85.1, extracted from that version's
+ * @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts.
+ *
+ * It is deliberately not re-derived per run, so a green run says nothing about
+ * the surface of the pi-core actually installed — the summary line names both
+ * versions when they differ. To refresh: re-extract from the installed
+ * declarations and bump PI_CORE_BASELINE in the same commit.
+ */
+const PI_CORE_BASELINE = "0.85.1";
 const PI_CORE_SURFACE = new Set([
   // ExtensionAPI (the `pi` object; kept here because some helpers accept it
   // through a `ctx`-shaped indirection and one shared set is easier to audit)
@@ -126,6 +137,32 @@ function stripComments(text) {
     .replace(/(^|[^:"])\/\/[^\n]*/g, "$1");
 }
 
+/** The pi-core version actually installed here, or null when it is not resolvable. */
+function installedPiCoreVersion() {
+  const manifest = resolve(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+    "package.json",
+  );
+  try {
+    return JSON.parse(readFileSync(manifest, "utf8")).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Staleness suffix for the clean line: empty only when the baseline IS the installed version. */
+function baselineNote() {
+  const installed = installedPiCoreVersion();
+  if (!installed || installed === PI_CORE_BASELINE) return "";
+  return `\n   ⚠️  frozen baseline: installed pi-core is ${installed}; re-extract the member set from its declarations`;
+}
+
 const srcDir = resolve(__dirname, "..", "src");
 const files = walkTsFiles(srcDir).filter(
   (p) => !p.includes("/dist/") && !p.includes("/node_modules/"),
@@ -163,7 +200,7 @@ for (const [f, text] of fileTexts) {
 if (hits.length === 0) {
   console.log(
     `✅ check-extension-api: ${files.length} files, ${callsChecked} ctx accesses, ` +
-      `0 unclassified (pi-core 0.85.1 surface + ${declared.size} declared project fields)`,
+      `0 unclassified (pi-core ${PI_CORE_BASELINE} baseline surface + ${declared.size} declared project fields)${baselineNote()}`,
   );
   process.exit(0);
 }

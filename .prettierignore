@@ -24,10 +24,6 @@ coverage/
 .tmp/
 .eslintcache
 
-# Deck HTML is shipped byte-for-byte from the standalone deck repo
-# (pi-braid-present); prettier's HTML formatter must not rewrite it.
-presentation/*.html
-
 # Generated braid.* schema (packages/core/.prettierignore carries the same
 # entry): the generator's output is the canonical form and
 # check-braid-schema.mjs byte-compares against it, so prettier must not

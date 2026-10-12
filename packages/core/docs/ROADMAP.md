@@ -51,8 +51,9 @@ provenance; they are no longer work.
 2. **Version-drift cleanup** - RESOLVED: the four workspace packages declare
    the pi peer as `"*"`; the root manifest pins the installed version
    (`package.json`, the `@earendil-works/*` deps).
-3. **Tag-scheme unification** - legacy `v0.1.1…v0.39.0` tags mix with the
-   untagged `0.3.x-main.N` iteration scheme. Pick one for release tags.
+3. **Tag-scheme unification** - RESOLVED: two tag roles under one `v` prefix, recorded in
+   the root `CHANGELOG.md` - iteration tags `v0.40.0-main.N` (`package.json`
+   `0.40.0-main.N`), release tag `v0.40.0`.
 4. **CI private-data gate** - RESOLVED: `check-private-data.mjs` is a CI step
    and scans the whole tree by default (tracked plus untracked); the
    staged-file checks are a local pre-commit convenience.
@@ -65,12 +66,12 @@ provenance; they are no longer work.
    `includeStats`); the orchestrator's metrics-emission half (writing
    `METRICS_FILE`) is still open.
 
-### History-sweep candidates (2026-09-06)
+### History-sweep candidates
 
 From a full sweep of past orchestrator sessions (ideas voiced but dropped).
 One step further out than the list above - none are commitments, each needs an
-owner go before a wave. Full sourced sheet lives in the internal knowledge
-base (`braid-docs/notes/IDEAS-FROM-HISTORY-2026-09-06.md`).
+owner go before a wave. Full sourced notes live in the project's private
+knowledge base.
 
 7. **Bound + persist in-memory accumulators (P11)** - RESOLVED:
    `lib/utils/bounded.ts` owns the bounded tail (`pushBounded`), adopted at

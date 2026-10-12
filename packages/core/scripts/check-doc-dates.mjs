@@ -48,10 +48,6 @@ const VALIDATED = /^\s*validated:/;
 const EXCLUSIONS = [
   { path: "CHANGELOG.md", reason: "release history; each dated entry is the record" },
   {
-    path: "presentation/",
-    reason: "bilingual deck ships byte-for-byte from its standalone repo",
-  },
-  {
     path: "packages/core/AGENTS.md",
     reason: "the archived tool-inventory audit date is that artifact's only handle",
   },
