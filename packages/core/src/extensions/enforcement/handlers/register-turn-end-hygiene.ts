@@ -41,7 +41,7 @@ import { registerTurnEndHandler } from "../../../lib/events/turn-end-coordinator
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { fileMutationQueue } from "../../../lib/utils/file-mutation-queue.js";
-import { braidDir } from "../../../lib/config/braid-paths.js";
+import { braidDir, scratchpadDir } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 import { flushPendingScratchpadWrites } from "../../memory/scratchpad/utils.js";
 import { isCompactionActive, getCmState } from "../../memory/context-manager/handlers/shared.js";
@@ -84,12 +84,17 @@ function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
   try {
     // 2. Write resume.json (same format as SESSION_SHUTDOWN handler)
     const slug = projectSlugFromCwd(cwd);
-    const scratchpadFile = path.join(braidDir(), "scratchpads", slug, "latest.json");
     let goal: string | null = null;
     let openPlans: Array<{ id: string; text: string }> = [];
     let recentDecisions: Array<{ id: string; text: string }> = [];
-    if (existsSync(scratchpadFile)) {
-      try {
+    // Prior state is a READ: the scratchpad root is resolved on every call, so
+    // a pinned run reads the tree the scratchpad writer wrote to, and a
+    // segment rename in the accessor moves this reader with the writer. A
+    // refused root (no absolute braid home) or a corrupt section degrades to
+    // no prior-state section instead of failing the resume write below.
+    try {
+      const scratchpadFile = path.join(scratchpadDir(), slug, "latest.json");
+      if (existsSync(scratchpadFile)) {
         const content = readFileSync(scratchpadFile, "utf-8");
         const parsed = JSON.parse(content);
         goal = parsed.goal ?? null;
@@ -100,10 +105,9 @@ function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
         recentDecisions = (Array.isArray(parsed.decisions) ? parsed.decisions : [])
           .slice(-5)
           .map((d: any) => ({ id: d.id ?? "", text: d.text ?? d.content ?? "" }));
-      } catch {
-        // Corrupt scratchpad section — resume banner falls back to defaults
-        // rather than blocking session resumption on a parse error.
       }
+    } catch (err) {
+      log.debug(`scratchpad prior-state read failed: ${err}`);
     }
 
     let uncommittedFiles: string[] = [];

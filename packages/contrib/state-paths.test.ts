@@ -23,6 +23,9 @@
  *      run under the pin: the probe dir and the report file appear there,
  *      while the child's HOME tree stays empty - a binding folded at module
  *      load writes the default tree under that HOME instead
+ *   7. the healthcheck tools probe file is created and unlinked inside the
+ *      check, so the child watches both candidate dirs: the file must be seen
+ *      under the pin and never under the default tree
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -300,7 +303,7 @@ try {
   );
   const pinHcDir = path.join(pin, "healthcheck");
   check(
-    "the write-test dir was created under the pin",
+    "the healthcheck probe dir exists under the pin",
     fs.existsSync(pinHcDir),
   );
   check(
@@ -319,6 +322,67 @@ try {
     treeOf(writersHome).join(","),
   );
   fs.rmSync(writersHome, { recursive: true, force: true });
+
+  // 4c. the tools category: its only probe artifact is created and unlinked
+  // inside the check, so the child watches both candidate healthcheck dirs
+  // and reports which one it landed on. A fold to the constant keeps every
+  // existence probe above green; only this row is red.
+  const toolsHome = fs.mkdtempSync(
+    path.join(os.tmpdir(), "contrib-state-hctools-"),
+  );
+  const tools = runChild(DRIVER, ["healthcheck-tools"], {
+    ...process.env,
+    BRAID_HOME: pin,
+    HOME: toolsHome,
+  });
+  check(
+    "healthcheck-tools child exits 0",
+    tools.status === 0,
+    tools.err.slice(0, 400),
+  );
+  const toolChecks: Array<{ name: string; status: string }> = Array.isArray(
+    tools.json?.checks,
+  )
+    ? tools.json.checks
+    : [];
+  check(
+    "the tools probe set ran under the pin",
+    toolChecks.length === 4 && toolChecks.every((c) => c.status !== "fail"),
+    JSON.stringify(tools.json?.checks ?? null),
+  );
+  check(
+    "the tools file-ops probe passed",
+    toolChecks.some(
+      (c) => c.name === "file-ops-functional" && c.status === "pass",
+    ),
+    JSON.stringify(toolChecks),
+  );
+  const pinEvents: string[] = Array.isArray(tools.json?.events?.pin)
+    ? tools.json.events.pin
+    : [];
+  const foldedEvents: string[] = Array.isArray(tools.json?.events?.folded)
+    ? tools.json.events.folded
+    : [];
+  check(
+    "the tools probe file landed under the pin",
+    pinEvents.some((f) => f.includes("tool-test.txt")),
+    JSON.stringify(tools.json?.events ?? null),
+  );
+  check(
+    "the tools probe file did not land on the default tree",
+    !foldedEvents.some((f) => f.includes("tool-test.txt")),
+    JSON.stringify(tools.json?.events ?? null),
+  );
+  check(
+    "healthcheck-tools child left the cwd tree unchanged",
+    treeOf(cwd).join(",") === cwdTree.join(","),
+  );
+  check(
+    "healthcheck-tools child left its HOME tree unchanged",
+    treeOf(toolsHome).join(",") === "",
+    treeOf(toolsHome).join(","),
+  );
+  fs.rmSync(toolsHome, { recursive: true, force: true });
 
   // 5. a hostile HOME refuses every default (and the real writer refuses)
   for (const hostile of ["", ".", "rel-home"]) {

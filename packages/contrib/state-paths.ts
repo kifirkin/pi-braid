@@ -16,11 +16,14 @@
  * observatory recordings and the browser scratch profile were never
  * read back by braid, so they simply start in the new root.
  *
- * Refusal contract: `braidDir()` returns null when BRAID_HOME is unset and
- * `os.homedir()` does not resolve an absolute path (a relative or blank HOME
- * would otherwise put the whole tree beside the cwd). Every derived accessor
- * returns null with it; callers refuse instead of writing somewhere unowned
- * and report the refusal through their own logger.
+ * Refusal contract: `braidDir()` returns null when no absolute root can be
+ * derived - BRAID_HOME is unset and `os.homedir()` does not resolve an
+ * absolute path (a relative or blank HOME would otherwise put the whole tree
+ * beside the cwd), or BRAID_HOME is set to a path that is not absolute (a
+ * relative override resolves against whatever cwd the process has, which is
+ * the same hazard). Every derived accessor returns null with it; callers
+ * refuse instead of writing somewhere unowned and report the refusal through
+ * their own logger.
  */
 
 import * as os from "node:os";
@@ -32,7 +35,10 @@ import * as path from "node:path";
  */
 export function braidDir(): string | null {
   const override = process.env.BRAID_HOME;
-  if (override && override.trim()) return path.resolve(override);
+  if (override && override.trim()) {
+    if (!path.isAbsolute(override)) return null;
+    return path.resolve(override);
+  }
   let home: string;
   try {
     home = os.homedir();

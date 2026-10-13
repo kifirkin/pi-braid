@@ -32,7 +32,12 @@
  *   (l) the prompt's memory pointer lines resolve the live store paths, and
  *       name no path at all when no absolute root resolves;
  *   (m) the legacy-memory migration source follows the live root: a pinned
- *       run does not import a pre-braid store left under the default tree.
+ *       run does not import a pre-braid store left under the default tree;
+ *   (n) under a pin no live accessor resolves its folded constant, so an
+ *       accessor folded to its precomputed spelling (the drift pin's blind
+ *       spot, since (g) reads the default-home equality) is caught;
+ *   (o) a relative BRAID_HOME refuses at the base like the hostile-HOME legs:
+ *       every census writer refuses and the project gains nothing.
  *
  * Bound: the tree assertions below are a FINAL-STATE snapshot. A directory
  * created and removed between samples, a write outside the checked roots (a
@@ -298,6 +303,43 @@ await test("(k) the resume payload carries the pinned scratchpad's goal", async 
   );
 });
 
+/**
+ * Every live accessor beside the precomputed constant it must agree with when
+ * the DEFAULT root is live. The two lock accessors have no constant of their
+ * own: their precomputed spelling is the store constant plus `.lock`. (g)
+ * reads this list for the default-home equality, (n) from the other side,
+ * under an absolute pin.
+ */
+const ACCESSOR_PAIRS = [
+  [paths.BRAID_DIR, () => paths.braidDir()],
+  [paths.MEMORY_DIR, () => paths.memoryDir()],
+  [paths.CHECKPOINT_DIR, () => paths.checkpointDir()],
+  [paths.ERROR_DIR, () => paths.errorDir()],
+  [paths.SCRATCHPAD_DIR, () => paths.scratchpadDir()],
+  [paths.METRICS_DIR, () => paths.metricsDir()],
+  [paths.SEMANTIC_MEMORY_FILE, () => paths.semanticMemoryFilePath()],
+  [paths.EPISODES_FILE, () => paths.episodesFilePath()],
+  [paths.WRITE_LOG_FILE, () => paths.writeLogFilePath()],
+  [paths.ERROR_FILE, () => paths.errorsFilePath()],
+  [paths.CONSOLIDATED_HINTS_FILE, () => paths.consolidatedHintsFilePath()],
+  [paths.METRICS_FILE, () => paths.metricsFilePath()],
+  [paths.DEGRADATION_FILE, () => paths.degradationFilePath()],
+  [paths.EVIDENCE_POOL_FILE, () => paths.evidencePoolFilePath()],
+  [paths.SKILLS_USAGE_FILE, () => paths.getSkillsUsageFilePath()],
+  [paths.SKILLS_SESSIONS_FILE, () => paths.getSkillsSessionsFilePath()],
+  [paths.BRAID_CONFIG_FILE, () => paths.getBraidConfigFilePath()],
+  [paths.OFFLOAD_DIR, () => paths.offloadDir()],
+  [paths.PENDING_TIMERS_FILE, () => paths.getTimerFilePath()],
+  [paths.TELEMETRY_DIR, () => paths.telemetryDir()],
+  [paths.HEALTHCHECK_DIR, () => paths.healthcheckDir()],
+  [paths.LEGACY_MEMORY_FILE, () => paths.legacyMemoryFilePath()],
+  [paths.SHOWN_SIGNALS_FILE, () => paths.shownSignalsFilePath()],
+  [paths.LOCK_FILE, () => paths.getLockFilePath()],
+  [paths.WORKERS_FILE, () => paths.getWorkersFilePath()],
+  [`${paths.EPISODES_FILE}.lock`, () => episodesLockFilePath()],
+  [`${paths.SEMANTIC_MEMORY_FILE}.lock`, () => semanticStoreLockFilePath()],
+];
+
 await test("(d) the project the session ran in gained nothing", () => {
   assert.deepEqual(
     tree(PROJECT),
@@ -478,39 +520,8 @@ await test("(g) every live accessor equals its precomputed constant by default",
   const pinned = process.env.BRAID_HOME;
   try {
     delete process.env.BRAID_HOME;
-    const pairs = [
-      [paths.BRAID_DIR, paths.braidDir()],
-      [paths.MEMORY_DIR, paths.memoryDir()],
-      [paths.CHECKPOINT_DIR, paths.checkpointDir()],
-      [paths.ERROR_DIR, paths.errorDir()],
-      [paths.SCRATCHPAD_DIR, paths.scratchpadDir()],
-      [paths.METRICS_DIR, paths.metricsDir()],
-      [paths.SEMANTIC_MEMORY_FILE, paths.semanticMemoryFilePath()],
-      [paths.EPISODES_FILE, paths.episodesFilePath()],
-      [paths.WRITE_LOG_FILE, paths.writeLogFilePath()],
-      [paths.ERROR_FILE, paths.errorsFilePath()],
-      [paths.CONSOLIDATED_HINTS_FILE, paths.consolidatedHintsFilePath()],
-      [paths.METRICS_FILE, paths.metricsFilePath()],
-      [paths.DEGRADATION_FILE, paths.degradationFilePath()],
-      [paths.EVIDENCE_POOL_FILE, paths.evidencePoolFilePath()],
-      [paths.SKILLS_USAGE_FILE, paths.getSkillsUsageFilePath()],
-      [paths.SKILLS_SESSIONS_FILE, paths.getSkillsSessionsFilePath()],
-      [paths.BRAID_CONFIG_FILE, paths.getBraidConfigFilePath()],
-      [paths.OFFLOAD_DIR, paths.offloadDir()],
-      [paths.PENDING_TIMERS_FILE, paths.getTimerFilePath()],
-      [paths.TELEMETRY_DIR, paths.telemetryDir()],
-      [paths.HEALTHCHECK_DIR, paths.healthcheckDir()],
-      [paths.LEGACY_MEMORY_FILE, paths.legacyMemoryFilePath()],
-      [paths.SHOWN_SIGNALS_FILE, paths.shownSignalsFilePath()],
-      [paths.LOCK_FILE, paths.getLockFilePath()],
-      [paths.WORKERS_FILE, paths.getWorkersFilePath()],
-      // The store locks have no constant of their own: their precomputed
-      // spelling is the store constant plus `.lock`.
-      [`${paths.EPISODES_FILE}.lock`, episodesLockFilePath()],
-      [`${paths.SEMANTIC_MEMORY_FILE}.lock`, semanticStoreLockFilePath()],
-    ];
-    for (const [constant, live] of pairs) {
-      assert.equal(live, constant, `the live accessor must equal its constant: ${constant}`);
+    for (const [constant, live] of ACCESSOR_PAIRS) {
+      assert.equal(live(), constant, `the live accessor must equal its constant: ${constant}`);
     }
   } finally {
     process.env.BRAID_HOME = pinned;
@@ -649,6 +660,79 @@ await test("(m) the legacy migration source follows the live root", async () => 
     false,
     `a pinned run must not import the default tree's pre-braid store: ${JSON.stringify(state.episodes.map((e) => e.task))}`,
   );
+});
+
+await test("(n) under the pin no live accessor resolves its folded constant", () => {
+  // (g) holds the two spellings of one layout together with the DEFAULT root
+  // live, so an accessor folded to its own constant satisfies it by
+  // construction. The pin leg needs its own read: with an absolute BRAID_HOME
+  // live, every accessor that resolves durable-write state must resolve off
+  // the default tree, and a writer that fell back to its constant would write
+  // there. The writer accessors have no consumer in this suite, so this is
+  // their only containment net.
+  for (const [constant, live] of ACCESSOR_PAIRS) {
+    assert.notEqual(
+      live(),
+      constant,
+      `under the pin the live accessor must not resolve its folded constant: ${constant}`,
+    );
+  }
+  assert.equal(
+    paths.healthcheckDir(),
+    join(BRAID_HOME, "healthcheck"),
+    "the healthcheck scratch and report root follows the pin",
+  );
+});
+
+await test("(o) a relative BRAID_HOME refuses at the base and writes into no project", () => {
+  // The override leg gets the hostile-HOME rule: a relative BRAID_HOME
+  // resolves against whatever cwd the process has, so it would put the whole
+  // braid tree in the project the session runs in. Refusal is asserted at the
+  // base, and then at the writers: every census family is driven in a child
+  // whose cwd is a throwaway project, and the project must gain nothing.
+  const pinnedBraid = process.env.BRAID_HOME;
+  try {
+    for (const hostile of ["rel-pin", "./rel-pin"]) {
+      process.env.BRAID_HOME = hostile;
+      assert.throws(() => paths.braidDir(), /absolute/, `BRAID_HOME=${JSON.stringify(hostile)}`);
+      assert.throws(() => paths.writeLogFilePath(), /absolute/, "a family accessor refuses too");
+      assert.throws(() => paths.scratchpadDir(), /absolute/, "a reader accessor refuses too");
+    }
+  } finally {
+    process.env.BRAID_HOME = pinnedBraid;
+  }
+
+  const home = mkdtempSync(join(tmpdir(), "braid-writers-home-"));
+  try {
+    const run = runWriterProbe({ home, braidHome: "rel-pin" });
+    assert.equal(run.status, 0, `the child must exit 0, not crash: ${run.stderr}`);
+    assert.equal(
+      run.rows.length,
+      CENSUS_FAMILIES.length,
+      `every family must report: ${JSON.stringify(run.rows.map((r) => r.family))}`,
+    );
+    for (const row of run.rows) {
+      assert.equal(
+        row.refused,
+        true,
+        `${row.family}: the write must refuse loudly (threw=${row.threw}, level=${row.level})`,
+      );
+    }
+    assert.deepEqual(
+      run.unhandled,
+      [],
+      `no listener may leave a rejected promise undrained: ${JSON.stringify(run.unhandled)}`,
+    );
+    assert.deepEqual(
+      tree(run.project),
+      [],
+      `a relative override must put nothing in the project: ${JSON.stringify(tree(run.project))}`,
+    );
+    rmSync(run.project, { recursive: true, force: true });
+    rmSync(run.fixtureRoot, { recursive: true, force: true });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);

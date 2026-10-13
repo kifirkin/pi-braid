@@ -45,16 +45,27 @@ function absoluteHome(): string | null {
  * The no-override leg is derived here, on every call, and must be absolute:
  * with `HOME=.` or `HOME=""` the old module-load fallback produced a RELATIVE
  * root, so a module toggle (or any other default-leg writer) created
- * `.pi/agent/braid/...` inside the user's project. A root that is not
- * absolute names no directory braid owns, so this throws instead of returning
- * one; callers that can skip (a writer) or degrade (a reader) decide what to
- * do with the refusal. BRAID_HOME still wins whenever it is set; a relative
- * BRAID_HOME is resolved against the cwd by `path.resolve`, which is fine
- * because it is explicit.
+ * `.pi/agent/braid/...` inside the user's project. The override leg carries
+ * the same rule for the same reason: a relative BRAID_HOME resolves against
+ * whatever cwd the process has, so a pinned run started from a project wrote
+ * braid's whole state tree into that project. A root that is not absolute
+ * names no directory braid owns, so this throws instead of returning one;
+ * callers that can skip (a writer) or degrade (a reader) decide what to do
+ * with the refusal. BRAID_HOME wins whenever it is set to an absolute path.
  */
 export function braidDir(): string {
   const override = process.env.BRAID_HOME;
-  if (override && override.trim()) return path.resolve(override);
+  if (override && override.trim()) {
+    if (!path.isAbsolute(override)) {
+      throw new Error(
+        `braid: BRAID_HOME must be an absolute path (got "${override}"): a ` +
+          "relative override resolves against whatever cwd the process has, " +
+          "so the whole braid state tree lands in the session's project. Set " +
+          "BRAID_HOME to an absolute directory, or unset it.",
+      );
+    }
+    return path.resolve(override);
+  }
   const home = absoluteHome();
   if (home === null) {
     throw new Error(

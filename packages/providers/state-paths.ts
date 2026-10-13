@@ -59,13 +59,15 @@ export function piAgentDir(): string | null {
 /**
  * Braid's data root, mirroring core's braidDir() in
  * packages/core/src/lib/config/braid-paths.ts: `BRAID_HOME` when it is pinned
- * to a non-blank value (path.resolve()d, exactly as core resolves it), else
+ * to an absolute path (path.resolve()d, exactly as core resolves it), else
  * the default tree under the pi agent dir. With BRAID_HOME unset this is the
  * directory core resolves, so a file this package reports and the file core
  * wrote cannot come from two different roots. `null` when no override is set
- * and no absolute home can be resolved: a root that is not absolute names no
- * directory this package owns, so callers refuse instead of resolving a state
- * file against the process cwd. One bound worth stating: core's fallback leg
+ * and no absolute home can be resolved, and also when the override is not an
+ * absolute path (a relative override names no directory this package owns,
+ * so it is refused exactly as piAgentDir() refuses a relative
+ * PI_CODING_AGENT_DIR): callers refuse instead of resolving a state file
+ * against the process cwd. One bound worth stating: core's fallback leg
  * is a module-load constant and this one resolves per call, so if a process
  * reassigns HOME after both modules are loaded, core keeps the original home
  * and this follows the new one (this resolution is the more faithful one to
@@ -73,7 +75,10 @@ export function piAgentDir(): string | null {
  */
 export function braidDataRoot(): string | null {
   const override = process.env.BRAID_HOME;
-  if (override && override.trim()) return resolve(override);
+  if (override && override.trim()) {
+    if (!isAbsolute(override)) return null;
+    return resolve(override);
+  }
   let home: string;
   try {
     home = homedir();
