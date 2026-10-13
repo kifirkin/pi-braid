@@ -13,18 +13,23 @@
 import * as fs from "node:fs/promises";
 import { fileMutationQueue } from "../utils/file-mutation-queue.js";
 import { createLogger } from "../core/logger.js";
-import { MEMORY_DIR, MEMORY_FILE, LEGACY_MEMORY_FILE_PATH } from "./constants.js";
+import { memoryDir, semanticMemoryFilePath } from "../config/braid-paths.js";
+import { LEGACY_MEMORY_FILE_PATH } from "./constants.js";
 import { withStoreLock } from "./store-lock.js";
 import { mergeStores, type MergeStoresOptions } from "./store-merge.js";
 import type { CognitiveMemoryEntry, CognitiveMemoryStore } from "./types.js";
 
 const _log = createLogger("semantic-memory:storage");
 
-/** Exclusive lock guarding the read-merge-write cycle on MEMORY_FILE. */
-export const SEMANTIC_STORE_LOCK_FILE = `${MEMORY_FILE}.lock`;
+/** Exclusive lock guarding the read-merge-write cycle on the semantic store.
+ *  Resolved through the live store path so the lock and the file it guards
+ *  always name the same (possibly BRAID_HOME-pinned) store. */
+export function semanticStoreLockFilePath(): string {
+  return `${semanticMemoryFilePath()}.lock`;
+}
 
 async function ensureMemoryDir(): Promise<void> {
-  await fs.mkdir(MEMORY_DIR, { recursive: true });
+  await fs.mkdir(memoryDir(), { recursive: true });
 }
 
 /** Map the legacy `{entries: [...]}` format onto the current memories shape. Pure. */
@@ -63,7 +68,7 @@ function migrateEntriesShape(parsed: {
  */
 export async function readStoreFile(): Promise<CognitiveMemoryStore | null> {
   try {
-    const data = await fs.readFile(MEMORY_FILE, "utf-8");
+    const data = await fs.readFile(semanticMemoryFilePath(), "utf-8");
     const parsed = JSON.parse(data);
     if (parsed?.memories) return parsed as CognitiveMemoryStore;
     if (parsed?.entries) return migrateEntriesShape(parsed);
@@ -77,11 +82,17 @@ export async function readStoreFile(): Promise<CognitiveMemoryStore | null> {
 }
 
 export async function loadMemory(): Promise<CognitiveMemoryStore> {
-  await ensureMemoryDir();
+  try {
+    await ensureMemoryDir();
+  } catch (err) {
+    // A reader degrades: a refused root (no absolute braid root resolves) is
+    // read as an absent store, and the writer side is the loud one.
+    _log.warn(`Semantic store root unavailable, starting empty: ${err}`);
+  }
 
   // Prefer the current format; legacy sources are handled below.
   try {
-    const data = await fs.readFile(MEMORY_FILE, "utf-8");
+    const data = await fs.readFile(semanticMemoryFilePath(), "utf-8");
     const parsed = JSON.parse(data);
 
     // Handle migration from old format (entries) to new format (memories)
@@ -167,10 +178,10 @@ export async function saveMemory(
   opts: MergeStoresOptions = {},
 ): Promise<CognitiveMemoryStore> {
   await ensureMemoryDir();
-  return withStoreLock(SEMANTIC_STORE_LOCK_FILE, async () => {
+  return withStoreLock(semanticStoreLockFilePath(), async () => {
     const disk = await readStoreFile();
     const merged = mergeStores(disk, local, opts);
-    await fileMutationQueue.write(MEMORY_FILE, merged);
+    await fileMutationQueue.write(semanticMemoryFilePath(), merged);
     return merged;
   });
 }

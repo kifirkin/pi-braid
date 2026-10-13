@@ -11,7 +11,7 @@ import { getExtensionState } from "../state/extension-state.js";
 import { saveStateImmediate, loadState } from "../state/async-storage.js";
 import { createLogger } from "../core/logger.js";
 
-import { DEGRADATION_FILE } from "../config/braid-paths.js";
+import { degradationFilePath } from "../config/braid-paths.js";
 
 const _log = createLogger("degradation-detector");
 
@@ -53,8 +53,6 @@ const DEFAULT_CONFIG: DegradationConfig = {
   checkIntervalMs: 60000,
   maxConsecutiveErrors: 3,
 };
-
-const METRICS_FILE = DEGRADATION_FILE;
 
 // Global fallback (legacy - for tool handlers without ctx)
 let _global: DegradationState = {
@@ -419,7 +417,7 @@ export function getMetricsSummary(ctx?: ExtensionContext) {
 
 export async function saveMetrics(): Promise<void> {
   try {
-    await saveStateImmediate(METRICS_FILE, _global);
+    await saveStateImmediate(degradationFilePath(), _global);
   } catch (error) {
     _log.error("Failed to save degradation metrics:", error);
   }
@@ -562,7 +560,7 @@ function sanitizeLoadedState(loaded: unknown): DegradationState {
 
 export async function loadMetrics(): Promise<void> {
   try {
-    const loaded = await loadState<unknown>(METRICS_FILE);
+    const loaded = await loadState<unknown>(degradationFilePath());
     if (loaded) {
       _global = sanitizeLoadedState(loaded);
     }

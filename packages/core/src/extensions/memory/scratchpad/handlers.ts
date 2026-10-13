@@ -18,7 +18,8 @@
 
 import { appendFile } from "node:fs/promises";
 import * as path from "node:path";
-import { SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
+import { scratchpadDir } from "../../../lib/config/braid-paths.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import { nextId } from "../../../lib/utils/id.js";
 import type {
   Constraint,
@@ -45,6 +46,8 @@ import {
 } from "./utils.js";
 
 // Shared handler result type
+
+const log = createLogger("scratchpad-handlers");
 
 export interface HandlerResult {
   resultText: string;
@@ -361,7 +364,7 @@ export async function handleArchiveDone(pad: TaskScratchpad): Promise<HandlerRes
   // NOT deleted from memory; this just moves them to disk in
   // append-only form so a future session can query them.
   const slug = pad.projectSlug;
-  const archivePath = path.join(SCRATCHPAD_DIR, slug, "archive.jsonl");
+  const archivePath = path.join(scratchpadDir(), slug, "archive.jsonl");
   const lines = pad.done.map((d) =>
     JSON.stringify({
       kind: "done",
@@ -374,8 +377,10 @@ export async function handleArchiveDone(pad: TaskScratchpad): Promise<HandlerRes
   if (lines.length > 0) {
     try {
       await appendFile(archivePath, lines.join("\n") + "\n", "utf-8");
-    } catch {
-      // Best-effort archive
+    } catch (err) {
+      // Best-effort archive — but a refusal is loud, never silent: the items
+      // stay in memory and the caller still gets the archive path it did not get.
+      log.warn(`archive append failed at ${archivePath}: ${err}`);
     }
   }
   const count = pad.done.length;

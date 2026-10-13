@@ -22,7 +22,7 @@
 
 import { stat, readFile } from "node:fs/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CONSOLIDATED_HINTS_FILE } from "../config/braid-paths.js";
+import { consolidatedHintsFilePath } from "../config/braid-paths.js";
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { fenceMemoryContext } from "../utils/memory-fence.js";
 import { classify } from "../ai/text-classifier.js";
@@ -52,8 +52,8 @@ interface ParsedHint {
  */
 async function loadConsolidatedHints(currentProject?: string): Promise<string[]> {
   try {
-    if (!(await asyncExists(CONSOLIDATED_HINTS_FILE))) return [];
-    const content = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
+    if (!(await asyncExists(consolidatedHintsFilePath()))) return [];
+    const content = await readFile(consolidatedHintsFilePath(), "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     if (lines.length === 0) return [];
 

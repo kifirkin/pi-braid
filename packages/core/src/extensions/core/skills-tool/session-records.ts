@@ -145,9 +145,22 @@ export function appendSessionRecord(record: SkillSessionRecord, storePath: strin
     appendFileSync(storePath, `${JSON.stringify(record)}\n`, "utf-8");
     return true;
   } catch (err) {
-    log.debug(`session adoption record write failed (best-effort): ${err}`);
+    reportRecordFailure(err);
     return false;
   }
+}
+
+/** Warned once per process about a refused adoption-record append. */
+let _warnedRecordFailure = false;
+
+function reportRecordFailure(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (_warnedRecordFailure) {
+    log.debug(`session adoption record write failed (best-effort): ${message}`);
+    return;
+  }
+  _warnedRecordFailure = true;
+  log.warn(`session adoption record write failed (best-effort): ${message}`);
 }
 
 interface SessionRecordState {
@@ -189,10 +202,7 @@ export function getSessionProfile(ctx: ExtensionContext): ResolvedSessionProfile
  * session — the denominator of the adoption rate. Later writes for the
  * same session only ever flip the flag upward (see fold semantics).
  */
-export function recordSessionStart(
-  ctx: ExtensionContext,
-  storePath: string = getSkillsSessionsFilePath(),
-): void {
+export function recordSessionStart(ctx: ExtensionContext, storePath?: string): void {
   try {
     const sess = resolveSession(ctx);
     if (!sess) return;
@@ -212,11 +222,11 @@ export function recordSessionStart(
         hadSkillLoad: false,
         updatedAt: new Date().toISOString(),
       },
-      storePath,
+      storePath ?? getSkillsSessionsFilePath(),
     );
     if (ok) state.startRecorded = true;
   } catch (err) {
-    log.debug(`session start record failed (best-effort): ${err}`);
+    reportRecordFailure(err);
   }
 }
 
@@ -224,10 +234,7 @@ export function recordSessionStart(
  * Append a hadSkillLoad=true record after a DETECTED SKILL.md read (the
  * numerator of the adoption rate). Claims must NOT route here.
  */
-export function recordSessionSkillLoad(
-  ctx: ExtensionContext,
-  storePath: string = getSkillsSessionsFilePath(),
-): void {
+export function recordSessionSkillLoad(ctx: ExtensionContext, storePath?: string): void {
   try {
     const sess = resolveSession(ctx);
     if (!sess) return;
@@ -239,10 +246,10 @@ export function recordSessionSkillLoad(
         hadSkillLoad: true,
         updatedAt: new Date().toISOString(),
       },
-      storePath,
+      storePath ?? getSkillsSessionsFilePath(),
     );
   } catch (err) {
-    log.debug(`session skill-load record failed (best-effort): ${err}`);
+    reportRecordFailure(err);
   }
 }
 
@@ -309,8 +316,13 @@ export function computeMonthlyRollup(
 export function getMonthlyAdoptionRollup(
   options: { now?: Date; storePath?: string } = {},
 ): MonthlyAdoptionRollup {
-  return computeMonthlyRollup(
-    readSessionRecords(options.storePath ?? getSkillsSessionsFilePath()),
-    options.now,
-  );
+  let storePath: string;
+  try {
+    storePath = options.storePath ?? getSkillsSessionsFilePath();
+  } catch (err) {
+    // Reader: a refused path (no absolute braid root) is a miss, not a throw.
+    reportRecordFailure(err);
+    return {};
+  }
+  return computeMonthlyRollup(readSessionRecords(storePath), options.now);
 }

@@ -10,6 +10,10 @@ import {
 import type { CognitiveMemoryType } from "./types.js";
 
 // Storage paths - consolidated under ~/.pi/agent/braid/memory/
+// Precomputed read-side defaults: `os.homedir()` is folded once, at import.
+// A caller that WRITES the store must resolve through the braid-paths
+// accessors (semanticMemoryFilePath(), memoryDir()) so a relative or blank
+// home refuses and BRAID_HOME pinning is honored — see lib/config/braid-paths.ts.
 export const MEMORY_DIR = BRAID_MEMORY_DIR;
 export const MEMORY_FILE = SEMANTIC_MEMORY_FILE;
 

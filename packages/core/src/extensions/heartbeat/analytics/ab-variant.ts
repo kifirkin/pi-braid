@@ -3,7 +3,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { METRICS_FILE } from "../../../lib/config/braid-paths.js";
+import { metricsFilePath } from "../../../lib/config/braid-paths.js";
 import { createLogger } from "../../../lib/core/logger.js";
 const log = createLogger("analytics:ab-variant");
 
@@ -21,7 +21,7 @@ interface VariantStats {
 }
 
 export function loadAnalyticsByVariant(storagePath?: string): Map<string, VariantStats> {
-  const path = storagePath ?? METRICS_FILE;
+  const path = storagePath ?? metricsFilePath();
   const variants = new Map<string, VariantStats>();
   if (!existsSync(path)) return variants;
 

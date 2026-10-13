@@ -18,7 +18,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { BRAID_DIR, SCRATCHPAD_DIR } from "../../../lib/config/braid-paths.js";
+import { scratchpadDir } from "../../../lib/config/braid-paths.js";
 import { nextId } from "../../../lib/utils/id.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { withStoreLock } from "../../../lib/memory/store-lock.js";
@@ -41,11 +41,6 @@ const MAX_CHECKPOINT_LINES = 50;
 
 const log = createLogger("scratchpad-persistence");
 
-// Touching BRAID_DIR here ensures the braid directory exists before any
-// scratchpad path under it is used.
-const _ = BRAID_DIR;
-void _;
-
 export function projectSlugFromCwd(cwd?: string): string {
   if (!cwd) return "default";
   const segments = cwd.split("/").filter(Boolean);
@@ -53,7 +48,7 @@ export function projectSlugFromCwd(cwd?: string): string {
 }
 
 function projectDir(projectSlug: string): string {
-  return path.join(SCRATCHPAD_DIR, projectSlug);
+  return path.join(scratchpadDir(), projectSlug);
 }
 
 /** Legacy single-file path (used for migration). */

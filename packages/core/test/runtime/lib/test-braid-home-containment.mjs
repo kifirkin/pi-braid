@@ -10,7 +10,16 @@
  *   (c) each writer really writes there: an adherence report, a heartbeat line,
  *       a tag, a resume file;
  *   (d) the project directory the session runs in gains nothing - the same
- *       containment rule the loader store is pinned by.
+ *       containment rule the loader store is pinned by;
+ *   (e) every writer family that resolves a precomputed path constant refuses
+ *       under `HOME=.` and `HOME=""` (nothing in the project, a loud refusal
+ *       per family, and a warn — never a silent debug — for the refused tag
+ *       write), driven in a child so the hostile HOME is real;
+ *   (f) the same families follow an absolute BRAID_HOME pin: the file lands
+ *       under the pin, the default tree under HOME and the project stay empty;
+ *   (g) each live accessor equals its precomputed constant under a default
+ *       home, so the two spellings of one layout cannot drift;
+ *   (h) a relative or blank HOME refuses at braidDir(), not at the writer.
  *
  * Isolation: BRAID_HOME, pi's agent dir and the project dir are throwaway
  * temp dirs before any dist import, so the developer's live braid tree is
@@ -22,7 +31,8 @@
  */
 
 import { strict as assert } from "node:assert";
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -222,6 +232,196 @@ await test("(c) a tag and a resume file land under the pin", async () => {
 
 await test("(d) the project the session ran in gained nothing", () => {
   assert.deepEqual(tree(PROJECT), [], "no sink may create a file in the project directory");
+});
+
+// ── The census families: one durable write each, three shapes ────────────────
+
+const PROBE_CHILD = join(ROOT, "test", "helpers", "braid-writer-probe-child.mjs");
+const DIST = join(ROOT, "dist");
+
+/**
+ * Drive every census writer family in a child process, with HOME and
+ * BRAID_HOME as given. Returns the child's rows plus the trees the assertions
+ * read. `fixtureRoot` is outside the project on purpose: the snapshot drive
+ * needs one touched file and the project must stay empty.
+ */
+function runWriterProbe({ home, braidHome }) {
+  const project = mkdtempSync(join(tmpdir(), "braid-writers-project-"));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "braid-writers-fixture-"));
+  const env = { ...process.env, HOME: home };
+  if (braidHome === null) delete env.BRAID_HOME;
+  else env.BRAID_HOME = braidHome;
+  const r = spawnSync(process.execPath, [PROBE_CHILD, DIST, fixtureRoot], {
+    cwd: project,
+    env,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const line = (r.stdout ?? "").trim().split("\n").filter(Boolean).pop();
+  let rows;
+  try {
+    rows = JSON.parse(line ?? "").rows ?? [];
+  } catch {
+    rows = [];
+  }
+  return { status: r.status, stderr: r.stderr ?? "", rows, project, fixtureRoot };
+}
+
+/** Every family the census sweep closed must appear in the child's report. */
+const CENSUS_FAMILIES = [
+  "write-log",
+  "episodes",
+  "scratchpad",
+  "semantic",
+  "locks",
+  "workers",
+  "checkpoint",
+  "errors",
+  "evidence-pool",
+  "degradation",
+  "metrics",
+  "hints",
+  "snapshot",
+  "skills-sessions",
+  "skills-usage",
+  "tags",
+];
+
+/** Where each family's file must land under a pinned root. */
+const PINNED_PATHS = {
+  "write-log": ["memory/write-log.jsonl"],
+  episodes: ["memory/episodes.jsonl"],
+  scratchpad: ["scratchpads/"],
+  semantic: ["memory/semantic.json"],
+  locks: ["projects/", "/locks.json"],
+  workers: ["projects/", "/workers.json"],
+  checkpoint: ["checkpoints/"],
+  errors: ["errors/errors.jsonl"],
+  "evidence-pool": ["evidence-pool.json"],
+  degradation: ["metrics/degradation.json"],
+  metrics: ["metrics/braid-metrics.jsonl"],
+  hints: ["consolidated-hints.jsonl"],
+  snapshot: ["snapshots/"],
+  "skills-sessions": ["skills-sessions.jsonl"],
+  "skills-usage": ["skills-usage.json"],
+  tags: ["tags/"],
+};
+
+for (const hostileHome of [".", ""]) {
+  await test(`(e) HOME=${JSON.stringify(hostileHome)}: every census writer refuses`, () => {
+    const run = runWriterProbe({ home: hostileHome, braidHome: null });
+    assert.equal(run.status, 0, `the child must exit 0, not crash: ${run.stderr}`);
+    assert.equal(
+      run.rows.length,
+      CENSUS_FAMILIES.length,
+      `every family must report: ${JSON.stringify(run.rows.map((r) => r.family))}`,
+    );
+    for (const row of run.rows) {
+      assert.equal(
+        row.refused,
+        true,
+        `${row.family}: the write must refuse loudly (threw=${row.threw}, level=${row.level})`,
+      );
+    }
+    // A refused tag write must be visible at default verbosity: a debug-only
+    // refusal never reaches the log buffer, so this pins the level, not the fact.
+    const tags = run.rows.find((row) => row.family === "tags");
+    assert.equal(
+      tags?.level,
+      "warn",
+      `a refused tag write must warn, not go quiet (level=${tags?.level})`,
+    );
+    assert.deepEqual(
+      tree(run.project),
+      [],
+      `no writer may create anything in the project: ${JSON.stringify(tree(run.project))}`,
+    );
+    assert.deepEqual(
+      tree(run.fixtureRoot),
+      tree(run.fixtureRoot).filter((f) => /^probe-[^/]+\/touched\.txt$/.test(f)),
+      `no writer may create anything beside the fixture: ${JSON.stringify(tree(run.fixtureRoot))}`,
+    );
+    rmSync(run.project, { recursive: true, force: true });
+    rmSync(run.fixtureRoot, { recursive: true, force: true });
+  });
+}
+
+await test("(f) every census writer follows an absolute BRAID_HOME pin", () => {
+  const pin = mkdtempSync(join(tmpdir(), "braid-writers-pin-"));
+  const home = mkdtempSync(join(tmpdir(), "braid-writers-home-"));
+  try {
+    const run = runWriterProbe({ home, braidHome: pin });
+    assert.equal(run.status, 0, `the child must exit 0: ${run.stderr}`);
+    const files = tree(pin);
+    for (const family of CENSUS_FAMILIES) {
+      const needles = PINNED_PATHS[family];
+      assert.ok(
+        files.some((f) => needles.every((n) => f.includes(n))),
+        `${family}: expected a file under the pin matching ${JSON.stringify(needles)}, got ${JSON.stringify(files)}`,
+      );
+    }
+    assert.deepEqual(
+      tree(join(home, ".pi", "agent", "braid")),
+      [],
+      "a pinned writer must not touch the default tree under HOME",
+    );
+    assert.deepEqual(tree(run.project), [], "a pinned writer must not touch the project");
+    rmSync(run.project, { recursive: true, force: true });
+    rmSync(run.fixtureRoot, { recursive: true, force: true });
+  } finally {
+    rmSync(pin, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+await test("(g) every live accessor equals its precomputed constant by default", () => {
+  const pinned = process.env.BRAID_HOME;
+  try {
+    delete process.env.BRAID_HOME;
+    const pairs = [
+      [paths.BRAID_DIR, paths.braidDir()],
+      [paths.MEMORY_DIR, paths.memoryDir()],
+      [paths.CHECKPOINT_DIR, paths.checkpointDir()],
+      [paths.ERROR_DIR, paths.errorDir()],
+      [paths.SCRATCHPAD_DIR, paths.scratchpadDir()],
+      [paths.METRICS_DIR, paths.metricsDir()],
+      [paths.SEMANTIC_MEMORY_FILE, paths.semanticMemoryFilePath()],
+      [paths.EPISODES_FILE, paths.episodesFilePath()],
+      [paths.WRITE_LOG_FILE, paths.writeLogFilePath()],
+      [paths.ERROR_FILE, paths.errorsFilePath()],
+      [paths.CONSOLIDATED_HINTS_FILE, paths.consolidatedHintsFilePath()],
+      [paths.METRICS_FILE, paths.metricsFilePath()],
+      [paths.DEGRADATION_FILE, paths.degradationFilePath()],
+      [paths.EVIDENCE_POOL_FILE, paths.evidencePoolFilePath()],
+      [paths.SKILLS_USAGE_FILE, paths.getSkillsUsageFilePath()],
+      [paths.SKILLS_SESSIONS_FILE, paths.getSkillsSessionsFilePath()],
+      [paths.BRAID_CONFIG_FILE, paths.getBraidConfigFilePath()],
+      [paths.LOCK_FILE, paths.getLockFilePath()],
+      [paths.WORKERS_FILE, paths.getWorkersFilePath()],
+    ];
+    for (const [constant, live] of pairs) {
+      assert.equal(live, constant, `the live accessor must equal its constant: ${constant}`);
+    }
+  } finally {
+    process.env.BRAID_HOME = pinned;
+  }
+});
+
+await test("(h) a relative or blank HOME refuses at the base, not at the writer", () => {
+  const pinnedHome = process.env.HOME;
+  const pinnedBraid = process.env.BRAID_HOME;
+  try {
+    delete process.env.BRAID_HOME;
+    for (const hostile of [".", ""]) {
+      process.env.HOME = hostile;
+      assert.throws(() => paths.braidDir(), /absolute/, `HOME=${JSON.stringify(hostile)}`);
+      assert.throws(() => paths.writeLogFilePath(), /absolute/, "a family accessor refuses too");
+      assert.throws(() => paths.getWorkersFilePath(), /absolute/, "the workers accessor refuses");
+    }
+  } finally {
+    process.env.HOME = pinnedHome;
+    process.env.BRAID_HOME = pinnedBraid;
+  }
 });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);

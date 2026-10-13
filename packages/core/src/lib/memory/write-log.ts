@@ -41,7 +41,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { createLogger } from "../core/logger.js";
-import { WRITE_LOG_FILE } from "../config/braid-paths.js";
+import { WRITE_LOG_FILE, writeLogFilePath } from "../config/braid-paths.js";
 import {
   applyWriteGate,
   isGateActive,
@@ -123,17 +123,32 @@ export function buildWriteLogLine(entry: WriteLogEntry, now: Date = new Date()):
 }
 
 /**
- * Append one decision line. Never throws: a failed append degrades to a debug
- * log, so an unwritable log path can never break a memory write.
+ * Append one decision line. Never throws: a failed append degrades to a log
+ * line, so an unwritable log path can never break a memory write. The first
+ * failure in a process warns (the sink may be refusing because no absolute
+ * braid root resolves); later ones stay at debug.
  */
 export function logWriteDecision(entry: WriteLogEntry): void {
   try {
-    fs.mkdirSync(path.dirname(WRITE_LOG_FILE), { recursive: true });
-    fs.appendFileSync(WRITE_LOG_FILE, `${JSON.stringify(buildWriteLogLine(entry))}\n`, "utf8");
+    const file = writeLogFilePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify(buildWriteLogLine(entry))}\n`, "utf8");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.debug(`write-log append failed (${message}); decision unaffected`);
+    reportLogFailure(err);
   }
+}
+
+/** Warned once per process about an unwritable write-decision log. */
+let _warnedLogFailure = false;
+
+function reportLogFailure(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (_warnedLogFailure) {
+    log.debug(`write-log append failed (${message}); decision unaffected`);
+    return;
+  }
+  _warnedLogFailure = true;
+  log.warn(`write-log append failed (${message}); decision unaffected`);
 }
 
 /**

@@ -13,6 +13,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { getLockFilePath } from "../config/braid-paths.js";
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("orchestrator:locks");
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,19 @@ function lockFilePath(cwd?: string): string {
   return getLockFilePath(cwd ?? process.cwd());
 }
 
+/** Warned once per process about a lock registry that cannot be read or
+ *  written (no absolute braid root resolves, or the write failed). The
+ *  registry is advisory coordination state: a refusal must never be silent,
+ *  but it must not take the orchestration call down either. */
+let _warnedRegistryRefusal = false;
+
+function reportRegistryRefusal(action: string, err: unknown): void {
+  if (_warnedRegistryRefusal) return;
+  _warnedRegistryRefusal = true;
+  const message = err instanceof Error ? err.message : String(err);
+  log.warn(`lock registry ${action} refused (${message}); locks are not durable this session`);
+}
+
 function loadRegistry(cwd?: string): LockRegistry {
   try {
     const file = lockFilePath(cwd);
@@ -50,18 +66,23 @@ function loadRegistry(cwd?: string): LockRegistry {
     const raw = readFileSync(file, "utf-8").trim();
     if (!raw) return { version: LOCK_VERSION, locks: {} };
     return JSON.parse(raw) as LockRegistry;
-  } catch {
+  } catch (err) {
+    reportRegistryRefusal("read", err);
     return { version: LOCK_VERSION, locks: {} };
   }
 }
 
-function saveRegistry(registry: LockRegistry, cwd?: string): void {
+/** Persist the registry. Returns false when the write was refused, so a
+ *  caller that claims a lock can refuse the claim instead of lying. */
+function saveRegistry(registry: LockRegistry, cwd?: string): boolean {
   try {
     const file = lockFilePath(cwd);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(registry, null, 2), "utf-8");
-  } catch {
-    /* non-fatal */
+    return true;
+  } catch (err) {
+    reportRegistryRefusal("write", err);
+    return false;
   }
 }
 
@@ -69,8 +90,9 @@ function saveRegistry(registry: LockRegistry, cwd?: string): void {
 
 /**
  * Acquire locks on the given files for a worker.
- * Returns true if all locks were acquired, false if any file is already
- * locked by a different worker.
+ * Returns true if all locks were acquired and persisted, false if any file is
+ * already locked by a different worker or the registry could not be written
+ * (an unwritten lock is not held; the refusal is logged).
  */
 export function acquireLock(
   files: string[],
@@ -92,8 +114,7 @@ export function acquireLock(
     registry.locks[file] = { workerId, branch, acquiredAt: now };
   }
 
-  saveRegistry(registry, cwd);
-  return true;
+  return saveRegistry(registry, cwd);
 }
 
 /**

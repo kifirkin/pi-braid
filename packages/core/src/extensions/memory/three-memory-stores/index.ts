@@ -42,9 +42,9 @@ import { fenceMemoryContext } from "../../../lib/utils/memory-fence.js";
 import { readFile as readFilePromise } from "node:fs/promises";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 import {
-  EPISODES_FILE,
+  episodesFilePath,
   LEGACY_MEMORY_FILE,
-  METRICS_FILE,
+  metricsFilePath,
 } from "../../../lib/config/braid-paths.js";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { deriveProjectIdFromCwd } from "../../../lib/memory/past-insights.js";
@@ -129,7 +129,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       }
 
       // R9: Load analytics data to pre-populate tool stats
-      const analyticsPath = METRICS_FILE;
+      const analyticsPath = metricsFilePath();
       try {
         if (await asyncExists(analyticsPath)) {
           const raw = await readFilePromise(analyticsPath, "utf-8");
@@ -429,7 +429,7 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
       try {
         await flushEpisodeAppends();
         const persisted = await compactEpisodesFile(state.episodes);
-        log.debug(`Compacted episode store: ${persisted} episodes at ${EPISODES_FILE}`);
+        log.debug(`Compacted episode store: ${persisted} episodes at ${episodesFilePath()}`);
       } catch (err) {
         log.warn(`Failed to persist episodes: ${err}`);
       }
@@ -471,8 +471,8 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
   let loaded = 0;
 
   // Current path wins; the legacy file below is the fallback.
-  const newPath = EPISODES_FILE;
   try {
+    const newPath = episodesFilePath();
     if (await asyncExists(newPath)) {
       const content = await readFilePromise(newPath, "utf-8");
       const lines = content.split("\n").filter((l) => l.trim());

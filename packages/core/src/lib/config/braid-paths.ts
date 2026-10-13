@@ -90,13 +90,59 @@ export function offloadDir(): string {
   return path.join(braidDir(), "offload");
 }
 
+/** Memory root (semantic + episodic stores), resolved on every call. */
+export function memoryDir(): string {
+  return path.join(braidDir(), "memory");
+}
+
+/** Session checkpoints root, resolved on every call. */
+export function checkpointDir(): string {
+  return path.join(braidDir(), "checkpoints");
+}
+
+/** Error-capture root, resolved on every call. */
+export function errorDir(): string {
+  return path.join(braidDir(), "errors");
+}
+
+/** Scratchpad root (one dir per project slug), resolved on every call. */
+export function scratchpadDir(): string {
+  return path.join(braidDir(), "scratchpads");
+}
+
+/** Analytics metrics root, resolved on every call. */
+export function metricsDir(): string {
+  return path.join(braidDir(), "metrics");
+}
+
+/** Workspace snapshot root, resolved on every call. */
+export function snapshotDir(): string {
+  return path.join(braidDir(), "snapshots");
+}
+
+/** Per-project store root (locks, workers, timers, module overrides,
+ *  deliverables), resolved on every call. */
+export function projectsDir(): string {
+  return path.join(braidDir(), "projects");
+}
+
 // ── File paths ─────────────────────────────────────────────────────────────
 
 /** lib/memory semantic + episodic store */
 export const SEMANTIC_MEMORY_FILE = path.join(MEMORY_DIR, "semantic.json");
 
+/** Semantic store, resolved on every call (durable-write base). */
+export function semanticMemoryFilePath(): string {
+  return path.join(memoryDir(), "semantic.json");
+}
+
 /** Evidence pool: cross-session evidence + conflict persistence */
 export const EVIDENCE_POOL_FILE = path.join(BRAID, "evidence-pool.json");
+
+/** Evidence pool store, resolved on every call (durable-write base). */
+export function evidencePoolFilePath(): string {
+  return path.join(braidDir(), "evidence-pool.json");
+}
 
 /** Legacy path for lib/memory (kept for graceful migration) */
 export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
@@ -104,21 +150,51 @@ export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
 /** Three-memory-stores retrospective episodes */
 export const EPISODES_FILE = path.join(MEMORY_DIR, "episodes.jsonl");
 
+/** Episodic store, resolved on every call (durable-write base). */
+export function episodesFilePath(): string {
+  return path.join(memoryDir(), "episodes.jsonl");
+}
+
 /** Memory write gate: append-only per-decision log (measurement hook). */
 export const WRITE_LOG_FILE = path.join(MEMORY_DIR, "write-log.jsonl");
+
+/** Write-decision log, resolved on every call (durable-write base). */
+export function writeLogFilePath(): string {
+  return path.join(memoryDir(), "write-log.jsonl");
+}
 
 /** Error-capture: classified error log */
 export const ERROR_LOG_FILE = path.join(ERROR_DIR, "errors.jsonl");
 export const ERROR_FILE = ERROR_LOG_FILE;
 
+/** Classified error log, resolved on every call (durable-write base). */
+export function errorsFilePath(): string {
+  return path.join(errorDir(), "errors.jsonl");
+}
+
 /** Consolidation: behavioral hints from successful patterns */
 export const CONSOLIDATED_HINTS_FILE = path.join(BRAID, "consolidated-hints.jsonl");
+
+/** Consolidated hints log, resolved on every call (durable-write base). */
+export function consolidatedHintsFilePath(): string {
+  return path.join(braidDir(), "consolidated-hints.jsonl");
+}
 
 /** Analytics: tool call metrics + A/B variant tracking */
 export const METRICS_FILE = path.join(METRICS_DIR, "braid-metrics.jsonl");
 
+/** Analytics metrics log, resolved on every call (durable-write base). */
+export function metricsFilePath(): string {
+  return path.join(metricsDir(), "braid-metrics.jsonl");
+}
+
 /** Degradation detector: health metrics state */
 export const DEGRADATION_FILE = path.join(METRICS_DIR, "degradation.json");
+
+/** Degradation state, resolved on every call (durable-write base). */
+export function degradationFilePath(): string {
+  return path.join(metricsDir(), "degradation.json");
+}
 
 /** Shown-signals persistence: survive process restart for session resume dedup */
 export const SHOWN_SIGNALS_FILE = path.join(BRAID, "shown-signals.json");
@@ -236,18 +312,22 @@ export function getModuleOverridesFilePath(cwd: string): string {
   return path.join(braidDir(), "projects", projectDir, "module-overrides.json");
 }
 
-/** Get the per-CWD lock file path. */
+/** Get the per-CWD lock file path.
+ *  Resolves through braidDir() (and projectsDir() for the project leg): the
+ *  registry is DURABLE WRITE state, so BRAID_HOME pinning must move it; the
+ *  precomputed LOCK_FILE leg is the read-side default beside the braid root. */
 export function getLockFilePath(cwd?: string): string {
-  if (!cwd) return LOCK_FILE;
+  if (!cwd) return path.join(braidDir(), "locks.json");
   const projectDir = sanitizePathForDir(cwd);
-  return path.join(BRAID, "projects", projectDir, "locks.json");
+  return path.join(projectsDir(), projectDir, "locks.json");
 }
 
-/** Get the per-CWD worker registry path (beside locks.json). */
+/** Get the per-CWD worker registry path (beside locks.json). Durable write
+ *  state: same braidDir() leg as getLockFilePath. */
 export function getWorkersFilePath(cwd?: string): string {
-  if (!cwd) return WORKERS_FILE;
+  if (!cwd) return path.join(braidDir(), "workers.json");
   const projectDir = sanitizePathForDir(cwd);
-  return path.join(BRAID, "projects", projectDir, "workers.json");
+  return path.join(projectsDir(), projectDir, "workers.json");
 }
 
 /** Get the per-CWD deliverables manifest path (session-touched files the
@@ -261,17 +341,20 @@ export function getDeliverablesFilePath(cwd?: string): string {
   return path.join(braidDir(), "projects", projectDir, "deliverables.jsonl");
 }
 
-/** Get the skills adoption usage file path. */
+/** Get the skills adoption usage file path. Durable write state: resolves
+ *  through braidDir() so BRAID_HOME pinning is honored. */
 export function getSkillsUsageFilePath(): string {
-  return SKILLS_USAGE_FILE;
+  return path.join(braidDir(), "skills-usage.json");
 }
 
-/** Get the per-session skills adoption records path. */
+/** Get the per-session skills adoption records path (append-only JSONL).
+ *  Durable write state: same braidDir() leg as getSkillsUsageFilePath. */
 export function getSkillsSessionsFilePath(): string {
-  return SKILLS_SESSIONS_FILE;
+  return path.join(braidDir(), "skills-sessions.jsonl");
 }
 
-/** Get the braid config home path (BRAID_CONFIG_FILE). */
+/** Get the braid config home path (BRAID_CONFIG_FILE). Resolved through
+ *  braidDir() so a pinned braid tree reads its own config, not the default one. */
 export function getBraidConfigFilePath(): string {
-  return BRAID_CONFIG_FILE;
+  return path.join(braidDir(), "config.json");
 }

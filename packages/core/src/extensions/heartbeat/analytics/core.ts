@@ -3,7 +3,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, promises as fs } from "node:fs";
-import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
+import { metricsDir, metricsFilePath } from "../../../lib/config/braid-paths.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { pushBounded } from "../../../lib/utils/bounded.js";
 const log = createLogger("analytics:core");
@@ -108,7 +108,14 @@ export function computeSessionOutcome(s: AnalyticsState): "success" | "partial" 
 }
 
 export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
-  if (!existsSync(METRICS_DIR)) mkdirSync(METRICS_DIR, { recursive: true });
+  try {
+    if (!existsSync(metricsDir())) mkdirSync(metricsDir(), { recursive: true });
+  } catch (err) {
+    // The metrics sink is refusing (no absolute braid root resolves, or the
+    // directory is unwritable). Report and skip: an append would fail too.
+    log.warn(`Could not prepare the metrics directory: ${err}`);
+    return;
+  }
 
   const metrics = Array.from(s.toolMetrics.values());
   const sequences = getToolSequences(s);
@@ -133,7 +140,7 @@ export function flushAnalytics(s: AnalyticsState, taskCompleted = false): void {
 }
 
 export function loadAnalytics(storagePath?: string): AnalyticsSummary {
-  const path = storagePath ?? METRICS_FILE;
+  const path = storagePath ?? metricsFilePath();
   if (!existsSync(path))
     return {
       totalSessions: 0,

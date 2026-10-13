@@ -35,37 +35,39 @@ interface ErrorEntry {
   handled: boolean;
 }
 
-import { ERROR_DIR, ERROR_FILE } from "../../../lib/config/braid-paths.js";
+import { errorDir, errorsFilePath } from "../../../lib/config/braid-paths.js";
 import { TURN_END } from "../../../lib/core/event-names.js";
 
 const MAX_ERRORS = 100;
 
 async function ensureErrorDir(): Promise<void> {
-  await fs.mkdir(ERROR_DIR, { recursive: true });
+  await fs.mkdir(errorDir(), { recursive: true });
 }
 
 async function loadErrors(): Promise<ErrorEntry[]> {
-  await ensureErrorDir();
   try {
-    const data = await fs.readFile(ERROR_FILE, "utf-8");
+    await ensureErrorDir();
+    const data = await fs.readFile(errorsFilePath(), "utf-8");
     return data
       .split("\n")
       .filter((l) => l.trim())
       .map((l) => JSON.parse(l));
   } catch {
+    // Absent, unreadable, or refused (no absolute braid root): a reader
+    // degrades to an empty list; the writer below is the loud side.
     return [];
   }
 }
 
 async function saveError(entry: ErrorEntry): Promise<void> {
   await ensureErrorDir();
-  await fs.appendFile(ERROR_FILE, JSON.stringify(entry) + "\n");
+  await fs.appendFile(errorsFilePath(), JSON.stringify(entry) + "\n");
 
   // Prune if over limit
   const entries = await loadErrors();
   if (entries.length > MAX_ERRORS) {
     const pruned = entries.slice(-MAX_ERRORS);
-    await fs.writeFile(ERROR_FILE, pruned.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    await fs.writeFile(errorsFilePath(), pruned.map((e) => JSON.stringify(e)).join("\n") + "\n");
   }
 }
 
@@ -230,7 +232,10 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
           }
 
           entries[idx].handled = true;
-          await fs.writeFile(ERROR_FILE, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+          await fs.writeFile(
+            errorsFilePath(),
+            entries.map((e) => JSON.stringify(e)).join("\n") + "\n",
+          );
 
           return {
             content: [{ type: "text" as const, text: `Error ${params.id} marked as handled.` }],

@@ -130,8 +130,9 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
         writeFileSync(tagsFile, JSON.stringify(tags, null, 2), "utf-8");
         log.debug(`Persisted tag "${input.name}" to ${tagsFile}`);
       } catch (err) {
-        // Failure here means the tag is silently lost on restart — say so.
-        log.debug(`Tag persist failed for "${input.name}" (non-fatal, tag lost on reload): ${err}`);
+        // Failure here means the tag is silently lost on restart — say so at
+        // warn, the level a refusal has to be visible at by default.
+        log.warn(`Tag persist failed for "${input.name}" (non-fatal, tag lost on reload): ${err}`);
       }
     }
 

@@ -33,7 +33,7 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { BRAID, getWorkersFilePath } from "../config/braid-paths.js";
+import { getWorkersFilePath, projectsDir } from "../config/braid-paths.js";
 import { getAllLocks, releaseLock } from "./locks.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -466,11 +466,11 @@ function locateWorker(
   // directory, and an id-addressed action (check/update/close) that answered
   // "unknown" for a live row would leave it stranded. Walk every project
   // registry first; the caller's own key still wins when it has the row.
-  const projectsDir = join(BRAID, "projects");
+  const projectsRoot = projectsDir();
   try {
-    for (const dirent of readdirSync(projectsDir, { withFileTypes: true })) {
+    for (const dirent of readdirSync(projectsRoot, { withFileTypes: true })) {
       if (!dirent.isDirectory()) continue;
-      const other = loadRegistryFile(join(projectsDir, dirent.name, "workers.json"));
+      const other = loadRegistryFile(join(projectsRoot, dirent.name, "workers.json"));
       const entry = other.workers[workerId];
       if (entry) return { registry: other, key: entry.cwd };
     }

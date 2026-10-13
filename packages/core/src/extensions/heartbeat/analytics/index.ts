@@ -16,7 +16,7 @@ import {
   SessionPhase,
 } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
-import { METRICS_FILE, METRICS_DIR } from "../../../lib/config/braid-paths.js";
+import { metricsDir, metricsFilePath } from "../../../lib/config/braid-paths.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
@@ -70,9 +70,14 @@ export default function analyticsExtension(pi: ExtensionAPI) {
     state.wasDegraded = false;
     state.nudgesSent = 0;
     state.nudgesSuppressed = 0;
-    state.storagePath = METRICS_FILE;
-
-    if (!existsSync(METRICS_DIR)) mkdirSync(METRICS_DIR, { recursive: true });
+    try {
+      state.storagePath = metricsFilePath();
+      if (!existsSync(metricsDir())) mkdirSync(metricsDir(), { recursive: true });
+    } catch (err) {
+      // The sink is refusing (no absolute braid root resolves). This session
+      // records nothing; say so once instead of failing the session start.
+      log.warn(`Metrics sink refused for this session: ${err}`);
+    }
   });
 
   pi.on(TOOL_EXECUTION_START, async (event, ctx) => {

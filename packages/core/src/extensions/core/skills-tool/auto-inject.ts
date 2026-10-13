@@ -654,7 +654,9 @@ function getDurableStore(): Record<string, DurableSkillStats> {
 /**
  * Best-effort atomic-ish write (temp file + rename) of the durable store.
  * Swallows every error: this runs on the whisper path — a stats failure must
- * NEVER break suggestions.
+ * NEVER break suggestions. The first refusal in a process still warns (the
+ * sink may be refusing because no absolute braid root resolves); later ones
+ * stay at debug.
  */
 function persistDurableStore(): void {
   try {
@@ -665,8 +667,21 @@ function persistDurableStore(): void {
     writeFileSync(tmp, JSON.stringify(_durableStore, null, 2));
     renameSync(tmp, file);
   } catch (err) {
-    log.debug(`[skills-auto-inject] durable stats write failed (best-effort): ${err}`);
+    reportDurableFailure("write", err);
   }
+}
+
+/** Warned once per process about a refused durable skills store. */
+let _warnedDurableFailure = false;
+
+function reportDurableFailure(action: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (_warnedDurableFailure) {
+    log.debug(`[skills-auto-inject] durable stats ${action} failed (best-effort): ${message}`);
+    return;
+  }
+  _warnedDurableFailure = true;
+  log.warn(`[skills-auto-inject] durable stats ${action} failed (best-effort): ${message}`);
 }
 
 /** Record one durable event and flush to disk (best-effort). */
@@ -691,7 +706,7 @@ function recordDurable(name: string, kind: "suggested" | "claim" | "actual"): vo
     entry.lastAt = new Date().toISOString();
     persistDurableStore();
   } catch (err) {
-    log.debug(`[skills-auto-inject] durable stats update failed (best-effort): ${err}`);
+    reportDurableFailure("update", err);
   }
 }
 

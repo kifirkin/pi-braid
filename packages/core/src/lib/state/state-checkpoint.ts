@@ -21,7 +21,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getExtensionState, hasExtensionState } from "./extension-state.js";
 import { createLogger } from "../core/logger.js";
-import { CHECKPOINT_DIR } from "../config/braid-paths.js";
+import { checkpointDir } from "../config/braid-paths.js";
 import { evaluateTestBurst } from "../detection/test-burst.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { nextId } from "../utils/id.js";
@@ -66,12 +66,12 @@ function getCheckpointState(ctx: ExtensionContext): CheckpointState {
 // ── Checkpoint Storage ──────────────────────────────────────────────────────
 
 function checkpointFilePath(sessionId: string): string {
-  return path.join(CHECKPOINT_DIR, `${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  return path.join(checkpointDir(), `${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
 }
 
 async function saveCheckpointsToDisk(sessionId: string, checkpoints: Checkpoint[]): Promise<void> {
   try {
-    await fs.mkdir(CHECKPOINT_DIR, { recursive: true });
+    await fs.mkdir(checkpointDir(), { recursive: true });
     await fs.writeFile(
       checkpointFilePath(sessionId),
       JSON.stringify(checkpoints, null, 2),

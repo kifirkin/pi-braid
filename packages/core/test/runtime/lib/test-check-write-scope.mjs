@@ -27,6 +27,13 @@
  *      allowlisted -> exit 0; a second cwd write in the same file -> exit 1
  *  18. the flat package trees are scanned: a plant under `packages/contrib`,
  *      `packages/providers` or `packages/skills` is reported -> exit 1
+ *  19. an alias from `node:fs/promises` (absolute and relative targets) -> exit 1
+ *  20. a write bound from a dynamic import (destructured and namespace) -> exit 1
+ *  21. a template based at an interpolated relative literal -> exit 1, while a
+ *      genuinely dynamic base stays out of reach -> exit 0
+ *  22. a write-family alias re-exported from a scanned local module -> exit 1
+ *  23. an alias named only in a comment (a local function of the same name) is
+ *      not a site -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -302,4 +309,96 @@ writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
     assert.equal(status, 1, `${pkg}: ${out}`);
     assert.match(out, new RegExp(`packages/${pkg}/leak\\.ts:3`));
   }
+});
+
+test("an aliased write from node:fs/promises resolves like its node:fs twin", () => {
+  const absolute = `import { writeFile as wf } from "node:fs/promises";
+import { join } from "node:path";
+export async function save(): Promise<void> {
+  await wf(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const a = runCase("packages/core/src/promises-alias.ts", absolute);
+  assert.equal(a.status, 1, a.out);
+  assert.match(a.out, /packages\/core\/src\/promises-alias\.ts:4/);
+  assert.match(a.out, /process\.cwd\(\)/);
+
+  const relative = `import { appendFile as af } from "node:fs/promises";
+export async function save(): Promise<void> {
+  await af("out.json", "{}");
+}`;
+  const r = runCase("packages/core/src/promises-relative.ts", relative);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /relative-literal/);
+  assert.match(r.out, /out\.json/);
+});
+
+test("a write bound from a dynamic import resolves", () => {
+  const destructured = `import { join } from "node:path";
+export async function save(): Promise<void> {
+  const { writeFile: wf } = await import("node:fs/promises");
+  await wf(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const d = runCase("packages/core/src/dynamic-destructured.ts", destructured);
+  assert.equal(d.status, 1, d.out);
+  assert.match(d.out, /packages\/core\/src\/dynamic-destructured\.ts:4/);
+
+  const namespace = `import { join } from "node:path";
+export async function save(): Promise<void> {
+  const fsp = await import("node:fs");
+  await fsp.writeFile(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const n = runCase("packages/core/src/dynamic-namespace.ts", namespace);
+  assert.equal(n.status, 1, n.out);
+  assert.match(n.out, /packages\/core\/src\/dynamic-namespace\.ts:4/);
+});
+
+test("a template based at an interpolated relative literal is reported", () => {
+  const content = `import { writeFileSync } from "node:fs";
+export function save(): void {
+  writeFileSync(\`\${'.'}/leak.json\`, "{}");
+}`;
+  const { status, out } = runCase("packages/core/src/template-interpolated.ts", content);
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/template-interpolated\.ts:3/);
+  assert.match(out, /relative-literal/);
+
+  // ...while a genuinely dynamic base stays out of reach (a documented bound).
+  const dynamic = `import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+export function save(): void {
+  writeFileSync(\`\${tmpdir()}/scratch.json\`, "{}");
+}`;
+  const d = runCase("packages/core/src/template-dynamic.ts", dynamic);
+  assert.equal(d.status, 0, d.out);
+  assert.match(d.out, /1 write sites/);
+});
+
+test("a write-family alias re-exported from a local module resolves", () => {
+  const shim = `import { writeFileSync } from "node:fs";
+export { writeFileSync as wf };`;
+  const content = `import { wf } from "./shim.mjs";
+import { join } from "node:path";
+export function save(): void {
+  wf(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const { status, out } = runCase("packages/core/src/reexport.ts", content, {
+    "packages/core/src/shim.mjs": shim,
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/reexport\.ts:4/);
+  assert.match(out, /process\.cwd\(\)/);
+});
+
+test("an alias named only in a comment does not register", () => {
+  const content = `// import { writeFileSync as wf } from "node:fs" — prose, not a binding
+function wf(target: string, text: string): void {
+  void target;
+  void text;
+}
+export function save(): void {
+  wf("not-a-write.json", "{}");
+}`;
+  const { status, out } = runCase("packages/core/src/comment-alias.ts", content);
+  assert.equal(status, 0, out);
+  assert.match(out, /0 write sites/);
 });

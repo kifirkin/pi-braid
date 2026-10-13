@@ -27,7 +27,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { createLogger } from "../core/logger.js";
-import { BRAID_DIR } from "../config/braid-paths.js";
+import { snapshotDir } from "../config/braid-paths.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   readScratchpadState,
@@ -39,7 +39,6 @@ const log = createLogger("workspace-snapshot");
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const SNAPSHOT_DIR = path.join(BRAID_DIR, "snapshots");
 const MANIFEST_FILE = "manifest.json";
 const SNAPSHOT_PREFIX = "snap-";
 /** Retention cap on persisted workspace snapshots (prune oldest past this). */
@@ -92,20 +91,20 @@ export interface SnapshotManifest {
 
 // ── Storage ─────────────────────────────────────────────────────────────────
 
-function snapshotDir(id: string): string {
-  return path.join(SNAPSHOT_DIR, id);
+function snapshotDirPath(id: string): string {
+  return path.join(snapshotDir(), id);
 }
 
 function manifestPath(): string {
-  return path.join(SNAPSHOT_DIR, MANIFEST_FILE);
+  return path.join(snapshotDir(), MANIFEST_FILE);
 }
 
 function filesDir(id: string): string {
-  return path.join(snapshotDir(id), "files");
+  return path.join(snapshotDirPath(id), "files");
 }
 
 function metaFilePath(id: string): string {
-  return path.join(snapshotDir(id), "meta.json");
+  return path.join(snapshotDirPath(id), "meta.json");
 }
 
 /**
@@ -171,7 +170,7 @@ export async function captureSnapshot(
     const manifest = await loadManifest();
     while (manifest.snapshots.length >= SNAPSHOT_RETENTION_CAP) {
       const oldest = manifest.snapshots.shift()!;
-      await fs.rm(snapshotDir(oldest.id), { recursive: true, force: true }).catch(() => {});
+      await fs.rm(snapshotDirPath(oldest.id), { recursive: true, force: true }).catch(() => {});
     }
 
     // 2. Generate ID and create directories
@@ -428,7 +427,7 @@ export async function deleteSnapshot(id: string): Promise<boolean> {
   manifest.updatedAt = Date.now();
   await saveManifest(manifest);
 
-  await fs.rm(snapshotDir(id), { recursive: true, force: true }).catch(() => {});
+  await fs.rm(snapshotDirPath(id), { recursive: true, force: true }).catch(() => {});
   log.info(`Snapshot deleted: ${id}`);
   return true;
 }
@@ -446,7 +445,7 @@ export async function getSnapshotInfo(): Promise<{
 
   for (const snap of manifest.snapshots) {
     try {
-      const dir = snapshotDir(snap.id);
+      const dir = snapshotDirPath(snap.id);
       const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const entry of entries) {
         if (entry.isFile()) {

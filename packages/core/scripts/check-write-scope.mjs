@@ -12,15 +12,22 @@
  * The test is lexical, never execution: a write-family call whose target
  * expression (a) contains `process.cwd()`, `process.env.PWD`, `__dirname`,
  * `__filename` or `import.meta.url`, (b) has a bare relative string literal
- * as its base (including an array literal joined without `path.join`), or
- * (c) carries an unresolved `|| "."` / `?? "."` fallback, is a finding.
+ * as its base (including an array literal joined without `path.join`, and a
+ * template whose leading interpolation is itself a relative literal —
+ * `` `${'.'}/p11.json` `` bases at `./p11.json`), or (c) carries an
+ * unresolved `|| "."` / `?? "."` fallback, is a finding.
  * Identifiers bound in the same file are expanded (bounded depth) so a path
  * laundered through one local `const` still reports.
  *
  * The callee is resolved, not spelled: each file's import and binding table
- * is read first — named imports (aliases included), namespace imports, and
- * local captures (`const wf = fs.writeFileSync`, `const { writeFileSync: wf }
- * } = fs`, `const fs = require("node:fs")`) — and a call is a write only when
+ * is read first — named imports (aliases included) from any spelling of the
+ * module (`node:fs`, `fs`, `node:fs/promises`, `fs/promises`), namespace
+ * imports, `require` calls, local captures (`const wf = fs.writeFileSync`,
+ * `const { writeFileSync: wf } = fs`), bindings taken from a dynamic import
+ * (`const { writeFile: wf } = await import("node:fs/promises")`), and a
+ * write-family name re-exported from a scanned local module
+ * (`import { wf } from "./shim.mjs"`, following `export { … as wf }` and
+ * `export const wf = …` one hop at a time) — and a call is a write only when
  * its callee resolves to a `node:fs` import. A method that happens to share a
  * write-family name (`new Widget().mkdir(...)`) is therefore not reported,
  * and a rename cannot hide the call. The scan reads the source with comments
@@ -31,11 +38,18 @@
  * reach — `writeJSON(p, obj)` is the sanctioned caller-supplied-path generic
  * writer, and the same shape launders an offender past a lexical scan. A
  * bracket key held in a variable (`fs[key](...)`) and a namespace obtained
- * from a call (`(await import("node:fs")).writeFileSync`) are outside the
- * binding table. Regex literals are told from division by the preceding
- * token; an unusual expression shape can put a real literal on the wrong
- * side of that heuristic. The runtime containment tests are the other half
- * of the evidence.
+ * inline from a call (`(await import("node:fs")).writeFileSync`) are outside
+ * the binding table, as is a write-family name a local module re-exports with
+ * `export * from "node:fs"` (the named forms are followed; a wholesale
+ * namespace re-export is not) and an import specifier that resolves to no
+ * scanned file (a path alias, or a module outside the scan roots). A target
+ * whose base is genuinely dynamic — a template that starts at an
+ * interpolation the gate cannot read as a literal, such as
+ * `` `${os.tmpdir()}/x` `` — is left alone: reading it would need evaluation,
+ * not lexing. Regex literals are told from division by the preceding token;
+ * an unusual expression shape can put a real literal on the wrong side of
+ * that heuristic. The runtime containment tests are the other half of the
+ * evidence.
  *
  * Scope: production sources only. `packages/<pkg>/src` and
  * `packages/<pkg>/scripts` for every workspace, plus the whole trees of
@@ -417,6 +431,30 @@ function fsBindings(text, isCode) {
     }
   });
 
+  // Dynamic import, namespace and destructured forms:
+  // `const fsp = await import("node:fs/promises")`,
+  // `const { writeFile: wf } = await import("node:fs")`.
+  const DYNAMIC_IMPORT = `await\\s+import\\s*\\(\\s*["']([^"']+)["']\\s*\\)`;
+  each(
+    new RegExp(`\\b(?:const|let|var)\\s+\\*\\s+as\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${DYNAMIC_IMPORT}`, "g"),
+    (m) => {
+      if (FS_MODULES.has(m[2])) namespaces.add(m[1]);
+    },
+  );
+  each(
+    new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${DYNAMIC_IMPORT}`, "g"),
+    (m) => {
+      if (FS_MODULES.has(m[2])) namespaces.add(m[1]);
+    },
+  );
+  each(new RegExp(`\\b(?:const|let|var)\\s*\\{([^}]*)\\}\\s*=\\s*${DYNAMIC_IMPORT}`, "g"), (m) => {
+    if (!FS_MODULES.has(m[2])) return;
+    for (const [imported, local] of specifiers(m[1], /\s*:\s*/)) {
+      if (imported === "promises") namespaces.add(local ?? "promises");
+      else if (WRITE_CALLS.includes(imported)) writes.set(local ?? imported, imported);
+    }
+  });
+
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
     each(
@@ -693,6 +731,41 @@ function targetBase(expr) {
 }
 
 /**
+ * The static base of a template-literal target: its leading static text plus
+ * every interpolation that is itself a quoted string literal, concatenated —
+ * `` `${'.'}/p11.json` `` bases at `./p11.json`. Reading stops at the first
+ * interpolation that is not a literal, so a genuinely dynamic base
+ * (`` `${os.tmpdir()}/x` ``) yields an empty base and stays out of reach
+ * (see the bounds in the header). Returns null when `expr` is no template.
+ */
+function templateBase(expr) {
+  const s = expr.trim();
+  if (s[0] !== "`") return null;
+  let i = 1;
+  let out = "";
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === "\\") {
+      out += s[i + 1] ?? "";
+      i += 2;
+      continue;
+    }
+    if (ch === "`") break;
+    if (ch === "$" && s[i + 1] === "{") {
+      const close = findTemplateExprEnd(s, i + 2, s.length);
+      const literal = unquote(s.slice(i + 2, close));
+      if (literal === null) break; // dynamic from here on
+      out += literal;
+      i = close + 1;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
  * The offending shape of a target expression, or null. `expanded` is the
  * expression with local bindings substituted; both are searched so a literal
  * that only looks relative after expansion is still caught.
@@ -710,6 +783,12 @@ function shapeOf(raw, expanded) {
       return { id: "relative-literal", token: JSON.stringify(inner) };
     }
   }
+  // A template whose leading interpolation is a relative literal bases the
+  // target at that literal: `${'.'}/p11.json` writes beside the cwd.
+  const tplBase = templateBase(targetBase(expanded));
+  if (tplBase !== null && tplBase !== "" && !isAbsolute(tplBase)) {
+    return { id: "relative-literal", token: JSON.stringify(tplBase) };
+  }
   // A leading relative literal followed by concatenation: `"x" + name`.
   const lead = unquote(expanded.trim().split(/\s*\+\s*/)[0]);
   if (
@@ -724,6 +803,107 @@ function shapeOf(raw, expanded) {
   return null;
 }
 
+// ── Local module re-exports ─────────────────────────────────────────────────
+
+/** Rel paths of the scanned production files (set in main). */
+let scannedFiles = new Set();
+
+/** `A as B` / `A` specifier lists, as [imported, local] pairs. */
+function specifierPairs(list, separator) {
+  const out = [];
+  for (const spec of list.split(",")) {
+    const parts = spec
+      .trim()
+      .split(separator)
+      .map((s) => s.trim());
+    if (parts[0]) out.push(parts);
+  }
+  return out;
+}
+
+/** The scanned file a relative specifier names, or null. An extensionless
+ *  specifier resolves to a code file beside the importer, or its index. */
+function resolveLocalSpecifier(fromFile, spec) {
+  if (!spec.startsWith(".")) return null;
+  const base = resolve(root, dirname(fromFile), spec);
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.mts`,
+    `${base}.cts`,
+    `${base}.mjs`,
+    `${base}.js`,
+    join(base, "index.ts"),
+    join(base, "index.mjs"),
+    join(base, "index.js"),
+  ];
+  for (const candidate of candidates) {
+    const rel = relative(root, candidate);
+    if (scannedFiles.has(rel)) return rel;
+  }
+  return null;
+}
+
+/** Named imports from a relative specifier, as { imported, local, spec }. */
+function localImports(text, isCode) {
+  const out = [];
+  const re = /\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (!isCode[m.index]) continue;
+    for (const [imported, local] of specifierPairs(m[1], /\s+as\s+/)) {
+      out.push({ imported, local, spec: m[2] });
+    }
+  }
+  return out;
+}
+
+const reexportCache = new Map();
+
+/**
+ * Write-family names a scanned local module exports, keyed by the name an
+ * importer sees: `export { writeFileSync as wf }` and
+ * `export const wf = fs.writeFileSync` both map `wf` to `writeFileSync`, and
+ * `export { wf } from "./other.mjs"` follows one more hop. `seen` bounds the
+ * walk so a cycle terminates; results are cached per file, so a cyclic module
+ * contributes what its walk reached.
+ */
+function localWriteExports(relFile, seen = new Set()) {
+  if (seen.has(relFile)) return new Map();
+  const cached = reexportCache.get(relFile);
+  if (cached && seen.size === 0) return cached;
+  seen.add(relFile);
+  const text = readFileSync(join(root, relFile), "utf8");
+  const { isCode } = maskNonCode(text);
+  const table = fsBindings(text, isCode);
+  const out = new Map();
+  const each = (re, fn) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      if (isCode[m.index]) fn(m);
+    }
+  };
+  each(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g, (m) => {
+    const canonical = table.writes.get(m[1]);
+    if (canonical) out.set(m[1], canonical);
+  });
+  each(/\bexport\s*\{([^}]*)\}\s*(?:from\s*["']([^"']+)["'])?/g, (m) => {
+    let source = null;
+    if (m[2] !== undefined) {
+      const target = resolveLocalSpecifier(relFile, m[2]);
+      if (target === null) return;
+      source = localWriteExports(target, seen);
+    }
+    for (const [local, name] of specifierPairs(m[1], /\s+as\s+/)) {
+      const canonical = source !== null ? source.get(local) : table.writes.get(local);
+      if (canonical) out.set(name ?? local, canonical);
+    }
+  });
+  if (seen.size === 1) reexportCache.set(relFile, out);
+  return out;
+}
+
 function lineOf(text, index) {
   let line = 1;
   for (let i = 0; i < index; i++) if (text[i] === "\n") line++;
@@ -736,12 +916,20 @@ const findings = [];
 const allowlisted = [];
 let sites = 0;
 const files = productionFiles();
+scannedFiles = new Set(files);
 
 for (const file of files) {
   const text = readFileSync(join(root, file), "utf8");
   const { masked, isCode } = maskNonCode(text);
   const bindings = fileBindings(text);
   const table = fsBindings(text, isCode);
+  // A write-family name re-exported from a scanned local module resolves too.
+  for (const { imported, local, spec } of localImports(text, isCode)) {
+    const target = resolveLocalSpecifier(file, spec);
+    if (target === null) continue;
+    const canonical = localWriteExports(target).get(imported);
+    if (canonical) table.writes.set(local ?? imported, canonical);
+  }
   CALL_RE.lastIndex = 0;
   let match;
   while ((match = CALL_RE.exec(masked))) {

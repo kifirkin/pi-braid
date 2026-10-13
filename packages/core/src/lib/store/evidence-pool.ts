@@ -31,7 +31,7 @@ import { STOP_WORDS, CRITICS } from "../ai/critic-registry.js";
 import { classify } from "../ai/text-classifier.js";
 import { nextId } from "../utils/id.js";
 import { loadState, saveState } from "../state/async-storage.js";
-import { EVIDENCE_POOL_FILE } from "../config/braid-paths.js";
+import { evidencePoolFilePath } from "../config/braid-paths.js";
 import { createLogger } from "../core/logger.js";
 
 const log = createLogger("evidence-pool");
@@ -40,10 +40,28 @@ const log = createLogger("evidence-pool");
 
 let loadedFromDisk = false;
 
+/** Warned once per process about a refused evidence-pool store. Persistence
+ *  here is best-effort by design; a refusal is loud but never thrown. */
+let _warnedSinkRefusal = false;
+
+function reportSinkRefusal(action: string, err: unknown): void {
+  if (_warnedSinkRefusal) return;
+  _warnedSinkRefusal = true;
+  const message = err instanceof Error ? err.message : String(err);
+  log.warn(`evidence pool ${action} refused (${message}); the pool is session-local`);
+}
+
 function loadFromDisk(ctx: ExtensionContext): void {
   if (loadedFromDisk) return;
   loadedFromDisk = true;
-  loadState<EvidencePoolState>(EVIDENCE_POOL_FILE)
+  let file: string;
+  try {
+    file = evidencePoolFilePath();
+  } catch (err) {
+    reportSinkRefusal("read", err);
+    return;
+  }
+  loadState<EvidencePoolState>(file)
     .then((diskState) => {
       if (!diskState) return;
       const raw = getExtensionState(ctx, "evidence-pool", createEvidencePoolState);
@@ -74,7 +92,14 @@ function loadFromDisk(ctx: ExtensionContext): void {
 }
 
 function persistState(state: EvidencePoolState): void {
-  saveState(EVIDENCE_POOL_FILE, {
+  let file: string;
+  try {
+    file = evidencePoolFilePath();
+  } catch (err) {
+    reportSinkRefusal("write", err);
+    return;
+  }
+  saveState(file, {
     evidence: state.evidence,
     conflicts: state.conflicts,
     lastCleanup: state.lastCleanup,

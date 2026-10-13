@@ -21,7 +21,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { EPISODES_FILE } from "../../../lib/config/braid-paths.js";
+import { episodesFilePath } from "../../../lib/config/braid-paths.js";
 import { withStoreLock } from "../../../lib/memory/store-lock.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
@@ -29,8 +29,12 @@ import type { Episode } from "./types.js";
 
 const log = createLogger("three-memory-stores:episodes-disk");
 
-/** Exclusive lock guarding reads/writes/appends on EPISODES_FILE. */
-export const EPISODES_LOCK_FILE = `${EPISODES_FILE}.lock`;
+/** Exclusive lock guarding reads/writes/appends on the episodes file. Resolved
+ *  through episodesFilePath() so the lock and the file it guards always name
+ *  the same (possibly BRAID_HOME-pinned) store. */
+export function episodesLockFilePath(): string {
+  return `${episodesFilePath()}.lock`;
+}
 
 /** Same cap as pruneEpisodes in episodes.ts: the store stays bounded. */
 const EPISODE_STORE_CAP = 500;
@@ -40,14 +44,27 @@ let appendQueue: Promise<void> = Promise.resolve();
 
 function enqueueAppend(line: string): Promise<void> {
   const run = appendQueue.then(() =>
-    withStoreLock(EPISODES_LOCK_FILE, async () => {
-      await fs.mkdir(path.dirname(EPISODES_FILE), { recursive: true });
-      await fs.appendFile(EPISODES_FILE, line, "utf-8");
+    withStoreLock(episodesLockFilePath(), async () => {
+      const file = episodesFilePath();
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.appendFile(file, line, "utf-8");
     }),
   );
-  // A failed append must not poison the chain for later episodes.
-  appendQueue = run.catch(() => {});
+  // A failed append must not poison the chain for later episodes; the first
+  // refusal in a process warns (the store may be refusing because no absolute
+  // braid root resolves), later ones stay quiet.
+  appendQueue = run.catch(reportAppendFailure);
   return run;
+}
+
+/** Warned once per process about a refused episode append. */
+let _warnedAppendFailure = false;
+
+function reportAppendFailure(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (_warnedAppendFailure) return;
+  _warnedAppendFailure = true;
+  log.warn(`episode append failed (${message}); the shutdown compaction retries from memory`);
 }
 
 /**
@@ -72,8 +89,8 @@ export async function flushEpisodeAppends(): Promise<void> {
  */
 async function readEpisodeLines(): Promise<Episode[]> {
   try {
-    if (!(await asyncExists(EPISODES_FILE))) return [];
-    const content = await fs.readFile(EPISODES_FILE, "utf-8");
+    if (!(await asyncExists(episodesFilePath()))) return [];
+    const content = await fs.readFile(episodesFilePath(), "utf-8");
     const episodes: Episode[] = [];
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
@@ -97,7 +114,7 @@ async function readEpisodeLines(): Promise<Episode[]> {
  * file atomically. Returns the number of episodes persisted.
  */
 export async function compactEpisodesFile(local: readonly Episode[]): Promise<number> {
-  return withStoreLock(EPISODES_LOCK_FILE, async () => {
+  return withStoreLock(episodesLockFilePath(), async () => {
     const diskEpisodes = await readEpisodeLines();
     const byId = new Map<string, Episode>();
     for (const ep of diskEpisodes) byId.set(ep.id, ep);
@@ -107,14 +124,15 @@ export async function compactEpisodesFile(local: readonly Episode[]): Promise<nu
     const dropped = Math.max(0, merged.length - EPISODE_STORE_CAP);
     const kept = dropped > 0 ? merged.slice(-EPISODE_STORE_CAP) : merged;
 
-    await fs.mkdir(path.dirname(EPISODES_FILE), { recursive: true });
-    const tmpPath = `${EPISODES_FILE}.compacting`;
+    const file = episodesFilePath();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const tmpPath = `${file}.compacting`;
     await fs.writeFile(
       tmpPath,
       kept.map((e) => JSON.stringify(e)).join("\n") + (kept.length > 0 ? "\n" : ""),
       "utf-8",
     );
-    await fs.rename(tmpPath, EPISODES_FILE);
+    await fs.rename(tmpPath, file);
     return kept.length;
   });
 }

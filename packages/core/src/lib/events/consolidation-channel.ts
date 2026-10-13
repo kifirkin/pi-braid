@@ -10,7 +10,7 @@
  */
 
 import { createLogger } from "../core/logger.js";
-import { CONSOLIDATED_HINTS_FILE } from "../config/braid-paths.js";
+import { consolidatedHintsFilePath } from "../config/braid-paths.js";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { extractSOP } from "../utils/sop-extractor.js";
@@ -306,13 +306,13 @@ export async function processConsolidationTick(ctx: ExtensionContext): Promise<v
     !(await isHintTooGeneric(candidate.task, candidate.functionalSOP, ctx))
   ) {
     try {
-      await mkdir(dirname(CONSOLIDATED_HINTS_FILE), { recursive: true });
+      await mkdir(dirname(consolidatedHintsFilePath()), { recursive: true });
 
       // Prune: keep only recent, non-stale hints (max 20, under 30 days old)
       const MAX_HINTS = 20;
       const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
       try {
-        const existing = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
+        const existing = await readFile(consolidatedHintsFilePath(), "utf-8");
         const lines = existing.split("\n").filter((l) => l.trim());
         const now = Date.now();
         const fresh = lines
@@ -324,7 +324,7 @@ export async function processConsolidationTick(ctx: ExtensionContext): Promise<v
             .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
             .slice(0, MAX_HINTS - 1);
           await writeFile(
-            CONSOLIDATED_HINTS_FILE,
+            consolidatedHintsFilePath(),
             kept.map((h) => JSON.stringify(h)).join("\n") + "\n",
           );
         }
@@ -346,7 +346,7 @@ export async function processConsolidationTick(ctx: ExtensionContext): Promise<v
       try {
         let existingContent = "";
         try {
-          existingContent = await readFile(CONSOLIDATED_HINTS_FILE, "utf-8");
+          existingContent = await readFile(consolidatedHintsFilePath(), "utf-8");
         } catch {
           // File doesn't exist yet
         }
@@ -368,7 +368,7 @@ export async function processConsolidationTick(ctx: ExtensionContext): Promise<v
         if (!replaced) {
           allLines.push(JSON.stringify(hint));
         }
-        await writeFile(CONSOLIDATED_HINTS_FILE, allLines.join("\n") + "\n");
+        await writeFile(consolidatedHintsFilePath(), allLines.join("\n") + "\n");
       } catch (writeErr) {
         log.warn(`Hint append failed: ${(writeErr as Error).message}`);
       }
