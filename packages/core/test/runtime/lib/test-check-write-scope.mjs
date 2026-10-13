@@ -83,6 +83,13 @@
  *      before the `=`, after the `=`, inside a quoted bracket key and before a
  *      destructured `=` -> exit 1 each, while a non-fs receiver and a capture
  *      named only in a comment stay clean -> exit 0
+ *  42. a comment inside a name does not hide it: the scan reads the source with
+ *      its comments deleted, so `fs.write` ⟪comment⟫ `FileSync` is the member
+ *      chain `fs.writeFileSync` — a split call, a split capture, a split
+ *      destructured capture and a split import specifier are each reported at
+ *      the line the write sits on -> exit 1, while a split that only looks
+ *      split (inside a quoted bracket key, whose string really differs) and a
+ *      split non-fs receiver stay clean -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -962,6 +969,78 @@ wf(join(process.cwd(), "leak.json"), "{}");`,
     ["// const wf = fs.writeFileSync /* x */", "a comment only"],
   ]) {
     const { status, out } = runCase("packages/core/src/comment-tokens-control.ts", content);
+    assert.equal(status, 0, `${label}: ${out}`);
+    assert.match(out, /0 write sites/, `${label}: ${out}`);
+  }
+});
+
+test("a comment inside a name does not hide the write", () => {
+  // A comment is whitespace to the language, so the scan reads the source with
+  // its comments deleted: `fs.write` ⟪comment⟫ `FileSync` is the member chain
+  // `fs.writeFileSync`, and a capture's own tokens join the same way.
+  for (const [label, content, line] of [
+    [
+      "a split call",
+      `import { join } from "node:path";
+import * as fs from "node:fs";
+fs.write/* x */FileSync(join(process.cwd(), "leak.json"), "{}");`,
+      3,
+    ],
+    [
+      "a split capture",
+      `import { join } from "node:path";
+import * as fs from "node:fs";
+const wf = fs.write/* x */FileSync;
+wf(join(process.cwd(), "leak.json"), "{}");`,
+      4,
+    ],
+    [
+      "a split destructured capture",
+      `import { join } from "node:path";
+import * as fs from "node:fs";
+const { write/* x */FileSync: wf } = fs;
+wf(join(process.cwd(), "leak.json"), "{}");`,
+      4,
+    ],
+    [
+      "a split import specifier",
+      `import { join } from "node:path";
+import { write/* x */FileSync } from "node:fs";
+writeFileSync(join(process.cwd(), "leak.json"), "{}");`,
+      3,
+    ],
+  ]) {
+    const { status, out } = runCase("packages/core/src/comment-inside-name.ts", content);
+    assert.equal(status, 1, `${label}: ${out}`);
+    assert.match(
+      out,
+      new RegExp(`packages/core/src/comment-inside-name\\.ts:${line}`),
+      `${label}: ${out}`,
+    );
+    assert.match(out, /process\.cwd\(\)/, `${label}: ${out}`);
+  }
+
+  // A comment inside a quoted bracket key is inside a string, so the key
+  // really is a different name and no write-family call is resolved; a split
+  // on a receiver that is not an fs namespace resolves to nothing, and a
+  // comment on its own is not a site.
+  for (const [label, content] of [
+    [
+      "a quoted key that really differs",
+      `import { join } from "node:path";
+import * as fs from "node:fs";
+fs["write/* x */FileSync"](join(process.cwd(), "leak.json"), "{}");`,
+    ],
+    [
+      "a non-fs receiver",
+      `import { join } from "node:path";
+import * as fs from "node:fs";
+const wf = widget.write/* x */FileSync;
+wf(join(process.cwd(), "leak.json"), "{}");`,
+    ],
+    ["a comment only", `// fs.write/* x */FileSync(join(process.cwd(), "leak.json"))`],
+  ]) {
+    const { status, out } = runCase("packages/core/src/comment-inside-name-control.ts", content);
     assert.equal(status, 0, `${label}: ${out}`);
     assert.match(out, /0 write sites/, `${label}: ${out}`);
   }

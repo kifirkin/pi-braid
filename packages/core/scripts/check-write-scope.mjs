@@ -39,8 +39,12 @@
  * the binding: `const wf = fs.writeFileSync // note` binds, and so does the
  * same capture with a block comment between the name and `=`, between the `=`
  * and the callee, or between a bracket key's `[` and its quoted name. The
- * scan reads the source with comments and the interiors of string, template
- * and regex literals masked out, so a write-family name named only in prose
+ * scan reads the source with the interiors of string, template and regex
+ * literals masked out and the comments of a statement deleted — a comment is
+ * whitespace to the language, so deleting it is what makes a name it split
+ * read whole: `fs.write` ⟪comment⟫ `FileSync` is the member chain
+ * `fs.writeFileSync`, and a capture's own tokens join the same way — so a
+ * write-family name named only in prose
  * or in a string is not a site; a `}` inside a comment, a string or a regex
  * cannot close a template interpolation, and the token before a `/` is read
  * whole, so `return /['"]/` is a regex while `o.in / 2` stays a division.
@@ -497,6 +501,51 @@ function blankComments(text) {
   return out.join("");
 }
 
+/**
+ * The source with its comments deleted, and the map from the offsets of that
+ * code back into the original. Deleting a comment is what makes a name it
+ * split read whole (`fs.write` ⟪comment⟫ `FileSync` is the member chain
+ * `fs.writeFileSync`, and a capture's own tokens join the same way); keeping
+ * the newlines keeps every statement on its own line. Only comment text is
+ * removed, so the quotes and slashes of a literal stay where they were.
+ */
+function joinComments(text) {
+  const out = [];
+  const map = [];
+  const copy = (from, to) => {
+    for (let k = from; k < to; k++) {
+      out.push(text[k]);
+      map.push(k);
+    }
+  };
+  let cursor = 0;
+  scanCode(text, 0, text.length, {
+    onComment: (from, to) => {
+      copy(cursor, from);
+      for (let k = from; k < to; k++) {
+        if (text[k] === "\n") {
+          out.push("\n");
+          map.push(k);
+        }
+      }
+      cursor = to;
+    },
+  });
+  copy(cursor, text.length);
+  return { code: out.join(""), map };
+}
+
+/**
+ * The scan view of a file: the joined code, its mask (comments gone, the
+ * interiors of string, template and regex literals blanked) and the offset
+ * map back into the original, so a site is reported on its own line.
+ */
+function fileView(text) {
+  const { code, map } = joinComments(text);
+  const { masked, isCode } = maskNonCode(code);
+  return { code, masked, isCode, map };
+}
+
 // ── Callee resolution ───────────────────────────────────────────────────────
 
 /**
@@ -504,13 +553,13 @@ function blankComments(text) {
  * or default import) and local names bound to a write-family function.
  * Imports, `require` calls and local captures are all read; captures are
  * resolved to a fixpoint (bounded) so `const a = fs; const wf = a.mkdir`
- * still lands. Comments are blanked to whitespace first (`bare`), so a
+ * still lands. The regexes run over `bare` — the source with comments blanked
+ * to whitespace, or the joined code of a caller that already has it — so a
  * comment between the tokens of a binding does not hide it.
  */
-function fsBindings(text, isCode) {
+function fsBindings(text, isCode, bare = blankComments(text)) {
   const namespaces = new Set();
   const writes = new Map();
-  const bare = blankComments(text);
 
   const each = (re, fn) => {
     re.lastIndex = 0;
@@ -1044,13 +1093,13 @@ function localWriteExports(relFile, seen = new Set()) {
   if (cached && seen.size === 0) return cached;
   seen.add(relFile);
   const text = readFileSync(join(root, relFile), "utf8");
-  const { isCode } = maskNonCode(text);
-  const table = fsBindings(text, isCode);
+  const { code, isCode } = fileView(text);
+  const table = fsBindings(code, isCode, code);
   const out = new Map();
   const each = (re, fn) => {
     re.lastIndex = 0;
     let m;
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(code))) {
       if (isCode[m.index]) fn(m);
     }
   };
@@ -1096,11 +1145,11 @@ scannedFiles = new Set(files);
 
 for (const file of files) {
   const text = readFileSync(join(root, file), "utf8");
-  const { masked, isCode } = maskNonCode(text);
+  const { code, masked, isCode, map } = fileView(text);
   const bindings = fileBindings(text);
-  const table = fsBindings(text, isCode);
+  const table = fsBindings(code, isCode, code);
   // A write-family name re-exported from a scanned local module resolves too.
-  for (const { imported, local, spec } of localImports(text, isCode)) {
+  for (const { imported, local, spec } of localImports(code, isCode)) {
     const target = resolveLocalSpecifier(file, spec);
     if (target === null) continue;
     const canonical = localWriteExports(target).get(imported);
@@ -1111,10 +1160,10 @@ for (const file of files) {
   while ((match = CALL_RE.exec(masked))) {
     const chain = match[1];
     const chainStart = match.index;
-    const name = resolveCallee(chain, chainStart, text, table);
+    const name = resolveCallee(chain, chainStart, code, table);
     if (name === null) continue;
     const open = chainStart + chain.length;
-    const args = readArgs(text, open);
+    const args = readArgs(code, open);
     const raw = (args[0] ?? "").trim();
     // `open(path, "r")` and `open(path)` are reads (the Node default mode).
     if (OPEN_CALLS.has(name)) {
@@ -1126,7 +1175,7 @@ for (const file of files) {
     const expanded = expand(raw, bindings);
     const shape = shapeOf(raw, expanded);
     if (!shape) continue;
-    const line = lineOf(text, chainStart);
+    const line = lineOf(text, map[chainStart]);
     const entry = ALLOWLIST.find(
       (a) => a.file === file && a.callee === name && a.firstArg === canonicalExpr(expanded),
     );

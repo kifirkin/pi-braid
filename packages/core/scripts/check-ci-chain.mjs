@@ -27,18 +27,38 @@
  * dropped, and each segment is split into shell-style arguments, so a quoted
  * run is one argument: `"--no-exit-code"` counts (the shell hands the command
  * the same argument), while `"json --no-exit-code"` and `" --no-exit-code"`
- * do not. The argument model follows the shells inside double quotes: only
- * `$`, a backtick, `"`, `\` and a newline are escaped there, so a backslash
- * before any other character stays literal and `"\-\-no-exit-code"` is the
- * argument `\-\-no-exit-code`, not the flag. A body the shell cannot parse is
- * refused rather than read — an open quote, a leading boundary operator, a
+ * do not. A comment is a `#` that begins a word — at the start of the body,
+ * after whitespace, or after one of the metacharacters `;`, `&`, `|` and `(`
+ * — and runs to the end of its line; a `#` after `{`, `}`, `=`, a word
+ * character or a backslash-escaped character stays in the word in `sh`, `bash`
+ * and `dash` (zsh reads `{#` as a comment — a divergence the gate does not
+ * follow). The shells
+ * also begin a comment after `)` and after a redirection operator; the gate
+ * leaves those in the word, because what such a comment leaves behind (a
+ * stray `)` or a redirection with no target) is not modelled, and reading it
+ * as a comment could accept a body the shells refuse. The argument model
+ * follows the shells inside double quotes: only `$`, a backtick, `"`, `\` and
+ * a newline are escaped there, so a backslash before any other character
+ * stays literal and `"\-\-no-exit-code"` is the argument `\-\-no-exit-code`,
+ * not the flag. Outside quotes a backslash quotes the next character, so
+ * `\(`, `\{`, `\;` and `\&` are word characters — never a group token or a
+ * boundary — and `knip … \(` is the one command the shells run. A body the
+ * shell cannot parse is refused rather than read — an open quote, a leading
+ * boundary operator, a
  * body ending on `&&`, `||` or `|` (a trailing newline does not complete one),
  * and an opening `(` or `{` group token that is never closed are `sh -c`
  * syntax errors — because no command runs, and an exemption over no command
  * verifies nothing. The remaining unparsed shapes stay accepted and are read
  * as what they lexically are: a stray `)` or `}` with no open (a `)` delimits
- * a case pattern and a `}` can be an argument), an empty command between
- * boundaries (`knip … && ; knip …`), an unclosed `${…}` expansion, and a
+ * a case pattern and a `}` can be an argument), a `(` that is not in a
+ * command position (`knip … ( ; echo --no-exit-code )`, a syntax error in
+ * every shell, read as segments with the `(` and `)` left where they stand),
+ * the `((…))` arithmetic spelling (`knip … ((1+1))`: a syntax error in sh,
+ * bash and dash, arithmetic to zsh, and balanced in every shell), a `case`
+ * region (`case x in x) knip …`: the pattern's `)` reads as a stray close and
+ * the missing `esac` is not a token the splitter knows), an empty command
+ * between boundaries (`knip … && ; knip …`, and `;;` read as two boundaries
+ * with nothing between them), an unclosed `${…}` expansion, and a
  * heredoc's body, which is read as commands rather than as its own text.
  * Splitting
  * at every boundary is deliberately stricter than the shell's exit-code flow:
@@ -102,10 +122,19 @@ const ADVISORY = new Map([
   ],
 ]);
 
-/** Drop shell comments: a `#` at a token start runs to the end of its line. */
+/**
+ * Drop shell comments: a `#` that begins a word runs to the end of its line.
+ * A word begins at the start of the body, after whitespace or after one of the
+ * metacharacters `;`, `&`, `|` and `(`; a `#` after `{`, `}`, `=`, a word
+ * character or a backslash-escaped character is part of the word, and the
+ * shells' two remaining word starts — after `)` and after a redirection
+ * operator — stay in the word too, because the shape they leave behind is not
+ * modelled (see the header).
+ */
 function stripComments(body) {
   let out = "";
   let quote = null;
+  let wordStart = true;
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
     if (quote !== null) {
@@ -120,16 +149,30 @@ function stripComments(body) {
     }
     if (ch === '"' || ch === "'") {
       quote = ch;
+      wordStart = false;
       out += ch;
       continue;
     }
-    if (ch === "#" && (i === 0 || /\s/.test(body[i - 1]))) {
+    if (ch === "\\") {
+      // Outside quotes a backslash quotes the next character: the pair is a
+      // word, never a comment or an operator.
+      out += ch;
+      if (i + 1 < body.length) {
+        out += body[i + 1];
+        i++;
+      }
+      wordStart = false;
+      continue;
+    }
+    if (ch === "#" && wordStart) {
       const nl = body.indexOf("\n", i);
       if (nl === -1) break;
       i = nl - 1;
+      wordStart = true;
       continue;
     }
     out += ch;
+    wordStart = /\s/.test(ch) || /[;&|(]/.test(ch);
   }
   return out;
 }
@@ -148,7 +191,8 @@ function stripComments(body) {
  * boundary operator is `&&`, `||` or `|` with no command after it, and an
  * opening group (`(`, or `{` as a group token) the body never closes. (`;` and
  * `&` may end a body — `knip ... ;` runs — so only the three completing
- * operators are refused.)
+ * operators are refused.) A backslash outside quotes escapes the next
+ * character, so `\(` counts as no group token and `\;` as no boundary.
  */
 function scriptSegments(body) {
   const parts = [];
@@ -172,6 +216,17 @@ function scriptSegments(body) {
     if (ch === '"' || ch === "'") {
       quote = ch;
       current += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      // Outside quotes a backslash quotes the next character, so an escaped
+      // `(`, `{`, `&`, `;` or `|` is a word character, not a token.
+      current += ch;
+      const next = body[i + 1];
+      if (next !== undefined) {
+        current += next;
+        i++;
+      }
       continue;
     }
     const pair = body.slice(i, i + 2);

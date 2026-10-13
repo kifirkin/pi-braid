@@ -41,6 +41,16 @@
  *      trailing newline are refused too (`{ knip …`, `(knip …`, `knip … &&\n`)
  *      -> exit 1, while brace expansion, an expansion, an argument `}` and a
  *      line continued after `&&` stay clean -> exit 0
+ *  19. outside quotes a backslash quotes the next character: `\(` and `\( x`
+ *      are word characters, not a group token (`knip … \(`, `\( knip …`,
+ *      `a\(b`, `\( \(` stay clean -> exit 0), an escaped `;` or `&` is not a
+ *      boundary either (`knip … \; echo fails` stays one command -> exit 0),
+ *      while the second `&` of `\&&` is a real boundary -> exit 1
+ *  20. a `#` begins a comment at a word start: after `;`, `&` and a `(` it runs
+ *      to the end of its line (`knip …;#( oops`, `knip … &#( oops` -> exit 0),
+ *      while `&&#( oops` and `|#( oops` are refused as dangling boundaries,
+ *      `(#( oops` as an open group, and a `#` inside a word (`{#(`, `x=#(`,
+ *      `\;#(`) or after `)` stays in the word -> exit 1
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -367,5 +377,111 @@ test("an opening group the shell never closes is refused, not exempted", () => {
     });
     assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
     assert.match(out, /check-ci-chain: clean/);
+  }
+});
+
+test("an escaped group token is a word character, not an open group", () => {
+  // Outside quotes a backslash quotes the next character (POSIX 2.2.1), so
+  // `\(` is the argument `(` — not a group token — and every one of these
+  // bodies parses in all four shells (`sh`, `bash`, `zsh`, `dash`).
+  for (const body of [
+    "knip --reporter json --no-exit-code \\(",
+    "\\( knip --reporter json --no-exit-code",
+    "knip --reporter json --no-exit-code a\\(b",
+    "knip --reporter json --no-exit-code \\( \\(",
+    "knip --reporter json --no-exit-code \\( x",
+    "knip --reporter json --no-exit-code \\)",
+    "knip --reporter json --no-exit-code \\{",
+    "knip --reporter json --no-exit-code \\( x \\)",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /check-ci-chain: clean/);
+  }
+
+  // An escaped boundary is a word character too: `\;` and `\&` leave one
+  // command, which the shells run with the flag. The second `&` of `\&&` is a
+  // real background operator, so the segment after it has to carry the flag.
+  for (const body of [
+    "knip --reporter json --no-exit-code \\; echo fails",
+    "knip --reporter json --no-exit-code \\& echo fails",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+  }
+  const background = runCase({
+    ciYml: workflow(["npm ci", "npm run ci:check"]),
+    manifest: manifest(CHAIN, "knip --reporter json --no-exit-code \\&& echo fails"),
+  });
+  assert.equal(background.status, 1, background.out);
+  assert.match(background.out, /"echo fails" does not pass --no-exit-code/);
+});
+
+test("a `#` begins a comment at a word start", () => {
+  // The shells drop a `#` that begins a word and run what is left; the gate
+  // reads the same word starts (start of body, whitespace, `;`, `&`, `|`, `(`)
+  // and refuses what `sh`, `bash` and `dash` refuse.
+  for (const body of [
+    "knip --reporter json --no-exit-code;#( oops",
+    "knip --reporter json --no-exit-code &#( oops",
+    "knip --reporter json --no-exit-code;#( oops ; knip --reporter json --no-exit-code",
+    "knip --reporter json --no-exit-code &#( oops ; knip --reporter json --no-exit-code",
+    "knip --reporter json --no-exit-code ;# oops",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /check-ci-chain: clean/);
+  }
+
+  // A comment after a completing operator leaves the operator dangling, which
+  // is the refusal the shells give too: `sh`, `bash` and `dash` end on
+  // "unexpected end of file" for `knip … &&#( oops` (zsh accepts a body that
+  // ends on `&&` — the operator divergence, not a comment one).
+  for (const [body, reason] of [
+    ["knip --reporter json --no-exit-code &&#( oops", /ends on `&&` with no command after it/],
+    ["knip --reporter json --no-exit-code ||#( oops", /ends on `\|\|` with no command after it/],
+    ["knip --reporter json --no-exit-code |#( oops", /ends on `\|` with no command after it/],
+    ["knip --reporter json --no-exit-code (#( oops", /a `\(` is never closed/],
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /is not a command `sh -c` can run/, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, reason, `${JSON.stringify(body)}: ${out}`);
+  }
+
+  // Where a `#` sits inside a word it stays there: `sh`, `bash` and `dash` read
+  // `{#(`, `}#(`, `x=#(` and an escaped `\;#(` as one word, and the gate reads
+  // them the same way, so the `(` is still an unclosed group (zsh reads `{#` as
+  // a comment, one of its divergences). The shells' two remaining word
+  // starts — after `)` and after a redirection operator — are deliberately not
+  // followed (the shape they leave behind is not modelled), so the body is
+  // refused as the shells refuse it.
+  for (const body of [
+    "knip --reporter json --no-exit-code {#( oops",
+    "knip --reporter json --no-exit-code }#( oops",
+    "knip --reporter json --no-exit-code x=#( oops",
+    "knip --reporter json --no-exit-code \\;#( oops",
+    "knip --reporter json --no-exit-code )#( oops",
+    "knip --reporter json --no-exit-code <#( oops",
+    "knip --reporter json --no-exit-code >#( oops",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /a `\(` is never closed/, `${JSON.stringify(body)}: ${out}`);
   }
 });
