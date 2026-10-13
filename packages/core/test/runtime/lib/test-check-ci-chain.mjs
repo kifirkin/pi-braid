@@ -22,6 +22,14 @@
  *  10. a multi-command body with the flag on every segment -> exit 0
  *  11. a quoted flag on the check segment still counts (the shell passes the
  *      same argument) -> exit 0
+ *  12. a flag embedded in a longer quoted argument (`"json --no-exit-code"`,
+ *      `" --no-exit-code"`) is not the flag -> exit 1
+ *  13. a flag on an earlier line of a newline body does not speak for the
+ *      check on the last line -> exit 1
+ *  14. the other command boundaries (a newline, a pipe stage, a background `&`
+ *      segment) are held fail-closed -> exit 1
+ *  15. a `--no-exit-code=1` suffix, an env-assignment spelling and a subshell
+ *      echo are not the flag -> exit 1
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -174,4 +182,59 @@ test("a flag on every segment, quoted or not, keeps the body advisory", () => {
   });
   assert.equal(quoted.status, 0, quoted.out);
   assert.match(quoted.out, /check-ci-chain: clean/);
+});
+
+test("a flag embedded in a longer quoted argument is not the flag", () => {
+  for (const body of [
+    'knip --reporter "json --no-exit-code"',
+    "knip --reporter 'json --no-exit-code'",
+    'knip --reporter json " --no-exit-code"',
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${body}: ${out}`);
+    assert.match(out, /does not pass --no-exit-code/);
+  }
+});
+
+test("a flag on an earlier command does not speak for the check on the last", () => {
+  const newline = runCase({
+    ciYml: workflow(["npm ci", "npm run ci:check"]),
+    manifest: manifest(CHAIN, "echo --no-exit-code\nknip --reporter json"),
+  });
+  assert.equal(newline.status, 1, newline.out);
+  assert.match(newline.out, /"knip --reporter json" does not pass --no-exit-code/);
+
+  // A newline, a pipe and a background `&` are command boundaries too: a
+  // segment whose failure cannot, alone, reach the exit code still has to
+  // carry the flag (fail-closed).
+  for (const body of [
+    "knip --reporter json\necho --no-exit-code",
+    "knip --reporter json | tee --no-exit-code",
+    "echo --no-exit-code & knip --reporter json",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${body}: ${out}`);
+    assert.match(out, /does not pass --no-exit-code/);
+  }
+});
+
+test("a flag suffix, an env assignment or a subshell echo is not the flag", () => {
+  for (const body of [
+    "knip --reporter json --no-exit-code=1",
+    "KNIP=--no-exit-code knip --reporter json",
+    "(echo --no-exit-code) && knip --reporter json",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${body}: ${out}`);
+    assert.match(out, /does not pass --no-exit-code/);
+  }
 });

@@ -57,6 +57,17 @@
  *      when it comes last (a documented bound, pinned in both directions)
  *  32. a `.js`/`.mjs` specifier naming a scanned TypeScript re-export shim
  *      resolves through the TS twin (the repo's own import spelling) -> exit 1
+ *  33. a `for await (…)` head is a statement head: a quote-carrying regex
+ *      after it does not swallow the file (a cwd write on the next line ->
+ *      exit 1), while a call-shaped regex after it stays masked -> exit 0
+ *  34. a postfix `++`/`--` before a division does not blank the rest of the
+ *      line, so a same-line cwd write is reported -> exit 1
+ *  35. a capture through a plain quoted bracket key (`const wf =
+ *      fs["writeFileSync"]`, including through a namespace alias) -> exit 1
+ *  36. the allowlist keys a call shape: a duplicate of a sanctioned call is
+ *      allowlisted, the same target spelled at its expanded form is a finding
+ *  37. a local function shadowing an imported write-family name is reported
+ *      (the real, fail-loud behaviour, pinned) -> exit 1
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -697,4 +708,103 @@ export default append;`;
   const last = runCase("packages/core/src/dupname-last.ts", hazardousLast);
   assert.equal(last.status, 1, last.out);
   assert.match(last.out, /source-dir/);
+});
+
+test("a `for await` head keeps a quote-carrying regex from swallowing the file", () => {
+  const fn = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+export async function f(ys: string[]): Promise<void> {
+  for await (const y of ys) /['"]/.test(y);
+  writeFileSync(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const missed = runCase("packages/core/src/for-await-fn.ts", fn);
+  assert.equal(missed.status, 1, missed.out);
+  assert.match(missed.out, /packages\/core\/src\/for-await-fn\.ts:5/);
+  assert.match(missed.out, /process\.cwd\(\)/);
+
+  // ...while a call-shaped regex after the same head stays masked.
+  const fp = `import { writeFileSync } from "node:fs";
+export async function scan(ys: string[]): Promise<boolean> {
+  for await (const y of ys) /writeFileSync("leak.json")/.test(y);
+  return false;
+}`;
+  const clean = runCase("packages/core/src/for-await-regex.ts", fp);
+  assert.equal(clean.status, 0, clean.out);
+  assert.match(clean.out, /0 write sites/);
+});
+
+test("a postfix `++`/`--` before a division does not blank the assignment line", () => {
+  const increment = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+let i = 1; const q = i++ / 2; writeFileSync(join(process.cwd(), "leak.json"), String(q));`;
+  const inc = runCase("packages/core/src/postfix-increment.ts", increment);
+  assert.equal(inc.status, 1, inc.out);
+  assert.match(inc.out, /packages\/core\/src\/postfix-increment\.ts:3/);
+
+  const decrement = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+let i = 1; const q = i-- / 2; writeFileSync(join(process.cwd(), "leak.json"), String(q));`;
+  const dec = runCase("packages/core/src/postfix-decrement.ts", decrement);
+  assert.equal(dec.status, 1, dec.out);
+  assert.match(dec.out, /packages\/core\/src\/postfix-decrement\.ts:3/);
+});
+
+test("a capture through a plain quoted bracket key resolves", () => {
+  const direct = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs["writeFileSync"];
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const d = runCase("packages/core/src/bracket-capture.ts", direct);
+  assert.equal(d.status, 1, d.out);
+  assert.match(d.out, /packages\/core\/src\/bracket-capture\.ts:4/);
+  assert.match(d.out, /process\.cwd\(\)/);
+
+  const viaAlias = `import * as fs from "node:fs";
+import { join } from "node:path";
+const a = fs;
+const wf = a["writeFileSync"];
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const v = runCase("packages/core/src/bracket-capture-alias.ts", viaAlias);
+  assert.equal(v.status, 1, v.out);
+  assert.match(v.out, /packages\/core\/src\/bracket-capture-alias\.ts:5/);
+});
+
+test("the allowlist keys a call shape: duplicates pass, a deeper spelling does not", () => {
+  const sanctioned = `import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+const __dirname = "/repo";
+const REPO_ROOT = resolve(__dirname, "..", "..", "..");
+const artifactPath = join(REPO_ROOT, "packages/core/schema/braid.schema.json");
+mkdirSync(dirname(artifactPath), { recursive: true });
+writeFileSync(artifactPath, "{}", "utf8");`;
+
+  // A duplicate of a sanctioned shape (same file, callee and expanded
+  // argument) matches the entry: the allowlist sanctions a call shape, not a
+  // one-off site.
+  const duplicate = `${sanctioned}
+writeFileSync(artifactPath, "{}");`;
+  const dup = runCase("packages/core/scripts/gen-braid-schema.mjs", duplicate);
+  assert.equal(dup.status, 0, dup.out);
+  assert.match(dup.out, /3 allowlisted/);
+
+  // The same target spelled as the expanded expression keys differently: the
+  // key is the expanded argument, pinned at the call site's expansion depth
+  // (a documented bound).
+  const literal = `${sanctioned}
+writeFileSync(join(resolve(__dirname, "..", "..", ".."), "packages/core/schema/braid.schema.json"), "{}");`;
+  const lit = runCase("packages/core/scripts/gen-braid-schema.mjs", literal);
+  assert.equal(lit.status, 1, lit.out);
+  assert.match(lit.out, /source-dir/);
+});
+
+test("a local function shadowing an imported write-family name is reported", () => {
+  // The binding table is import-based and the call is judged fail-loud: a
+  // shadowing local of the same name does not hide the call site.
+  const content = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+function writeFileSync(target: string, text: string): void { void target; void text; }
+writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
+  const { status, out } = runCase("packages/core/src/shadow.ts", content);
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/shadow\.ts:4/);
 });

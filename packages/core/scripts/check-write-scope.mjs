@@ -24,7 +24,8 @@
  * module (`node:fs`, `fs`, `node:fs/promises`, `fs/promises`), namespace
  * imports, `require` calls, TypeScript's `import fs = require("node:fs")`,
  * local captures and assignments (`const wf = fs.writeFileSync`,
- * `let wf; wf = fs.writeFileSync`, `const wf = fs.writeFileSync.bind(fs)`, the
+ * `const wf = fs["writeFileSync"]`, `let wf; wf = fs.writeFileSync`,
+ * `const wf = fs.writeFileSync.bind(fs)`, the
  * second declarator of `const wf = …, md = fs.mkdirSync`, and
  * `const { writeFileSync: wf } = fs` or `= fs.promises`), bindings taken from
  * a dynamic import (`const { writeFile: wf } = await import("node:fs/promises")`),
@@ -50,14 +51,19 @@
  * `(await import("node:fs")).writeFileSync`), a write invoked through
  * `Function.prototype` (`writeFileSync.call(…)`), a write-family name a local
  * module re-exports wholesale (`export * from "node:fs"` — the named forms are
- * followed), and an import specifier that resolves to no scanned file (a path
- * alias, or a module outside the scan roots; a relative specifier carrying a
- * `.js`, `.mjs`, `.cjs` or `.jsx` extension is also tried as its TypeScript
- * twin, so a source import spelled `./x.js` names a scanned `x.ts`).
+ * followed), and an import specifier that resolves to no scanned production
+ * file: a package specifier, a path alias, or a relative path that names no
+ * scanned module however it is spelled. A relative specifier is resolved with
+ * its TypeScript twin tried when it carries an emitted extension, so a source
+ * import spelled `./x.js` names a scanned `x.ts`.
  * Shell-mediated writes are out of scope by construction:
  * `execSync(`mkdir -p "${dir}"`)` is a string and
  * `execSync("rm -f ./state.json")` is not a write-family call; the packages'
- * own containment tests are the net for those writers. A target whose base is
+ * own containment tests are the net for those writers — the contrib child in
+ * `packages/contrib/test/writer-containment.mjs` drives
+ * `prepareScrapingProfile()`, whose `mkdir -p "${SCRAPING_DIR}"` and
+ * lock-clearing `rm -f` live behind strings, under a pinned root. A target
+ * whose base is
  * genuinely dynamic — a template that starts at an interpolation the gate
  * cannot read as a literal, such as `` `${os.tmpdir()}/x` `` or
  * `` `${file}.tmp` `` where `file` is a local binding — is left alone: reading
@@ -80,14 +86,18 @@
  * writes into a temporary cwd is exercising the hazard this gate reports,
  * inside its own fixture.
  *
- * Allowlist: one entry per sanctioned site, keyed by file, the resolved
- * write-family callee and the canonical form of the expanded first argument
- * (whitespace runs collapsed). The argument is matched whole, never as a
- * substring, so a second write in an allowlisted file is a finding even when
- * its target names the same artifact. It holds three entries in two files,
- * all `source-dir` shapes — the generated schema artifact (directory creation
- * and write) and the workers registry's parent directory. A new write
- * anywhere else in those files matches no entry and is a finding.
+ * Allowlist: one entry per sanctioned write *shape*, keyed by file, the
+ * resolved write-family callee and the canonical form of the expanded first
+ * argument (whitespace runs collapsed). The argument is matched whole, never
+ * as a substring, so a different target is a finding even when it names the
+ * same artifact; a duplicate of a sanctioned shape — same file, callee and
+ * expanded argument — is sanctioned too. The key is pinned to the expanded
+ * argument, so it is expansion-depth-sensitive: the same target spelled as
+ * the already-expanded expression keys differently and is a finding. It
+ * holds three entries in two files, all `source-dir` shapes — the generated
+ * schema artifact (directory creation and write) and the workers registry's
+ * parent directory. A write of a different shape anywhere else in those
+ * files matches no entry and is a finding.
  *
  * Neutral by construction, so no entry is needed: a caller-supplied path
  * argument, `os.tmpdir()` scratch, an absolute path literal, and a target
@@ -143,12 +153,14 @@ const OPEN_CALLS = new Set(["open", "openSync"]);
 const READ_MODES = new Set(["r", "rs", "sr"]);
 
 /**
- * Allowlisted sites: file + resolved callee + the canonical form of the
- * expanded first argument + reason, one entry per sanctioned call. The
- * argument is matched WHOLE, never as a substring, so a new write in an
- * allowlisted file matches no entry and is a finding even when its target
- * names the same artifact. Whitespace runs are collapsed first, so reindenting
- * a sanctioned call does not change its key.
+ * Allowlisted write shapes: file + resolved callee + the canonical form of
+ * the expanded first argument + reason, one entry per sanctioned call. The
+ * argument is matched WHOLE, never as a substring, so a write with a
+ * different file, callee or argument matches no entry and is a finding even
+ * when its target names the same artifact, while a duplicate of a sanctioned
+ * shape matches the entry. Whitespace runs are collapsed first, so reindenting
+ * a sanctioned call does not change its key; the key is the expanded argument,
+ * so the same target spelled at a different expansion depth does not match.
  */
 const ALLOWLIST = [
   {
@@ -236,7 +248,8 @@ const REGEX_AFTER = new Set([
 /**
  * Statement heads: the `)` closing one of these leaves a statement position,
  * where a `/` starts a regex (`while (n) /re/.test(s)`), not a division. The
- * tokens are read whole, so `iffy(…)` is not `if (…)`.
+ * tokens are read whole, so `iffy(…)` is not `if (…)`; `await` after `for` is
+ * transparent, so `for await (` opens a head too.
  */
 const STATEMENT_HEADS = new Set(["if", "while", "for", "switch", "catch", "with"]);
 
@@ -384,9 +397,18 @@ function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () =
       const word = readWord(text, i, to);
       // A word after `.` is a property name, and a property access ends a
       // value: `o.in / 2` and `cache.delete / 2` are divisions even though
-      // `in` and `delete` are operators in their own right.
-      prev = prev === "." ? ")" : word;
+      // `in` and `delete` are operators in their own right. `await` is
+      // transparent after `for`, so `for await (` still opens a statement
+      // head, while `await (p) / 2` stays a division.
+      if (!(word === "await" && prev === "for")) {
+        prev = prev === "." ? ")" : word;
+      }
       i += word.length;
+    } else if ((ch === "+" || ch === "-") && text[i + 1] === ch) {
+      // A postfix `++`/`--` is a value, not an operator a regex can follow:
+      // `i++ / 2` is a division, and the line is not blanked from the `/` on.
+      prev = ch + ch;
+      i += 2;
     } else {
       prev = ch;
       i++;
@@ -579,6 +601,13 @@ function fsBindings(text, isCode) {
     each(
       /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
       (m) => bind(m[1], m[2]),
+    );
+    // A capture through a plain quoted bracket key reads like the dotted
+    // captures above: `const wf = fs["writeFileSync"]`, and through a
+    // namespace alias once the pass above has bound it.
+    each(
+      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*)\s*\[\s*(["'`])([A-Za-z_$][\w$]*)\3\s*\]\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      (m) => bind(m[1], `${m[2]}.${m[4]}`),
     );
     // Destructuring from a namespace or from its `promises` member:
     // `const { writeFileSync } = fs`, `const { writeFileSync } = fs.promises`.

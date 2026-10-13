@@ -21,13 +21,20 @@
  * other check belongs in `ci:check`. Other workflow files are not the quality
  * gate and are not inspected. The only scripts allowed outside the chain are
  * the advisory reporters in ADVISORY below, each verified to be unable to
- * fail: `--no-exit-code` must be an argument of every command in the script
- * body, read per segment (`&&`, `||`, `;`) with shell comments dropped. A
- * substring test over the whole body accepts `knip … || echo --no-exit-code`
- * (the flag is echoed; knip keeps its exit code) and `knip … # --no-exit-code`
- * (the flag is prose). The rule verifies that the flag is passed, not that
- * every command obeys it: an advisory entry has to own that claim in its
- * reason.
+ * fail: `--no-exit-code` must be an argument of its own in every command of
+ * the script body. Commands are the segments between the shell's command
+ * boundaries (`&&`, `||`, `;`, a newline, `&` or `|`), with shell comments
+ * dropped, and each segment is split into shell-style arguments, so a quoted
+ * run is one argument: `"--no-exit-code"` counts (the shell hands the command
+ * the same argument), while `"json --no-exit-code"` and `" --no-exit-code"`
+ * do not. Splitting at every boundary is deliberately stricter than the
+ * shell's exit-code flow: a segment whose failure cannot, on its own, reach
+ * the chain's exit code (an earlier line of a newline-separated body, an
+ * earlier stage of a pipeline) still has to carry the flag. A test over the
+ * whole body would accept `knip … || echo --no-exit-code` (the flag is
+ * echoed; knip keeps its exit code) and `knip … # --no-exit-code` (the flag
+ * is prose). The rule verifies that the flag is passed, not that every
+ * command obeys it: an advisory entry has to own that claim in its reason.
  *
  * Usage: node packages/core/scripts/check-ci-chain.mjs
  * Exit code: 0 = one chain, 1 = drift
@@ -89,9 +96,12 @@ function stripComments(body) {
 }
 
 /**
- * The commands a script body runs, in order: split on the shell operators that
- * join them (`&&`, `||`, `;`), quotes respected. Every segment's exit code can
- * reach the chain's, so every segment is held to the advisory rule.
+ * The commands a script body runs, in order: split on the shell's command
+ * boundaries (`&&`, `||`, `;`, a newline, `&` or `|`), quotes respected.
+ * Splitting at every boundary keeps the rule fail-closed: a segment whose
+ * failure cannot, on its own, reach the script's exit code (an earlier line
+ * of a newline-separated body, an earlier stage of a pipeline) still has to
+ * carry the flag.
  */
 function scriptSegments(body) {
   const segments = [];
@@ -115,10 +125,12 @@ function scriptSegments(body) {
       continue;
     }
     const pair = body.slice(i, i + 2);
-    if (pair === "&&" || pair === "||" || ch === ";") {
+    const boundary =
+      pair === "&&" || pair === "||" || ch === ";" || ch === "\n" || ch === "&" || ch === "|";
+    if (boundary) {
       segments.push(current);
       current = "";
-      if (ch !== ";") i++;
+      if (pair === "&&" || pair === "||") i++;
       continue;
     }
     current += ch;
@@ -128,17 +140,58 @@ function scriptSegments(body) {
 }
 
 /**
+ * A command's shell-style arguments: whitespace separates them, a quoted run
+ * is one argument with its quotes removed, and a run that adjoins quoted and
+ * unquoted text stays one argument. `"--no-exit-code"` is the flag itself;
+ * `"json --no-exit-code"` is one longer argument, never the flag.
+ */
+function shellArgs(segment) {
+  const args = [];
+  let current = "";
+  let started = false;
+  let quote = null;
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+    if (quote === '"' && ch === "\\") {
+      const next = segment[i + 1];
+      if (next !== undefined) {
+        current += next;
+        i++;
+        continue;
+      }
+    }
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (started) args.push(current);
+      current = "";
+      started = false;
+      continue;
+    }
+    current += ch;
+    started = true;
+  }
+  if (started) args.push(current);
+  return args;
+}
+
+/**
  * The segments of an advisory body that do not pass `--no-exit-code` as an
  * argument of their own. Quoting the flag (`"--no-exit-code"`) still counts:
- * the shell hands the same argument to the command either way.
+ * the shell hands the command the same argument either way.
  */
 function segmentsWithoutFlag(body) {
-  const flagged = (segment) =>
-    segment
-      .split(/\s+/)
-      .map((token) => token.replace(/^["']|["']$/g, ""))
-      .includes("--no-exit-code");
-  return scriptSegments(stripComments(body)).filter((segment) => !flagged(segment));
+  return scriptSegments(stripComments(body)).filter(
+    (segment) => !shellArgs(segment).includes("--no-exit-code"),
+  );
 }
 
 /** A run command is sanctioned when it is the chain or an install. */
