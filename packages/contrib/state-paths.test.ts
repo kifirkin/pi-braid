@@ -18,7 +18,10 @@
  *      real write lands under the pin and neither the cwd nor the child HOME
  *      tree changes
  *   5. a hostile HOME ("" / "." / a relative path) refuses every default in a
- *      child, the real writer refuses, and the throwaway cwd gains nothing
+ *      child, the real writer refuses, and the throwaway cwd gains nothing;
+ *      a relative BRAID_HOME with an absolute HOME refuses the same way, and
+ *      the default tree under that HOME is not created (a writer folded to
+ *      the module-load default writes there instead of into the cwd)
  *   6. the healthcheck writers (the filesystem probe set and the saved report)
  *      run under the pin: the probe dir and the report file appear there,
  *      while the child's HOME tree stays empty - a binding folded at module
@@ -431,6 +434,71 @@ try {
       );
     } finally {
       fs.rmSync(hostileCwd, { recursive: true, force: true });
+    }
+  }
+
+  // 5b. the override leg carries the same rule, and this is the writer-level
+  // half of the mirror suite's matrix: the suite pins the accessor's refusal,
+  // this drives the writer that consumes it. HOME is absolute here, so a
+  // writer folded to the module-load default writes the default tree under
+  // that HOME rather than into the cwd - hence the extra tree check.
+  {
+    const relCwd = fs.mkdtempSync(
+      path.join(os.tmpdir(), "contrib-relpin-cwd-"),
+    );
+    const relHome = fs.mkdtempSync(
+      path.join(os.tmpdir(), "contrib-relpin-home-"),
+    );
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: relHome,
+      BRAID_HOME: "rel-pin",
+    };
+    try {
+      const r = spawnSync(
+        "node",
+        ["--experimental-strip-types", "--import", REGISTER, HOSTILE_DRIVER],
+        { cwd: relCwd, env, encoding: "utf8", timeout: 120_000 },
+      );
+      const lines = (r.stdout ?? "").trim().split("\n").filter(Boolean);
+      let json: any = null;
+      if (lines.length > 0) {
+        try {
+          json = JSON.parse(lines[lines.length - 1]);
+        } catch {
+          // leave json null
+        }
+      }
+      check(
+        "BRAID_HOME=rel-pin: child exits 0",
+        r.status === 0,
+        (r.stderr ?? "").slice(0, 400),
+      );
+      for (const [name, value] of Object.entries(json?.paths ?? {})) {
+        check(
+          `BRAID_HOME=rel-pin: ${name} refuses (null)`,
+          value === null,
+          String(value),
+        );
+      }
+      check(
+        "BRAID_HOME=rel-pin: the real writer refuses",
+        json?.saved === null,
+        JSON.stringify(json?.saved),
+      );
+      check(
+        "BRAID_HOME=rel-pin: the cwd gained nothing",
+        fs.readdirSync(relCwd).length === 0,
+        fs.readdirSync(relCwd).join(","),
+      );
+      check(
+        "BRAID_HOME=rel-pin: the default tree under HOME was not created",
+        !fs.existsSync(path.join(relHome, ".pi", "agent", "braid")),
+        path.join(relHome, ".pi", "agent", "braid"),
+      );
+    } finally {
+      fs.rmSync(relCwd, { recursive: true, force: true });
+      fs.rmSync(relHome, { recursive: true, force: true });
     }
   }
 } finally {

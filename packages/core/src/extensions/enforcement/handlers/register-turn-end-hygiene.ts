@@ -82,7 +82,12 @@ function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
   }
 
   try {
-    // 2. Write resume.json (same format as SESSION_SHUTDOWN handler)
+    // 2. Write resume.json: the same sink and the same discoverability reader
+    // as the SESSION_SHUTDOWN payload, with two key differences - this one
+    // adds `reason` (why the pre-save fired) and omits `recentLearnings` (the
+    // shutdown writer takes those from the scratchpad's learnings section).
+    // No reader consumes either key; the fields both writers carry are the
+    // ones the reader reads back.
     const slug = projectSlugFromCwd(cwd);
     let goal: string | null = null;
     let openPlans: Array<{ id: string; text: string }> = [];

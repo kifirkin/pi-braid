@@ -36,8 +36,10 @@
  *   (n) under a pin no live accessor resolves its folded constant, so an
  *       accessor folded to its precomputed spelling (the drift pin's blind
  *       spot, since (g) reads the default-home equality) is caught;
- *   (o) a relative BRAID_HOME refuses at the base like the hostile-HOME legs:
- *       every census writer refuses and the project gains nothing.
+ *   (o) a relative or `.` BRAID_HOME refuses at the base like the hostile-HOME
+ *       legs: every census writer refuses, the project gains nothing, and the
+ *       default tree under the child's HOME gains nothing either, so a family
+ *       that fell back to its folded constant writes nowhere at all.
  *
  * Bound: the tree assertions below are a FINAL-STATE snapshot. A directory
  * created and removed between samples, a write outside the checked roots (a
@@ -684,15 +686,18 @@ await test("(n) under the pin no live accessor resolves its folded constant", ()
   );
 });
 
-await test("(o) a relative BRAID_HOME refuses at the base and writes into no project", () => {
+await test("(o) a relative BRAID_HOME refuses at the base, and no tree gains anything", () => {
   // The override leg gets the hostile-HOME rule: a relative BRAID_HOME
   // resolves against whatever cwd the process has, so it would put the whole
   // braid tree in the project the session runs in. Refusal is asserted at the
   // base, and then at the writers: every census family is driven in a child
-  // whose cwd is a throwaway project, and the project must gain nothing.
+  // whose cwd is a throwaway project, and neither the project nor the default
+  // tree under that child's HOME may gain anything. The HOME tree is the leg
+  // the refused-shape rows cannot see: a family folded to its constant writes
+  // there rather than into the project, so the project tree alone would pass.
   const pinnedBraid = process.env.BRAID_HOME;
   try {
-    for (const hostile of ["rel-pin", "./rel-pin"]) {
+    for (const hostile of ["rel-pin", "./rel-pin", "."]) {
       process.env.BRAID_HOME = hostile;
       assert.throws(() => paths.braidDir(), /absolute/, `BRAID_HOME=${JSON.stringify(hostile)}`);
       assert.throws(() => paths.writeLogFilePath(), /absolute/, "a family accessor refuses too");
@@ -704,32 +709,45 @@ await test("(o) a relative BRAID_HOME refuses at the base and writes into no pro
 
   const home = mkdtempSync(join(tmpdir(), "braid-writers-home-"));
   try {
-    const run = runWriterProbe({ home, braidHome: "rel-pin" });
-    assert.equal(run.status, 0, `the child must exit 0, not crash: ${run.stderr}`);
-    assert.equal(
-      run.rows.length,
-      CENSUS_FAMILIES.length,
-      `every family must report: ${JSON.stringify(run.rows.map((r) => r.family))}`,
-    );
-    for (const row of run.rows) {
+    // `.` resolves the whole braid tree at the project root when it is honored,
+    // so the drive covers both spellings of the same hazard.
+    for (const braidHome of ["rel-pin", "."]) {
+      const run = runWriterProbe({ home, braidHome });
+      assert.equal(run.status, 0, `the child must exit 0, not crash: ${run.stderr}`);
       assert.equal(
-        row.refused,
-        true,
-        `${row.family}: the write must refuse loudly (threw=${row.threw}, level=${row.level})`,
+        run.rows.length,
+        CENSUS_FAMILIES.length,
+        `every family must report: ${JSON.stringify(run.rows.map((r) => r.family))}`,
       );
+      // The trees are asserted before the rows on purpose: a family folded to
+      // its constant writes under the child's HOME, so only these two
+      // assertions can see it - the project tree stays empty and the row names
+      // the family after the fact.
+      assert.deepEqual(
+        tree(run.project),
+        [],
+        `BRAID_HOME=${JSON.stringify(braidHome)}: a relative override must put nothing in the project: ${JSON.stringify(tree(run.project))}`,
+      );
+      assert.deepEqual(
+        tree(join(home, ".pi", "agent", "braid")),
+        [],
+        `BRAID_HOME=${JSON.stringify(braidHome)}: a refused override must not send a folded family to the default tree under HOME: ${JSON.stringify(tree(join(home, ".pi", "agent", "braid")))}`,
+      );
+      for (const row of run.rows) {
+        assert.equal(
+          row.refused,
+          true,
+          `BRAID_HOME=${JSON.stringify(braidHome)} ${row.family}: the write must refuse loudly (threw=${row.threw}, level=${row.level})`,
+        );
+      }
+      assert.deepEqual(
+        run.unhandled,
+        [],
+        `no listener may leave a rejected promise undrained: ${JSON.stringify(run.unhandled)}`,
+      );
+      rmSync(run.project, { recursive: true, force: true });
+      rmSync(run.fixtureRoot, { recursive: true, force: true });
     }
-    assert.deepEqual(
-      run.unhandled,
-      [],
-      `no listener may leave a rejected promise undrained: ${JSON.stringify(run.unhandled)}`,
-    );
-    assert.deepEqual(
-      tree(run.project),
-      [],
-      `a relative override must put nothing in the project: ${JSON.stringify(tree(run.project))}`,
-    );
-    rmSync(run.project, { recursive: true, force: true });
-    rmSync(run.fixtureRoot, { recursive: true, force: true });
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

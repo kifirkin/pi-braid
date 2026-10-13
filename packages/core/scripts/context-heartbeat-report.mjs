@@ -26,39 +26,84 @@
  * Malformed lines are counted and skipped, not silently dropped.
  *
  * Exit codes: 0 — a report was produced (a missing sink is reported as such,
- * it is not an error: a fresh install has not ticked yet); 2 — bad usage or
- * an unreadable sink.
+ * it is not an error: a fresh install has not ticked yet); 2 — bad usage, a
+ * refused braid root, or an unreadable sink.
  *
  * This is an advisory reader, not a gate: it is named `report:` in
  * package.json and is not a member of the ci:check chain.
  *
  * The default path mirrors the producer's `contextHeartbeatFilePath()`: both
  * resolve `<braid dir>/telemetry/context-heartbeat.jsonl`, where the braid dir
- * is BRAID_HOME when pinned and `<pi agent dir>/braid` otherwise. The mirror
- * exists because this script cannot import the TS module;
- * test-context-heartbeat-report.mjs pins the two resolved values together, so
- * it cannot drift silently.
+ * is BRAID_HOME when pinned to an absolute path and `<pi agent dir>/braid`
+ * otherwise. The mirror exists because this script cannot import the TS
+ * module; test-context-heartbeat-report.mjs pins the two resolved values
+ * together, so it cannot drift silently.
+ *
+ * A root that is not absolute is refused the way core's `braidDir()` refuses
+ * it, never resolved against the cwd: see `braidDir()` below.
  */
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Mirror of core's braidDir() (braid-paths.ts): BRAID_HOME wins when pinned. */
+/**
+ * Mirror of core's braidDir() (braid-paths.ts): BRAID_HOME wins when pinned
+ * to an absolute path, else the default tree under the home directory.
+ *
+ * Both refusal legs mirror core's and throw as core does. A relative
+ * BRAID_HOME, or a HOME that does not resolve an absolute path, would resolve
+ * against whatever cwd the process has, so this reader would report a sink
+ * somewhere inside the session's project instead of refusing. The guard lives
+ * here rather than at the module scope of the accessor below so that an
+ * explicit --file never trips it.
+ *
+ * The messages are core's, verbatim: an operator who sees one of them in this
+ * script's output must be able to act on it exactly as on the producer's.
+ */
 function braidDir() {
   const override = process.env.BRAID_HOME;
-  return override && override.trim() ? resolve(override) : join(homedir(), ".pi", "agent", "braid");
+  if (override && override.trim()) {
+    if (!isAbsolute(override)) {
+      throw new Error(
+        `braid: BRAID_HOME must be an absolute path (got "${override}"): a ` +
+          "relative override resolves against whatever cwd the process has, " +
+          "so the whole braid state tree lands in the session's project. Set " +
+          "BRAID_HOME to an absolute directory, or unset it.",
+      );
+    }
+    return resolve(override);
+  }
+  let home = "";
+  try {
+    home = homedir();
+  } catch {
+    // os.homedir() itself failed: no absolute home, so refuse below.
+  }
+  if (!home || !isAbsolute(home)) {
+    throw new Error(
+      "braid: BRAID_HOME is not set and os.homedir() does not resolve an " +
+        "absolute path, so braid's state directory cannot be derived without " +
+        "writing beside the cwd. Set BRAID_HOME (or HOME) to an absolute " +
+        "directory.",
+    );
+  }
+  return join(home, ".pi", "agent", "braid");
 }
 
-export const CONTEXT_HEARTBEAT_FILE = join(
-  braidDir(),
-  "telemetry",
-  "context-heartbeat.jsonl",
-);
+/**
+ * The producer's sink under the live braid root — the file the producer's
+ * accessor of the same name appends to. Resolved per call, like every accessor
+ * in braid-paths.ts, and refused (throws) where the root is refused.
+ */
+export function contextHeartbeatFilePath() {
+  return join(braidDir(), "telemetry", "context-heartbeat.jsonl");
+}
 
 const USAGE = `Usage: node packages/core/scripts/context-heartbeat-report.mjs [options]
 
-  --file <path>       heartbeat JSONL to read (default: the producer's sink)
+  --file <path>       heartbeat JSONL to read (default: the producer's sink;
+                      a refused braid root exits 2)
   --session <id>      only sessions whose id contains <id> (repeatable)
   --limit <n>         sessions to render, newest first (default 5; 0 = all)
   --json              machine-readable summary instead of the text rendering
@@ -339,17 +384,19 @@ export function renderReport(summary, { file, malformed = 0, now = Date.now(), l
 // ── cli ─────────────────────────────────────────────────────────────────────
 
 export function parseArgs(argv) {
-  const opts = { file: CONTEXT_HEARTBEAT_FILE, sessions: [], json: false, limit: 5 };
+  const opts = { file: undefined, sessions: [], json: false, limit: 5 };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--file") opts.file = argv[++i];
-    else if (arg === "--session") opts.sessions.push(argv[++i]);
+    if (arg === "--file") {
+      const value = argv[++i];
+      if (value === undefined) return { error: "--file needs a path" };
+      opts.file = value;
+    } else if (arg === "--session") opts.sessions.push(argv[++i]);
     else if (arg === "--limit") opts.limit = Number(argv[++i]);
     else if (arg === "--json") opts.json = true;
     else if (arg === "-h" || arg === "--help") opts.help = true;
     else return { error: `unknown argument: ${arg}` };
   }
-  if (opts.file === undefined) return { error: "--file needs a path" };
   if (opts.sessions.some((s) => s === undefined)) return { error: "--session needs an id" };
   if (!Number.isInteger(opts.limit) || opts.limit < 0) {
     return { error: "--limit needs a non-negative integer" };
@@ -366,6 +413,15 @@ function main(argv) {
   if (opts.help) {
     console.log(USAGE);
     return;
+  }
+
+  if (opts.file === undefined) {
+    try {
+      opts.file = contextHeartbeatFilePath();
+    } catch (err) {
+      console.error(`context-heartbeat-report: ${err.message}`);
+      process.exit(2);
+    }
   }
 
   let text = "";

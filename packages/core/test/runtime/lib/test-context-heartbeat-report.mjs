@@ -18,13 +18,17 @@
  *   7. the entry guard compares realpaths: a symlinked script path still runs
  *      the report (an unresolved `process.argv[1]` spelling used to exit 0
  *      with no output)
+ *   8. a braid root that is not absolute is refused (exit 2, core's message)
+ *      instead of resolved against the cwd: a relative / `.` / `~/`-spelled
+ *      BRAID_HOME, and a non-absolute HOME with BRAID_HOME unset, all refuse,
+ *      the accessor itself throws, and the cwd gains nothing
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -177,11 +181,15 @@ test("the default sink path matches the producer's accessor (pinned and unpinned
     "context-heartbeat.jsonl",
   );
   assert.equal(
-    reader.CONTEXT_HEARTBEAT_FILE,
+    reader.contextHeartbeatFilePath(),
     producer.contextHeartbeatFilePath(),
     "the reader's default path drifted from the producer's sink",
   );
-  assert.equal(reader.CONTEXT_HEARTBEAT_FILE, expectedDefault, "the default sink location must not move");
+  assert.equal(
+    reader.contextHeartbeatFilePath(),
+    expectedDefault,
+    "the default sink location must not move",
+  );
 
   const dir = mkdtempSync(join(tmpdir(), "hbpin-"));
   const probe = join(dir, "probe.mjs");
@@ -192,7 +200,7 @@ test("the default sink path matches the producer's accessor (pinned and unpinned
       'const reader = await import(pathToFileURL(process.env.READER).href);',
       'const paths = await import(pathToFileURL(process.env.BRAID_PATHS).href);',
       "console.log(JSON.stringify({",
-      "  reader: reader.CONTEXT_HEARTBEAT_FILE,",
+      "  reader: reader.contextHeartbeatFilePath(),",
       '  braidDir: paths.braidDir(),',
       "}));",
     ].join("\n"),
@@ -211,4 +219,100 @@ test("the default sink path matches the producer's accessor (pinned and unpinned
     "a pinned BRAID_HOME must relocate the sink the reader defaults to",
   );
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("a non-absolute braid root is refused, never resolved against the cwd", () => {
+  // The reader mirrors core's braidDir(), both refusal legs included. Before
+  // the guard, a relative BRAID_HOME resolved the sink inside whatever cwd the
+  // reader ran in: the report named `<cwd>/rel-pin/telemetry/context-
+  // heartbeat.jsonl` and exited 0. One fresh process per shape, because the
+  // default sink is read from the module (the in-process case below covers the
+  // accessor itself).
+  const hostilePins = ["rel-pin", ".", "~/braid", "relative/sub"];
+  // HOME is a throwaway absolute dir, so a shape that fell through to the
+  // default leg would read a temp tree, never the developer's live sink.
+  const home = mkdtempSync(join(tmpdir(), "hbrefuse-home-"));
+  for (const pin of hostilePins) {
+    const dir = mkdtempSync(join(tmpdir(), "hbrefuse-"));
+    try {
+      const r = spawnSync("node", [SCRIPT], {
+        cwd: dir,
+        env: { ...process.env, BRAID_HOME: pin, HOME: home },
+        encoding: "utf8",
+      });
+      const out = (r.stdout ?? "") + (r.stderr ?? "");
+      assert.equal(r.status, 2, `BRAID_HOME=${JSON.stringify(pin)}: ${out}`);
+      assert.match(out, /BRAID_HOME must be an absolute path/, `BRAID_HOME=${JSON.stringify(pin)}: ${out}`);
+      assert.doesNotMatch(
+        out,
+        /no heartbeat file|Context heartbeat report/,
+        `BRAID_HOME=${JSON.stringify(pin)}: no sink may be reported: ${out}`,
+      );
+      assert.deepEqual(
+        readdirSync(dir),
+        [],
+        `BRAID_HOME=${JSON.stringify(pin)}: the cwd gained ${readdirSync(dir)}`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // The HOME leg carries the same rule with BRAID_HOME unset: `.` and `""`
+  // used to resolve `<cwd>/.pi/agent/braid/telemetry/...`.
+  for (const h of [".", "", "rel-home", " ", ` ${home} `]) {
+    const dir = mkdtempSync(join(tmpdir(), "hbrefuse-"));
+    try {
+      const env = { ...process.env, HOME: h };
+      delete env.BRAID_HOME;
+      const r = spawnSync("node", [SCRIPT], { cwd: dir, env, encoding: "utf8" });
+      const out = (r.stdout ?? "") + (r.stderr ?? "");
+      assert.equal(r.status, 2, `HOME=${JSON.stringify(h)}: ${out}`);
+      assert.match(
+        out,
+        /os\.homedir\(\) does not resolve an absolute path/,
+        `HOME=${JSON.stringify(h)}: ${out}`,
+      );
+      assert.deepEqual(
+        readdirSync(dir),
+        [],
+        `HOME=${JSON.stringify(h)}: the cwd gained ${readdirSync(dir)}`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("the sink accessor throws where the root is refused", () => {
+  const saved = process.env.BRAID_HOME;
+  try {
+    for (const pin of ["rel-pin", ".", "~/braid", " /abs/with/padding "]) {
+      process.env.BRAID_HOME = pin;
+      assert.throws(
+        () => reader.contextHeartbeatFilePath(),
+        /must be an absolute path/,
+        `BRAID_HOME=${JSON.stringify(pin)} must throw`,
+      );
+    }
+    process.env.BRAID_HOME = "";
+    const home = homedir();
+    if (isAbsolute(home)) {
+      assert.equal(
+        reader.contextHeartbeatFilePath(),
+        join(home, ".pi", "agent", "braid", "telemetry", "context-heartbeat.jsonl"),
+        "a blank BRAID_HOME falls through to the default tree, as core does",
+      );
+    } else {
+      assert.throws(
+        () => reader.contextHeartbeatFilePath(),
+        /does not resolve an absolute path/,
+        "a blank override with no absolute home refuses, as core does",
+      );
+    }
+  } finally {
+    if (saved === undefined) delete process.env.BRAID_HOME;
+    else process.env.BRAID_HOME = saved;
+  }
 });

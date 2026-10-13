@@ -14,6 +14,11 @@
  *     gains nothing, and `presend-guard`'s skip is visible through the
  *     package's log sink. Those cases run in child processes because each
  *     helper reads the environment per call;
+ *   - the override leg carries the same rule: a relative `BRAID_HOME` refuses
+ *     `braidDataRoot()` and the presend flush with it, while the helper that
+ *     only knows the parser's agent directory (`homedirAgentDir()`) keeps
+ *     resolving that absolute HOME. The default tree under that HOME must not
+ *     appear, which is where a writer folded to a module-load default lands;
  *   - `presend-guard`'s flush root follows a pinned `BRAID_HOME`, so the two
  *     offload roots (core's and this package's) move together.
  *
@@ -355,8 +360,11 @@ try {
 console.log(JSON.stringify(out));
 `;
 
-/** Drive the hostile child; return its status, observation and project tree. */
-function hostileHomeChild(home) {
+/** Drive the hostile child; return its status, observation and project tree.
+ *  `braidHome` is the override the child runs with, or null for none: the
+ *  hostile-HOME cases pass null, the relative-pin case passes a relative
+ *  spelling. */
+function hostileHomeChild(home, braidHome = null) {
   const dir = mkdtempSync(join(tmpdir(), "prov-hostile-"));
   const project = join(dir, "proj");
   mkdirSync(project, { recursive: true });
@@ -365,7 +373,8 @@ function hostileHomeChild(home) {
   const env = { ...process.env, HOME: home, PROV_DRIVER_BUILD: buildDir };
   delete env.USERPROFILE;
   delete env.PI_CODING_AGENT_DIR;
-  delete env.BRAID_HOME;
+  if (braidHome === null) delete env.BRAID_HOME;
+  else env.BRAID_HOME = braidHome;
   const r = spawnSync("node", [driver], {
     cwd: project,
     env,
@@ -422,6 +431,55 @@ for (const [label, home] of [
       ),
     JSON.stringify({ shrink: child.obs?.shrink, logs: child.obs?.logs }),
   );
+}
+
+// ── a relative BRAID_HOME reaches no braid-root writer ────────────────────────
+
+// The override leg of the same contract, and the writer-level half of the
+// mirror suite's matrix: the suite pins `braidDataRoot()`'s refusal, this
+// drives the writers that consume it. HOME is absolute, so the refusal must
+// come from the override leg, `homedirAgentDir()` must keep resolving, and the
+// default tree under that HOME (where a writer folded to the module-load
+// default lands) must never appear.
+{
+  const relHome = mkdtempSync(join(tmpdir(), "prov-relpin-home-"));
+  const child = hostileHomeChild(relHome, "rel-pin");
+  check(
+    "BRAID_HOME=rel-pin: the child ran clean and the braid root refused",
+    child.status === 0 &&
+      child.obs?.braidDataRoot === null &&
+      child.obs?.homedirAgentDir !== null &&
+      child.obs?.piAgentDir !== null,
+    JSON.stringify({
+      status: child.status,
+      stderr: (child.stderr || "").slice(-300),
+      obs: child.obs,
+    }),
+  );
+  check(
+    "BRAID_HOME=rel-pin: the writers ran without leaving a file in the project",
+    child.obs?.ringRan === true &&
+      child.obs?.routeRan === true &&
+      child.obs?.ringError === undefined &&
+      child.obs?.routeError === undefined &&
+      child.projectTree.length === 0,
+    JSON.stringify({ tree: child.projectTree, obs: child.obs }),
+  );
+  check(
+    "BRAID_HOME=rel-pin: the presend flush refused visibly instead of writing",
+    child.obs?.shrink?.wasDoomed === true &&
+      child.obs?.shrink?.shrunk === 0 &&
+      (child.obs?.logs ?? []).some(
+        (l) => l.type === "warning" && l.message.includes("BRAID_HOME"),
+      ),
+    JSON.stringify({ shrink: child.obs?.shrink, logs: child.obs?.logs }),
+  );
+  check(
+    "BRAID_HOME=rel-pin: the default tree under HOME was not created",
+    !existsSync(join(relHome, ".pi", "agent", "braid")),
+    join(relHome, ".pi", "agent", "braid"),
+  );
+  rmSync(relHome, { recursive: true, force: true });
 }
 
 // ── restore + report ──────────────────────────────────────────────────────────

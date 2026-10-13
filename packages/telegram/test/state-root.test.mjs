@@ -9,9 +9,12 @@
  * voice download (fake fetch, no network) must land in the pinned tree and
  * leave the cwd tree byte-for-byte unchanged. The process HOME is pinned to a
  * third tree before the modules load, so the legacy-location assertions can
- * never touch the live tree. The hostile-HOME case runs the same writers in a
- * child whose HOME is "", "." or a relative path: every default must refuse
- * (null) and the throwaway cwd must gain nothing.
+ * never touch the live tree. The refusal cases run the same writers in a
+ * child: a hostile HOME ("", "." or a relative path) with BRAID_HOME unset,
+ * and a relative BRAID_HOME with an absolute HOME. Every default must refuse
+ * (null) either way, the throwaway cwd must gain nothing, and the default
+ * tree under the child's HOME must gain nothing either - a writer that fell
+ * back to the module-load default rather than the accessor writes there.
  */
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
@@ -262,5 +265,78 @@ test("a hostile HOME refuses every default and writes nothing into the cwd", () 
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
+  }
+});
+
+test("a relative BRAID_HOME refuses every default and reaches no writer", () => {
+  // The override leg of the same contract, and the writer-level half of the
+  // mirror suite's matrix: the suite pins the accessor's refusal, this drives
+  // the writers that consume it. A relative BRAID_HOME resolves against
+  // whatever cwd the process has, so the poller lock, the media dir, the
+  // pause state and the live-update state would all land in the session's
+  // project. HOME is absolute here, so the refusal must come from the
+  // override leg and the default tree under HOME must stay empty: a writer
+  // folded to the module-load default writes there instead.
+  const home = mkdtempSync(join(tmpdir(), "tg-relpin-home-"));
+  const project = mkdtempSync(join(tmpdir(), "tg-relpin-cwd-"));
+  const env = { ...process.env, HOME: home, BRAID_HOME: "rel-pin" };
+  try {
+    const r = spawnSync("node", [join(HERE, "hostile-home-driver.mjs")], {
+      cwd: project,
+      env,
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout.trim().split("\n").pop());
+    // Every default the braid root owns refuses. The two legacy accessors
+    // (pre-move, HOME-based, read-only) keep resolving under this absolute
+    // HOME instead, and the point of the guard is that neither resolves
+    // inside the project the reader ran in.
+    for (const name of [
+      "braidDir",
+      "telegramStateDir",
+      "defaultStateFilePath",
+      "defaultLiveUpdateFilePath",
+      "defaultMediaDir",
+      "defaultPauseStateFile",
+      "resolveMediaReadPath",
+    ]) {
+      assert.equal(
+        out.paths[name],
+        null,
+        `rel-pin: ${name} -> ${out.paths[name]}`,
+      );
+    }
+    assert.equal(
+      out.paths.legacyMediaDir,
+      join(home, ".pi", "agent", "telegram-media"),
+      "rel-pin: the legacy read path stays under the absolute HOME",
+    );
+    assert.equal(
+      out.paths.legacyPauseStateFile,
+      join(home, ".pi", "agent", "telegram-pause-state.json"),
+      "rel-pin: the legacy pause path stays under the absolute HOME",
+    );
+    for (const [name, value] of Object.entries(out.paths)) {
+      assert.ok(
+        value === null || !String(value).startsWith(project),
+        `rel-pin: ${name} resolves inside the project: ${value}`,
+      );
+    }
+    assert.equal(out.voice.ok, false, "rel-pin: the voice writer must refuse");
+    assert.deepEqual(
+      readdirSync(project),
+      [],
+      `rel-pin: the cwd gained ${readdirSync(project)}`,
+    );
+    assert.equal(
+      existsSync(join(home, ".pi", "agent", "braid")),
+      false,
+      "rel-pin: a folded writer must not reach the default tree under HOME",
+    );
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });
