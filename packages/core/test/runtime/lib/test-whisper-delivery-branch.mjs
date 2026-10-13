@@ -32,6 +32,13 @@
  * NOTE: depends on braid.suppressNudges not being true in settings.json
  * (sendTrackedMessage bails when cognitive nudges are disabled globally).
  *
+ * The last three cases pin the unresolved-advisory registry against the same
+ * real prototype: an advisory send registers an in-flight entry whose id
+ * rides in the message details, and the real append path's
+ * message_start/message_end events retire it; a suppressed send never
+ * registers. The registry is what an emitter checks to refuse stacking a
+ * second advisory behind one that has not landed yet.
+ *
  * Run: node test/runtime/lib/test-whisper-delivery-branch.mjs
  *      (after npm run build - this test reads dist, not src)
  */
@@ -48,7 +55,7 @@ const { AgentSession } = await import(
   pathToFileURL(join(piDist, "core", "agent-session.js")).href
 );
 
-const { sendTrackedMessage, clearAllBuckets } =
+const { sendTrackedMessage, clearAllBuckets, registerInjectionTracker, hasUnresolvedAdvisory } =
   await import("../../../dist/lib/utils/injection-tracker.js");
 const { registerWakeGate, resetWakeGateForTests } =
   await import("../../../dist/lib/utils/wake-gate.js");
@@ -77,7 +84,7 @@ console.log("=== whisper delivery branch pin (real pi-core sendCustomMessage) ==
  * `_isAgentRunActive`, and every branch effect is recorded. Branch 3/5
  * effects are stubbed - the branch DECISION is what is pinned.
  */
-function makeSession({ streaming }) {
+function makeSession({ streaming, emit }) {
   const calls = { steer: [], followUp: [], append: [], run: [] };
   const session = Object.create(AgentSession.prototype);
   session._isAgentRunActive = streaming;
@@ -95,6 +102,11 @@ function makeSession({ streaming }) {
   };
   session._appendCustomMessage = (m) => {
     calls.append.push(m);
+    // Real pi-core emits both events at append (`_appendCustomMessage`,
+    // agent-session.js:1821-1828). The double replays them through the fake
+    // pi so the extension handlers see what a real append delivers.
+    emit?.({ type: "message_start", message: m });
+    emit?.({ type: "message_end", message: m });
   };
   return { session, calls };
 }
@@ -120,18 +132,22 @@ function makePi(session) {
 }
 
 let seq = 0;
-/** One send through the funnel; unique body so reprime never suppresses. */
-function send(pi, options) {
+/**
+ * One send through the funnel. The default body embeds the sequence inside a
+ * word (`s1x`) so the digit-collapsing reprime key stays unique per call; a
+ * caller that passes `body` opts into repeat suppression deliberately.
+ */
+function send(pi, options, meta = {}, body) {
   seq++;
   return sendTrackedMessage(
     pi,
     {
       customType: "branch-probe",
-      content: [{ type: "text", text: `branch probe ${seq}` }],
+      content: [{ type: "text", text: body ?? `branch probe s${seq}x` }],
       display: true,
     },
     options,
-    { type: "context", source: `branch-probe/${seq}` },
+    { type: "context", source: `branch-probe/${seq}`, ...meta },
     { bypassFloodCap: true },
   );
 }
@@ -139,8 +155,21 @@ function send(pi, options) {
 function fresh(streaming) {
   resetWakeGateForTests();
   clearAllBuckets();
-  const { session, calls } = makeSession({ streaming });
-  return { session, calls, pi: makePi(session) };
+  let pi;
+  const { session, calls } = makeSession({
+    streaming,
+    emit: (event) => pi?._emit(event.type, event),
+  });
+  pi = makePi(session);
+  // The registry's retirement path is the tracker's message_start/message_end
+  // handlers; register them like the enforcement bootstrap does.
+  registerInjectionTracker(pi);
+  return { session, calls, pi };
+}
+
+/** pi's own end-of-turn flush, called on the real prototype. */
+function flushParked(session) {
+  AgentSession.prototype._flushPendingCustomMessages.call(session);
 }
 
 /** sendTrackedMessage defers triggerTurn sends to setTimeout(0). */
@@ -232,6 +261,46 @@ await test("deliverAs nextTurn while streaming -> branch 1 (queued), untouched",
   );
   assert.equal(calls.steer.length, 0, "branch 1 must win over branch 2");
   assert.equal(session._pendingCustomMessages.length, 0);
+});
+
+await test("advisory send parks while streaming; the real append path retires it", () => {
+  const { session, calls, pi } = fresh(true);
+  const accepted = send(pi, { delivery: "park", deliverAs: "steer" }, { advisory: "probe" });
+  assert.equal(accepted, true, "send must be accepted");
+  assert.equal(calls.steer.length, 0, "the advisory must not steer");
+  assert.equal(session._pendingCustomMessages.length, 1, "branch 4: parked for the turn-end flush");
+  const parked = session._pendingCustomMessages[0];
+  assert.equal(typeof parked.details?._braidId, "string", "the advisory id rides in details");
+  assert.equal(hasUnresolvedAdvisory("probe"), true, "registered in flight at emission");
+
+  flushParked(session);
+  assert.equal(calls.append.length, 1, "the parked message is appended at the flush");
+  assert.equal(hasUnresolvedAdvisory("probe"), false, "message_start/message_end retired it");
+});
+
+await test("advisory send while idle appends and retires in the same call", () => {
+  const { calls, pi } = fresh(false);
+  const accepted = send(pi, { delivery: "park", deliverAs: "steer" }, { advisory: "probe" });
+  assert.equal(accepted, true, "send must be accepted");
+  assert.equal(calls.append.length, 1, "branch 5: appended now");
+  assert.equal(hasUnresolvedAdvisory("probe"), false, "the immediate append retired it");
+});
+
+await test("a suppressed repeat never registers an advisory", () => {
+  const { session, pi } = fresh(true);
+  const body = "advisory suppression probe";
+  const first = send(pi, { delivery: "park", deliverAs: "steer" }, { advisory: "probe" }, body);
+  assert.equal(first, true, "first occurrence passes");
+  assert.equal(hasUnresolvedAdvisory("probe"), true, "first occurrence registers");
+  const second = send(pi, { delivery: "park", deliverAs: "steer" }, { advisory: "probe" }, body);
+  assert.equal(second, false, "the exact-repeat body is suppressed inside the reprime window");
+  assert.equal(session._pendingCustomMessages.length, 1, "only the first occurrence was parked");
+  flushParked(session);
+  assert.equal(
+    hasUnresolvedAdvisory("probe"),
+    false,
+    "the suppressed send left no in-flight entry behind",
+  );
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

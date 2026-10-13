@@ -31,7 +31,7 @@ distinction.
 | `compaction-chunked.ts`     | Bounded chunked summarization (range archives, summary-cap recovery).                                 |
 | `events.ts`                 | agent_end API-error guidance, context pruning. 367L.                                                  |
 | `navigation.ts`             | Tree navigation + checkout. 98L.                                                                      |
-| `rotation.ts`               | Session rotation + shutdown. 275L.                                                                    |
+| `rotation.ts`               | Session rotation + shutdown. 363L.                                                                    |
 | `tools/context-compress.ts` | The `context_compress` tool (registers in index.ts).                                                  |
 | `tools/context-inspect.ts`  | The `context_inspect` tool.                                                                           |
 | `tools/context-navigate.ts` | The `context_navigate` tool.                                                                          |

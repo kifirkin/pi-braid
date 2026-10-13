@@ -16,7 +16,10 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { getCmState, log, buildContinuationSummary, triggerEmergencyRotation } from "./shared.js";
 import { getRotationState } from "../../../../lib/state/global-state.js";
 import type { RotationState } from "../../../../lib/state/global-state.js";
-import { sendTrackedMessage } from "../../../../lib/utils/injection-tracker.js";
+import {
+  sendTrackedMessage,
+  hasUnresolvedAdvisory,
+} from "../../../../lib/utils/injection-tracker.js";
 import {
   tryRestoreAppendMessage,
   clearInterceptState,
@@ -32,6 +35,11 @@ import {
 
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 const MAX_TURNS_SINCE_ROTATION = 500; // 500 turns
+
+// Advisory kind for the in-flight registry (injection-tracker). One size
+// notice in flight at a time: a second one would queue behind the first on
+// pi's delivery lane and land after the work it asks for.
+const ROTATION_ADVISORY = "rotation";
 
 // Rotation state provided by global-state.ts (Symbol-keyed, DRY)
 function _sessionRotationState(): RotationState {
@@ -185,6 +193,16 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
         return;
       }
 
+      // Refuse to stack: while an earlier notice is still in flight (handed
+      // to pi but not yet appended), a second notice would queue behind it
+      // and arrive after the work it asks for. Leave the nudge state
+      // untouched so the emission retries at the next `turn_end` once the
+      // first one lands; the cooldown above still paces retries.
+      if (hasUnresolvedAdvisory(ROTATION_ADVISORY)) {
+        log.debug("Rotation nudge skipped: a previous notice is still in flight");
+        return;
+      }
+
       state.lastNudgeTurn = currentTurn;
       state.lastNudgeTimestamp = Date.now();
       state.nudgeCount++;
@@ -194,6 +212,21 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
 
       state.continuationSummary = buildContinuationSummary(ctx);
       state.pendingRotation = true;
+
+      // Off the run-stop lane while a run is streaming. `followUp` drains
+      // one message per run stop, so a notice queued there waits for the
+      // agent to stop - the measured median was 12 minutes, and 15 of 24
+      // notices landed after the agent had already taken the action they
+      // asked for. While streaming, park it: pi-core flushes parked
+      // messages at the same `turn_end`, after handler dispatch. When the
+      // session is idle, keep the wake - a parked notice would never start
+      // a turn. `ctx.isIdle()` is probed at the same moment pi-core reads
+      // its own `isStreaming`; a race lands in a branch that either parks or
+      // appends, both safe, and the wake gate covers the pre-flight window.
+      const idle = typeof ctx.isIdle === "function" ? ctx.isIdle() : true;
+      const deliveryOptions = idle
+        ? { triggerTurn: true }
+        : { delivery: "park" as const, deliverAs: "steer" };
 
       // Notify agent - ONCE - with identity-framed language (not compliance directives)
       sendTrackedMessage(
@@ -214,13 +247,15 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
                 "2. **`context_archive(start, end, summary)`** - archive completed work mid-session",
                 "3. **`memory_store(...)`** - preserve critical facts before compression",
                 "",
+                "If this stamp predates your last `context_compress`/`finalize`, this notice is already satisfied; ignore it.",
+                "",
                 "Taking any of these actions will reset the session counter for 25 turns.",
               ].join("\n"),
             },
           ],
         },
-        { deliverAs: "followUp", triggerTurn: true },
-        { type: "context", source: "context-manager/rotation" },
+        deliveryOptions,
+        { type: "context", source: "context-manager/rotation", advisory: ROTATION_ADVISORY },
       );
     } catch (err) {
       log.error("turn_end rotation check error:", err);

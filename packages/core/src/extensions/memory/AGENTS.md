@@ -70,7 +70,7 @@ Whispers from compaction-retry, navigation, and memory hooks use `triggerTurn: t
 - **compaction-retry** (`context-manager/handlers/compaction-retry.ts`): exhausted / context-window / threshold errors all wake the agent. In-progress retry messages (`overflow`, `transient`, `threshold`, `summary-cap`) park (`delivery: "park"`, no forced continuation turn) because the agent is mid-retry; a summary-cap failure self-recovers on the retry cycle with a bounded chunked summary (compaction-chunked.ts), so only its exhausted path wakes.
 - **navigation** (`context-manager/handlers/navigation.ts`): "Context checkout prepared" with a direct action instruction wakes the agent.
 - **three-memory-stores** (`memory/three-memory-stores/index.ts`): tool reliability alerts (gap > 0.2) wake the agent so it can switch tools.
-- **rotation** (`context-manager/handlers/shared.ts:327`, `rotation.ts:171`): emergency rotation and rotation followUp both wake.
+- **rotation** (`context-manager/handlers/shared.ts:327`, `rotation.ts`): emergency rotation wakes. The size notice parks while a run is streaming (flushed at the same `turn_end`) and keeps its wake only when the session is idle; a notice still in flight suppresses a second emission through the unresolved-advisory registry in `lib/utils/injection-tracker.ts`.
 
 Advisory whispers (memory recall, past insights, hint injection, SOP suggestions) park (`delivery: "park"`) - they provide context for the agent's natural flow.
 

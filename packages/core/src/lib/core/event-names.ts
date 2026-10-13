@@ -19,6 +19,7 @@ export const SESSION_SHUTDOWN = "session_shutdown" as const;
 export const TURN_END = "turn_end" as const;
 export const AGENT_END = "agent_end" as const;
 export const TOOL_CALL = "tool_call" as const;
+export const MESSAGE_START = "message_start" as const;
 export const MESSAGE_END = "message_end" as const;
 export const TOOL_EXECUTION_START = "tool_execution_start" as const;
 export const TOOL_EXECUTION_END = "tool_execution_end" as const;

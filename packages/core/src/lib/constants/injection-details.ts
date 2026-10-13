@@ -20,3 +20,13 @@ export const BRAID_INJECTED = "_braidInjected" as const;
 
 /** Marker: identifying string of which extension produced the injection. */
 export const BRAID_SOURCE = "_braidSource" as const;
+
+/**
+ * Marker: correlation id of the unresolved-advisory registry entry this
+ * message carries (see `lib/utils/injection-tracker.ts`). The delivery
+ * events (`message_start`/`message_end`) carry the same `details` object, so
+ * the id is how an append retires the advisory it belongs to. Distinct from
+ * the durable `braid_injection` record id: that record is the emission log,
+ * this id is the in-flight delivery token.
+ */
+export const BRAID_ID = "_braidId" as const;

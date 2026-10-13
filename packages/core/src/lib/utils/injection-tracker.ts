@@ -21,9 +21,9 @@
  */
 
 import { createLogger } from "../core/logger.js";
-import { SESSION_SHUTDOWN } from "../core/event-names.js";
+import { SESSION_SHUTDOWN, MESSAGE_START, MESSAGE_END } from "../core/event-names.js";
 import { tryWhisper, type WhisperPriority } from "../enforcement/turn-dedup.js";
-import { BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
+import { BRAID_ID, BRAID_INJECTED, BRAID_SOURCE } from "../constants/injection-details.js";
 import { areCognitiveNudgesDisabled } from "../config/braid-settings.js";
 import { registerSessionStartHandler, SessionPhase } from "../state/session-start-queue.js";
 import { nextId } from "./id.js";
@@ -117,6 +117,105 @@ interface ReprimeBucket {
 // matter, so expired entries are pruned on every emit and a hard cap bounds
 // pathological body diversity. See REPRIME_MAX_ENTRIES below.
 const _reprime = new Map<string, ReprimeBucket>();
+
+/**
+ * Unresolved-advisory registry: one entry per advisory message that has been
+ * handed to pi but whose append event has not been observed yet.
+ *
+ * WHY: an advisory emitted while an earlier one of the same kind is still
+ * in flight stacks behind it (pi's follow-up lane drains one message per
+ * run stop), so the newer notice arrives after the work it asks for. The
+ * emitter checks `hasUnresolvedAdvisory()` before emitting and skips the
+ * emission while one is in flight; the entry retires when the delivered
+ * message is appended, which pi reports as `message_start` + `message_end`
+ * carrying the message's `details` (the same object this module tagged with
+ * `BRAID_ID`).
+ *
+ * Process-global, not per-session: ids are unique per process and the
+ * shutdown handler clears the map at the session boundary, so a new session
+ * never inherits an in-flight flag from the previous one. The TTL is the
+ * safety valve for a lost event (a suppressed send, a crash between
+ * emission and append): a stale entry must not wedge the emitter forever.
+ */
+interface UnresolvedAdvisory {
+  id: string;
+  advisory: string;
+  emittedAt: number;
+}
+
+/**
+ * TTL for an unresolved advisory. Sized above any observed emission->append
+ * window (park flushes at the same turn_end; the follow-up tail ran to
+ * hours) so a live delivery is never cut off, and short enough that a lost
+ * event cannot wedge the emitter for the session.
+ */
+export const UNRESOLVED_ADVISORY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+const _unresolvedAdvisories = new Map<string, UnresolvedAdvisory>();
+
+// Test-only clock override so fixtures can prove the TTL opens the gate
+// without waiting REAL minutes. null restores Date.now(). Same pattern as
+// the reprime clock above.
+let _advisoryNowOverride: number | null = null;
+
+function advisoryNow(): number {
+  return _advisoryNowOverride ?? Date.now();
+}
+
+/** Drop entries whose TTL expired; a lost event must not wedge the emitter. */
+function pruneUnresolvedAdvisories(now: number = advisoryNow()): void {
+  for (const [id, entry] of _unresolvedAdvisories) {
+    if (now - entry.emittedAt >= UNRESOLVED_ADVISORY_TTL_MS) _unresolvedAdvisories.delete(id);
+  }
+}
+
+/**
+ * Record an advisory as in flight. Called by the send funnel only after every
+ * suppression path has passed, so a suppressed message never registers.
+ */
+export function registerUnresolvedAdvisory(entry: UnresolvedAdvisory): void {
+  pruneUnresolvedAdvisories();
+  _unresolvedAdvisories.set(entry.id, entry);
+}
+
+/**
+ * Retire an in-flight advisory by id. Called from the `message_start` /
+ * `message_end` handlers with the id the delivered message carries in its
+ * details; unknown ids (regular messages, other producers) are a no-op.
+ */
+export function resolveUnresolvedAdvisory(id: string): void {
+  _unresolvedAdvisories.delete(id);
+}
+
+/**
+ * True while an advisory of this kind is in flight (and its TTL has not
+ * expired). Emitters use this to refuse stacking a second notice behind one
+ * that has not landed yet.
+ */
+export function hasUnresolvedAdvisory(advisory: string): boolean {
+  pruneUnresolvedAdvisories();
+  for (const entry of _unresolvedAdvisories.values()) {
+    if (entry.advisory === advisory) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop every in-flight advisory. Session boundary + test reset: the next
+ * session must not inherit the previous one's unresolved flags.
+ */
+export function clearUnresolvedAdvisories(): void {
+  _unresolvedAdvisories.clear();
+}
+
+/**
+ * Test hook: pin the clock used by advisory TTL pruning so fixtures can
+ * prove the window opens without waiting real minutes. Pass null to restore
+ * Date.now().
+ */
+export function _setAdvisoryClockForTests(nowMs: number | null): void {
+  _advisoryNowOverride = nowMs;
+}
 
 /** Hard cap on distinct tracked bodies per session (oldest evicted). */
 const REPRIME_MAX_ENTRIES = 300;
@@ -555,6 +654,16 @@ export function sendTrackedMessage(
     type: Injection["type"];
     source: string;
     steer?: boolean;
+    /**
+     * Mark this send as an advisory of the given kind. The funnel then
+     * registers it in the unresolved-advisory registry, tags the delivered
+     * message's details with its correlation id (`BRAID_ID`), and the append
+     * events (`message_start`/`message_end`) retire it. Only accepted sends
+     * register: every suppression path above returns before the
+     * registration. Advisory kinds are owned by their emitters; this module
+     * never learns what any kind means.
+     */
+    advisory?: string;
   } = { type: "other", source: "unknown" },
   /**
    * `bypassFloodCap: true` skips the per-source / per-priority flood
@@ -671,15 +780,26 @@ export function sendTrackedMessage(
   });
 
   // Tag message metadata so compaction can identify injected messages
-  // and exclude them from LLM summarization (prevents nudge conflate)
-  if (injectionMeta.type !== "other") {
+  // and exclude them from LLM summarization (prevents nudge conflate).
+  // An advisory also carries its registry correlation id here: the append
+  // events repeat the same `details` object, which is how the registry
+  // entry retires (see the registry block above).
+  const advisory = injectionMeta.advisory;
+  const advisoryId = advisory === undefined ? undefined : nextId("adv");
+  if (injectionMeta.type !== "other" || advisoryId !== undefined) {
     const existingDetails =
       typeof params.details === "object" && params.details !== null
         ? (params.details as Record<string, unknown>)
         : {};
-    existingDetails[BRAID_INJECTED] = true;
-    existingDetails[BRAID_SOURCE] = injectionMeta.source;
+    if (injectionMeta.type !== "other") {
+      existingDetails[BRAID_INJECTED] = true;
+      existingDetails[BRAID_SOURCE] = injectionMeta.source;
+    }
+    if (advisoryId !== undefined) existingDetails[BRAID_ID] = advisoryId;
     params.details = existingDetails;
+  }
+  if (advisoryId !== undefined && advisory !== undefined) {
+    registerUnresolvedAdvisory({ id: advisoryId, advisory, emittedAt: advisoryNow() });
   }
 
   // Translate the declared delivery class into pi-core's option shape once.
@@ -781,12 +901,13 @@ export function clearInjections(sessionId?: string): void {
 }
 
 /**
- * Clear ALL injection buckets AND per-session reprime state.
- * Nuclear option for testing.
+ * Clear ALL injection buckets, per-session reprime state, and in-flight
+ * advisory registrations. Nuclear option for testing.
  */
 export function clearAllBuckets(): void {
   _buckets.clear();
   _reprime.clear();
+  clearUnresolvedAdvisories();
 }
 
 /**
@@ -842,6 +963,22 @@ export function registerInjectionTracker(pi: {
     reconstructInjectionBucket(ctx);
   });
 
+  // Advisory retirement: pi emits `message_start` + `message_end` when a
+  // custom message is appended (both for the immediate append and for a
+  // parked flush; a steered message emits them when the running loop consumes
+  // it). The event's message carries the `details` object this module tagged
+  // with `BRAID_ID`, so the id in the event is the whole correlation. Both
+  // events are handled: one fires on append, and pairing them means a future
+  // pi change to either emission point still retires the entry.
+  const retireAdvisoryFromEvent = (event: unknown) => {
+    const message = (event as { message?: { details?: unknown } } | null | undefined)?.message;
+    const details = message?.details as Record<string, unknown> | undefined;
+    const id = details?.[BRAID_ID];
+    if (typeof id === "string") resolveUnresolvedAdvisory(id);
+  };
+  onAny(MESSAGE_START, retireAdvisoryFromEvent);
+  onAny(MESSAGE_END, retireAdvisoryFromEvent);
+
   // Branch reconstruction at the session boundary. Background phase: after
   // every MemoryState handler (including context-lifecycle's clearInjections)
   // has run. Synchronous body on purpose: the rebuild must be in place before
@@ -868,6 +1005,10 @@ export function registerInjectionTracker(pi: {
     // the session file, so the next session_start reconstructs them.
     if (sessionId) _buckets.delete(sessionId);
     if (_activeSessionId) _buckets.delete(_activeSessionId);
+    // In-flight advisories belong to the session that emitted them; the next
+    // session must not inherit an unresolved flag (its own notices would be
+    // silently suppressed until the TTL).
+    clearUnresolvedAdvisories();
     setActiveSessionId(undefined);
   });
 }
