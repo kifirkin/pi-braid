@@ -31,9 +31,16 @@
  * `$`, a backtick, `"`, `\` and a newline are escaped there, so a backslash
  * before any other character stays literal and `"\-\-no-exit-code"` is the
  * argument `\-\-no-exit-code`, not the flag. A body the shell cannot parse is
- * refused rather than read — an open quote, a leading boundary operator, and a
- * body ending on `&&`, `||` or `|` are `sh -c` syntax errors — because no
- * command runs, and an exemption over no command verifies nothing. Splitting
+ * refused rather than read — an open quote, a leading boundary operator, a
+ * body ending on `&&`, `||` or `|` (a trailing newline does not complete one),
+ * and an opening `(` or `{` group token that is never closed are `sh -c`
+ * syntax errors — because no command runs, and an exemption over no command
+ * verifies nothing. The remaining unparsed shapes stay accepted and are read
+ * as what they lexically are: a stray `)` or `}` with no open (a `)` delimits
+ * a case pattern and a `}` can be an argument), an empty command between
+ * boundaries (`knip … && ; knip …`), an unclosed `${…}` expansion, and a
+ * heredoc's body, which is read as commands rather than as its own text.
+ * Splitting
  * at every boundary is deliberately stricter than the shell's exit-code flow:
  * a segment whose failure cannot, on its own, reach
  * the chain's exit code (an earlier line of a newline-separated body, an
@@ -65,6 +72,22 @@ const DQ_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
 
 /** The boundary operators a command must follow. */
 const DANGLING_BOUNDARY = new Set(["&&", "||", "|"]);
+
+/**
+ * A `{` or `}` is a grouping token only as a word of its own at a command
+ * position (`{ cmd; }`, `f() { cmd; }`); inside a word it is brace expansion
+ * (`x={a,b}`) or an expansion (`${VAR}`), which the shells run. A newline
+ * starts a command, a space does not, so `echo hi {` is one word while
+ * `echo hi\n{` opens a group.
+ */
+function isGroupBrace(body, i) {
+  const after = body[i + 1];
+  if (after !== undefined && !/[\s;&|(){}]/.test(after)) return false;
+  let k = i - 1;
+  while (k >= 0 && (body[k] === " " || body[k] === "\t")) k--;
+  if (k < 0) return true;
+  return body[k] === "\n" || /[;&|(){}]/.test(body[k]);
+}
 
 /**
  * `check:*` scripts deliberately outside the chain. Each must be advisory by
@@ -121,8 +144,9 @@ function stripComments(body) {
  *
  * The split also reports the ways a body is not a command the shell can run
  * at all, because an exemption cannot be verified against one: a quote left
- * open, a body that starts with a boundary operator, and a body whose last
- * boundary operator is `&&`, `||` or `|` with no command after it. (`;` and
+ * open, a body that starts with a boundary operator, a body whose last
+ * boundary operator is `&&`, `||` or `|` with no command after it, and an
+ * opening group (`(`, or `{` as a group token) the body never closes. (`;` and
  * `&` may end a body — `knip ... ;` runs — so only the three completing
  * operators are refused.)
  */
@@ -130,7 +154,9 @@ function scriptSegments(body) {
   const parts = [];
   let current = "";
   let quote = null;
-  let lastBoundary = null;
+  let lastCommandBoundary = null;
+  let parens = 0;
+  let braces = 0;
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
     if (quote !== null) {
@@ -153,11 +179,21 @@ function scriptSegments(body) {
       pair === "&&" || pair === "||" || ch === ";" || ch === "\n" || ch === "&" || ch === "|";
     if (boundary) {
       parts.push(current);
-      lastBoundary = pair === "&&" || pair === "||" ? pair : ch;
+      // A newline ends a line, not necessarily a command: `knip … &&\n knip …`
+      // continues. Only a non-newline boundary can leave the body dangling.
+      if (ch !== "\n") lastCommandBoundary = pair === "&&" || pair === "||" ? pair : ch;
       current = "";
       if (pair === "&&" || pair === "||") i++;
       continue;
     }
+    // Group balance: an opening `(` or `{` group that the body never closes is
+    // a syntax error in every shell. A `)` or `}` with nothing open is not read
+    // as an error (a `)` delimits a case pattern, a `}` can be an argument),
+    // so only openings count forward and a stray close is left in place.
+    if (ch === "(") parens++;
+    else if (ch === ")" && parens > 0) parens--;
+    else if (ch === "{" && isGroupBrace(body, i)) braces++;
+    else if (ch === "}" && braces > 0 && isGroupBrace(body, i)) braces--;
     current += ch;
   }
   parts.push(current);
@@ -167,9 +203,12 @@ function scriptSegments(body) {
     openQuote: quote !== null,
     leading: /^[;&|]+/.exec(body.trimStart())?.[0] ?? null,
     dangling:
-      lastBoundary !== null && tail.trim() === "" && DANGLING_BOUNDARY.has(lastBoundary)
-        ? lastBoundary
+      lastCommandBoundary !== null &&
+      tail.trim() === "" &&
+      DANGLING_BOUNDARY.has(lastCommandBoundary)
+        ? lastCommandBoundary
         : null,
+    unclosed: parens > 0 ? "(" : braces > 0 ? "{" : null,
   };
 }
 
@@ -234,10 +273,12 @@ function segmentsWithoutFlag({ segments }) {
  * on every command in the body carrying the flag; a body a shell refuses to
  * parse runs no command, so the exemption would vouch for nothing.
  */
-function shellRefusal({ openQuote, leading, dangling }) {
+function shellRefusal({ openQuote, leading, dangling, unclosed }) {
   if (openQuote) return "a quote is left open";
   if (leading !== null) return `it starts with \`${leading}\``;
   if (dangling !== null) return `it ends on \`${dangling}\` with no command after it`;
+  if (unclosed === "(") return "a `(` is never closed";
+  if (unclosed === "{") return "a `{` group is never closed";
   return null;
 }
 

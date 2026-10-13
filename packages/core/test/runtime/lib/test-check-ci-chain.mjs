@@ -37,6 +37,10 @@
  *  17. a body the shell cannot parse is refused rather than exempted: an open
  *      quote, a leading boundary operator and a dangling `&&`, `||` or `|`
  *      -> exit 1, while a body ending on `;` or `&` (a command) stays clean
+ *  18. an opening group the body never closes and a body left dangling by a
+ *      trailing newline are refused too (`{ knip …`, `(knip …`, `knip … &&\n`)
+ *      -> exit 1, while brace expansion, an expansion, an argument `}` and a
+ *      line continued after `&&` stay clean -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -303,6 +307,59 @@ test("a body the shell cannot parse is refused, not exempted", () => {
     "knip --reporter json --no-exit-code;",
     "knip --reporter json --no-exit-code &",
     "knip --reporter json --no-exit-code\n",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /check-ci-chain: clean/);
+  }
+});
+
+test("an opening group the shell never closes is refused, not exempted", () => {
+  // Every shell refuses these: the `{` group or the `(` never closes, so no
+  // command in the body runs and the exemption would vouch for nothing.
+  for (const [body, reason] of [
+    ["{ knip --reporter json --no-exit-code", /a `\{` group is never closed/],
+    ["(knip --reporter json --no-exit-code", /a `\(` is never closed/],
+    ["echo ({) --no-exit-code", /a `\{` group is never closed/],
+    ["knip --reporter json --no-exit-code &&\n", /ends on `&&` with no command after it/],
+    ["knip --reporter json --no-exit-code |\n", /ends on `\|` with no command after it/],
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /is not a command `sh -c` can run/);
+    assert.match(out, reason, `${JSON.stringify(body)}: ${out}`);
+  }
+
+  // A `{` inside a word is brace expansion, a `(` can close on the same line,
+  // a `}` can be an argument and a line can continue after `&&`: these run, so
+  // they stay clean.
+  for (const body of [
+    "knip --reporter json --no-exit-code {a,b}",
+    "knip --reporter json --no-exit-code ${VAR}",
+    "knip --reporter json --no-exit-code }",
+    "( knip --reporter json --no-exit-code )",
+    "knip --reporter json --no-exit-code &&\n echo --no-exit-code",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /check-ci-chain: clean/);
+  }
+
+  // A stray close with no open and an empty command between boundaries are not
+  // read as errors (a `)` delimits a case pattern and a `}` can be an
+  // argument); the header names them as the shapes the balance does not model.
+  for (const body of [
+    "knip --reporter json --no-exit-code )",
+    "knip --reporter json --no-exit-code && ; knip --reporter json --no-exit-code",
   ]) {
     const { status, out } = runCase({
       ciYml: workflow(["npm ci", "npm run ci:check"]),

@@ -35,8 +35,10 @@
  * its callee resolves to a `node:fs` import. A method that happens to share a
  * write-family name (`new Widget().mkdir(...)`) is therefore not reported,
  * and a rename cannot hide the call. A capture statement ends at `;`, `,`, a
- * newline or the file's end, and a comment before that end does not stop the
- * binding: `const wf = fs.writeFileSync // note` is the same binding. The
+ * newline or the file's end, and a comment between its tokens does not stop
+ * the binding: `const wf = fs.writeFileSync // note` binds, and so does the
+ * same capture with a block comment between the name and `=`, between the `=`
+ * and the callee, or between a bracket key's `[` and its quoted name. The
  * scan reads the source with comments and the interiors of string, template
  * and regex literals masked out, so a write-family name named only in prose
  * or in a string is not a site; a `}` inside a comment, a string or a regex
@@ -312,11 +314,12 @@ function readWord(text, i, to = text.length) {
  *
  * With `stopAtClose` the walk returns at the `}` that closes the enclosing
  * template interpolation, tracking brace depth so an object literal inside
- * (`${{ a: 1 }}`) does not end it early.
+ * (`${{ a: 1 }}`) does not end it early. `onComment` reports each comment
+ * region, so a caller can blank comments without touching quoted text.
  *
  * Returns `{ i, prev }`, where `i` is the index the walk stopped at.
  */
-function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () => {} } = {}) {
+function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () => {}, onComment = () => {} } = {}) {
   let i = from;
   let depth = 0;
   // The `)` just consumed closed a statement head, so a `/` after it starts a
@@ -330,6 +333,7 @@ function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () =
       const nl = text.indexOf("\n", i);
       const end = nl === -1 || nl > to ? to : nl;
       blank(i, end, false);
+      onComment(i, end);
       i = end;
       continue;
     }
@@ -337,6 +341,7 @@ function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () =
       const close = text.indexOf("*/", i + 2);
       const end = close === -1 ? to : Math.min(to, close + 2);
       blank(i, end, false);
+      onComment(i, end);
       i = end;
       continue;
     }
@@ -471,6 +476,27 @@ function maskNonCode(text) {
   return { masked: out.join(""), isCode };
 }
 
+/**
+ * Blank the comments in `text` to whitespace, preserving offsets and
+ * newlines, while the interiors of string, template and regex literals stay.
+ * A comment is whitespace inside a statement, so a comment between the tokens
+ * of a capture does not hide it (`const wf = fs.writeFileSync // note` binds,
+ * and so does the same capture with a comment before the `=`, after it, or
+ * between a bracket key's `[` and its quoted name), and only quoted text (a
+ * module specifier, a bracket key) has to stay in place.
+ */
+function blankComments(text) {
+  const out = text.split("");
+  scanCode(text, 0, text.length, {
+    onComment: (from, to) => {
+      for (let k = Math.max(0, from); k < Math.min(to, text.length); k++) {
+        if (out[k] !== "\n") out[k] = " ";
+      }
+    },
+  });
+  return out.join("");
+}
+
 // ── Callee resolution ───────────────────────────────────────────────────────
 
 /**
@@ -478,16 +504,18 @@ function maskNonCode(text) {
  * or default import) and local names bound to a write-family function.
  * Imports, `require` calls and local captures are all read; captures are
  * resolved to a fixpoint (bounded) so `const a = fs; const wf = a.mkdir`
- * still lands.
+ * still lands. Comments are blanked to whitespace first (`bare`), so a
+ * comment between the tokens of a binding does not hide it.
  */
 function fsBindings(text, isCode) {
   const namespaces = new Set();
   const writes = new Map();
+  const bare = blankComments(text);
 
   const each = (re, fn) => {
     re.lastIndex = 0;
     let m;
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(bare))) {
       if (isCode[m.index]) fn(m);
     }
   };
@@ -596,8 +624,9 @@ function fsBindings(text, isCode) {
     // `const wf = fs.writeFileSync`, `let wf; wf = fs.writeFileSync`,
     // `const wf = fs.writeFileSync.bind(fs)` and the second declarator of
     // `const wf = fs.writeFileSync, md = fs.mkdirSync` all bind the name.
-    // The statement ends at `;`, `,`, a newline or the file's end, and a
-    // comment before that end does not stop the binding:
+    // The walk runs over comments blanked to whitespace (see `bare`), so a
+    // comment between the tokens does not stop the binding: the statement
+    // still ends at `;`, `,`, a newline or the file's end, and
     // `const wf = fs.writeFileSync // note` still binds.
     each(
       /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|\/\/|\/\*|$)/g,

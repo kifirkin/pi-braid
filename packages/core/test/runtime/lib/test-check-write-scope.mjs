@@ -79,6 +79,10 @@
  *  40. `await (p) / 2` is a division, not a regex: a cwd write on the same
  *      line as the division is reported -> exit 1 (an `await` statement head
  *      is only transparent after `for`)
+ *  41. a comment between the tokens of a capture does not break the binding:
+ *      before the `=`, after the `=`, inside a quoted bracket key and before a
+ *      destructured `=` -> exit 1 each, while a non-fs receiver and a capture
+ *      named only in a comment stay clean -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -923,4 +927,42 @@ export async function f(p: number): Promise<void> {
   assert.equal(status, 1, out);
   assert.match(out, /packages\/core\/src\/await-division\.ts:4/);
   assert.match(out, /process\.cwd\(\)/);
+});
+
+test("a comment between the tokens of a capture does not break the binding", () => {
+  // A comment is whitespace inside a statement, so each spelling binds `wf` to
+  // `writeFileSync` exactly as its comment-free twin does.
+  const capture = (line) => `import * as fs from "node:fs";
+import { join } from "node:path";
+${line}
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  for (const line of [
+    "const wf /* x */ = fs.writeFileSync",
+    "const wf = /* x */ fs.writeFileSync",
+    'const wf = fs[/* x */ "writeFileSync"]',
+    'const wf = fs /* x */ ["writeFileSync"]',
+    "const wf /* x */: typeof fs.writeFileSync = fs.writeFileSync",
+    "const { writeFileSync: wf } /* x */ = fs",
+  ]) {
+    const { status, out } = runCase("packages/core/src/comment-tokens.ts", capture(line));
+    assert.equal(status, 1, `${line}: ${out}`);
+    assert.match(out, /packages\/core\/src\/comment-tokens\.ts:4/, `${line}: ${out}`);
+    assert.match(out, /process\.cwd\(\)/, `${line}: ${out}`);
+  }
+
+  // A receiver that is not an fs namespace still binds nothing through the
+  // same spelling, and a capture named only in a comment is not a site.
+  for (const [content, label] of [
+    [
+      `import { join } from "node:path";
+const wf = widget.writeFileSync /* x */
+wf(join(process.cwd(), "leak.json"), "{}");`,
+      "a non-fs receiver",
+    ],
+    ["// const wf = fs.writeFileSync /* x */", "a comment only"],
+  ]) {
+    const { status, out } = runCase("packages/core/src/comment-tokens-control.ts", content);
+    assert.equal(status, 0, `${label}: ${out}`);
+    assert.match(out, /0 write sites/, `${label}: ${out}`);
+  }
 });
