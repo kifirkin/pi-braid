@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { createLogger } from "../logger.js";
-import { HEALTHCHECK_DIR } from "pi-braid/lib";
+import { healthcheckDir } from "pi-braid/lib";
 import { Type } from "typebox";
 import type {
   AgentToolResult,
@@ -35,7 +35,8 @@ const log = createLogger("healthcheck");
  * - Agent configuration (core types and hooks)
  * - System resources (memory, CPU, disk)
  *
- * Storage: temporary files in ~/.pi/healthcheck/
+ * Storage: probe scratch files and the saved report under the live braid
+ * home's healthcheck dir (`healthcheckDir()`; BRAID_HOME is honored).
  */
 
 const healthcheckSchema = Type.Object({
@@ -69,6 +70,16 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       const requestedCats = params.categories;
       const shouldRun = (cat: string) =>
         !requestedCats || requestedCats.includes(cat.toLowerCase());
+
+      // The probe scratch dir exists before any category runs: the tools
+      // probes use it as their cwd, and the report lands in it below. A
+      // refused root (no absolute braid home) leaves it absent: the probes
+      // that need it report their own failure and the report write warns.
+      try {
+        ensureHcDir();
+      } catch (err) {
+        log.warn(`healthcheck scratch dir unavailable: ${err}`);
+      }
 
       const allChecks: import("./checks/types.js").CheckResult[] = [];
 
@@ -107,9 +118,8 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       const text = formatReport(report);
 
       try {
-        ensureHcDir();
         const reportFile = path.join(
-          HEALTHCHECK_DIR,
+          healthcheckDir(),
           `report-${Date.now()}.json`,
         );
         fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));

@@ -9,6 +9,9 @@
  *   browser-screenshot saveScreenshotToFile (no live browser needed)
  *   browser-profile    prepareScrapingProfile's mkdir/lock-clear (no Chrome)
  *   healthcheck        testMemoryAndState's read-write-unlink probe
+ *   healthcheck-writers testFilesystem's write-test/subdir probes plus the
+ *                      extension's own report write, driven through the
+ *                      registered tool (filesystem category only)
  *
  * Not a test file: state-paths.test.ts spawns it.
  */
@@ -59,6 +62,34 @@ if (mode === "observatory") {
     status: c.status,
     message: c.message,
   }));
+  process.stdout.write(JSON.stringify({ checks }) + "\n");
+} else if (mode === "healthcheck-writers") {
+  const { testFilesystem } =
+    await import("../healthcheck/checks/filesystem.ts");
+  const { default: healthcheckExtension } =
+    await import("../healthcheck/index.ts");
+  const checks = testFilesystem().map((c) => ({
+    name: c.name,
+    status: c.status,
+    message: c.message,
+  }));
+
+  // The extension's own report write, driven through the registered tool.
+  let registered = null;
+  healthcheckExtension({
+    registerTool(tool) {
+      registered = tool;
+    },
+    on() {},
+    registerCommand() {},
+    getAllTools() {
+      return [];
+    },
+  });
+  if (typeof registered?.execute !== "function") {
+    throw new Error("the healthcheck extension registered no executable tool");
+  }
+  await registered.execute("containment", { categories: ["filesystem"] });
   process.stdout.write(JSON.stringify({ checks }) + "\n");
 } else {
   throw new Error(`unknown mode: ${mode}`);

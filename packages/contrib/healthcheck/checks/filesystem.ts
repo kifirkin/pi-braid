@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { CheckResult } from "./types.js";
-import { HC_DIR, ensureHcDir, check } from "./helpers.js";
+import { ensureHcDir, check } from "./helpers.js";
+import { healthcheckDir } from "pi-braid/lib";
 
 export function testFilesystem(): CheckResult[] {
   const checks: CheckResult[] = [];
@@ -11,7 +12,7 @@ export function testFilesystem(): CheckResult[] {
   checks.push(
     check("Filesystem", "write", () => {
       ensureHcDir();
-      const testFile = path.join(HC_DIR, "write-test.txt");
+      const testFile = path.join(healthcheckDir(), "write-test.txt");
       fs.writeFileSync(testFile, "healthcheck write test");
       const read = fs.readFileSync(testFile, "utf-8");
       if (read !== "healthcheck write test") {
@@ -27,7 +28,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: Read file
   checks.push(
     check("Filesystem", "read", () => {
-      const testFile = path.join(HC_DIR, "write-test.txt");
+      const testFile = path.join(healthcheckDir(), "write-test.txt");
       if (!fs.existsSync(testFile)) {
         return {
           status: "fail",
@@ -42,7 +43,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: Append/modify file
   checks.push(
     check("Filesystem", "modify", () => {
-      const testFile = path.join(HC_DIR, "write-test.txt");
+      const testFile = path.join(healthcheckDir(), "write-test.txt");
       const original = fs.readFileSync(testFile, "utf-8");
       fs.writeFileSync(testFile, `${original}\nappended`);
       const modified = fs.readFileSync(testFile, "utf-8");
@@ -56,7 +57,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: Create directory
   checks.push(
     check("Filesystem", "mkdir", () => {
-      const testDir = path.join(HC_DIR, "test-subdir");
+      const testDir = path.join(healthcheckDir(), "test-subdir");
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true });
       }
@@ -71,7 +72,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: List directory (skip if empty - cleanup may have run)
   checks.push(
     check("Filesystem", "listdir", () => {
-      const entries = fs.readdirSync(HC_DIR);
+      const entries = fs.readdirSync(healthcheckDir());
       return { status: "pass", message: `Listed ${entries.length} entries` };
     }),
   );
@@ -79,7 +80,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: Delete file
   checks.push(
     check("Filesystem", "delete", () => {
-      const testFile = path.join(HC_DIR, "write-test.txt");
+      const testFile = path.join(healthcheckDir(), "write-test.txt");
       if (fs.existsSync(testFile)) {
         fs.unlinkSync(testFile);
       }
@@ -93,7 +94,7 @@ export function testFilesystem(): CheckResult[] {
   // Test: Delete directory
   checks.push(
     check("Filesystem", "rmdir", () => {
-      const testDir = path.join(HC_DIR, "test-subdir");
+      const testDir = path.join(healthcheckDir(), "test-subdir");
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true });
       }

@@ -2,11 +2,7 @@
  * Cognitive Memory - constants and configuration.
  */
 
-import {
-  SEMANTIC_MEMORY_FILE,
-  LEGACY_MEMORY_FILE,
-  MEMORY_DIR as BRAID_MEMORY_DIR,
-} from "../config/braid-paths.js";
+import { SEMANTIC_MEMORY_FILE, MEMORY_DIR as BRAID_MEMORY_DIR } from "../config/braid-paths.js";
 import type { CognitiveMemoryType } from "./types.js";
 
 // Storage paths - consolidated under ~/.pi/agent/braid/memory/
@@ -17,8 +13,9 @@ import type { CognitiveMemoryType } from "./types.js";
 export const MEMORY_DIR = BRAID_MEMORY_DIR;
 export const MEMORY_FILE = SEMANTIC_MEMORY_FILE;
 
-/** Legacy path (~/.pi/memory/memory.json) kept for graceful migration */
-export const LEGACY_MEMORY_FILE_PATH = LEGACY_MEMORY_FILE;
+// No legacy path constant here: that read resolves per call through
+// braid-paths' legacyMemoryFilePath(), so a pinned braid home keeps its own
+// predecessor instead of the default tree's store.
 
 // Constraints
 export const MAX_ENTRIES = 200;

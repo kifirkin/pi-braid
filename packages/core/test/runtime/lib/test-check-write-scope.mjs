@@ -68,6 +68,10 @@
  *      allowlisted, the same target spelled at its expanded form is a finding
  *  37. a local function shadowing an imported write-family name is reported
  *      (the real, fail-loud behaviour, pinned) -> exit 1
+ *  38. the JSX extensions are scanned and reachable: a `.js`/`.jsx` specifier
+ *      naming a `.tsx` re-export shim, an extensionless specifier naming the
+ *      same module, and a `.tsx` module writing on its own -> exit 1 each,
+ *      while a `.tsx` shim with no write export stays out of reach -> exit 0
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -807,4 +811,52 @@ writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
   const { status, out } = runCase("packages/core/src/shadow.ts", content);
   assert.equal(status, 1, out);
   assert.match(out, /packages\/core\/src\/shadow\.ts:4/);
+});
+
+test("the JSX extensions are scanned and reachable", () => {
+  // The twin table maps `.js`/`.jsx` onto `.tsx`; the scan must see `.tsx`
+  // files for those rows to name anything, and the extensionless candidates
+  // cover the same extensions.
+  const shim = `import { writeFileSync } from "node:fs";
+export { writeFileSync as wf };`;
+  const caller = (spec) => `import { wf } from "${spec}";
+import { join } from "node:path";
+export function save(): void {
+  wf(join(process.cwd(), "leak.json"), "{}");
+}`;
+
+  const js = runCase("packages/core/src/tsx-js-caller.ts", caller("./tsx-shim.js"), {
+    "packages/core/src/tsx-shim.tsx": shim,
+  });
+  assert.equal(js.status, 1, js.out);
+  assert.match(js.out, /packages\/core\/src\/tsx-js-caller\.ts:4/);
+
+  const jsx = runCase("packages/core/src/tsx-jsx-caller.ts", caller("./tsx-shim.jsx"), {
+    "packages/core/src/tsx-shim.tsx": shim,
+  });
+  assert.equal(jsx.status, 1, jsx.out);
+
+  const bare = runCase("packages/core/src/tsx-bare-caller.ts", caller("./tsx-shim"), {
+    "packages/core/src/tsx-shim.tsx": shim,
+  });
+  assert.equal(bare.status, 1, bare.out);
+
+  const own = runCase(
+    "packages/core/src/plain-tsx.tsx",
+    `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+export function save(): void {
+  writeFileSync(join(process.cwd(), "leak.json"), "{}");
+}`,
+  );
+  assert.equal(own.status, 1, own.out);
+  assert.match(own.out, /packages\/core\/src\/plain-tsx\.tsx:4/);
+
+  const control = runCase(
+    "packages/core/src/tsx-control-caller.ts",
+    caller("./tsx-shim.js"),
+    { "packages/core/src/tsx-shim.tsx": `export const helper = (n: number): number => n + 1;` },
+  );
+  assert.equal(control.status, 0, control.out);
+  assert.match(control.out, /0 write sites/);
 });

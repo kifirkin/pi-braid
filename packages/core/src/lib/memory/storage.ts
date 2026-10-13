@@ -13,8 +13,7 @@
 import * as fs from "node:fs/promises";
 import { fileMutationQueue } from "../utils/file-mutation-queue.js";
 import { createLogger } from "../core/logger.js";
-import { memoryDir, semanticMemoryFilePath } from "../config/braid-paths.js";
-import { LEGACY_MEMORY_FILE_PATH } from "./constants.js";
+import { memoryDir, semanticMemoryFilePath, legacyMemoryFilePath } from "../config/braid-paths.js";
 import { withStoreLock } from "./store-lock.js";
 import { mergeStores, type MergeStoresOptions } from "./store-merge.js";
 import type { CognitiveMemoryEntry, CognitiveMemoryStore } from "./types.js";
@@ -108,7 +107,7 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
     const store = parsed as CognitiveMemoryStore;
     if (!store.migratedAt) {
       try {
-        const legacyData = await fs.readFile(LEGACY_MEMORY_FILE_PATH, "utf-8");
+        const legacyData = await fs.readFile(legacyMemoryFilePath(), "utf-8");
         const legacyParsed = JSON.parse(legacyData);
         if (legacyParsed.memories?.length > 0) {
           const existingIds = new Set(store.memories.map((m) => m.id));
@@ -134,9 +133,10 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
     }
   }
 
-  // Fallback: try legacy path (~/.pi/memory/memory.json)
+  // Fallback: try the legacy pre-braid path (resolved off the live root, so a
+  // pinned braid home migrates only its own predecessor).
   try {
-    const legacyData = await fs.readFile(LEGACY_MEMORY_FILE_PATH, "utf-8");
+    const legacyData = await fs.readFile(legacyMemoryFilePath(), "utf-8");
     const legacyParsed = JSON.parse(legacyData);
 
     if (legacyParsed.memories && legacyParsed.memories.length > 0) {

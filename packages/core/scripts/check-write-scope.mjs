@@ -55,7 +55,8 @@
  * file: a package specifier, a path alias, or a relative path that names no
  * scanned module however it is spelled. A relative specifier is resolved with
  * its TypeScript twin tried when it carries an emitted extension, so a source
- * import spelled `./x.js` names a scanned `x.ts`.
+ * import spelled `./x.js` names a scanned `x.ts`; the JSX extensions are
+ * scanned too, so `./x.js`/`./x.jsx` reach a scanned `x.tsx`.
  * Shell-mediated writes are out of scope by construction:
  * `execSync(`mkdir -p "${dir}"`)` is a string and
  * `execSync("rm -f ./state.json")` is not a write-family call; the packages'
@@ -117,10 +118,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..", "..", "..");
 const selfPath = resolve(fileURLToPath(import.meta.url));
 
-const CODE_FILE = /\.(?:[cm]?[jt]s)$/;
+const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 /** A test tree: any `test/` path segment, or a file named `test-...`/`*.test.*`. */
 const TEST_PATH = /(^|\/)(?:test|tests|__tests__)\//;
-const TEST_FILE = /(^|\/)test[-.]|\.(?:test|spec)\.[cm]?[jt]s$/;
+const TEST_FILE = /(^|\/)test[-.]|\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 /** Write-family call names. Longest first so `rm` never shadows `rmSync`. */
 const WRITE_CALLS = [
@@ -960,13 +961,17 @@ function resolveLocalSpecifier(fromFile, spec) {
   }
   candidates.push(
     `${base}.ts`,
+    `${base}.tsx`,
     `${base}.mts`,
     `${base}.cts`,
     `${base}.mjs`,
     `${base}.js`,
+    `${base}.jsx`,
     join(base, "index.ts"),
+    join(base, "index.tsx"),
     join(base, "index.mjs"),
     join(base, "index.js"),
+    join(base, "index.jsx"),
   );
   for (const candidate of candidates) {
     const rel = relative(root, candidate);

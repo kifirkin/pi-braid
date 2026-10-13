@@ -1,22 +1,22 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { HEALTHCHECK_DIR } from "pi-braid/lib";
+import { healthcheckDir } from "pi-braid/lib";
 import type { CheckResult } from "./types.js";
 
-export const HC_DIR = HEALTHCHECK_DIR;
-
 export function ensureHcDir(): void {
-  if (!fs.existsSync(HC_DIR)) {
-    fs.mkdirSync(HC_DIR, { recursive: true });
+  const dir = healthcheckDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
 export function cleanupHcDir(): void {
   try {
-    if (fs.existsSync(HC_DIR)) {
-      const files = fs.readdirSync(HC_DIR);
+    const dir = healthcheckDir();
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir);
       for (const f of files) {
-        fs.unlinkSync(path.join(HC_DIR, f));
+        fs.unlinkSync(path.join(dir, f));
       }
     }
   } catch {

@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { CheckResult } from "./types.js";
-import { HC_DIR, check } from "./helpers.js";
+import { check } from "./helpers.js";
+import { healthcheckDir } from "pi-braid/lib";
 
 export function testAgentTools(pi: ExtensionAPI): CheckResult[] {
   const checks: CheckResult[] = [];
@@ -54,7 +55,7 @@ export function testAgentTools(pi: ExtensionAPI): CheckResult[] {
           "echo 'test' && ls -la ~/.pi/agent/settings.json 2>/dev/null | head -1",
           {
             encoding: "utf-8",
-            cwd: HC_DIR,
+            cwd: healthcheckDir(),
             timeout: 5000,
           },
         );
@@ -76,7 +77,7 @@ export function testAgentTools(pi: ExtensionAPI): CheckResult[] {
   checks.push(
     check("Tools", "file-ops-functional", () => {
       try {
-        const testFile = path.join(HC_DIR, "tool-test.txt");
+        const testFile = path.join(healthcheckDir(), "tool-test.txt");
         fs.writeFileSync(testFile, "tool functionality test");
         const content = fs.readFileSync(testFile, "utf-8");
         fs.unlinkSync(testFile);
@@ -96,7 +97,10 @@ export function testAgentTools(pi: ExtensionAPI): CheckResult[] {
   checks.push(
     check("Tools", "pi-exec", () => {
       try {
-        execSync("echo 'pi-exec test'", { encoding: "utf-8", cwd: HC_DIR });
+        execSync("echo 'pi-exec test'", {
+          encoding: "utf-8",
+          cwd: healthcheckDir(),
+        });
         return {
           status: "pass",
           message: "Shell execution (pi.exec) functional",

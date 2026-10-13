@@ -43,7 +43,7 @@ import { readFile as readFilePromise } from "node:fs/promises";
 import { asyncExists } from "../../../lib/utils/async-fs.js";
 import {
   episodesFilePath,
-  LEGACY_MEMORY_FILE,
+  legacyMemoryFilePath,
   metricsFilePath,
 } from "../../../lib/config/braid-paths.js";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";
@@ -494,9 +494,12 @@ async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
     // three-store files remain authoritative.
   }
 
-  // Backward compat: load episodic items from the legacy memory file path
-  const legacyMemPath = LEGACY_MEMORY_FILE;
+  // Backward compat: load episodic items from the legacy memory file path.
+  // The source resolves off the live root, so a pinned run reads its own
+  // predecessor instead of the default tree's store; a refused root throws
+  // into this catch and the migration is simply skipped.
   try {
+    const legacyMemPath = legacyMemoryFilePath();
     if (await asyncExists(legacyMemPath)) {
       const parsed = JSON.parse(await readFilePromise(legacyMemPath, "utf-8"));
       const episodicItems: Array<any> = Array.isArray(parsed.memories)

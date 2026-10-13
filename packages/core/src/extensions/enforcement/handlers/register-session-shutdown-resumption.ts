@@ -21,7 +21,7 @@ import { execSync } from "node:child_process";
 import { createLogger } from "../../../lib/core/logger.js";
 import { onEvent } from "../../../lib/events/event-types.js";
 import { getState } from "../state.js";
-import { SCRATCHPAD_DIR, braidDir } from "../../../lib/config/braid-paths.js";
+import { scratchpadDir, braidDir } from "../../../lib/config/braid-paths.js";
 import { SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 
@@ -53,9 +53,13 @@ export function registerSessionShutdownResumption(pi: ExtensionAPI): void {
       let recentDecisions: Array<{ id: string; text: string }> = [];
       let recentLearnings: Array<{ category: string; content: string }> = [];
 
-      const scratchpadFile = path.join(SCRATCHPAD_DIR, slug, "latest.json");
-      if (existsSync(scratchpadFile)) {
-        try {
+      // Prior state is a READ: the scratchpad root is resolved on every call,
+      // so a pinned run reads the tree the scratchpad writer wrote to. A
+      // refused root (no absolute braid home) degrades to no prior-state
+      // section instead of failing the resume write below.
+      try {
+        const scratchpadFile = path.join(scratchpadDir(), slug, "latest.json");
+        if (existsSync(scratchpadFile)) {
           const content = readFileSync(scratchpadFile, "utf-8");
           const parsed = JSON.parse(content);
           goal = parsed.goal ?? null;
@@ -72,9 +76,9 @@ export function registerSessionShutdownResumption(pi: ExtensionAPI): void {
               category: l.category ?? "",
               content: l.content ?? l.text ?? "",
             }));
-        } catch {
-          // scratchpad parse error -- non-fatal
         }
+      } catch (err) {
+        log.debug(`scratchpad prior-state read failed: ${err}`);
       }
 
       let uncommittedFiles: string[] = [];

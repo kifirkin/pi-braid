@@ -15,7 +15,7 @@ export type {
 } from "./ai/text-classifier.js";
 export { resolveVisionModel } from "./ai/model-resolver.js";
 
-export { HEALTHCHECK_DIR } from "./config/braid-paths.js";
+export { healthcheckDir, HEALTHCHECK_DIR } from "./config/braid-paths.js";
 
 export { onEvent } from "./events/event-types.js";
 

@@ -8,16 +8,31 @@
  * snippets, outcome stats and per-type breakdowns are not surfaced either
  * (details live in the files).
  * Empty state still renders the directive + 3 pointer lines so the agent
- * knows the stores exist as concepts. Cached per session (static content —
- * no fingerprint needed); invalidated on RESOURCES_DISCOVER.
+ * knows the stores exist as concepts. The two paths are resolved on every
+ * call, so a pinned braid home points at its own stores. Cached per session
+ * (static content — no fingerprint needed); invalidated on RESOURCES_DISCOVER.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
-import { EPISODES_FILE, SEMANTIC_MEMORY_FILE } from "../../../lib/config/braid-paths.js";
+import { episodesFilePath, semanticMemoryFilePath } from "../../../lib/config/braid-paths.js";
 
 interface MemorySectionCacheState {
   section?: string;
+}
+
+/**
+ * One `- <store> at <path>` pointer. The store path is resolved on every
+ * call, so a pinned run names the tree the writers wrote to; a refused root
+ * (no absolute braid home) names no directory, and the line says that
+ * instead of pointing at the default tree's unreadable copy.
+ */
+function pointerLine(store: string, storePath: () => string): string {
+  try {
+    return `- ${store} at ${storePath()}`;
+  } catch {
+    return `- ${store} at (unresolved: no absolute braid root)`;
+  }
 }
 
 /**
@@ -29,8 +44,8 @@ function renderMemoryBlock(): string {
   const lines: string[] = [
     "Memory stores — read or query on demand:",
     "",
-    `- episodes at ${EPISODES_FILE}`,
-    `- semantic at ${SEMANTIC_MEMORY_FILE}`,
+    pointerLine("episodes", episodesFilePath),
+    pointerLine("semantic", semanticMemoryFilePath),
     `- heuristics: session-scoped (no on-disk file)`,
   ];
   return lines.join("\n");

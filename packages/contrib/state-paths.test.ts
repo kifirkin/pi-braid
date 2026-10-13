@@ -19,6 +19,10 @@
  *      tree changes
  *   5. a hostile HOME ("" / "." / a relative path) refuses every default in a
  *      child, the real writer refuses, and the throwaway cwd gains nothing
+ *   6. the healthcheck writers (the filesystem probe set and the saved report)
+ *      run under the pin: the probe dir and the report file appear there,
+ *      while the child's HOME tree stays empty - a binding folded at module
+ *      load writes the default tree under that HOME instead
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -272,6 +276,49 @@ try {
     treeOf(hcHome).join(","),
   );
   fs.rmSync(hcHome, { recursive: true, force: true });
+
+  // 4b. the healthcheck writers: the write-test probe set and the report write
+  const writersHome = fs.mkdtempSync(
+    path.join(os.tmpdir(), "contrib-state-hcwriters-"),
+  );
+  const writers = runChild(DRIVER, ["healthcheck-writers"], {
+    ...process.env,
+    BRAID_HOME: pin,
+    HOME: writersHome,
+  });
+  check(
+    "healthcheck-writers child exits 0",
+    writers.status === 0,
+    writers.err.slice(0, 400),
+  );
+  check(
+    "healthcheck writer probes all pass under the pin",
+    Array.isArray(writers.json?.checks) &&
+      writers.json.checks.length === 9 &&
+      writers.json.checks.every((c: { status: string }) => c.status === "pass"),
+    JSON.stringify(writers.json),
+  );
+  const pinHcDir = path.join(pin, "healthcheck");
+  check(
+    "the write-test dir was created under the pin",
+    fs.existsSync(pinHcDir),
+  );
+  check(
+    "the saved report landed under the pin",
+    fs.existsSync(pinHcDir) &&
+      fs.readdirSync(pinHcDir).some((f) => /^report-.*\.json$/.test(f)),
+    fs.existsSync(pinHcDir) ? fs.readdirSync(pinHcDir).join(",") : "no dir",
+  );
+  check(
+    "healthcheck-writers child left the cwd tree unchanged",
+    treeOf(cwd).join(",") === cwdTree.join(","),
+  );
+  check(
+    "healthcheck-writers child left its HOME tree unchanged",
+    treeOf(writersHome).join(",") === "",
+    treeOf(writersHome).join(","),
+  );
+  fs.rmSync(writersHome, { recursive: true, force: true });
 
   // 5. a hostile HOME refuses every default (and the real writer refuses)
   for (const hostile of ["", ".", "rel-home"]) {

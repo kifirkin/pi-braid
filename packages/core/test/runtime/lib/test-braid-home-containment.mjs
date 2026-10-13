@@ -25,20 +25,34 @@
  *       constant (or drifts its suffix) is caught;
  *   (j) the five per-project stores share one projects leg and keep their
  *       file names, so a filename drift in any of them is caught even though
- *       the census writers drive only three of the five.
+ *       the census writers drive only three of the five;
+ *   (k) the resumption reader builds its prior-state section from the pinned
+ *       scratchpad tree: two goals are planted, one per tree, and the resume
+ *       must carry the pinned one;
+ *   (l) the prompt's memory pointer lines resolve the live store paths, and
+ *       name no path at all when no absolute root resolves;
+ *   (m) the legacy-memory migration source follows the live root: a pinned
+ *       run does not import a pre-braid store left under the default tree.
+ *
+ * Bound: the tree assertions below are a FINAL-STATE snapshot. A directory
+ * created and removed between samples, a write outside the checked roots (a
+ * sibling of the project dir), and a write through a pre-existing symlink are
+ * all invisible to them; a created symlink is visible (the entry is collected
+ * regardless of its type). The runtime containment legs and the source-level
+ * write gate are the nets for those shapes.
  *
  * Isolation: BRAID_HOME, pi's agent dir and the project dir are throwaway
  * temp dirs before any dist import, so the developer's live braid tree is
- * never written (and the one live-tree READ here - the scratchpad lookup the
- * shutdown handler does through the precomputed SCRATCHPAD_DIR - is scoped to
- * a slug no real project has).
+ * never read or written. The one case that plants state in the default tree
+ * writes a competing scratchpad goal under the throwaway HOME's tree, never
+ * the real one.
  *
  * Run: node test/runtime/lib/test-braid-home-containment.mjs
  */
 
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,6 +91,16 @@ const { episodesLockFilePath } = await import(
 const { semanticStoreLockFilePath } = await import(
   join(ROOT, "dist", "lib", "memory", "storage.js")
 );
+const { projectSlugFromCwd } = await import(
+  join(ROOT, "dist", "extensions", "memory", "scratchpad", "persistence.js")
+);
+const { reconstructMemorySection } = await import(
+  join(ROOT, "dist", "extensions", "core", "prompt-builder", "memory-section.js")
+);
+const {
+  default: threeMemoryStoresExtension,
+  getState: memoryStoresState,
+} = await import(join(ROOT, "dist", "extensions", "memory", "three-memory-stores", "index.js"));
 
 let passed = 0;
 let failed = 0;
@@ -241,6 +265,36 @@ await test("(c) a tag and a resume file land under the pin", async () => {
   assert.ok(
     resumeFiles.some((p) => p.endsWith(`${sep}resume.json`)),
     `resume.json must land under the pinned sessions tree, got ${JSON.stringify(resumeFiles)}`,
+  );
+});
+
+await test("(k) the resume payload carries the pinned scratchpad's goal", async () => {
+  // One goal per tree: the reader must build its prior-state section from the
+  // tree the scratchpad writer wrote to, so the default tree's copy - the one
+  // a folded constant resolves - must never reach the resume.
+  const pi = makeFakePi();
+  registerSessionShutdownResumption(pi);
+  const ctx = makeFakeCtx(pi, PROJECT);
+  const slug = projectSlugFromCwd(PROJECT);
+  for (const [root, goal] of [
+    [join(paths.AGENT, "braid"), "DEFAULT-TREE-GOAL"],
+    [BRAID_HOME, "PIN-TREE-GOAL"],
+  ]) {
+    mkdirSync(join(root, "scratchpads", slug), { recursive: true });
+    writeFileSync(
+      join(root, "scratchpads", slug, "latest.json"),
+      JSON.stringify({ goal, plans: [] }),
+    );
+  }
+
+  await firstHandler(pi, "session_shutdown")({}, ctx);
+  const resume = JSON.parse(
+    readFileSync(join(BRAID_HOME, "sessions", slug, "resume.json"), "utf-8"),
+  );
+  assert.equal(
+    resume.goal,
+    "PIN-TREE-GOAL",
+    "the resumed goal must come from the pinned scratchpad tree",
   );
 });
 
@@ -445,6 +499,8 @@ await test("(g) every live accessor equals its precomputed constant by default",
       [paths.OFFLOAD_DIR, paths.offloadDir()],
       [paths.PENDING_TIMERS_FILE, paths.getTimerFilePath()],
       [paths.TELEMETRY_DIR, paths.telemetryDir()],
+      [paths.HEALTHCHECK_DIR, paths.healthcheckDir()],
+      [paths.LEGACY_MEMORY_FILE, paths.legacyMemoryFilePath()],
       [paths.SHOWN_SIGNALS_FILE, paths.shownSignalsFilePath()],
       [paths.LOCK_FILE, paths.getLockFilePath()],
       [paths.WORKERS_FILE, paths.getWorkersFilePath()],
@@ -521,6 +577,78 @@ await test("(j) the per-project stores share one leg and keep their file names",
       `the per-project store shares the projects leg: ${file}`,
     );
   }
+});
+
+await test("(l) the prompt pointer lines resolve live and degrade on a refused root", async () => {
+  const pinnedBlock = await reconstructMemorySection(makeFakeCtx(makeFakePi(), PROJECT));
+  assert.ok(
+    pinnedBlock.includes(paths.episodesFilePath()),
+    `the episodes pointer must name the pinned store: ${pinnedBlock}`,
+  );
+  assert.ok(
+    pinnedBlock.includes(paths.semanticMemoryFilePath()),
+    `the semantic pointer must name the pinned store: ${pinnedBlock}`,
+  );
+  assert.ok(
+    !pinnedBlock.includes(paths.EPISODES_FILE),
+    `the pointer must not name the folded default spelling: ${pinnedBlock}`,
+  );
+
+  const savedHome = process.env.HOME;
+  const savedPin = process.env.BRAID_HOME;
+  try {
+    delete process.env.BRAID_HOME;
+    process.env.HOME = ".";
+    const hostileBlock = await reconstructMemorySection(makeFakeCtx(makeFakePi(), PROJECT));
+    assert.match(hostileBlock, /episodes/, `the store concepts still render: ${hostileBlock}`);
+    assert.match(hostileBlock, /semantic/, `the store concepts still render: ${hostileBlock}`);
+    assert.equal(
+      /(?:episodes|semantic) at [^(\s]/.test(hostileBlock),
+      false,
+      `a refused root must name no store path: ${hostileBlock}`,
+    );
+  } finally {
+    process.env.HOME = savedHome;
+    process.env.BRAID_HOME = savedPin;
+  }
+});
+
+await test("(m) the legacy migration source follows the live root", async () => {
+  // The pre-braid store is planted in the shape the old layout used, under
+  // the default tree's home. A pinned run reads its own predecessor, so the
+  // planted store must not be imported.
+  const project = mkdtempSync(join(tmpdir(), "braid-home-legacy-"));
+  const legacyDir = join(process.env.HOME, ".pi", "memory");
+  mkdirSync(legacyDir, { recursive: true });
+  writeFileSync(
+    join(legacyDir, "memory.json"),
+    JSON.stringify({
+      memories: [
+        {
+          id: "legacy-ep-1",
+          type: "episodic",
+          content: "DEFAULT-TREE-LEGACY-EPISODE",
+          timestamp: Date.now(),
+        },
+      ],
+    }),
+  );
+  assert.equal(
+    existsSync(paths.legacyMemoryFilePath()),
+    false,
+    `the pin's predecessor must be absent for this case: ${paths.legacyMemoryFilePath()}`,
+  );
+
+  const pi = makeFakePi();
+  threeMemoryStoresExtension(pi);
+  const ctx = makeFakeCtx(pi, project);
+  await firstHandler(pi, "session_start")({}, ctx);
+  const state = memoryStoresState(ctx);
+  assert.equal(
+    state.episodes.some((e) => e.task.includes("DEFAULT-TREE-LEGACY-EPISODE")),
+    false,
+    `a pinned run must not import the default tree's pre-braid store: ${JSON.stringify(state.episodes.map((e) => e.task))}`,
+  );
 });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);

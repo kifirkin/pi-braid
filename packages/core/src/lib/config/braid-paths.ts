@@ -111,6 +111,12 @@ export function scratchpadDir(): string {
   return path.join(braidDir(), "scratchpads");
 }
 
+/** Healthcheck scratch and report root, resolved on every call. Durable-write
+ *  state: the probes and the saved report must follow a pinned BRAID_HOME. */
+export function healthcheckDir(): string {
+  return path.join(braidDir(), "healthcheck");
+}
+
 /** Analytics metrics root, resolved on every call. */
 export function metricsDir(): string {
   return path.join(braidDir(), "metrics");
@@ -152,6 +158,19 @@ export function evidencePoolFilePath(): string {
 
 /** Legacy path for lib/memory (kept for graceful migration) */
 export const LEGACY_MEMORY_FILE = path.join(PI, "memory", "memory.json");
+
+/** Legacy pre-braid memory store, resolved on every call. The one path here
+ *  that is not a child of the live root: the old layout kept the store at
+ *  `<old root>/memory/memory.json`, with the braid home two levels below the
+ *  old root (`<old root>/agent/braid`), so this derives the source from the
+ *  live root the same way the precomputed default names it. Under a pinned
+ *  root that is the pin's own (normally absent) predecessor, never the store
+ *  under the developer's default tree: a read that imports prior state has to
+ *  follow the pin with everything else. Readers degrade when the root refuses
+ *  (see braidDir()): no source, no import. */
+export function legacyMemoryFilePath(): string {
+  return path.join(braidDir(), "..", "..", "memory", "memory.json");
+}
 
 /** Three-memory-stores retrospective episodes */
 export const EPISODES_FILE = path.join(MEMORY_DIR, "episodes.jsonl");
