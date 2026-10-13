@@ -1,4 +1,5 @@
 import { eventBus } from "../../../lib/events/event-bus.js";
+import { createLogger } from "../../../lib/core/logger.js";
 import { nextId } from "../../../lib/utils/id.js";
 
 /**
@@ -37,6 +38,8 @@ interface ErrorEntry {
 
 import { errorDir, errorsFilePath } from "../../../lib/config/braid-paths.js";
 import { TURN_END } from "../../../lib/core/event-names.js";
+
+const log = createLogger("error-tracking");
 
 const MAX_ERRORS = 100;
 
@@ -112,10 +115,15 @@ const errorSchema = Type.Object({
 });
 
 export default function errorCaptureExtension(pi: ExtensionAPI): void {
-  // Subscribe to tool_error events from enforcement's tool_result handler
+  // Subscribe to tool_error events from enforcement's tool_result handler.
+  // The bus calls listeners synchronously and never awaits them, so the
+  // capture promise is caught here: a refused store must warn instead of
+  // surfacing as an unhandled rejection nothing drains.
   eventBus.on("tool_error", (event) => {
     captureError(event.toolName, event.error, undefined, {
       turn: String(event.turn),
+    }).catch((err) => {
+      log.warn(`error capture refused: ${(err as Error).message}`);
     });
   });
 

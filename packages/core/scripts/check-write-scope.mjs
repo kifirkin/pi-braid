@@ -51,8 +51,11 @@
  * `Function.prototype` (`writeFileSync.call(…)`), a write-family name a local
  * module re-exports wholesale (`export * from "node:fs"` — the named forms are
  * followed), and an import specifier that resolves to no scanned file (a path
- * alias, or a module outside the scan roots). Shell-mediated writes are out of
- * scope by construction: `execSync(`mkdir -p "${dir}"`)` is a string and
+ * alias, or a module outside the scan roots; a relative specifier carrying a
+ * `.js`, `.mjs`, `.cjs` or `.jsx` extension is also tried as its TypeScript
+ * twin, so a source import spelled `./x.js` names a scanned `x.ts`).
+ * Shell-mediated writes are out of scope by construction:
+ * `execSync(`mkdir -p "${dir}"`)` is a string and
  * `execSync("rm -f ./state.json")` is not a write-family call; the packages'
  * own containment tests are the net for those writers. A target whose base is
  * genuinely dynamic — a template that starts at an interpolation the gate
@@ -904,13 +907,29 @@ function specifierPairs(list, separator) {
   return out;
 }
 
-/** The scanned file a relative specifier names, or null. An extensionless
- *  specifier resolves to a code file beside the importer, or its index. */
+/** TypeScript twins of the JS-family extensions a compiled specifier may
+ *  carry. The repo imports its own sources with the emitted spelling
+ *  (`from "../config/braid-paths.js"`), so `./x.js` must also name `./x.ts`. */
+const TS_TWINS = {
+  ".js": [".ts", ".tsx"],
+  ".mjs": [".mts"],
+  ".cjs": [".cts"],
+  ".jsx": [".tsx"],
+};
+
+/** The scanned file a relative specifier names, or null. The exact specifier
+ *  is tried first, then the TypeScript twin of its extension, then the
+ *  extensionless candidates beside the importer, or its index. */
 function resolveLocalSpecifier(fromFile, spec) {
   if (!spec.startsWith(".")) return null;
   const base = resolve(root, dirname(fromFile), spec);
-  const candidates = [
-    base,
+  const candidates = [base];
+  const ext = Object.keys(TS_TWINS).find((e) => spec.endsWith(e));
+  if (ext) {
+    const stripped = base.slice(0, -ext.length);
+    for (const twin of TS_TWINS[ext]) candidates.push(`${stripped}${twin}`);
+  }
+  candidates.push(
     `${base}.ts`,
     `${base}.mts`,
     `${base}.cts`,
@@ -919,7 +938,7 @@ function resolveLocalSpecifier(fromFile, spec) {
     join(base, "index.ts"),
     join(base, "index.mjs"),
     join(base, "index.js"),
-  ];
+  );
   for (const candidate of candidates) {
     const rel = relative(root, candidate);
     if (scannedFiles.has(rel)) return rel;

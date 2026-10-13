@@ -77,6 +77,7 @@ export const CHECKPOINT_DIR = path.join(BRAID, "checkpoints");
 export const ERROR_DIR = path.join(BRAID, "errors");
 export const SCRATCHPAD_DIR = path.join(BRAID, "scratchpads");
 export const METRICS_DIR = path.join(BRAID, "metrics");
+export const TELEMETRY_DIR = path.join(BRAID, "telemetry");
 export const HEALTHCHECK_DIR = path.join(BRAID, "healthcheck");
 /** Lossless flush target for offloaded stale tool results. Precomputed from
  *  the default root: a caller that WRITES here must resolve through
@@ -113,6 +114,11 @@ export function scratchpadDir(): string {
 /** Analytics metrics root, resolved on every call. */
 export function metricsDir(): string {
   return path.join(braidDir(), "metrics");
+}
+
+/** Telemetry sink root (context-heartbeat JSONL), resolved on every call. */
+export function telemetryDir(): string {
+  return path.join(braidDir(), "telemetry");
 }
 
 /** Workspace snapshot root, resolved on every call. */
@@ -198,6 +204,11 @@ export function degradationFilePath(): string {
 
 /** Shown-signals persistence: survive process restart for session resume dedup */
 export const SHOWN_SIGNALS_FILE = path.join(BRAID, "shown-signals.json");
+
+/** Shown-signals index, resolved on every call (write-through cache base). */
+export function shownSignalsFilePath(): string {
+  return path.join(braidDir(), "shown-signals.json");
+}
 
 /** Persistent one-shot timers (JSONL): survive process restart.
  *  Legacy precomputed path — kept for compatibility. Durable-write callers
@@ -289,7 +300,7 @@ export function getOffloadFilePath(
 export function getTimerFilePath(cwd?: string): string {
   if (!cwd) return path.join(braidDir(), "pending-timers.jsonl");
   const projectDir = sanitizePathForDir(cwd);
-  return path.join(braidDir(), "projects", projectDir, "pending-timers.jsonl");
+  return path.join(projectsDir(), projectDir, "pending-timers.jsonl");
 }
 
 /** Get the per-CWD module overrides store path.
@@ -309,7 +320,7 @@ export function getModuleOverridesFilePath(cwd: string): string {
     );
   }
   const projectDir = sanitizePathForDir(cwd);
-  return path.join(braidDir(), "projects", projectDir, "module-overrides.json");
+  return path.join(projectsDir(), projectDir, "module-overrides.json");
 }
 
 /** Get the per-CWD lock file path.
@@ -338,7 +349,7 @@ export function getWorkersFilePath(cwd?: string): string {
 export function getDeliverablesFilePath(cwd?: string): string {
   if (!cwd) return path.join(braidDir(), "deliverables.jsonl");
   const projectDir = sanitizePathForDir(cwd);
-  return path.join(braidDir(), "projects", projectDir, "deliverables.jsonl");
+  return path.join(projectsDir(), projectDir, "deliverables.jsonl");
 }
 
 /** Get the skills adoption usage file path. Durable write state: resolves

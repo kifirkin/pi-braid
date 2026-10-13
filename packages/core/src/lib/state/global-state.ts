@@ -756,8 +756,8 @@ export function getTimerExtensionFactoryState(): TimerExtensionFactoryState {
 // section below for why (a rewound branch must not inherit a project's history).
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { braidDir } from "../config/braid-paths.js";
+import { dirname } from "node:path";
+import { shownSignalsFilePath } from "../config/braid-paths.js";
 
 const _GLOBAL_KEY = "__braid_discoverability_shown";
 
@@ -832,11 +832,6 @@ export function markSignalShown(t: DiscoverySignalType): void {
 // accumulated project history without letting it override the branch.
 
 const _GLOBAL_PROJECT_SIGNAL_KEY = "__braid_project_shown_signals";
-
-/** The effective index path; braidDir() honors BRAID_HOME for test pinning. */
-function shownSignalsFilePath(): string {
-  return join(braidDir(), "shown-signals.json");
-}
 
 /**
  * Get the per-project shown-signals map from disk.

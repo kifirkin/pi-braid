@@ -19,7 +19,13 @@
  *       under the pin, the default tree under HOME and the project stay empty;
  *   (g) each live accessor equals its precomputed constant under a default
  *       home, so the two spellings of one layout cannot drift;
- *   (h) a relative or blank HOME refuses at braidDir(), not at the writer.
+ *   (h) a relative or blank HOME refuses at braidDir(), not at the writer;
+ *   (i) the two store locks resolve under the pin and keep the store's
+ *       `<file>.lock` name rule, so a lock that falls back to a folded
+ *       constant (or drifts its suffix) is caught;
+ *   (j) the five per-project stores share one projects leg and keep their
+ *       file names, so a filename drift in any of them is caught even though
+ *       the census writers drive only three of the five.
  *
  * Isolation: BRAID_HOME, pi's agent dir and the project dir are throwaway
  * temp dirs before any dist import, so the developer's live braid tree is
@@ -34,7 +40,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +71,12 @@ const { registerSessionShutdownResumption } = await import(
   join(ROOT, "dist", "extensions", "enforcement", "handlers", "register-session-shutdown-resumption.js")
 );
 const { getState } = await import(join(ROOT, "dist", "extensions", "enforcement", "state.js"));
+const { episodesLockFilePath } = await import(
+  join(ROOT, "dist", "extensions", "memory", "three-memory-stores", "episodes-disk.js")
+);
+const { semanticStoreLockFilePath } = await import(
+  join(ROOT, "dist", "lib", "memory", "storage.js")
+);
 
 let passed = 0;
 let failed = 0;
@@ -79,7 +91,9 @@ async function test(name, fn) {
   }
 }
 
-/** Relative file list under a root (sorted); [] when absent. */
+/** Relative entry list under a root (files and directories, sorted); [] when
+ *  absent. Directories carry no trailing separator, so a refused writer's
+ *  `mkdir` shows up in the same list a file write would. */
 function tree(root) {
   const out = [];
   const walk = (dir, rel) => {
@@ -91,8 +105,8 @@ function tree(root) {
     }
     for (const e of entries) {
       const childRel = rel ? `${rel}${sep}${e.name}` : e.name;
+      out.push(childRel);
       if (e.isDirectory()) walk(join(dir, e.name), childRel);
-      else out.push(childRel);
     }
   };
   walk(root, "");
@@ -231,7 +245,11 @@ await test("(c) a tag and a resume file land under the pin", async () => {
 });
 
 await test("(d) the project the session ran in gained nothing", () => {
-  assert.deepEqual(tree(PROJECT), [], "no sink may create a file in the project directory");
+  assert.deepEqual(
+    tree(PROJECT),
+    [],
+    "no sink may create a file or directory in the project directory",
+  );
 });
 
 // ── The census families: one durable write each, three shapes ────────────────
@@ -259,12 +277,16 @@ function runWriterProbe({ home, braidHome }) {
   });
   const line = (r.stdout ?? "").trim().split("\n").filter(Boolean).pop();
   let rows;
+  let unhandled;
   try {
-    rows = JSON.parse(line ?? "").rows ?? [];
+    const parsed = JSON.parse(line ?? "");
+    rows = parsed.rows ?? [];
+    unhandled = parsed.unhandled ?? [];
   } catch {
     rows = [];
+    unhandled = [];
   }
-  return { status: r.status, stderr: r.stderr ?? "", rows, project, fixtureRoot };
+  return { status: r.status, stderr: r.stderr ?? "", rows, unhandled, project, fixtureRoot };
 }
 
 /** Every family the census sweep closed must appear in the child's report. */
@@ -331,15 +353,34 @@ for (const hostileHome of [".", ""]) {
       "warn",
       `a refused tag write must warn, not go quiet (level=${tags?.level})`,
     );
+    // The tool_error entry point must report its refusal at warn too - the
+    // dropped-promise path left no log line at all.
+    const errors = run.rows.find((row) => row.family === "errors");
+    assert.equal(
+      errors?.level,
+      "warn",
+      `a refused tool_error capture must warn, not go unreported (level=${errors?.level})`,
+    );
+    // No listener may leave a rejection undrained: Node's default for an
+    // unhandled rejection is to throw, so this is the crash the bus path must
+    // not arm. The child collects and reports them.
+    assert.deepEqual(
+      run.unhandled,
+      [],
+      `no listener may leave a rejected promise undrained: ${JSON.stringify(run.unhandled)}`,
+    );
     assert.deepEqual(
       tree(run.project),
       [],
-      `no writer may create anything in the project: ${JSON.stringify(tree(run.project))}`,
+      `no writer may create a file or directory in the project: ${JSON.stringify(tree(run.project))}`,
+    );
+    const stray = tree(run.fixtureRoot).filter(
+      (f) => !/^probe-[^/]+$/.test(f) && !/^probe-[^/]+\/touched\.txt$/.test(f),
     );
     assert.deepEqual(
-      tree(run.fixtureRoot),
-      tree(run.fixtureRoot).filter((f) => /^probe-[^/]+\/touched\.txt$/.test(f)),
-      `no writer may create anything beside the fixture: ${JSON.stringify(tree(run.fixtureRoot))}`,
+      stray,
+      [],
+      `no writer may create anything beside the fixture: ${JSON.stringify(stray)}`,
     );
     rmSync(run.project, { recursive: true, force: true });
     rmSync(run.fixtureRoot, { recursive: true, force: true });
@@ -352,6 +393,11 @@ await test("(f) every census writer follows an absolute BRAID_HOME pin", () => {
   try {
     const run = runWriterProbe({ home, braidHome: pin });
     assert.equal(run.status, 0, `the child must exit 0: ${run.stderr}`);
+    assert.deepEqual(
+      run.unhandled,
+      [],
+      `a pinned run must drain every listener rejection: ${JSON.stringify(run.unhandled)}`,
+    );
     const files = tree(pin);
     for (const family of CENSUS_FAMILIES) {
       const needles = PINNED_PATHS[family];
@@ -396,8 +442,16 @@ await test("(g) every live accessor equals its precomputed constant by default",
       [paths.SKILLS_USAGE_FILE, paths.getSkillsUsageFilePath()],
       [paths.SKILLS_SESSIONS_FILE, paths.getSkillsSessionsFilePath()],
       [paths.BRAID_CONFIG_FILE, paths.getBraidConfigFilePath()],
+      [paths.OFFLOAD_DIR, paths.offloadDir()],
+      [paths.PENDING_TIMERS_FILE, paths.getTimerFilePath()],
+      [paths.TELEMETRY_DIR, paths.telemetryDir()],
+      [paths.SHOWN_SIGNALS_FILE, paths.shownSignalsFilePath()],
       [paths.LOCK_FILE, paths.getLockFilePath()],
       [paths.WORKERS_FILE, paths.getWorkersFilePath()],
+      // The store locks have no constant of their own: their precomputed
+      // spelling is the store constant plus `.lock`.
+      [`${paths.EPISODES_FILE}.lock`, episodesLockFilePath()],
+      [`${paths.SEMANTIC_MEMORY_FILE}.lock`, semanticStoreLockFilePath()],
     ];
     for (const [constant, live] of pairs) {
       assert.equal(live, constant, `the live accessor must equal its constant: ${constant}`);
@@ -421,6 +475,51 @@ await test("(h) a relative or blank HOME refuses at the base, not at the writer"
   } finally {
     process.env.HOME = pinnedHome;
     process.env.BRAID_HOME = pinnedBraid;
+  }
+});
+
+await test("(i) the store locks follow the pin and keep their file-name rule", () => {
+  // With BRAID_HOME pinned, a lock that fell back to a folded constant (the
+  // regression) resolves the default tree while the live store resolves the
+  // pin, so the pinned equality fails; a `.lock` suffix drift fails it too.
+  assert.equal(
+    episodesLockFilePath(),
+    `${paths.episodesFilePath()}.lock`,
+    "the episodes lock must be named beside the live episodes store",
+  );
+  assert.equal(
+    semanticStoreLockFilePath(),
+    `${paths.semanticMemoryFilePath()}.lock`,
+    "the semantic lock must be named beside the live semantic store",
+  );
+  assert.ok(
+    episodesLockFilePath().startsWith(BRAID_HOME + sep),
+    `the episodes lock must resolve under the pin: ${episodesLockFilePath()}`,
+  );
+  assert.ok(
+    semanticStoreLockFilePath().startsWith(BRAID_HOME + sep),
+    `the semantic lock must resolve under the pin: ${semanticStoreLockFilePath()}`,
+  );
+});
+
+await test("(j) the per-project stores share one leg and keep their file names", () => {
+  // Only locks, workers and timers are driven by the census probe, so the
+  // other two stores' file names and the shared projects leg are pinned here;
+  // a `projectsDir()` change moves all five and is caught by (f) through the
+  // driven families.
+  const expected = [
+    ["locks.json", paths.getLockFilePath(PROJECT)],
+    ["workers.json", paths.getWorkersFilePath(PROJECT)],
+    ["pending-timers.jsonl", paths.getTimerFilePath(PROJECT)],
+    ["module-overrides.json", paths.getModuleOverridesFilePath(PROJECT)],
+    ["deliverables.jsonl", paths.getDeliverablesFilePath(PROJECT)],
+  ];
+  for (const [name, file] of expected) {
+    assert.equal(basename(file), name, `the per-project store keeps its file name: ${file}`);
+    assert.ok(
+      file.startsWith(paths.projectsDir() + sep),
+      `the per-project store shares the projects leg: ${file}`,
+    );
   }
 });
 

@@ -18,7 +18,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { sendTrackedMessage } from "../utils/injection-tracker.js";
 import { fenceMemoryContext } from "../utils/memory-fence.js";
 import { asyncExists } from "../utils/async-fs.js";
-import { MEMORY_DIR } from "../config/braid-paths.js";
+import { memoryDir } from "../config/braid-paths.js";
 import { hasSignal } from "./write-quality.js";
 
 export interface PastInsight {
@@ -61,12 +61,21 @@ export async function searchPastInsights(cwd: string): Promise<PastInsight[]> {
   const projectId = deriveProjectIdFromCwd(cwd);
   const insights: PastInsight[] = [];
 
-  // Search three-memory-stores episodes
-  if (await asyncExists(MEMORY_DIR)) {
+  // Search three-memory-stores episodes. The store root is resolved through
+  // the accessor, never the module-load constant: a pinned run must read the
+  // tree the writers wrote to, and a refused root (no absolute braid home)
+  // degrades to "nothing to search" instead of throwing into the caller.
+  let memoryRoot: string | null;
+  try {
+    memoryRoot = memoryDir();
+  } catch {
+    memoryRoot = null;
+  }
+  if (memoryRoot !== null && (await asyncExists(memoryRoot))) {
     try {
-      const episodeFiles = (await readdir(MEMORY_DIR)).filter((f) => f.startsWith("episodes"));
+      const episodeFiles = (await readdir(memoryRoot)).filter((f) => f.startsWith("episodes"));
       for (const file of episodeFiles.slice(0, 3)) {
-        const content = await readFile(join(MEMORY_DIR, file), "utf-8");
+        const content = await readFile(join(memoryRoot, file), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
         for (const line of lines.slice(-5)) {
           try {

@@ -37,7 +37,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../core/logger.js";
-import { braidDir } from "../config/braid-paths.js";
+import { telemetryDir } from "../config/braid-paths.js";
 import { pushRssSample, assessSustainedRssGrowth, RSS_RING_CAP } from "./rss-telemetry.js";
 import { getRssBootTelemetry, setRssBootBaseline } from "../state/global-state.js";
 import {
@@ -52,7 +52,7 @@ const log = createLogger("context-heartbeat");
 
 /** Sink directory (created on first append; see header note). */
 export function heartbeatTelemetryDir(): string {
-  return path.join(braidDir(), "telemetry");
+  return telemetryDir();
 }
 
 /** Sink file for the heartbeat JSONL (see header note). */

@@ -43,9 +43,9 @@ import {
   type DiscoverySignalType,
 } from "../../../lib/state/global-state.js";
 import {
-  SCRATCHPAD_DIR,
-  EPISODES_FILE,
-  SEMANTIC_MEMORY_FILE,
+  scratchpadDir,
+  episodesFilePath,
+  semanticMemoryFilePath,
   AGENT,
   braidDir,
   tagsSlugFromCwd,
@@ -91,10 +91,12 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         delete (enforcementSignals as Record<string, EnforcementSignalEntry>)[key];
       }
 
-      // 1. Scratchpad
+      // 1. Scratchpad. The store root is resolved on every call, never a
+      // module-load constant: a pinned run must read the tree the writers
+      // wrote to, and a refused root (no absolute braid home) degrades.
       try {
         const slug = projectSlugFromCwd(cwd);
-        const scratchpadFile = path.join(SCRATCHPAD_DIR, slug, "latest.json");
+        const scratchpadFile = path.join(scratchpadDir(), slug, "latest.json");
         if (existsSync(scratchpadFile)) {
           const stat = statSync(scratchpadFile);
           if (stat.size > 10) {
@@ -121,8 +123,8 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // 2. Episodes
       let hasEpisodes = false;
       try {
-        if (existsSync(EPISODES_FILE)) {
-          const stat = statSync(EPISODES_FILE);
+        if (existsSync(episodesFilePath())) {
+          const stat = statSync(episodesFilePath());
           if (stat.size > 10) hasEpisodes = true;
         }
       } catch {
@@ -132,8 +134,8 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // 3. Semantic memory
       let hasSemantic = false;
       try {
-        if (existsSync(SEMANTIC_MEMORY_FILE)) {
-          const content = readFileSync(SEMANTIC_MEMORY_FILE, "utf-8");
+        if (existsSync(semanticMemoryFilePath())) {
+          const content = readFileSync(semanticMemoryFilePath(), "utf-8");
           const parsed = JSON.parse(content);
           const count = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
           if (count > 0) hasSemantic = true;

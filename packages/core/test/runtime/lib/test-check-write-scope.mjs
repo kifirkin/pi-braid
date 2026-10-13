@@ -55,6 +55,8 @@
  *  31. a name declared twice in one file is judged against its LAST
  *      declaration -> exit 0 when the hazardous declaration comes first, exit 1
  *      when it comes last (a documented bound, pinned in both directions)
+ *  32. a `.js`/`.mjs` specifier naming a scanned TypeScript re-export shim
+ *      resolves through the TS twin (the repo's own import spelling) -> exit 1
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -631,6 +633,41 @@ export function save(cwd?: string): void {
   const d = runCase("packages/core/src/lib/orchestrator/workers.ts", different);
   assert.equal(d.status, 1, d.out);
   assert.match(d.out, /source-dir/);
+});
+
+test("a `.js` or `.mjs` specifier resolves to the scanned TypeScript module it names", () => {
+  // The repo imports its sources with the emitted spelling
+  // (`from "../../config/braid-paths.js"`), so the one-hop re-export rule has
+  // to bridge `.js` -> `.ts` (and `.mjs` -> `.mts`); a base that keeps the
+  // importer's extension never reaches the source file.
+  const shim = `import { writeFileSync } from "node:fs";
+export { writeFileSync as wf };`;
+  const jsCaller = `import { wf } from "./ts-shim.js";
+import { join } from "node:path";
+export function save(): void {
+  wf(join(process.cwd(), "leak.json"), "{}");
+}`;
+  const js = runCase("packages/core/src/reexport-js.ts", jsCaller, {
+    "packages/core/src/ts-shim.ts": shim,
+  });
+  assert.equal(js.status, 1, js.out);
+  assert.match(js.out, /packages\/core\/src\/reexport-js\.ts:4/);
+  assert.match(js.out, /process\.cwd\(\)/);
+
+  const mjsCaller = jsCaller.replace("./ts-shim.js", "./mts-shim.mjs");
+  const mjs = runCase("packages/core/src/reexport-mjs.ts", mjsCaller, {
+    "packages/core/src/mts-shim.mts": shim,
+  });
+  assert.equal(mjs.status, 1, mjs.out);
+  assert.match(mjs.out, /packages\/core\/src\/reexport-mjs\.ts:4/);
+
+  // A specifier that names no scanned module still stays out of reach.
+  const unscanned = jsCaller.replace("./ts-shim.js", "pi-braid-lib/ts-shim.js");
+  const u = runCase("packages/core/src/reexport-unscanned.ts", unscanned, {
+    "packages/core/src/ts-shim.ts": shim,
+  });
+  assert.equal(u.status, 0, u.out);
+  assert.match(u.out, /0 write sites/);
 });
 
 test("a name declared twice is judged against its last declaration", () => {

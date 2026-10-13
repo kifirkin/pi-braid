@@ -3,8 +3,9 @@
  *
  * Drives one durable write per census family against the built dist and prints
  * one JSON line: per family, whether the attempt threw and whether it logged a
- * warning or an error. The parent owns the tree assertions (project, pinned
- * root, default root); this driver only performs the writes.
+ * warning or an error, plus every unhandled rejection the run produced. The
+ * parent owns the tree assertions (project, pinned root, default root); this
+ * driver only performs the writes.
  *
  * The families are the census sweep of the precomputed path constants: the
  * write-decision log, the episode store, the scratchpad, the semantic store,
@@ -24,6 +25,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+
+// The bus never awaits a listener, so a listener that drops its promise turns
+// a refused write into an unhandled rejection. Collect them so the parent can
+// assert the refusal was reported, not thrown past every handler.
+const unhandled = [];
+process.on("unhandledRejection", (reason) => {
+  unhandled.push(reason instanceof Error ? reason.message : String(reason));
+});
 
 const [distRoot, fixtureRoot] = process.argv.slice(2);
 const load = (rel) => import(pathToFileURL(join(distRoot, rel)).href);
@@ -95,6 +104,20 @@ const FAMILIES = {
     mod.default(pi);
     const turnEnd = handlers.find(([event]) => event === "turn_end");
     if (!turnEnd) throw new Error("no turn_end handler registered");
+    // The bus entry point first: its listener must drain the capture promise
+    // (a rejection here is the silent crash shape, not a refusal), and the
+    // refusal must reach the log. Driven before the awaited turn_end path so
+    // a throw there cannot skip it.
+    const { eventBus } = await load("lib/events/event-bus.js");
+    eventBus.emit({
+      type: "tool_error",
+      toolName: "bash",
+      error: "writer probe failure",
+      turn: 1,
+      timestamp: Date.now(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The awaited entry point (the family's loud path on a refused store).
     await turnEnd[1]({ toolResults: [{ isError: true, toolName: "bash" }] });
   },
   async "evidence-pool"() {
@@ -201,4 +224,4 @@ for (const [family, drive] of Object.entries(FAMILIES)) {
   });
 }
 
-process.stdout.write(JSON.stringify({ cwd, rows }) + "\n");
+process.stdout.write(JSON.stringify({ cwd, rows, unhandled }) + "\n");
