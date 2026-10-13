@@ -21,7 +21,13 @@
  * other check belongs in `ci:check`. Other workflow files are not the quality
  * gate and are not inspected. The only scripts allowed outside the chain are
  * the advisory reporters in ADVISORY below, each verified to be unable to
- * fail (`--no-exit-code`): they add gate time without signal.
+ * fail: `--no-exit-code` must be an argument of every command in the script
+ * body, read per segment (`&&`, `||`, `;`) with shell comments dropped. A
+ * substring test over the whole body accepts `knip … || echo --no-exit-code`
+ * (the flag is echoed; knip keeps its exit code) and `knip … # --no-exit-code`
+ * (the flag is prose). The rule verifies that the flag is passed, not that
+ * every command obeys it: an advisory entry has to own that claim in its
+ * reason.
  *
  * Usage: node packages/core/scripts/check-ci-chain.mjs
  * Exit code: 0 = one chain, 1 = drift
@@ -39,8 +45,9 @@ const CHAIN = "npm run ci:check";
 
 /**
  * `check:*` scripts deliberately outside the chain. Each must be advisory by
- * construction: the script body is verified to carry `--no-exit-code`, so an
- * entry cannot silently exempt a check that can actually fail.
+ * construction: every command in the script body is verified to pass
+ * `--no-exit-code` as an argument of its own, so an entry cannot silently
+ * exempt a check that can actually fail.
  */
 const ADVISORY = new Map([
   [
@@ -48,6 +55,91 @@ const ADVISORY = new Map([
     "knip --reporter json --no-exit-code: reports dead code, never fails",
   ],
 ]);
+
+/** Drop shell comments: a `#` at a token start runs to the end of its line. */
+function stripComments(body) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quote !== null) {
+      out += ch;
+      if (ch === "\\" && quote === '"') {
+        out += body[i + 1] ?? "";
+        i++;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === "#" && (i === 0 || /\s/.test(body[i - 1]))) {
+      const nl = body.indexOf("\n", i);
+      if (nl === -1) break;
+      i = nl - 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * The commands a script body runs, in order: split on the shell operators that
+ * join them (`&&`, `||`, `;`), quotes respected. Every segment's exit code can
+ * reach the chain's, so every segment is held to the advisory rule.
+ */
+function scriptSegments(body) {
+  const segments = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quote !== null) {
+      current += ch;
+      if (ch === "\\" && quote === '"') {
+        current += body[i + 1] ?? "";
+        i++;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    const pair = body.slice(i, i + 2);
+    if (pair === "&&" || pair === "||" || ch === ";") {
+      segments.push(current);
+      current = "";
+      if (ch !== ";") i++;
+      continue;
+    }
+    current += ch;
+  }
+  segments.push(current);
+  return segments.map((s) => s.trim()).filter((s) => s !== "");
+}
+
+/**
+ * The segments of an advisory body that do not pass `--no-exit-code` as an
+ * argument of their own. Quoting the flag (`"--no-exit-code"`) still counts:
+ * the shell hands the same argument to the command either way.
+ */
+function segmentsWithoutFlag(body) {
+  const flagged = (segment) =>
+    segment
+      .split(/\s+/)
+      .map((token) => token.replace(/^["']|["']$/g, ""))
+      .includes("--no-exit-code");
+  return scriptSegments(stripComments(body)).filter((segment) => !flagged(segment));
+}
 
 /** A run command is sanctioned when it is the chain or an install. */
 function isSanctioned(command) {
@@ -130,9 +222,12 @@ for (const [name, body] of Object.entries(manifest.scripts)) {
     );
     continue;
   }
-  if (!body.includes("--no-exit-code")) {
+  const unflagged = segmentsWithoutFlag(body);
+  if (unflagged.length > 0) {
     missing.push(
-      `${name}: exempted as advisory (${advisory}) but its script body does not carry --no-exit-code, so it can fail outside the gate`,
+      `${name}: exempted as advisory (${advisory}) but ${unflagged
+        .map((segment) => `"${segment}"`)
+        .join(", ")} does not pass --no-exit-code; every command in the body must be unable to fail, since each segment's exit code can reach the chain`,
     );
   }
 }

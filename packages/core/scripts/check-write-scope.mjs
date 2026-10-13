@@ -22,34 +22,53 @@
  * The callee is resolved, not spelled: each file's import and binding table
  * is read first — named imports (aliases included) from any spelling of the
  * module (`node:fs`, `fs`, `node:fs/promises`, `fs/promises`), namespace
- * imports, `require` calls, local captures (`const wf = fs.writeFileSync`,
- * `const { writeFileSync: wf } = fs`), bindings taken from a dynamic import
- * (`const { writeFile: wf } = await import("node:fs/promises")`), and a
- * write-family name re-exported from a scanned local module
+ * imports, `require` calls, TypeScript's `import fs = require("node:fs")`,
+ * local captures and assignments (`const wf = fs.writeFileSync`,
+ * `let wf; wf = fs.writeFileSync`, `const wf = fs.writeFileSync.bind(fs)`, the
+ * second declarator of `const wf = …, md = fs.mkdirSync`, and
+ * `const { writeFileSync: wf } = fs` or `= fs.promises`), bindings taken from
+ * a dynamic import (`const { writeFile: wf } = await import("node:fs/promises")`),
+ * and a write-family name re-exported from a scanned local module
  * (`import { wf } from "./shim.mjs"`, following `export { … as wf }` and
  * `export const wf = …` one hop at a time) — and a call is a write only when
  * its callee resolves to a `node:fs` import. A method that happens to share a
  * write-family name (`new Widget().mkdir(...)`) is therefore not reported,
  * and a rename cannot hide the call. The scan reads the source with comments
  * and the interiors of string, template and regex literals masked out, so a
- * write-family name named only in prose or in a string is not a site.
+ * write-family name named only in prose or in a string is not a site; a `}`
+ * inside a comment, a string or a regex cannot close a template interpolation,
+ * and the token before a `/` is read whole, so `return /['"]/` is a regex
+ * while `o.in / 2` stays a division.
  *
  * Documented bounds. A target resolved through a helper function is out of
  * reach — `writeJSON(p, obj)` is the sanctioned caller-supplied-path generic
  * writer, and the same shape launders an offender past a lexical scan. A
- * bracket key held in a variable (`fs[key](...)`) and a namespace obtained
- * inline from a call (`(await import("node:fs")).writeFileSync`) are outside
- * the binding table, as is a write-family name a local module re-exports with
- * `export * from "node:fs"` (the named forms are followed; a wholesale
- * namespace re-export is not) and an import specifier that resolves to no
- * scanned file (a path alias, or a module outside the scan roots). A target
- * whose base is genuinely dynamic — a template that starts at an
- * interpolation the gate cannot read as a literal, such as
- * `` `${os.tmpdir()}/x` `` — is left alone: reading it would need evaluation,
- * not lexing. Regex literals are told from division by the preceding token;
- * an unusual expression shape can put a real literal on the wrong side of
- * that heuristic. The runtime containment tests are the other half of the
- * evidence.
+ * callee the binding table cannot name is out of reach too, always in the
+ * fail-open direction: a bracket key that is not a plain quoted literal
+ * (`fs[key](...)`, `fs["write" + "FileSync"](...)`), an fs namespace obtained
+ * inline from a call (`require("node:fs").writeFileSync`,
+ * `(await import("node:fs")).writeFileSync`), a write invoked through
+ * `Function.prototype` (`writeFileSync.call(…)`), a write-family name a local
+ * module re-exports wholesale (`export * from "node:fs"` — the named forms are
+ * followed), and an import specifier that resolves to no scanned file (a path
+ * alias, or a module outside the scan roots). Shell-mediated writes are out of
+ * scope by construction: `execSync(`mkdir -p "${dir}"`)` is a string and
+ * `execSync("rm -f ./state.json")` is not a write-family call; the packages'
+ * own containment tests are the net for those writers. A target whose base is
+ * genuinely dynamic — a template that starts at an interpolation the gate
+ * cannot read as a literal, such as `` `${os.tmpdir()}/x` `` or
+ * `` `${file}.tmp` `` where `file` is a local binding — is left alone: reading
+ * it would need evaluation, not lexing. A name declared more than once in one
+ * file is read as its LAST declaration, so a call site bound to an earlier
+ * one is judged against the later target (`const dir = process.cwd()` in one
+ * function, `const dir = pinnedDir()` at the file's end, `mkdirSync(dir)` is
+ * judged as the pinned one): the binding table is per file, not per scope. Regex literals are told from division
+ * by the preceding token, whole words included, or by a `)` that closes a
+ * statement head (`if (…) /re/`); an unusual expression shape can still put a
+ * real literal on the wrong side of that heuristic — a regex whose first token
+ * follows a `}` that closed a block is read as a division, and a division in
+ * that one position as a regex. The runtime containment tests are the other
+ * half of the evidence.
  *
  * Scope: production sources only. `packages/<pkg>/src` and
  * `packages/<pkg>/scripts` for every workspace, plus the whole trees of
@@ -59,11 +78,13 @@
  * inside its own fixture.
  *
  * Allowlist: one entry per sanctioned site, keyed by file, the resolved
- * write-family callee and a regex over the expanded first argument. It holds
- * three entries in two files, all `source-dir` shapes — the generated schema
- * artifact (directory creation and write) and the workers registry's parent
- * directory. A new write anywhere else in those files matches no entry and
- * is a finding.
+ * write-family callee and the canonical form of the expanded first argument
+ * (whitespace runs collapsed). The argument is matched whole, never as a
+ * substring, so a second write in an allowlisted file is a finding even when
+ * its target names the same artifact. It holds three entries in two files,
+ * all `source-dir` shapes — the generated schema artifact (directory creation
+ * and write) and the workers registry's parent directory. A new write
+ * anywhere else in those files matches no entry and is a finding.
  *
  * Neutral by construction, so no entry is needed: a caller-supplied path
  * argument, `os.tmpdir()` scratch, an absolute path literal, and a target
@@ -119,30 +140,34 @@ const OPEN_CALLS = new Set(["open", "openSync"]);
 const READ_MODES = new Set(["r", "rs", "sr"]);
 
 /**
- * Allowlisted sites: file + resolved callee + a regex over the expanded first
- * argument + reason, one entry per sanctioned call. Keyed to the call, not
- * the file, so a new write in an allowlisted file matches nothing and is a
- * finding.
+ * Allowlisted sites: file + resolved callee + the canonical form of the
+ * expanded first argument + reason, one entry per sanctioned call. The
+ * argument is matched WHOLE, never as a substring, so a new write in an
+ * allowlisted file matches no entry and is a finding even when its target
+ * names the same artifact. Whitespace runs are collapsed first, so reindenting
+ * a sanctioned call does not change its key.
  */
 const ALLOWLIST = [
   {
     file: "packages/core/scripts/gen-braid-schema.mjs",
     callee: "mkdirSync",
-    firstArg: /braid\.schema\.json/,
+    firstArg:
+      'dirname(join(resolve(__dirname, "..", "..", ".."), "packages/core/schema/braid.schema.json"))',
     reason:
       "creates the directory of the generated braid schema artifact, which check-braid-schema.mjs owns and pins",
   },
   {
     file: "packages/core/scripts/gen-braid-schema.mjs",
     callee: "writeFileSync",
-    firstArg: /braid\.schema\.json/,
+    firstArg:
+      'join(resolve(__dirname, "..", "..", ".."), "packages/core/schema/braid.schema.json")',
     reason:
       "writes the generated braid schema artifact, which check-braid-schema.mjs owns and pins",
   },
   {
     file: "packages/core/src/lib/orchestrator/workers.ts",
     callee: "mkdirSync",
-    firstArg: /^dirname\(getWorkersFilePath\(/,
+    firstArg: "dirname(getWorkersFilePath(cwd ?? process.cwd()))",
     reason:
       "creates the parent directory of the workers registry: getWorkersFilePath resolves under the braid root (projects/<slug>/workers.json), never the cwd — the cwd is only a slug input",
   },
@@ -205,6 +230,13 @@ const REGEX_AFTER = new Set([
   "delete", "void", "instanceof", "yield", "await", "new", "throw",
 ]);
 
+/**
+ * Statement heads: the `)` closing one of these leaves a statement position,
+ * where a `/` starts a regex (`while (n) /re/.test(s)`), not a division. The
+ * tokens are read whole, so `iffy(…)` is not `if (…)`.
+ */
+const STATEMENT_HEADS = new Set(["if", "while", "for", "switch", "catch", "with"]);
+
 /** End index of the string literal starting at `start` (escapes respected). */
 function skipStringLiteral(text, start) {
   const quote = text[start];
@@ -249,44 +281,145 @@ function readWord(text, i, to = text.length) {
   return m ? m[0] : text[i];
 }
 
-/** End index of the template literal starting at `start` (nested `${}` respected). */
-function skipTemplateLiteral(text, start, to) {
+/**
+ * Walk a code region, literal-aware: comments and the interiors of string,
+ * template and regex literals are stepped over, so a `}` inside one can never
+ * close a template interpolation. `blank(from, to, false)` reports every
+ * non-code region; the walk itself only reads.
+ *
+ * `prev` holds the last significant token, read as a whole word, so the regex
+ * heuristic sees `return` rather than its last letter, and a `/` after the `)`
+ * closing a statement head is a regex rather than a division.
+ *
+ * With `stopAtClose` the walk returns at the `}` that closes the enclosing
+ * template interpolation, tracking brace depth so an object literal inside
+ * (`${{ a: 1 }}`) does not end it early.
+ *
+ * Returns `{ i, prev }`, where `i` is the index the walk stopped at.
+ */
+function scanCode(text, from, to, { prev = "", stopAtClose = false, blank = () => {} } = {}) {
+  let i = from;
+  let depth = 0;
+  // The `)` just consumed closed a statement head, so a `/` after it starts a
+  // regex. Cleared by the next significant token.
+  let afterHeadParen = false;
+  /** One flag per open paren: was it opened right after a statement head? */
+  const parens = [];
+  while (i < to) {
+    const ch = text[i];
+    if (ch === "/" && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i);
+      const end = nl === -1 || nl > to ? to : nl;
+      blank(i, end, false);
+      i = end;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2);
+      const end = close === -1 ? to : Math.min(to, close + 2);
+      blank(i, end, false);
+      i = end;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      const end = skipStringLiteral(text, i);
+      blank(i + 1, end - 1, false);
+      i = end;
+      prev = '"';
+      afterHeadParen = false;
+      continue;
+    }
+    if (ch === "`") {
+      i = skipTemplate(text, i, to, blank);
+      prev = "`";
+      afterHeadParen = false;
+      continue;
+    }
+    if (ch === "/" && (afterHeadParen || REGEX_AFTER.has(prev))) {
+      const end = skipRegexLiteral(text, i);
+      blank(i, end, false);
+      i = end;
+      prev = "/";
+      afterHeadParen = false;
+      continue;
+    }
+    if (ch === "(") {
+      parens.push(STATEMENT_HEADS.has(prev));
+      prev = "(";
+      afterHeadParen = false;
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      afterHeadParen = parens.pop() ?? false;
+      prev = ")";
+      i++;
+      continue;
+    }
+    if (stopAtClose) {
+      if (ch === "{") {
+        depth++;
+        prev = "{";
+        afterHeadParen = false;
+        i++;
+        continue;
+      }
+      if (ch === "}") {
+        if (depth === 0) return { i, prev };
+        depth--;
+        prev = "}";
+        afterHeadParen = false;
+        i++;
+        continue;
+      }
+    }
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(ch)) {
+      const word = readWord(text, i, to);
+      // A word after `.` is a property name, and a property access ends a
+      // value: `o.in / 2` and `cache.delete / 2` are divisions even though
+      // `in` and `delete` are operators in their own right.
+      prev = prev === "." ? ")" : word;
+      i += word.length;
+    } else {
+      prev = ch;
+      i++;
+    }
+    afterHeadParen = false;
+  }
+  return { i: to, prev };
+}
+
+/**
+ * Blank a template literal's body and scan its `${…}` expressions; returns the
+ * index just past the closing backtick. An interpolation opens in expression
+ * position, so its scan starts from `(`: a `/` directly inside `${}` is a
+ * regex, and a `}` inside that regex, a comment or a string cannot close the
+ * interpolation early. The backticks and the `${` / `}` delimiters stay in
+ * place (a quoted bracket key must still read as a quoted key); only the body
+ * blanks.
+ */
+function skipTemplate(text, start, to, blank) {
   let i = start + 1;
   while (i < to) {
     if (text[i] === "\\") {
+      blank(i, i + 2, false);
       i += 2;
       continue;
     }
     if (text[i] === "`") return i + 1;
     if (text[i] === "$" && text[i + 1] === "{") {
-      i = findTemplateExprEnd(text, i + 2, to) + 1;
+      blank(i, i + 2, false);
+      const inner = scanCode(text, i + 2, to, { prev: "(", stopAtClose: true, blank });
+      blank(inner.i, inner.i + 1, false);
+      i = inner.i + 1;
       continue;
     }
-    i++;
-  }
-  return to;
-}
-
-/** Index of the `}` closing the template expression opened at `from`. */
-function findTemplateExprEnd(text, from, to) {
-  let depth = 0;
-  let i = from;
-  while (i < to) {
-    const ch = text[i];
-    if (ch === '"' || ch === "'") {
-      i = skipStringLiteral(text, i);
-      continue;
-    }
-    if (ch === "`") {
-      i = skipTemplateLiteral(text, i, to);
-      continue;
-    }
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      if (depth === 0) return i;
-      depth--;
-    }
-    i++;
+    blank(i, i + 1, false);
+    i += 1;
   }
   return to;
 }
@@ -306,73 +439,7 @@ function maskNonCode(text) {
       isCode[k] = code;
     }
   };
-  let prev = "";
-  const scan = (from, to) => {
-    let i = from;
-    while (i < to) {
-      const ch = text[i];
-      if (ch === "/" && text[i + 1] === "/") {
-        const nl = text.indexOf("\n", i);
-        const end = nl === -1 || nl > to ? to : nl;
-        blank(i, end, false);
-        i = end;
-        continue;
-      }
-      if (ch === "/" && text[i + 1] === "*") {
-        const close = text.indexOf("*/", i + 2);
-        const end = close === -1 ? to : Math.min(to, close + 2);
-        blank(i, end, false);
-        i = end;
-        continue;
-      }
-      if (ch === '"' || ch === "'") {
-        const end = skipStringLiteral(text, i);
-        blank(i + 1, end - 1, false);
-        i = end;
-        prev = '"';
-        continue;
-      }
-      if (ch === "`") {
-        let j = i + 1;
-        // The backticks stay (a quoted bracket key must still read as a
-        // quoted key); only the body and the interpolation delimiters blank.
-        while (j < to) {
-          if (text[j] === "\\") {
-            blank(j, j + 2, false);
-            j += 2;
-            continue;
-          }
-          if (text[j] === "`") {
-            j += 1;
-            break;
-          }
-          if (text[j] === "$" && text[j + 1] === "{") {
-            blank(j, j + 2, false);
-            const close = findTemplateExprEnd(text, j + 2, to);
-            scan(j + 2, close);
-            blank(close, close + 1, false);
-            j = close + 1;
-            continue;
-          }
-          blank(j, j + 1, false);
-          j += 1;
-        }
-        i = j;
-        prev = "`";
-        continue;
-      }
-      if (ch === "/" && REGEX_AFTER.has(prev)) {
-        const end = skipRegexLiteral(text, i);
-        blank(i, end, false);
-        i = end;
-        prev = "/";
-        continue;
-      }
-      if (!/\s/.test(ch)) prev = /[A-Za-z_$]/.test(ch) ? readWord(text, i, to) : ch;
-      i++;
-    }
-  };
-  scan(0, text.length);
+  scanCode(text, 0, text.length, { blank });
   return { masked: out.join(""), isCode };
 }
 
@@ -421,13 +488,18 @@ function fsBindings(text, isCode) {
       else if (WRITE_CALLS.includes(imported)) writes.set(local ?? imported, imported);
     }
   });
+  // TypeScript's import-equals form binds the module like a namespace import.
+  each(/\bimport\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*["']([^"']+)["']\s*\)/g, (m) => {
+    if (FS_MODULES.has(m[2])) namespaces.add(m[1]);
+  });
   each(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*["']([^"']+)["']\s*\)/g, (m) => {
     if (FS_MODULES.has(m[2])) namespaces.add(m[1]);
   });
   each(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\s*\(\s*["']([^"']+)["']\s*\)/g, (m) => {
     if (!FS_MODULES.has(m[2])) return;
     for (const [imported, local] of specifiers(m[1], /\s*:\s*/)) {
-      if (WRITE_CALLS.includes(imported)) writes.set(local ?? imported, imported);
+      if (imported === "promises") namespaces.add(local ?? imported);
+      else if (WRITE_CALLS.includes(imported)) writes.set(local ?? imported, imported);
     }
   });
 
@@ -457,69 +529,80 @@ function fsBindings(text, isCode) {
 
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
+    const add = (set, value) => {
+      if (!set.has(value)) {
+        set.add(value);
+        changed = true;
+      }
+    };
+    /** Bind `local` to whatever the member chain `chainText` resolves to. */
+    const bind = (local, chainText) => {
+      const chain = chainText.split(/\s*\.\s*/);
+      const [obj, prop] = chain;
+      if (chain.length === 1) {
+        const target = writes.get(obj);
+        if (target && !writes.has(local)) {
+          writes.set(local, target);
+          changed = true;
+        }
+        if (namespaces.has(obj)) add(namespaces, local);
+        return;
+      }
+      if (chain.length === 2) {
+        if (namespaces.has(obj) && prop === "promises") add(namespaces, local);
+        if (namespaces.has(obj) && WRITE_CALLS.includes(prop) && !writes.has(local)) {
+          writes.set(local, prop);
+          changed = true;
+        }
+        return;
+      }
+      if (chain.length === 3 && chain[1] === "promises") {
+        if (namespaces.has(obj) && WRITE_CALLS.includes(chain[2]) && !writes.has(local)) {
+          writes.set(local, chain[2]);
+          changed = true;
+        }
+      }
+    };
+
+    // A local name bound to an fs member chain, declared or assigned:
+    // `const wf = fs.writeFileSync`, `let wf; wf = fs.writeFileSync`,
+    // `const wf = fs.writeFileSync.bind(fs)` and the second declarator of
+    // `const wf = fs.writeFileSync, md = fs.mkdirSync` all bind the name.
     each(
-      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*[;\n]/g,
+      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      (m) => bind(m[1], m[2]),
+    );
+    // The same capture with a type annotation between name and `=`.
+    each(
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      (m) => bind(m[1], m[2]),
+    );
+    // Destructuring from a namespace or from its `promises` member:
+    // `const { writeFileSync } = fs`, `const { writeFileSync } = fs.promises`.
+    each(
+      /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?=[;,\n]|$)/g,
       (m) => {
-        const local = m[1];
-        const chain = m[2].split(/\s*\.\s*/);
-        const add = (set, value) => {
-          if (!set.has(value)) {
-            set.add(value);
-            changed = true;
-          }
-        };
-        if (chain.length === 1) {
-          const target = writes.get(chain[0]);
-          if (target && !writes.has(local)) {
-            writes.set(local, target);
-            changed = true;
-          }
-          if (namespaces.has(chain[0])) add(namespaces, local);
-        } else if (chain.length === 2) {
-          const [obj, prop] = chain;
-          if (namespaces.has(obj) && prop === "promises") add(namespaces, local);
-          if (namespaces.has(obj) && WRITE_CALLS.includes(prop) && !writes.has(local)) {
-            writes.set(local, prop);
-            changed = true;
-          }
-        } else if (chain.length === 3 && chain[1] === "promises") {
-          const [obj, , prop] = chain;
-          if (namespaces.has(obj) && WRITE_CALLS.includes(prop) && !writes.has(local)) {
-            writes.set(local, prop);
+        if (!isFsNamespace(m[2], namespaces)) return;
+        for (const [prop, local] of specifiers(m[1], /\s*:\s*/)) {
+          if (prop === "promises") add(namespaces, local ?? prop);
+          else if (WRITE_CALLS.includes(prop) && !writes.has(local ?? prop)) {
+            writes.set(local ?? prop, prop);
             changed = true;
           }
         }
       },
     );
-    each(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*([A-Za-z_$][\w$]*)\s*[;\n]/g, (m) => {
-      if (!namespaces.has(m[2])) return;
-      for (const [prop, local] of specifiers(m[1], /\s*:\s*/)) {
-        if (prop === "promises") {
-          const name = local ?? prop;
-          if (!namespaces.has(name)) {
-            namespaces.add(name);
-            changed = true;
-          }
-          continue;
-        }
-        const name = local ?? prop;
-        if (WRITE_CALLS.includes(prop) && !writes.has(name)) {
-          writes.set(name, prop);
-          changed = true;
-        }
-      }
-    });
     if (!changed) break;
   }
   return { namespaces, writes };
 }
 
 /** True when `object` names an fs namespace (or `<ns>.promises`). */
-function isFsNamespace(object, table) {
+function isFsNamespace(object, namespaces) {
   const o = object.trim();
-  if (table.namespaces.has(o)) return true;
+  if (namespaces.has(o)) return true;
   const m = /^(.*)\.\s*promises$/.exec(o);
-  return m !== null && table.namespaces.has(m[1].trim());
+  return m !== null && namespaces.has(m[1].trim());
 }
 
 /**
@@ -535,13 +618,13 @@ function resolveCallee(chain, chainStart, original, table) {
   if (bracket) {
     const object = bracket[1].trim();
     const prop = bracket[3];
-    return isFsNamespace(object, table) && WRITE_CALLS.includes(prop) ? prop : null;
+    return isFsNamespace(object, table.namespaces) && WRITE_CALLS.includes(prop) ? prop : null;
   }
   const member = /^(.*)\.\s*([A-Za-z_$][\w$]*)$/.exec(chainText);
   if (member) {
     const object = member[1].trim();
     const prop = member[2];
-    return isFsNamespace(object, table) && WRITE_CALLS.includes(prop) ? prop : null;
+    return isFsNamespace(object, table.namespaces) && WRITE_CALLS.includes(prop) ? prop : null;
   }
   return table.writes.get(chainText.trim()) ?? null;
 }
@@ -752,7 +835,7 @@ function templateBase(expr) {
     }
     if (ch === "`") break;
     if (ch === "$" && s[i + 1] === "{") {
-      const close = findTemplateExprEnd(s, i + 2, s.length);
+      const close = scanCode(s, i + 2, s.length, { stopAtClose: true }).i;
       const literal = unquote(s.slice(i + 2, close));
       if (literal === null) break; // dynamic from here on
       out += literal;
@@ -904,6 +987,12 @@ function localWriteExports(relFile, seen = new Set()) {
   return out;
 }
 
+/** The canonical form of a target expression: whitespace runs collapsed, so a
+ *  reindented call keeps the same key. */
+function canonicalExpr(expr) {
+  return expr.replace(/\s+/g, " ").trim();
+}
+
 function lineOf(text, index) {
   let line = 1;
   for (let i = 0; i < index; i++) if (text[i] === "\n") line++;
@@ -952,7 +1041,7 @@ for (const file of files) {
     if (!shape) continue;
     const line = lineOf(text, chainStart);
     const entry = ALLOWLIST.find(
-      (a) => a.file === file && a.callee === name && a.firstArg.test(expanded),
+      (a) => a.file === file && a.callee === name && a.firstArg === canonicalExpr(expanded),
     );
     if (entry) {
       allowlisted.push({ file, line, token: shape.token, reason: entry.reason });

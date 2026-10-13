@@ -34,6 +34,27 @@
  *  22. a write-family alias re-exported from a scanned local module -> exit 1
  *  23. an alias named only in a comment (a local function of the same name) is
  *      not a site -> exit 0
+ *  24. a write inside `${…}` after a regex carrying `}` -> exit 1
+ *  25. the same after a block comment carrying `}` -> exit 1
+ *  26. `return /['"]/` followed by a cwd write -> exit 1 (the regex is a
+ *      literal, not the division its last letter suggested)
+ *  27. a call-shaped regex after a statement head's `)` -> exit 0, while one
+ *      after a block-closing `}` is still reported (a documented residual)
+ *  28. the remaining binding spellings resolve: `import fs = require(...)`,
+ *      `const { promises: p } = require(...)`, `const { wf } = fs.promises`,
+ *      `let wf; wf = fs.writeFileSync`, a second declarator and
+ *      `.bind(receiver)` -> exit 1 each
+ *  29. shapes the header names as out of reach stay out of reach and stay
+ *      counted rather than reported: `fs[key]`, `fs["write" + "FileSync"]`,
+ *      `require("node:fs").writeFileSync(...)`, `writeFileSync.call(…)`, an
+ *      `export *` shim, an unscanned specifier, a template base that starts
+ *      at an interpolation, and an `execSync` shell write -> exit 0
+ *  30. the allowlist matches the whole target, not a substring: a cwd write
+ *      naming `braid.schema.json` is a finding, and so is the workers call
+ *      with a different argument, while the sanctioned calls stay allowlisted
+ *  31. a name declared twice in one file is judged against its LAST
+ *      declaration -> exit 0 when the hazardous declaration comes first, exit 1
+ *      when it comes last (a documented bound, pinned in both directions)
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -401,4 +422,242 @@ export function save(): void {
   const { status, out } = runCase("packages/core/src/comment-alias.ts", content);
   assert.equal(status, 0, out);
   assert.match(out, /0 write sites/);
+});
+
+test("a write inside a template interpolation is not lost to a `}` in a regex or comment", () => {
+  const afterRegex = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+const s = \`prefix \${/\\}/.test(name) ? writeFileSync(join(process.cwd(), "leak.json"), "{}") : "no"}\`;
+export default s;`;
+  const r = runCase("packages/core/src/interp-regex.ts", afterRegex);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /packages\/core\/src\/interp-regex\.ts:3/);
+  assert.match(r.out, /process\.cwd\(\)/);
+
+  const afterComment = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+const s = \`\${/* } */ writeFileSync(join(process.cwd(), "leak.json"), "{}")}\`;
+export default s;`;
+  const c = runCase("packages/core/src/interp-comment.ts", afterComment);
+  assert.equal(c.status, 1, c.out);
+  assert.match(c.out, /packages\/core\/src\/interp-comment\.ts:3/);
+  assert.match(c.out, /process\.cwd\(\)/);
+});
+
+test("a quote inside a regex after a keyword no longer swallows the file", () => {
+  const content = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+export function isQuoted(s: string): boolean { return /['"]/.test(s); }
+writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
+  const { status, out } = runCase("packages/core/src/regex-quote.ts", content);
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/regex-quote\.ts:4/);
+  assert.match(out, /process\.cwd\(\)/);
+});
+
+test("a call-shaped regex is a regex after a statement head, not after a block", () => {
+  const afterHead = `import { writeFileSync } from "node:fs";
+export function scan(line: string): boolean {
+  if (!line) /writeFileSync("leak.json")/.test(line);
+  return false;
+}`;
+  const head = runCase("packages/core/src/regex-head.ts", afterHead);
+  assert.equal(head.status, 0, head.out);
+
+  // A regex whose first token follows a `}` that closed a block is the one
+  // position the heuristic still reads as a division: a documented residual.
+  const afterBlock = `import { writeFileSync } from "node:fs";
+if (1 > 2) {} /writeFileSync("leak.json")/.test("x");`;
+  const block = runCase("packages/core/src/regex-block.ts", afterBlock);
+  assert.equal(block.status, 1, block.out);
+  assert.match(block.out, /relative-literal/);
+});
+
+test("an import-equals, a require promises destructuring and a namespace-member destructuring resolve", () => {
+  const importEquals = `import fs = require("node:fs");
+import { join } from "node:path";
+fs.writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
+  const ie = runCase("packages/core/src/import-equals.ts", importEquals);
+  assert.equal(ie.status, 1, ie.out);
+  assert.match(ie.out, /packages\/core\/src\/import-equals\.ts:3/);
+
+  const requirePromises = `const { promises: p } = require("node:fs");
+const { join } = require("node:path");
+p.writeFile(join(process.cwd(), "leak.json"), "{}");`;
+  const rp = runCase("packages/core/src/require-promises.ts", requirePromises);
+  assert.equal(rp.status, 1, rp.out);
+  assert.match(rp.out, /packages\/core\/src\/require-promises\.ts:3/);
+
+  const barePromises = `const { promises } = require("node:fs");
+const { join } = require("node:path");
+promises.writeFile(join(process.cwd(), "leak.json"), "{}");`;
+  const bp = runCase("packages/core/src/require-promises-bare.ts", barePromises);
+  assert.equal(bp.status, 1, bp.out);
+
+  const namespaceMember = `import * as fs from "node:fs";
+import { join } from "node:path";
+const { writeFileSync } = fs.promises;
+writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
+  const nm = runCase("packages/core/src/fs-promises.ts", namespaceMember);
+  assert.equal(nm.status, 1, nm.out);
+  assert.match(nm.out, /packages\/core\/src\/fs-promises\.ts:4/);
+});
+
+test("an assignment, a second declarator and a bound capture all resolve", () => {
+  const assigned = `import * as fs from "node:fs";
+import { join } from "node:path";
+let wf;
+wf = fs.writeFileSync;
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const a = runCase("packages/core/src/assigned.ts", assigned);
+  assert.equal(a.status, 1, a.out);
+  assert.match(a.out, /packages\/core\/src\/assigned\.ts:5/);
+
+  const multiDeclarator = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs.writeFileSync, md = fs.mkdirSync;
+wf(join(process.cwd(), "leak.json"), "{}");
+md(join(process.cwd(), "leak-dir"));`;
+  const m = runCase("packages/core/src/multi-declarator.ts", multiDeclarator);
+  assert.equal(m.status, 1, m.out);
+  assert.match(m.out, /packages\/core\/src\/multi-declarator\.ts:4/);
+
+  const bound = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs.writeFileSync.bind(fs);
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const b = runCase("packages/core/src/bound.ts", bound);
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.out, /packages\/core\/src\/bound\.ts:4/);
+});
+
+test("the callee shapes the header names as out of reach stay counted, not reported", () => {
+  const cases = {
+    "variable-bracket.ts": `import * as fs from "node:fs";
+import { join } from "node:path";
+const key = "writeFileSync";
+fs[key](join(process.cwd(), "leak.json"), "{}");`,
+    "concat-bracket.ts": `import * as fs from "node:fs";
+import { join } from "node:path";
+fs["write" + "FileSync"](join(process.cwd(), "leak.json"), "{}");`,
+    "inline-require.ts": `const { join } = require("node:path");
+require("node:fs").writeFileSync(join(process.cwd(), "leak.json"), "{}");`,
+    "inline-import.ts": `import { join } from "node:path";
+export async function save(): Promise<void> {
+  (await import("node:fs")).writeFileSync(join(process.cwd(), "leak.json"), "{}");
+}`,
+    "fn-call.ts": `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+writeFileSync.call(null, join(process.cwd(), "leak.json"), "{}");`,
+    "shell.ts": `import { execSync } from "node:child_process";
+import { join } from "node:path";
+export function prep(): void {
+  execSync(\`mkdir -p "\${join(process.cwd(), "scratch")}"\`, { stdio: "ignore" });
+  execSync("rm -f ./state.json", { stdio: "ignore" });
+}`,
+  };
+  for (const [name, content] of Object.entries(cases)) {
+    const { status, out } = runCase(`packages/core/src/${name}`, content);
+    assert.equal(status, 0, `${name}: ${out}`);
+    assert.match(out, /0 write sites/, `${name}: ${out}`);
+  }
+});
+
+test("an export-star shim and an unscanned specifier stay out of reach", () => {
+  const star = `import { writeFileSync } from "./shim.mjs";
+import { join } from "node:path";
+writeFileSync(join(process.cwd(), "leak.json"), "{}");`;
+  const s = runCase("packages/core/src/export-star.ts", star, {
+    "packages/core/src/shim.mjs": `export * from "node:fs";`,
+  });
+  assert.equal(s.status, 0, s.out);
+  assert.match(s.out, /0 write sites/);
+
+  const unscanned = `import { wf } from "pi-braid-lib/fs-extra";
+import { join } from "node:path";
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const u = runCase("packages/core/src/unscanned.ts", unscanned);
+  assert.equal(u.status, 0, u.out);
+  assert.match(u.out, /0 write sites/);
+});
+
+test("a template base that starts at an interpolation stays out of reach", () => {
+  const content = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+const file = join(process.cwd(), "state.json");
+writeFileSync(\`\${file}.tmp-\${process.pid}\`, "{}");`;
+  const { status, out } = runCase("packages/core/src/template-base.ts", content);
+  assert.equal(status, 0, out);
+  assert.match(out, /1 write sites/);
+});
+
+test("the allowlist matches the whole target, not a substring of it", () => {
+  const sanctioned = `import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+const __dirname = "/repo/packages/core/scripts";
+const REPO_ROOT = resolve(__dirname, "..", "..", "..");
+const artifactPath = join(REPO_ROOT, "packages/core/schema/braid.schema.json");
+mkdirSync(dirname(artifactPath), { recursive: true });
+writeFileSync(artifactPath, "{}", "utf8");`;
+  const clean = runCase("packages/core/scripts/gen-braid-schema.mjs", sanctioned);
+  assert.equal(clean.status, 0, clean.out);
+  assert.match(clean.out, /2 allowlisted/);
+
+  // The reviewer's widening plant: the artifact name inside a cwd target.
+  const widened = `${sanctioned}
+writeFileSync(join(process.cwd(), "braid.schema.json.bak"), "{}");`;
+  const w = runCase("packages/core/scripts/gen-braid-schema.mjs", widened);
+  assert.equal(w.status, 1, w.out);
+  assert.match(w.out, /gen-braid-schema\.mjs:8/);
+  assert.match(w.out, /source-dir/);
+});
+
+test("the workers registry entry pins its argument, not its shape", () => {
+  const sanctioned = `import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { getWorkersFilePath } from "../../config/braid-paths.js";
+export function save(cwd?: string): void {
+  const file = getWorkersFilePath(cwd ?? process.cwd());
+  mkdirSync(dirname(file), { recursive: true });
+}`;
+  const clean = runCase("packages/core/src/lib/orchestrator/workers.ts", sanctioned);
+  assert.equal(clean.status, 0, clean.out);
+  assert.match(clean.out, /1 allowlisted/);
+
+  const different = sanctioned.replace(
+    "getWorkersFilePath(cwd ?? process.cwd())",
+    "getWorkersFilePath(process.cwd())",
+  );
+  const d = runCase("packages/core/src/lib/orchestrator/workers.ts", different);
+  assert.equal(d.status, 1, d.out);
+  assert.match(d.out, /source-dir/);
+});
+
+test("a name declared twice is judged against its last declaration", () => {
+  // The binding table is per file, not per scope: a call site bound to an
+  // earlier declaration of the same name is judged against the later one. That
+  // is a documented bound, and this case pins both directions of it.
+  const hazardousFirst = `import * as fs from "node:fs";
+function pinnedDir(): string { return "/abs/pinned"; }
+function append(): void {
+  const dir = process.cwd();
+  fs.mkdirSync(dir, { recursive: true });
+}
+const dir = pinnedDir();
+export default append;`;
+  const first = runCase("packages/core/src/dupname-first.ts", hazardousFirst);
+  assert.equal(first.status, 0, first.out);
+  assert.match(first.out, /1 write sites/);
+
+  const hazardousLast = `import * as fs from "node:fs";
+function pinnedDir(): string { return "/abs/pinned"; }
+const dir = pinnedDir();
+function append(): void {
+  const dir = process.cwd();
+  fs.mkdirSync(dir, { recursive: true });
+}
+export default append;`;
+  const last = runCase("packages/core/src/dupname-last.ts", hazardousLast);
+  assert.equal(last.status, 1, last.out);
+  assert.match(last.out, /source-dir/);
 });
