@@ -72,6 +72,13 @@
  *      naming a `.tsx` re-export shim, an extensionless specifier naming the
  *      same module, and a `.tsx` module writing on its own -> exit 1 each,
  *      while a `.tsx` shim with no write export stays out of reach -> exit 0
+ *  39. a capture line continued by a comment (`const wf = fs.writeFileSync //
+ *      note`, and the bracket and destructured spellings) still binds -> exit
+ *      1 each, while the no-comment control and a non-fs receiver stay as
+ *      they are
+ *  40. `await (p) / 2` is a division, not a regex: a cwd write on the same
+ *      line as the division is reported -> exit 1 (an `await` statement head
+ *      is only transparent after `for`)
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -859,4 +866,61 @@ export function save(): void {
   );
   assert.equal(control.status, 0, control.out);
   assert.match(control.out, /0 write sites/);
+});
+
+test("a capture line continued by a comment still binds", () => {
+  const dotted = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs.writeFileSync // note
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const d = runCase("packages/core/src/comment-dotted.ts", dotted);
+  assert.equal(d.status, 1, d.out);
+  assert.match(d.out, /packages\/core\/src\/comment-dotted\.ts:4/);
+  assert.match(d.out, /process\.cwd\(\)/);
+
+  const bracket = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs["writeFileSync"] // note
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const b = runCase("packages/core/src/comment-bracket.ts", bracket);
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.out, /packages\/core\/src\/comment-bracket\.ts:4/);
+
+  const destructured = `import * as fs from "node:fs";
+import { join } from "node:path";
+const { writeFileSync: wf } = fs /* note */
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const s = runCase("packages/core/src/comment-destructured.ts", destructured);
+  assert.equal(s.status, 1, s.out);
+  assert.match(s.out, /packages\/core\/src\/comment-destructured\.ts:4/);
+
+  // The no-comment control is the same binding, and a receiver that is not an
+  // fs namespace binds nothing through the same spelling.
+  const control = `import * as fs from "node:fs";
+import { join } from "node:path";
+const wf = fs.writeFileSync;
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const c = runCase("packages/core/src/comment-control.ts", control);
+  assert.equal(c.status, 1, c.out);
+
+  const nonFs = `import { join } from "node:path";
+const wf = widget.writeFileSync // note
+wf(join(process.cwd(), "leak.json"), "{}");`;
+  const n = runCase("packages/core/src/comment-nonfs.ts", nonFs);
+  assert.equal(n.status, 0, n.out);
+  assert.match(n.out, /0 write sites/);
+});
+
+test("`await (p) / 2` stays a division, not a regex", () => {
+  // An `await` before a `(` is not a statement head: the `/` after the `)` is
+  // a division, so the write sharing the line is still scanned.
+  const content = `import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+export async function f(p: number): Promise<void> {
+  const q = await (p) / 2; writeFileSync(join(process.cwd(), "leak.json"), String(q));
+}`;
+  const { status, out } = runCase("packages/core/src/await-division.ts", content);
+  assert.equal(status, 1, out);
+  assert.match(out, /packages\/core\/src\/await-division\.ts:4/);
+  assert.match(out, /process\.cwd\(\)/);
 });

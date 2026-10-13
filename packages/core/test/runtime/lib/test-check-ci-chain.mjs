@@ -30,6 +30,13 @@
  *      segment) are held fail-closed -> exit 1
  *  15. a `--no-exit-code=1` suffix, an env-assignment spelling and a subshell
  *      echo are not the flag -> exit 1
+ *  16. inside double quotes only `$`, a backtick, `"`, `\` and a newline are
+ *      escaped, so a backslash before an ordinary character stays in the
+ *      argument (`"\-\-no-exit-code"` is not the flag) -> exit 1, while a
+ *      backslash-newline is a line continuation -> exit 0
+ *  17. a body the shell cannot parse is refused rather than exempted: an open
+ *      quote, a leading boundary operator and a dangling `&&`, `||` or `|`
+ *      -> exit 1, while a body ending on `;` or `&` (a command) stays clean
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -236,5 +243,72 @@ test("a flag suffix, an env assignment or a subshell echo is not the flag", () =
     });
     assert.equal(status, 1, `${body}: ${out}`);
     assert.match(out, /does not pass --no-exit-code/);
+  }
+});
+
+test("a backslash inside double quotes escapes only what the shell escapes", () => {
+  // Inside double quotes only `$`, a backtick, `"`, `\` and a newline are
+  // escaped (POSIX 2.2.3), which is what the shells do. Each row spells the
+  // flag through one escape: only the newline is removed without leaving a
+  // character behind, so only that row hands the command the flag.
+  for (const body of [
+    'knip --reporter json "\\-\\-no-exit-code"', // an ordinary character
+    'knip --reporter json "--no-exit-\\$code"',
+    'knip --reporter json "--no-exit-\\`code"',
+    'knip --reporter json "--no-exit-\\"code"',
+    'knip --reporter json "--no-exit-\\\\code"',
+    "knip --reporter json \\-\\-no-exit-code", // the unquoted twin
+    'knip --reporter json "--no-exit-\ncode"', // a raw newline stays
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /does not pass --no-exit-code/);
+  }
+
+  // A backslash before a newline is removed with it (a line continuation):
+  // the shells hand the command `--no-exit-code`, so the body stays advisory.
+  const continuation = runCase({
+    ciYml: workflow(["npm ci", "npm run ci:check"]),
+    manifest: manifest(CHAIN, 'knip --reporter json "--no-exit-\\\ncode"'),
+  });
+  assert.equal(continuation.status, 0, continuation.out);
+  assert.match(continuation.out, /check-ci-chain: clean/);
+});
+
+test("a body the shell cannot parse is refused, not exempted", () => {
+  // `sh -c` ends in a syntax error for each of these, so no command carries
+  // the flag: an exemption over no command verifies nothing.
+  for (const body of [
+    'knip --reporter json --no-exit-code "oops',
+    "knip --reporter json --no-exit-code &&",
+    "knip --reporter json --no-exit-code ||",
+    "knip --reporter json --no-exit-code |",
+    "&& knip --reporter json --no-exit-code",
+    "; knip --reporter json --no-exit-code",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /is not a command `sh -c` can run/);
+  }
+
+  // A body that ends on `;` or `&`, or on a newline, is a command: it stays
+  // clean as long as every segment carries the flag.
+  for (const body of [
+    "knip --reporter json --no-exit-code;",
+    "knip --reporter json --no-exit-code &",
+    "knip --reporter json --no-exit-code\n",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow(["npm ci", "npm run ci:check"]),
+      manifest: manifest(CHAIN, body),
+    });
+    assert.equal(status, 0, `${JSON.stringify(body)}: ${out}`);
+    assert.match(out, /check-ci-chain: clean/);
   }
 });

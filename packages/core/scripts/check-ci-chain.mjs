@@ -27,8 +27,15 @@
  * dropped, and each segment is split into shell-style arguments, so a quoted
  * run is one argument: `"--no-exit-code"` counts (the shell hands the command
  * the same argument), while `"json --no-exit-code"` and `" --no-exit-code"`
- * do not. Splitting at every boundary is deliberately stricter than the
- * shell's exit-code flow: a segment whose failure cannot, on its own, reach
+ * do not. The argument model follows the shells inside double quotes: only
+ * `$`, a backtick, `"`, `\` and a newline are escaped there, so a backslash
+ * before any other character stays literal and `"\-\-no-exit-code"` is the
+ * argument `\-\-no-exit-code`, not the flag. A body the shell cannot parse is
+ * refused rather than read — an open quote, a leading boundary operator, and a
+ * body ending on `&&`, `||` or `|` are `sh -c` syntax errors — because no
+ * command runs, and an exemption over no command verifies nothing. Splitting
+ * at every boundary is deliberately stricter than the shell's exit-code flow:
+ * a segment whose failure cannot, on its own, reach
  * the chain's exit code (an earlier line of a newline-separated body, an
  * earlier stage of a pipeline) still has to carry the flag. A test over the
  * whole body would accept `knip … || echo --no-exit-code` (the flag is
@@ -49,6 +56,15 @@ const workflow = join(root, ".github", "workflows", "ci.yml");
 const manifestPath = join(root, "package.json");
 
 const CHAIN = "npm run ci:check";
+
+/**
+ * Inside double quotes, a backslash escapes only these characters (POSIX
+ * 2.2.3); before any other character it stays literal.
+ */
+const DQ_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
+
+/** The boundary operators a command must follow. */
+const DANGLING_BOUNDARY = new Set(["&&", "||", "|"]);
 
 /**
  * `check:*` scripts deliberately outside the chain. Each must be advisory by
@@ -102,11 +118,19 @@ function stripComments(body) {
  * failure cannot, on its own, reach the script's exit code (an earlier line
  * of a newline-separated body, an earlier stage of a pipeline) still has to
  * carry the flag.
+ *
+ * The split also reports the ways a body is not a command the shell can run
+ * at all, because an exemption cannot be verified against one: a quote left
+ * open, a body that starts with a boundary operator, and a body whose last
+ * boundary operator is `&&`, `||` or `|` with no command after it. (`;` and
+ * `&` may end a body — `knip ... ;` runs — so only the three completing
+ * operators are refused.)
  */
 function scriptSegments(body) {
-  const segments = [];
+  const parts = [];
   let current = "";
   let quote = null;
+  let lastBoundary = null;
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
     if (quote !== null) {
@@ -128,22 +152,35 @@ function scriptSegments(body) {
     const boundary =
       pair === "&&" || pair === "||" || ch === ";" || ch === "\n" || ch === "&" || ch === "|";
     if (boundary) {
-      segments.push(current);
+      parts.push(current);
+      lastBoundary = pair === "&&" || pair === "||" ? pair : ch;
       current = "";
       if (pair === "&&" || pair === "||") i++;
       continue;
     }
     current += ch;
   }
-  segments.push(current);
-  return segments.map((s) => s.trim()).filter((s) => s !== "");
+  parts.push(current);
+  const tail = parts[parts.length - 1];
+  return {
+    segments: parts.map((s) => s.trim()).filter((s) => s !== ""),
+    openQuote: quote !== null,
+    leading: /^[;&|]+/.exec(body.trimStart())?.[0] ?? null,
+    dangling:
+      lastBoundary !== null && tail.trim() === "" && DANGLING_BOUNDARY.has(lastBoundary)
+        ? lastBoundary
+        : null,
+  };
 }
 
 /**
  * A command's shell-style arguments: whitespace separates them, a quoted run
  * is one argument with its quotes removed, and a run that adjoins quoted and
  * unquoted text stays one argument. `"--no-exit-code"` is the flag itself;
- * `"json --no-exit-code"` is one longer argument, never the flag.
+ * `"json --no-exit-code"` is one longer argument, never the flag. Inside
+ * double quotes the shell's escape rule applies: only `$`, a backtick, `"`,
+ * `\` and a newline are escaped, and a backslash before any other character
+ * stays in the argument.
  */
 function shellArgs(segment) {
   const args = [];
@@ -154,8 +191,8 @@ function shellArgs(segment) {
     const ch = segment[i];
     if (quote === '"' && ch === "\\") {
       const next = segment[i + 1];
-      if (next !== undefined) {
-        current += next;
+      if (next !== undefined && DQ_ESCAPABLE.has(next)) {
+        if (next !== "\n") current += next;
         i++;
         continue;
       }
@@ -188,10 +225,20 @@ function shellArgs(segment) {
  * argument of their own. Quoting the flag (`"--no-exit-code"`) still counts:
  * the shell hands the command the same argument either way.
  */
-function segmentsWithoutFlag(body) {
-  return scriptSegments(stripComments(body)).filter(
-    (segment) => !shellArgs(segment).includes("--no-exit-code"),
-  );
+function segmentsWithoutFlag({ segments }) {
+  return segments.filter((segment) => !shellArgs(segment).includes("--no-exit-code"));
+}
+
+/**
+ * The reason `sh -c` cannot run this body at all, or null. An exemption rests
+ * on every command in the body carrying the flag; a body a shell refuses to
+ * parse runs no command, so the exemption would vouch for nothing.
+ */
+function shellRefusal({ openQuote, leading, dangling }) {
+  if (openQuote) return "a quote is left open";
+  if (leading !== null) return `it starts with \`${leading}\``;
+  if (dangling !== null) return `it ends on \`${dangling}\` with no command after it`;
+  return null;
 }
 
 /** A run command is sanctioned when it is the chain or an install. */
@@ -275,7 +322,15 @@ for (const [name, body] of Object.entries(manifest.scripts)) {
     );
     continue;
   }
-  const unflagged = segmentsWithoutFlag(body);
+  const parsed = scriptSegments(stripComments(body));
+  const refusal = shellRefusal(parsed);
+  if (refusal !== null) {
+    missing.push(
+      `${name}: exempted as advisory (${advisory}) but its body is not a command \`sh -c\` can run (${refusal}); the exemption cannot be verified against a body the shell refuses`,
+    );
+    continue;
+  }
+  const unflagged = segmentsWithoutFlag(parsed);
   if (unflagged.length > 0) {
     missing.push(
       `${name}: exempted as advisory (${advisory}) but ${unflagged

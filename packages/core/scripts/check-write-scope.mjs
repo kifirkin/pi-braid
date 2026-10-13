@@ -34,12 +34,14 @@
  * `export const wf = …` one hop at a time) — and a call is a write only when
  * its callee resolves to a `node:fs` import. A method that happens to share a
  * write-family name (`new Widget().mkdir(...)`) is therefore not reported,
- * and a rename cannot hide the call. The scan reads the source with comments
- * and the interiors of string, template and regex literals masked out, so a
- * write-family name named only in prose or in a string is not a site; a `}`
- * inside a comment, a string or a regex cannot close a template interpolation,
- * and the token before a `/` is read whole, so `return /['"]/` is a regex
- * while `o.in / 2` stays a division.
+ * and a rename cannot hide the call. A capture statement ends at `;`, `,`, a
+ * newline or the file's end, and a comment before that end does not stop the
+ * binding: `const wf = fs.writeFileSync // note` is the same binding. The
+ * scan reads the source with comments and the interiors of string, template
+ * and regex literals masked out, so a write-family name named only in prose
+ * or in a string is not a site; a `}` inside a comment, a string or a regex
+ * cannot close a template interpolation, and the token before a `/` is read
+ * whole, so `return /['"]/` is a regex while `o.in / 2` stays a division.
  *
  * Documented bounds. A target resolved through a helper function is out of
  * reach — `writeJSON(p, obj)` is the sanctioned caller-supplied-path generic
@@ -594,26 +596,29 @@ function fsBindings(text, isCode) {
     // `const wf = fs.writeFileSync`, `let wf; wf = fs.writeFileSync`,
     // `const wf = fs.writeFileSync.bind(fs)` and the second declarator of
     // `const wf = fs.writeFileSync, md = fs.mkdirSync` all bind the name.
+    // The statement ends at `;`, `,`, a newline or the file's end, and a
+    // comment before that end does not stop the binding:
+    // `const wf = fs.writeFileSync // note` still binds.
     each(
-      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|\/\/|\/\*|$)/g,
       (m) => bind(m[1], m[2]),
     );
     // The same capture with a type annotation between name and `=`.
     each(
-      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|\/\/|\/\*|$)/g,
       (m) => bind(m[1], m[2]),
     );
     // A capture through a plain quoted bracket key reads like the dotted
     // captures above: `const wf = fs["writeFileSync"]`, and through a
     // namespace alias once the pass above has bound it.
     each(
-      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*)\s*\[\s*(["'`])([A-Za-z_$][\w$]*)\3\s*\]\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|$)/g,
+      /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?::[^=;,\n]*?)?=\s*([A-Za-z_$][\w$]*)\s*\[\s*(["'`])([A-Za-z_$][\w$]*)\3\s*\]\s*(?:\.\s*bind\s*\([^)]*\))?\s*(?=[;,\n]|\/\/|\/\*|$)/g,
       (m) => bind(m[1], `${m[2]}.${m[4]}`),
     );
     // Destructuring from a namespace or from its `promises` member:
     // `const { writeFileSync } = fs`, `const { writeFileSync } = fs.promises`.
     each(
-      /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?=[;,\n]|$)/g,
+      /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)\s*(?=[;,\n]|\/\/|\/\*|$)/g,
       (m) => {
         if (!isFsNamespace(m[2], namespaces)) return;
         for (const [prop, local] of specifiers(m[1], /\s*:\s*/)) {
