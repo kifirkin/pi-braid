@@ -444,6 +444,13 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     //    Avoids per-turn disk I/O and system prompt bloat for context the
     //    agent can re-load via `read` if needed.
     if (!ps.insightsSent) {
+      // Claim the slot synchronously, before the first await below: two prompt
+      // builds that overlap would otherwise both read the flag unset while the
+      // deliveries are in flight, and every once-per-session whisper goes out
+      // twice. The claim is one read-and-write with no await between, so a
+      // second build either sees the claim or arrives after the deliveries
+      // settled - the window is closed, not narrowed.
+      ps.insightsSent = true;
       // Once-per-session context-hygiene whisper: the awareness catalog's
       // live token-delta signal — tokens in context + tokens added since
       // the previous emission's baseline. Usage comes from the same
@@ -468,7 +475,6 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
         deliverActiveSpecs(cwd, pi, ctx),
         deliverAwarenessWhisper(pi, ctx, awarenessCounts),
       ]);
-      ps.insightsSent = true;
     }
 
     // Build the prompt as a flat list of sections. Every section is a
