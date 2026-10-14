@@ -34,7 +34,10 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
-## Unreleased
+## Core — 0.40.0 / Telegram — 0.1.4 / Providers — 1.0.4 / Skills — 0.2.0 / Contrib — 0.1.0 (2026-10-14: first public release)
+
+The first npm publication: all five packages go out together at the versions
+above.
 
 ### Core
 
@@ -78,6 +81,125 @@ reader-facing record; the tag scheme above applies unchanged.
   session model when image-capable → the merged role's first image-capable,
   route-usable entry → the first available image-capable model. The
   `/vision-model` command warns on use and is removed next release.
+
+- **pi 1.2.0 across the family** — the pinned `@earendil-works/pi-agent-core`,
+  `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` family moves
+  to `1.2.0` in the root manifest and the providers package. The
+  whisper-delivery branch test re-points its third-branch stub at 1.2.0's
+  run-start entry and asserts that entry exists on the prototype before
+  stubbing it, so the next rename is a named failure in the fixture instead
+  of a stack trace from inside pi-core (`8dd7fd82`, `c6d40853`).
+- **Runtime state resolves through the braid root at call time** — every
+  writer that folded `os.homedir()` into a module-load constant now resolves
+  `BRAID_HOME` (else `<home>/.pi/agent/braid`) per call, so a pin set after
+  import is honoured; a relative or blank `HOME`/`BRAID_HOME` is refused
+  with the offending variable named instead of creating state inside the
+  current project. The write-decision log, episode, scratchpad, semantic,
+  orchestrator lock and worker registries, checkpoints, error log, evidence
+  pool, degradation state, analytics metrics, hints, workspace snapshots and
+  skills-adoption stores all follow; the adherence, telemetry, tags and
+  sessions sinks move under the root; the heartbeat report compares
+  realpaths for its entry guard; the error-tracking listener drains its
+  refused store at warn instead of surfacing an unhandled rejection; and
+  readers that can miss (the error list, the semantic load, the adoption
+  rollup) degrade instead of throwing (`5bbdb77f`, `eead4ff3`, `30bcb697`,
+  `45066f58`).
+- **Module toggles persist in braid's store** — a toggle writes
+  `braid.modules` to `braidDir()/projects/<project>/module-overrides.json`
+  (temp-file-plus-rename, siblings preserved) instead of creating
+  `<cwd>/.pi/settings.json` in a stranger's repository. Reads merge pi's
+  agent-directory settings file with braid's store, later wins per key; the
+  project-scoped `braid.modules` block is no longer a source, because it is
+  pi's file behind pi's project-trust gate and that answer is not available
+  while extensions load (`5bbdb77f`, `eead4ff3`).
+- **State paths are held by checks, not convention** — a new
+  `check-write-scope` scan fails the chain on a production write whose
+  target can resolve into the cwd unless the call carries a reasoned
+  allowlist entry; containment children drive each package's real writers
+  under a pinned `BRAID_HOME` and assert the project tree and the default
+  HOME tree stay untouched; and the four copies of the braid-root rule
+  (core, telegram, providers, contrib) are compared shape by shape, so one
+  package's guard cannot drift from the others (`e91ca9d6`, `f14cb5ef`,
+  `f029fb35`).
+- **Rotation size notice lands at the turn-end flush** — while a run is
+  streaming the notice is sent as a park-class steer, so it is delivered at
+  the same turn end instead of queuing on the one-message-per-run-stop lane
+  (median delivery latency on the session corpus was about 12 minutes, and
+  most notices landed after the agent had already acted on them). An
+  unresolved-advisory registry, retired by the message append events, keeps
+  a second notice of the same kind from stacking, with a 30-minute TTL for a
+  lost event and a clean map at session shutdown; the notice body states the
+  age rule, so a header stamp older than the last `context_compress` or
+  `finalize` reads as already satisfied (`5038b448`).
+- **Once-per-session whisper slot claimed before the first await** — the
+  guard was read before an awaited delivery batch and written after it, so
+  two overlapping prompt builds both delivered every once-per-session
+  whisper and a session start could see the hygiene line twice; the slot is
+  now claimed synchronously at block entry (`26fd5e0f`).
+- **Doc references and instruction strings are derived, then repaired** —
+  `check-doc-drift` derives its subject set from the docs' inline code spans
+  and resolves every strong identifier against the source, with a
+  `doc-ref-exempt` annotation for deliberate mentions and recorded host and
+  package names; a new `check-instruction-strings` walk of emitted string
+  units fails on a tool name that is not registered, an action outside its
+  tool's enum, or an action quoted for a tool with no action parameter. Both
+  run inside `ci:check` and print their counts. The pre-existing findings
+  were recorded as baselines (seven doc-reference rows, eleven instruction
+  rows) and then repaired: the tool descriptions name
+  `context_compress(action=archive)` and `context_navigate(action=...)`
+  instead of the retired names, and the docs point at the live `signals.ts`
+  exports, the `tool_call` event, `ClassificationResult`,
+  `setGlobalLogLevel` and `typeRoots` (`195a8c89`, `199883e0`).
+
+### Telegram
+
+- **MarkdownV2 emphasis converts to HTML, one entity per pair** — a body
+  carrying `**bold**`, `__underline__`, `~strikethrough~` or `||spoiler||`
+  under `parse_mode: "Markdown"` shipped its markers literal, because the
+  guard checked delimiter balance rather than dialect; the delivery format
+  now rewrites balanced pairs to `<b>`, `<u>`, `<s>`, `<tg-spoiler>` and
+  `<code>`, escapes HTML-reserved characters outside author markup and code
+  spans, and reports a per-kind conversion count. A `__x__` pair emits `<u>`
+  (it used to emit `<i>`, which no MarkdownV2 pair means); unbalanced or
+  identifier-like markers stay literal; the parse_mode schema and tool
+  descriptions name the legacy dialect and point at HTML; and an over-cap
+  render splits to fit instead of failing at the API (`7e649f5c`,
+  `22fe46e6`).
+- **State root** — media and pause state move from pi's agent directory to
+  `braidDir()/telegram`, with a read fallback to the pre-move files; the
+  voice download, poller lock, media, pause and live-update defaults resolve
+  through the same root and refuse a root that is not absolute
+  (`e91ca9d6`, `f14cb5ef`).
+- **Peer dependencies declared** — `@earendil-works/pi-ai` (whose `/compat`
+  subpath the pinned `1.2.0` exports) and `typebox` join
+  `@earendil-works/pi-coding-agent` as peers, matching core and contrib, so
+  a strict-layout install resolves every value import the shipped sources
+  make (`typebox` had been a devDependency only).
+
+### Providers
+
+- **State files refuse a root they cannot resolve** — the
+  `HOME || USERPROFILE || "."` fallback is gone; a base that is not absolute
+  is refused and the caller warns or stays in memory instead of writing
+  beside the cwd, the presend flush skips with one warn when the root is
+  underivable, and the presend root, key ring and route state resolve
+  `BRAID_HOME` at call time (`5bbdb77f`, `eead4ff3`, `f14cb5ef`,
+  `f029fb35`).
+
+### Contrib
+
+- **State paths follow the package's braid-root mirror** — observatory
+  recordings, browser screenshots, the scraping profile, the reconnect lock
+  and the healthcheck probes resolve through the mirror and refuse a
+  relative or blank home; the healthcheck writers resolve core's live
+  `healthcheckDir()` through `pi-braid/lib` instead of binding the default
+  at module load, and the report CLI refuses a relative root with exit 2
+  (`e91ca9d6`, `f2413cde`, `f029fb35`).
+- **`pi-braid` declared as a peer** — the shipped sources import
+  `pi-braid/lib` for the shared classifier, the event and session-start
+  helpers, `getExtensionState` and `healthcheckDir`; the package now
+  declares the dependency instead of relying on the monorepo's tsconfig
+  path mapping.
 
 ## Core — 0.3.2-main.18 (2026-09-18: configured context window end to end)
 
