@@ -22,9 +22,17 @@
  *   1. deliverAs "nextTurn"        -> _pendingNextTurnMessages
  *   2. streaming, triggerTurn !== false -> agent.steer()/followUp() (the only
  *      branch that reaches a live run)
- *   3. triggerTurn (truthy)        -> _runAgentPrompt (starts a run)
+ *   3. triggerTurn (truthy)        -> _startRun (starts a run)
  *   4. streaming                   -> _pendingCustomMessages (end-of-turn park)
  *   5. otherwise                   -> _appendCustomMessage (appended now)
+ *
+ * The double runs no constructor (`Object.create(AgentSession.prototype)`), so
+ * it names the class fields the branches read, and it pins branch 3 by the
+ * name of the entry point the installed runtime routes it to. Both are
+ * version-coupled: 1.2.0 renamed branch 3's entry (`_runAgentPrompt` ->
+ * `_startRun`) and added the `_pendingBashMessages` field. A stub under a
+ * name the runtime no longer calls is INERT, so `makeSession` asserts the
+ * entry point exists on the prototype before stubbing it.
  *
  * RED before the funnel class translation: the "park" case steers (branch 2)
  * and the gated wake parks (branch 4). GREEN after.
@@ -83,6 +91,11 @@ console.log("=== whisper delivery branch pin (real pi-core sendCustomMessage) ==
  * Session double on the real prototype: `isStreaming` reads
  * `_isAgentRunActive`, and every branch effect is recorded. Branch 3/5
  * effects are stubbed - the branch DECISION is what is pinned.
+ *
+ * The field list below mirrors what the real constructor initializes for the
+ * state these branches read. `Object.create` skips that constructor, so any
+ * field not named here is `undefined`, and a real method that reads it throws
+ * inside pi-core instead of naming the missing stub.
  */
 function makeSession({ streaming, emit }) {
   const calls = { steer: [], followUp: [], append: [], run: [] };
@@ -92,12 +105,25 @@ function makeSession({ streaming, emit }) {
   session._deferredSettledActions = [];
   session._pendingNextTurnMessages = [];
   session._pendingCustomMessages = [];
+  // bash-execution state (1.2.0): `_startRun` flushes it either side of the
+  // run's preparation (the `_prepareRun` error path, and the normal path before
+  // the first request), so branch 3 reads the field even when nothing queued.
+  session._pendingBashMessages = [];
   session.agent = {
     steer: (m) => calls.steer.push(m),
     followUp: (m) => calls.followUp.push(m),
   };
-  session._runAgentPrompt = (m) => {
-    calls.run.push(m);
+  // Branch 3's entry point, asserted before it is stubbed: a renamed method
+  // leaves this stub unreached, which puts the REAL entry on a bare double.
+  assert.equal(
+    typeof AgentSession.prototype._startRun,
+    "function",
+    "branch 3: AgentSession.prototype._startRun is gone - pi-core renamed the entry " +
+      "sendCustomMessage routes a triggerTurn send to (1.1.x called it _runAgentPrompt); " +
+      "re-point this stub and the branch list above before trusting this file",
+  );
+  session._startRun = (trigger) => {
+    calls.run.push(trigger);
     return Promise.resolve();
   };
   session._appendCustomMessage = (m) => {
@@ -200,7 +226,7 @@ await test("park class while streaming -> branch 4 (_pendingCustomMessages), nev
   assert.equal(calls.run.length, 0);
 });
 
-await test("wake while idle -> branch 3 (_runAgentPrompt starts a run)", async () => {
+await test("wake while idle -> branch 3 (_startRun starts a run)", async () => {
   const { calls, pi } = fresh(false);
   send(pi, { triggerTurn: true });
   await flushDeferred();
