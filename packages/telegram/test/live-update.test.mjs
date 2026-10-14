@@ -11,9 +11,16 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 import {
   createLiveUpdateTracker,
@@ -22,6 +29,7 @@ import {
   TRACKED_DONE_TEXT_REPORT_SENT,
   TRACKED_TERMINAL_TEXT,
   saveLiveState,
+  clearLiveState,
 } from "../dist/lib/notify/live-update.js";
 import {
   markAgentDeliveredMessage,
@@ -578,6 +586,90 @@ test("restart: state file with messageId 0 (cleared) is treated as no tracked me
   assert.equal(out.reused, false, "washed-out state → fresh tracked message");
   assert.equal(stub.sends.length, 1);
   assert.ok(existsSync(stateFile));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── durability: the state file is never observed torn ─────────────────────
+
+test("concurrent saves and clears: a parsing reader never observes a torn state", async () => {
+  const { dir, stateFile } = tmpStateFile("race");
+  const cleared = JSON.stringify({ messageId: 0, chatId: 0, startedAt: 0 });
+  const snapshots = Array.from({ length: 60 }, (_, i) => ({
+    messageId: 8000 + i,
+    chatId: OWNER_CHAT_ID,
+    startedAt: 1_700_000_000_000 + i,
+  }));
+  const whole = new Set([
+    cleared,
+    ...snapshots.map((snapshot) => JSON.stringify(snapshot)),
+  ]);
+
+  // The reader is the suite's own instrument (readFileSync + JSON.parse) run
+  // in a loop while writers are in flight. A truncate-then-write lets it
+  // observe a state that was never written: an empty file inside the truncate
+  // window, or one document followed by the tail of another.
+  const torn = [];
+  let stop = false;
+  const reader = (async () => {
+    // Every sample yields once, even a sample that FAILED to parse: a
+    // parse-failure branch that loops without yielding starves the writers it
+    // is racing (their truncate/write pair never completes), which wedges the
+    // file in the very state the reader is waiting to escape.
+    for (let reads = 0; !stop && reads < 20_000 && torn.length < 5; reads++) {
+      let raw;
+      try {
+        raw = readFileSync(stateFile, "utf8");
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error; // first save may not have landed yet
+      }
+      if (raw !== undefined) {
+        try {
+          const parsed = JSON.parse(raw);
+          const doc = JSON.stringify({
+            messageId: parsed.messageId,
+            chatId: parsed.chatId,
+            startedAt: parsed.startedAt,
+          });
+          if (!whole.has(doc)) torn.push(`never-written state: ${doc}`);
+        } catch (error) {
+          torn.push(`unparsable (${String(error)}): ${JSON.stringify(raw)}`);
+        }
+      }
+      await yieldToLoop();
+    }
+  })();
+
+  try {
+    for (const snapshot of snapshots) {
+      // Three writers on one file: a clear racing a save is the shape of an
+      // abort racing the next turn's start.
+      await Promise.all([
+        saveLiveState(stateFile, snapshot),
+        clearLiveState(stateFile),
+        saveLiveState(stateFile, snapshot),
+      ]);
+      await yieldToLoop(); // the reader gets a turn inside every round
+    }
+  } finally {
+    stop = true;
+    await reader;
+  }
+
+  assert.deepEqual(
+    torn.slice(0, 3),
+    [],
+    `torn state observed ${torn.length} time(s) across ${snapshots.length} rounds`,
+  );
+  assert.deepEqual(
+    readdirSync(dir).filter((name) => name.endsWith(".tmp")),
+    [],
+    "every temp file is renamed, none is left behind",
+  );
+  const final = JSON.parse(readFileSync(stateFile, "utf8"));
+  assert.ok(
+    whole.has(JSON.stringify(final)),
+    "the surviving state is one whole written snapshot",
+  );
   rmSync(dir, { recursive: true, force: true });
 });
 

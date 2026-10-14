@@ -24,7 +24,8 @@
  *    fixture tests run with zero real API calls.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { SlidingWindowLimiter } from "./rate-limit.js";
 import { defaultLiveUpdateFilePath } from "../state-paths.js";
@@ -164,17 +165,38 @@ export async function saveLiveState(
   } catch {
     // parent may already exist; write will surface real errors
   }
-  await writeFile(stateFile, JSON.stringify(state, null, 2) + "\n", "utf8");
+  await writeLiveStateAtomic(stateFile, state);
+}
+
+/**
+ * Persist one state document ATOMICALLY (write-temp-rename, same rationale as
+ * saveInboundQueue and savePauseState). A plain `writeFile` opens with O_TRUNC
+ * and writes afterwards, so a reader parsing the file inside that window — or
+ * a second saver completing its own truncate-then-write in between — observes
+ * a state that was never written: an empty file, or one document followed by
+ * the tail of a longer one. The cost is a parse error in the RESUMER (a
+ * persisted tracked message is then abandoned as "no tracked message") and in
+ * every concurrent reader of the file. The temp name is unique per write: a
+ * shared temp made concurrent savers fail each other's rename (ENOENT), while
+ * unique temps all land and the last rename wins with a whole snapshot.
+ */
+async function writeLiveStateAtomic(
+  stateFile: string,
+  state: LiveUpdateState,
+): Promise<void> {
+  const tmp = `${stateFile}.${randomUUID()}.tmp`;
+  await writeFile(tmp, JSON.stringify(state, null, 2) + "\n", "utf8");
+  await rename(tmp, stateFile);
 }
 
 /** Remove the state file (called after finish — the tracked message is done). */
 export async function clearLiveState(stateFile: string): Promise<void> {
   try {
-    await writeFile(
-      stateFile,
-      JSON.stringify({ messageId: 0, chatId: 0, startedAt: 0 }, null, 2) + "\n",
-      "utf8",
-    );
+    await writeLiveStateAtomic(stateFile, {
+      messageId: 0,
+      chatId: 0,
+      startedAt: 0,
+    });
   } catch {
     // best-effort; stale state is harmless (loadLiveState ignores messageId 0)
   }
