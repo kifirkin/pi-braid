@@ -569,7 +569,8 @@ export interface SendChunksResult {
  * instead of breaking the parse with `<b>…</b` / `>` fragments. Cuts inside
  * text prefer word boundaries and fall back to a hard character cut; a single
  * token longer than the limit (a giant word or tag) is emitted whole — an atom
- * is never split.
+ * is never split, and `sendMessageChunks` refuses an over-cap HTML chunk
+ * instead of trimming inside it.
  */
 export function splitHtmlText(
   text: string,
@@ -722,6 +723,31 @@ export async function sendMessageChunks(
   if (chunks.length === 0) {
     return { ok: true, sent: 0, total: 0, messageIds: [] };
   }
+  // A single token longer than the cap (a giant tag) is emitted whole by the
+  // splitter; the safety-net trim below would cut it mid-attribute and ship a
+  // body Telegram rejects. Refuse the body before anything is sent instead.
+  if (opts.parseMode === "HTML") {
+    const over = chunks.findIndex(
+      (chunk, index) =>
+        chunk.length +
+          (chunks.length > 1
+            ? `\n\n(${index + 1}/${chunks.length})`.length
+            : 0) >
+        maxLen,
+    );
+    if (over !== -1) {
+      return {
+        ok: false,
+        sent: 0,
+        total: chunks.length,
+        messageIds: [],
+        error:
+          `HTML chunk ${over + 1}/${chunks.length} is ${chunks[over].length} chars; the cap is ${maxLen} ` +
+          `and a tag longer than the cap cannot be split without breaking it. ` +
+          `NOTHING was sent — shorten the tag or the body.`,
+      };
+    }
+  }
   if (chunks.length === 1) {
     const res = await client.sendMessage(opts.token, opts.chatId, chunks[0], {
       ...(opts.parseMode ? { parseMode: opts.parseMode } : {}),
@@ -756,9 +782,10 @@ export async function sendMessageChunks(
     const marker = `\n\n(${i + 1}/${total})`;
     let body = chunks[i] + marker;
     if (body.length > maxLen) {
-      // Safety net for the legacy boundary splitter; `splitHtmlText` already
-      // reserves the marker, so an HTML chunk cannot land here (a trim would
-      // cut a closing tag).
+      // Safety net for the legacy boundary splitter. HTML bodies never reach
+      // it: `sendMessageChunks` refused an over-cap HTML chunk above, and
+      // `splitHtmlText` reserves the marker, so a trim here would only cut a
+      // closing tag.
       body =
         chunks[i].slice(0, Math.max(0, maxLen - marker.length - 1)).trimEnd() +
         "…" +

@@ -831,3 +831,55 @@ test("checkTelegramHtml: mirrors Telegram's verdicts on the review's failure sha
   assert.equal(checkTelegramHtml("a & b").ok, true);
   assert.equal(checkTelegramHtml("").ok, true);
 });
+
+test("checkTelegramHtml: attribute shapes follow the live parser (calibrated)", () => {
+  const cases = [
+    ['<b>x</b class="z">', false],
+    ['<span class="tg-spoiler">x</span class="y">', false],
+    ["<b>x</b>", true],
+    ["<b class=a=b>y</b>", false],
+    ['<b class=a"b>y</b>', false],
+    ["<b class=a'b>y</b>", false],
+    ['<b class="z">y</b>', true],
+    ['<tg-emoji emoji-id="00123">y</tg-emoji>', false],
+    ['<tg-emoji emoji-id="0">y</tg-emoji>', false],
+    ['<tg-emoji emoji-id="123">y</tg-emoji>', true],
+  ];
+  for (const [wire, ok] of cases) {
+    assert.equal(checkTelegramHtml(wire).ok, ok, `${wire} must be ${ok}`);
+  }
+});
+
+test("convertMarkdownV2ToHtml: attribute shapes Telegram rejects refuse the conversion", () => {
+  for (const body of [
+    '~x~ <b>y</b class="z">',
+    '<span class="tg-spoiler">x</span class="y"> ~s~',
+    "~x~ <b class=a=b>y</b>",
+    '~x~ <b class=a"b>y</b>',
+    "~x~ <b class=a'b>y</b>",
+    '~x~ <tg-emoji emoji-id="00123">y</tg-emoji>',
+    '~x~ <tg-emoji emoji-id="0">y</tg-emoji>',
+  ]) {
+    const r = convertMarkdownV2ToHtml(body);
+    assert.equal(r.text, body, `${body}: authored text returned`);
+    assert.deepEqual(r.converted, ZERO_COUNTS, `${body}: nothing counted`);
+    const wire = resolveDeliveryFormat("Markdown", body);
+    assert.notEqual(wire.parseMode, "HTML", `${body}: no rejected HTML wire`);
+  }
+});
+
+test("sendMessageChunks: an over-cap HTML tag refuses the body instead of trimming it", async () => {
+  const body = '<a href="https://e.com/' + "q".repeat(5000) + '">y</a>';
+  assert.equal(checkTelegramHtml(body).ok, true, "the source body parses");
+  const { client, calls } = stubClient();
+  const res = await sendMessageChunks(client, {
+    token: BOT_TOKEN,
+    chatId: OWNER_CHAT_ID,
+    text: body,
+    parseMode: "HTML",
+  });
+  assert.equal(res.ok, false, "the send is refused");
+  assert.equal(res.sent, 0);
+  assert.equal(calls.length, 0, "nothing reaches the wire");
+  assert.match(res.error ?? "", /cap is 4096/);
+});

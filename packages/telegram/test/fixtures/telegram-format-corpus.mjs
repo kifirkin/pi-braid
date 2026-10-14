@@ -4,8 +4,8 @@
  * from the review's harness plus the shapes its later probes added (the four
  * remaining crossing pairs, the F2 sentinel shapes, the code-span neutralizer
  * case), the 21-cell `{requested} × {body}` resolution matrix, the live parse
- * verdicts the review recorded for the dialect and nesting probes, and the
- * cap-crossing bodies.
+ * verdicts the review recorded for the dialect, nesting and attribute probes,
+ * and the cap-crossing bodies.
  *
  * `test/corpus-runner.mjs` replays these through the package and asserts every
  * wire chunk the sender would emit is one Telegram accepts; `test/live-html-probe.mjs`
@@ -347,9 +347,9 @@ export const MATRIX_CELLS = [
 
 /**
  * Cap-crossing bodies (R2: converted bodies split inside tags; F8: a converted
- * body crosses a configured cap). Each entry names the wire contract the
- * runner asserts against the capturing client — never against the stub's
- * return value.
+ * body crosses a configured cap; a single tag longer than the cap). Each entry
+ * names the wire contract the runner asserts against the capturing client —
+ * never against the stub's return value.
  */
 export const CAP_CASES = [
   {
@@ -497,13 +497,28 @@ export const CAP_CASES = [
       htmlValid: true,
     },
   },
+  {
+    // A valid body whose single tag alone exceeds 4096: the splitter emits
+    // the atom whole, so the send is refused with an over-cap error instead
+    // of trimming inside the tag.
+    name: "over-cap tag refuses the body (nothing sent)",
+    params: {
+      text: '<a href="https://e.com/' + "q".repeat(5000) + '">y</a>',
+      rich: true,
+      parse_mode: "HTML",
+    },
+    deps: {},
+    expect: { error: true, mode: "over-cap-refusal" },
+  },
 ];
 
 /**
  * The checker calibration corpus: every case was sent to the live API with
  * `parse_mode: "HTML"` (undeliverable chat id; parse verdicts precede chat
- * validation) and its verdict recorded. The corpus test replays the verdicts
- * against the local checker; the live probe re-queries them.
+ * validation) and its verdict recorded, including the attribute-shape set
+ * (end-tag attributes, unquoted-value delimiters, emoji-id canonical form).
+ * The corpus test replays the verdicts against the local checker; the live
+ * probe re-queries them.
  */
 export const HTML_PARSE_CASES = [
   ["<b>x</b>", "<b>x</b>", "PARSES"],
@@ -613,6 +628,29 @@ export const HTML_PARSE_CASES = [
     '<span class="tg-spoiler"><span class="tg-spoiler">x</span></span>',
     "PARSES",
   ],
+  // attribute shapes (live-probed with the rows above)
+  ["attr: end tag takes no attributes (b)", '<b>x</b class="z">', "REJECTED"],
+  [
+    "attr: end tag takes no attributes (span)",
+    '<span class="tg-spoiler">x</span class="y">',
+    "REJECTED",
+  ],
+  ["attr: end tag plain neighbour", "<b>x</b>", "PARSES"],
+  ["attr: unquoted value with equals", "<b class=a=b>y</b>", "REJECTED"],
+  ["attr: unquoted value with double quote", '<b class=a"b>y</b>', "REJECTED"],
+  ["attr: unquoted value with apostrophe", "<b class=a'b>y</b>", "REJECTED"],
+  ["attr: quoted value neighbour", '<b class="z">y</b>', "PARSES"],
+  [
+    "attr: emoji-id with leading zeros",
+    '<tg-emoji emoji-id="00123">y</tg-emoji>',
+    "REJECTED",
+  ],
+  ["attr: emoji-id zero", '<tg-emoji emoji-id="0">y</tg-emoji>', "REJECTED"],
+  [
+    "attr: emoji-id canonical neighbour",
+    '<tg-emoji emoji-id="123">y</tg-emoji>',
+    "PARSES",
+  ],
 ].map(([name, body, verdict]) => ({ name, body, verdict }));
 
 /**
@@ -717,3 +755,375 @@ export const EXPECTED_FIDELITY_CHANGES = [
   ...entry,
   modes: entry.modes.map((m) => (m === "none" ? undefined : m)),
 }));
+
+/**
+ * The exact delivered wires for every changed case-mode pair: `requested`
+ * is the caller's mode, `before`/`after` are the delivered `{ parseMode,
+ * text }` (`plain` means no parse_mode). Pinning the wires, not only the
+ * change set, means a case cannot keep "changing" while shipping a
+ * different wrong body. Derived from the recorded baseline (before) and
+ * the current build (after), cross-checked against the hardening report's
+ * fidelity table.
+ */
+export const EXPECTED_WIRES = [
+  {
+    case: "cross: __a ~b__ c~",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<u>a <s>b</u> c</s>" },
+    after: { parseMode: "plain", text: "__a ~b__ c~" },
+  },
+  {
+    case: "cross: __a ~b__ c~",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<u>a <s>b</u> c</s>" },
+    after: { parseMode: "Markdown", text: "__a ~b__ c~" },
+  },
+  {
+    case: "cross: __a ~b__ c~",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<u>a <s>b</u> c</s>" },
+    after: { parseMode: "HTML", text: "__a ~b__ c~" },
+  },
+  {
+    case: "cross: ~a __b~ c__",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>a <u>b</s> c</u>" },
+    after: { parseMode: "plain", text: "~a __b~ c__" },
+  },
+  {
+    case: "cross: ~a __b~ c__",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>a <u>b</s> c</u>" },
+    after: { parseMode: "Markdown", text: "~a __b~ c__" },
+  },
+  {
+    case: "cross: ~a __b~ c__",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>a <u>b</s> c</u>" },
+    after: { parseMode: "HTML", text: "~a __b~ c__" },
+  },
+  {
+    case: "cross: **a ~b** c~",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<b>a <s>b</b> c</s>" },
+    after: { parseMode: "plain", text: "**a ~b** c~" },
+  },
+  {
+    case: "cross: **a ~b** c~",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<b>a <s>b</b> c</s>" },
+    after: { parseMode: "Markdown", text: "**a ~b** c~" },
+  },
+  {
+    case: "cross: **a ~b** c~",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<b>a <s>b</b> c</s>" },
+    after: { parseMode: "HTML", text: "a ~b c~" },
+  },
+  {
+    case: "cross: ~a **b~ c**",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>a <b>b</s> c</b>" },
+    after: { parseMode: "plain", text: "~a **b~ c**" },
+  },
+  {
+    case: "cross: ~a **b~ c**",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>a <b>b</s> c</b>" },
+    after: { parseMode: "Markdown", text: "~a **b~ c**" },
+  },
+  {
+    case: "cross: ~a **b~ c**",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>a <b>b</s> c</b>" },
+    after: { parseMode: "HTML", text: "~a b~ c" },
+  },
+  {
+    case: "cross: __a ||b__ c||",
+    requested: undefined,
+    before: {
+      parseMode: "HTML",
+      text: "<u>a <tg-spoiler>b</u> c</tg-spoiler>",
+    },
+    after: { parseMode: "plain", text: "__a ||b__ c||" },
+  },
+  {
+    case: "cross: __a ||b__ c||",
+    requested: "Markdown",
+    before: {
+      parseMode: "HTML",
+      text: "<u>a <tg-spoiler>b</u> c</tg-spoiler>",
+    },
+    after: { parseMode: "Markdown", text: "__a ||b__ c||" },
+  },
+  {
+    case: "cross: __a ||b__ c||",
+    requested: "HTML",
+    before: {
+      parseMode: "HTML",
+      text: "<u>a <tg-spoiler>b</u> c</tg-spoiler>",
+    },
+    after: { parseMode: "HTML", text: "__a ||b__ c||" },
+  },
+  {
+    case: "cross: ||a __b|| c__",
+    requested: undefined,
+    before: {
+      parseMode: "HTML",
+      text: "<tg-spoiler>a <u>b</tg-spoiler> c</u>",
+    },
+    after: { parseMode: "plain", text: "||a __b|| c__" },
+  },
+  {
+    case: "cross: ||a __b|| c__",
+    requested: "Markdown",
+    before: {
+      parseMode: "HTML",
+      text: "<tg-spoiler>a <u>b</tg-spoiler> c</u>",
+    },
+    after: { parseMode: "Markdown", text: "||a __b|| c__" },
+  },
+  {
+    case: "cross: ||a __b|| c__",
+    requested: "HTML",
+    before: {
+      parseMode: "HTML",
+      text: "<tg-spoiler>a <u>b</tg-spoiler> c</u>",
+    },
+    after: { parseMode: "HTML", text: "||a __b|| c__" },
+  },
+  {
+    case: "html: ~a<b>c~",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>a<b>c</s>" },
+    after: { parseMode: "HTML", text: "~a<b>c~" },
+  },
+  {
+    case: "html: ~a<b>c~",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>a<b>c</s>" },
+    after: { parseMode: "Markdown", text: "~ac~" },
+  },
+  {
+    case: "html: ~a<b>c~",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>a<b>c</s>" },
+    after: { parseMode: "HTML", text: "~a<b>c~" },
+  },
+  {
+    case: "html: ~x~ <span>y</span>",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>x</s> <span>y</span>" },
+    after: { parseMode: "HTML", text: "~x~ <span>y</span>" },
+  },
+  {
+    case: "html: ~x~ <span>y</span>",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>x</s> <span>y</span>" },
+    after: { parseMode: "Markdown", text: "~x~ y" },
+  },
+  {
+    case: "html: ~x~ <span>y</span>",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>x</s> <span>y</span>" },
+    after: { parseMode: "HTML", text: "~x~ <span>y</span>" },
+  },
+  {
+    case: "html: ~x~ <b>unclosed",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>x</s> <b>unclosed" },
+    after: { parseMode: "HTML", text: "~x~ <b>unclosed" },
+  },
+  {
+    case: "html: ~x~ <b>unclosed",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>x</s> <b>unclosed" },
+    after: { parseMode: "Markdown", text: "~x~ unclosed" },
+  },
+  {
+    case: "html: ~x~ <b>unclosed",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>x</s> <b>unclosed" },
+    after: { parseMode: "HTML", text: "~x~ <b>unclosed" },
+  },
+  {
+    case: "html: ||x|| </b>",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<tg-spoiler>x</tg-spoiler> </b>" },
+    after: { parseMode: "HTML", text: "||x|| </b>" },
+  },
+  {
+    case: "html: ||x|| </b>",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<tg-spoiler>x</tg-spoiler> </b>" },
+    after: { parseMode: "Markdown", text: "||x|| " },
+  },
+  {
+    case: "html: ||x|| </b>",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<tg-spoiler>x</tg-spoiler> </b>" },
+    after: { parseMode: "HTML", text: "||x|| </b>" },
+  },
+  {
+    case: 'html: ~x~ <a href="a>b">y</a>',
+    requested: undefined,
+    before: { parseMode: "HTML", text: '<s>x</s> <a href="a>b"&gt;y</a>' },
+    after: { parseMode: "HTML", text: '<s>x</s> <a href="a>b">y</a>' },
+  },
+  {
+    case: 'html: ~x~ <a href="a>b">y</a>',
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: '<s>x</s> <a href="a>b"&gt;y</a>' },
+    after: { parseMode: "HTML", text: '<s>x</s> <a href="a>b">y</a>' },
+  },
+  {
+    case: 'html: ~x~ <a href="a>b">y</a>',
+    requested: "HTML",
+    before: { parseMode: "HTML", text: '<s>x</s> <a href="a>b"&gt;y</a>' },
+    after: { parseMode: "HTML", text: '<s>x</s> <a href="a>b">y</a>' },
+  },
+  {
+    case: "code: **b** `**x**` (neutralizer must not rewrite code)",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<b>b</b> <code>x</code>" },
+    after: { parseMode: "HTML", text: "<b>b</b> <code>**x**</code>" },
+  },
+  {
+    case: "code: **b** `**x**` (neutralizer must not rewrite code)",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<b>b</b> <code>x</code>" },
+    after: { parseMode: "HTML", text: "<b>b</b> <code>**x**</code>" },
+  },
+  {
+    case: "code: **b** `**x**` (neutralizer must not rewrite code)",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<b>b</b> <code>x</code>" },
+    after: { parseMode: "HTML", text: "<b>b</b> <code>**x**</code>" },
+  },
+  {
+    case: "sentinels: **b** \uE0009\uE001",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<b>b</b> " },
+    after: { parseMode: "HTML", text: "<b>b</b> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: **b** \uE0009\uE001",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<b>b</b> " },
+    after: { parseMode: "HTML", text: "<b>b</b> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: **b** \uE0009\uE001",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<b>b</b> " },
+    after: { parseMode: "HTML", text: "<b>b</b> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: ~x~ \uE0009\uE001",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>x</s> " },
+    after: { parseMode: "HTML", text: "<s>x</s> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: ~x~ \uE0009\uE001",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>x</s> " },
+    after: { parseMode: "HTML", text: "<s>x</s> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: ~x~ \uE0009\uE001",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>x</s> " },
+    after: { parseMode: "HTML", text: "<s>x</s> \uE0009\uE001" },
+  },
+  {
+    case: "sentinels: \uE0029\uE003 ~x~",
+    requested: undefined,
+    before: { parseMode: "HTML", text: " <s>x</s>" },
+    after: { parseMode: "HTML", text: "\uE0029\uE003 <s>x</s>" },
+  },
+  {
+    case: "sentinels: \uE0029\uE003 ~x~",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: " <s>x</s>" },
+    after: { parseMode: "HTML", text: "\uE0029\uE003 <s>x</s>" },
+  },
+  {
+    case: "sentinels: \uE0029\uE003 ~x~",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: " <s>x</s>" },
+    after: { parseMode: "HTML", text: "\uE0029\uE003 <s>x</s>" },
+  },
+  {
+    case: "sentinels: ~\uE0009\uE001~",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s></s>" },
+    after: { parseMode: "HTML", text: "<s>\uE0009\uE001</s>" },
+  },
+  {
+    case: "sentinels: ~\uE0009\uE001~",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s></s>" },
+    after: { parseMode: "HTML", text: "<s>\uE0009\uE001</s>" },
+  },
+  {
+    case: "sentinels: ~\uE0009\uE001~",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s></s>" },
+    after: { parseMode: "HTML", text: "<s>\uE0009\uE001</s>" },
+  },
+  {
+    case: "sentinels: ~y~ &amp;\uE0020\uE003;",
+    requested: undefined,
+    before: { parseMode: "HTML", text: "<s>y</s> &amp;&amp;;" },
+    after: { parseMode: "HTML", text: "<s>y</s> &amp;\uE0020\uE003;" },
+  },
+  {
+    case: "sentinels: ~y~ &amp;\uE0020\uE003;",
+    requested: "Markdown",
+    before: { parseMode: "HTML", text: "<s>y</s> &amp;&amp;;" },
+    after: { parseMode: "HTML", text: "<s>y</s> &amp;\uE0020\uE003;" },
+  },
+  {
+    case: "sentinels: ~y~ &amp;\uE0020\uE003;",
+    requested: "HTML",
+    before: { parseMode: "HTML", text: "<s>y</s> &amp;&amp;;" },
+    after: { parseMode: "HTML", text: "<s>y</s> &amp;\uE0020\uE003;" },
+  },
+  {
+    case: 'sentinels: `c` <a href="\uE0000\uE001">x</a> ~y~',
+    requested: undefined,
+    before: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="<code>c</code>">x</a> <s>y</s>',
+    },
+    after: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="\uE0000\uE001">x</a> <s>y</s>',
+    },
+  },
+  {
+    case: 'sentinels: `c` <a href="\uE0000\uE001">x</a> ~y~',
+    requested: "Markdown",
+    before: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="<code>c</code>">x</a> <s>y</s>',
+    },
+    after: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="\uE0000\uE001">x</a> <s>y</s>',
+    },
+  },
+  {
+    case: 'sentinels: `c` <a href="\uE0000\uE001">x</a> ~y~',
+    requested: "HTML",
+    before: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="<code>c</code>">x</a> <s>y</s>',
+    },
+    after: {
+      parseMode: "HTML",
+      text: '<code>c</code> <a href="\uE0000\uE001">x</a> <s>y</s>',
+    },
+  },
+];

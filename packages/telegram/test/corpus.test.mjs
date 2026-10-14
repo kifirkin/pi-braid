@@ -4,7 +4,8 @@
  * wire accepted by the local checker (no new rejection against the recorded
  * baseline), the recorded live verdicts agree with the checker, the 21-cell
  * resolution matrix is unchanged, the cap-crossing bodies keep their named
- * contract, and the fidelity-change set equals the named list. NO network.
+ * contract, the fidelity-change set equals the named list, and every changed
+ * case-mode pair ships its pinned wire. NO network.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,6 +21,7 @@ test("corpus: every replay invariant holds (wire validity, baseline fidelity, ca
   );
   assert.equal(report.counts.hostileCases, 76);
   assert.equal(report.counts.matrixCells, 21);
+  assert.equal(report.counts.expectedWires, 54);
   assert.ok(report.counts.htmlWires > 0);
 });
 
@@ -30,5 +32,5 @@ test("corpus: the checker agrees with every recorded live HTML parse verdict", (
     [],
     `checker/live disagreements:\n${report.failures.join("\n")}`,
   );
-  assert.equal(report.cases, 87);
+  assert.equal(report.cases, 97);
 });

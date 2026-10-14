@@ -11,13 +11,16 @@
  * calibrated against the live API; `test/live-html-probe.mjs` re-runs that
  * comparison on demand (opt-in, no delivery).
  *
- * Calibrated rules (the probe log lives with the report):
+ * Calibrated rules (the committed `test/fixtures/telegram-format-corpus.mjs`
+ * carries the recorded live verdicts; `test/live-html-probe.mjs` re-runs the
+ * comparison on demand):
  *  - only Telegram's tag set, case-insensitively;
  *  - attributes: `name`, `name=value`, `name="value"` or `name='value'`;
  *    quoted values may contain `>`, `<` and whitespace, unquoted values may
- *    not contain `/` or `<`;
+ *    not contain `/`, `<`, `=`, `"` or `'`;
+ *  - an end tag takes no attributes (whitespace before `>` stays legal);
  *  - `span` requires class="tg-spoiler" (exactly), `tg-emoji` requires a
- *    numeric `emoji-id`;
+ *    canonical numeric `emoji-id` (no leading zeros, not zero);
  *  - strict LIFO nesting, case-insensitively; no self-closing tags;
  *  - a `<` that starts no valid tag is an error ("Unsupported start tag");
  *  - everything outside tags is literal text: Telegram does not validate
@@ -101,6 +104,15 @@ export function parseTelegramTagAt(
       i++;
       break;
     }
+    if (closing) {
+      // An end tag takes no attributes: Telegram fails `</b class="z">`
+      // with "Unclosed end tag"; only whitespace may precede the `>`.
+      const gt = text.indexOf(">", i);
+      if (gt === -1) return null; // never closed
+      error ??= `Unclosed end tag at byte offset ${start}`;
+      i = gt + 1;
+      break;
+    }
     if (ch === "/") {
       // `<b/>`: Telegram reads the name as `b/` and rejects it.
       if (text[i + 1] === ">") {
@@ -152,8 +164,16 @@ export function parseTelegramTagAt(
           i++;
         }
         value = text.slice(valueStart, i);
-        // An empty unquoted value (`class=`) parses; `/` and `<` do not.
-        if (value.includes("/") || value.includes("<")) {
+        // An empty unquoted value (`class=`) parses; `/`, `<`, `=`, `"` and
+        // `'` end the name token on Telegram's parser ("Unexpected end of
+        // name token").
+        if (
+          value.includes("/") ||
+          value.includes("<") ||
+          value.includes("=") ||
+          value.includes('"') ||
+          value.includes("'")
+        ) {
           error ??= `Unexpected end of name token at byte offset ${start}`;
         }
       }
@@ -174,7 +194,9 @@ export function parseTelegramTagAt(
   }
   if (name === "tg-emoji" && !closing) {
     const id = attributes.find((a) => a.name === "emoji-id");
-    if (!id?.value || !/^\d{1,19}$/.test(id.value)) {
+    // Live: a leading zero (`00123`) and a bare zero both fail with
+    // "Invalid custom emoji identifier specified"; `123` parses.
+    if (!id?.value || !/^[1-9]\d{0,18}$/.test(id.value)) {
       error ??= "Invalid custom emoji identifier specified";
     }
   }
