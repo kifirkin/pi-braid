@@ -11,9 +11,9 @@ Shared types and result wrappers used across the codebase.
 | `standard-result.ts` | The standard result wrapper for tool execution. All tool `execute` functions should return this shape. |
 | `episode-types.ts`   | The `Episode` interface shared by three-memory-stores, heartbeat-scheduler, and sop-suggestion.        |
 
-> **Note:** `extension-context.d.ts` lives in `src/types/` (a TypeScript
-> `typeRoot`), not here. That's where ambient declarations are picked up by
-> `tsc` and by the IDE.
+> **Note:** `extension-context.d.ts` lives in `src/types/` (listed in the
+> `tsconfig.json` `typeRoots`), not here. That's where ambient declarations are
+> picked up by `tsc` and by the IDE.
 
 ## Local Contracts
 

@@ -145,7 +145,7 @@ All such files must carry a `<!-- status: ... -->` marker near the top:
 - **`aspirational`** - doc describes long-term vision
 - **`historical`** - doc describes past state, archived or completed
 
-`npm run check:docs` enforces the marker. `npm run check:doc-drift` greps tracked API names (e.g. `completeSimple`, `behaviorModeSection`) in docs vs source - fails if a `current`-marked doc references an API not present in code.
+`npm run check:docs` enforces the marker. `npm run check:doc-drift` greps tracked API names (e.g. `completeSimple`, `streamSimple`) in docs vs source - fails if a `current`-marked doc references an API not present in code.
 
 When you change an API surface, update both code and any docs that reference it, or mark the doc `forward-looking` if it's the plan.
 

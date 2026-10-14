@@ -91,63 +91,7 @@ const EXTERNAL_TOOLS = new Map([
  * the check fails when a row stops matching. Every row here is a queued
  * instruction repair: a stale tool name in a message the model reads.
  */
-const KNOWN_UNRESOLVED = [
-  {
-    file: "packages/core/src/extensions/cognitive/turn-outcome/index.ts",
-    token: "context_archive",
-    reason: "loop-detector offline message names the consolidated context tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/compaction-retry.ts",
-    token: "context_archive",
-    reason: "compaction retry prompt names the consolidated context tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/compaction-retry.ts",
-    token: "context_checkout",
-    reason: "compaction retry prompt names the consolidated checkout tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/navigation.ts",
-    token: "context_checkout",
-    reason: "checkout-prepared notice names the consolidated checkout tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/rotation.ts",
-    token: "context_tag",
-    reason: "branch-depth notice names the consolidated tag tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/rotation.ts",
-    token: "session_compact",
-    reason: "branch-depth notice names the retired session compaction tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/rotation.ts",
-    token: "context_archive",
-    reason: "branch-depth notice names the consolidated archive tool",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/tools/context-inspect.ts",
-    token: "context_checkout",
-    reason: "inspect guidance names the consolidated checkout tool",
-  },
-  {
-    file: "packages/core/src/lib/detection/context-tiers.ts",
-    token: "context_archive",
-    reason: "advisory tier text names the consolidated archive tool",
-  },
-  {
-    file: "packages/core/src/extensions/heartbeat/heartbeat-scheduler/policies.ts",
-    token: "context_inspect",
-    reason: "the tool takes detail=, not action=; the tier message predates the rename",
-  },
-  {
-    file: "packages/core/src/extensions/memory/context-manager/handlers/tools/context-compress.ts",
-    token: "context_inspect",
-    reason: "the tool takes detail=, not action=; the skip notice predates the rename",
-  },
-];
+const KNOWN_UNRESOLVED = [];
 
 /** A file under a package's production tree, never a test or declaration file. */
 const TEST_PATH = /(^|\/)(?:test|tests|__tests__)\//;

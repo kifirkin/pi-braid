@@ -100,7 +100,7 @@ export function contextUsageTierMessage(tier: ContextUsageTier, usagePercent: nu
       );
     case "advisory":
       return (
-        `Context at ${pct}%. Advisory — consider context_archive for completed tasks. ` +
+        `Context at ${pct}%. Advisory — consider context_compress(action="archive") for completed tasks. ` +
         `context_navigate(action="tag") to mark your position first.`
       );
     case "soft":

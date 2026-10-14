@@ -162,7 +162,7 @@ export default function turnOutcomeExtension(pi: ExtensionAPI): void {
         `The loop-detection classifier is unavailable this turn, so this check could not run normally. ` +
         `If you are in a repetitive loop, this extension cannot detect it. ` +
         `Please self-monitor: if you notice yourself calling the same tools with the same results ` +
-        `for several turns, use \`think()\` to re-evaluate your approach, or consider \`context_archive\` ` +
+        `for several turns, use \`think()\` to re-evaluate your approach, or consider \`context_compress(action="archive")\` ` +
         `to checkpoint your work.`;
       try {
         sendTrackedMessage(

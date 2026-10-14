@@ -725,7 +725,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   type: "text" as const,
                   text: [
                     `**Compact skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
-                    `No compaction needed. Use context_inspect(action="quick") to verify.`,
+                    `No compaction needed. Use context_inspect(detail="quick") to verify.`,
                   ].join("\n"),
                 },
               ],
@@ -1247,7 +1247,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   type: "text" as const,
                   text: [
                     `**Slide skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
-                    `No entries need dropping. Use context_inspect(action="quick") to verify.`,
+                    `No entries need dropping. Use context_inspect(detail="quick") to verify.`,
                   ].join("\n"),
                 },
               ],

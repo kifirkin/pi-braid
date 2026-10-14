@@ -34,4 +34,4 @@ and result parsing.
 ## Anti-patterns
 
 - Don't call `completeSimple` directly from extensions. Use `llm-call.ts`.
-- Don't parse LLM JSON inline. Use `text-classifier.ts` which handles `withTypeBox` schemas.
+- Don't parse LLM JSON inline. Use `text-classifier.ts`, which runs the four-tier fallback and returns a parsed `ClassificationResult`.

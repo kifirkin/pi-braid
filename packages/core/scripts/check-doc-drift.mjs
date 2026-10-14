@@ -456,43 +456,7 @@ const DOC_REF_EXTERNAL = [
  * Keyed by doc and identifier (line numbers move). The check fails when a row
  * stops matching.
  */
-const DOC_REF_KNOWN = [
-  {
-    doc: "packages/core/AGENTS.md",
-    token: "determineContrastMode",
-    reason: "the signals row names an API the enforcement extension does not export",
-  },
-  {
-    doc: "packages/core/CONTRIBUTING.md",
-    token: "behaviorModeSection",
-    reason: "names a tracked name the checker's own list does not carry",
-  },
-  {
-    doc: "packages/core/src/extensions/enforcement/handlers/AGENTS.md",
-    token: "before_tool_call",
-    reason: "the extension registers tool_call, not before_tool_call",
-  },
-  {
-    doc: "packages/core/src/lib/ai/AGENTS.md",
-    token: "withTypeBox",
-    reason: "the classifier has no withTypeBox schema helper",
-  },
-  {
-    doc: "packages/core/src/lib/state/AGENTS.md",
-    token: "_shownDiscoveryBundles",
-    reason: "the dedup slot is a globalThis key, not this binding",
-  },
-  {
-    doc: "packages/core/src/lib/state/AGENTS.md",
-    token: "setLogLevel",
-    reason: "the logger exposes setLoggerContext, not setLogLevel",
-  },
-  {
-    doc: "packages/core/src/lib/types/AGENTS.md",
-    token: "typeRoot",
-    reason: "the compiler option is typeRoots; the row names a typeRoot",
-  },
-];
+const DOC_REF_KNOWN = [];
 
 /** The doc's current-state marker, or null when it carries none. */
 function docStatusOf(text) {

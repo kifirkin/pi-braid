@@ -154,8 +154,8 @@ export function createDefaultPolicies(
         // keeps its own per-tier message copy (different copy from the
         // enforcement nudge text).
         const TIER_MESSAGES: Record<"soft" | "advisory" | "warning" | "critical", string> = {
-          soft: `Context at ${USAGE_WHISPER_SOFT}%. Inspect and track: context_inspect(action="quick"). Tag with context_navigate(action="tag") to mark progress.`,
-          advisory: `Context at ${USAGE_WHISPER_ADVISORY}%. Light pruning: context_inspect(action="prune") then context_compress(action="archive") or context_navigate(action="tag") + context_compress(action="archive").`,
+          soft: `Context at ${USAGE_WHISPER_SOFT}%. Inspect and track: context_inspect(detail="quick"). Tag with context_navigate(action="tag") to mark progress.`,
+          advisory: `Context at ${USAGE_WHISPER_ADVISORY}%. Light pruning: context_inspect(detail="prune") then context_compress(action="archive") or context_navigate(action="tag") + context_compress(action="archive").`,
           warning: `Context at ${USAGE_WHISPER_WARNING}%. Deep compaction: tag + archive now. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact if needed.`,
           critical: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. FORCE IMMEDIATE HYGIENE. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> context_compress(action="slide"). Do not continue work until done.`,
         };

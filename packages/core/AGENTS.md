@@ -92,7 +92,7 @@ scratchpad action=continue                      # Resume goal + plan
 | `docs/HISTORY.md`                                      | Consolidated project history, archived roadmap, research                                                                       |
 | `src/extensions/core/prompt-builder/identity.ts`       | Identity framings (identity, identity-core, repair, self-audit) + discovery stance; behavior policy lives in its owner modules |
 | `src/extensions/core/prompt-builder/tool-pipelines.ts` | Guarded multi-tool usage pipelines (PROMPT-ARCHITECTURE-REDESIGN D2; design history in `docs/HISTORY.md`)                      |
-| `src/extensions/enforcement/signals.ts`                | `determineContrastMode()` - 6 priority tiers                                                                                   |
+| `src/extensions/enforcement/signals.ts`                | `enforcementSignals` - shared L1 signal state for prompt-builder; `pruneSignals()` evicts past the 3-turn retention window     |
 | Archived audits & proposals                            | Historical proposals superseded by `docs/HISTORY.md` / `docs/ROADMAP.md`                                                       |
 
 ## State Management

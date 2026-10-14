@@ -236,7 +236,9 @@ export function registerContextInspect(pi: ExtensionAPI): void {
 
         if (audit.branchingTriggers.length > 0) {
           lines.push("\n### Branching Triggers");
-          lines.push("Consider `context_checkout` with `backupTag` to branch if:");
+          lines.push(
+            "Consider `context_navigate(action='checkout')` with `backupTag` to branch if:",
+          );
           for (const trigger of audit.branchingTriggers) {
             lines.push(`- ${trigger.reason}: ${trigger.current} (threshold: ${trigger.threshold})`);
           }

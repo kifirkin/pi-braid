@@ -59,7 +59,7 @@ export function registerTurnEndCheckoutHandler(pi: ExtensionAPI): void {
             content: [
               {
                 type: "text" as const,
-                text: `**Context checkout prepared.** Run \`context_checkout(target="${state.checkoutParams.target}")\` when ready.`,
+                text: `**Context checkout prepared.** Run \`context_navigate(action="checkout", target="${state.checkoutParams.target}", message="...")\` when ready.`,
               },
             ],
             display: true,
