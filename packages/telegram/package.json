@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-telegram",
-  "version": "0.1.4-main.4",
+  "version": "0.1.4",
   "description": "Bidirectional Telegram channel for pi-braid: telegram_send tool (outbound) + inbound long-poll injector (backward channel)",
   "type": "module",
   "files": [
@@ -40,7 +40,9 @@
     "typebox": "1.1.38"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   },
   "author": "kifirkin",
   "license": "MIT",
