@@ -1,6 +1,6 @@
 /**
- * The adversarial Telegram-format corpus, committed from the fidelity review
- * (WAVE-REVIEW-TELEGRAM-FORMAT-FIDELITY-2026-10-14): the 69 hostile bodies
+ * The adversarial Telegram-format corpus, committed from the fidelity review:
+ * the 69 hostile bodies
  * from the review's harness plus the shapes its later probes added (the four
  * remaining crossing pairs, the F2 sentinel shapes, the code-span neutralizer
  * case), the 21-cell `{requested} × {body}` resolution matrix, the live parse
@@ -616,7 +616,7 @@ export const HTML_PARSE_CASES = [
 ].map(([name, body, verdict]) => ({ name, body, verdict }));
 
 /**
- * Cases whose delivered wire legitimately changes against the pre-wave
+ * Cases whose delivered wire legitimately changes against the recorded
  * baseline, with the reason. The runner asserts the observed diff set equals
  * exactly this list — a fidelity change outside it is a regression, and a
  * changed case that stops changing means the fix regressed to the old

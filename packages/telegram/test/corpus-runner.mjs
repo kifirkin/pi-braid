@@ -5,8 +5,8 @@
  *
  *   1. every chunk the sender would emit stays under Telegram's 4096 cap;
  *   2. every chunk that ships with parseMode HTML is one Telegram accepts
- *      (local checker), unless the pre-wave baseline for the same case and
- *      mode was already invalid — no fix may introduce a NEW rejection;
+ *      (local checker), unless the baseline already recorded that case and
+ *      mode as invalid — no fix may introduce a NEW rejection;
  *   3. every recorded live verdict for an HTML wire matches the checker
  *      (the checker-vs-live agreement the review demanded);
  *   4. the 21-cell `{requested} × {body}` matrix still resolves exactly as the
@@ -14,7 +14,7 @@
  *   5. the cap-crossing bodies (R2/F8) keep their named wire contract: a
  *      refused conversion ships the authored body in one capped message, a
  *      tag-aware split keeps every HTML chunk parseable;
- *   6. the set of cases whose delivered wire changed against the pre-wave
+ *   6. the set of cases whose delivered wire changed against the recorded
  *      baseline equals EXPECTED_FIDELITY_CHANGES exactly.
  *
  * Run standalone after a build (`node test/corpus-runner.mjs`; `npm test`

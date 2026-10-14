@@ -1,7 +1,7 @@
 /**
  * corpus.test.mjs — node:test wrapper around test/corpus-runner.mjs. The
  * runner's assertions are: every wire chunk under Telegram's cap, every HTML
- * wire accepted by the local checker (no new rejection against the pre-wave
+ * wire accepted by the local checker (no new rejection against the recorded
  * baseline), the recorded live verdicts agree with the checker, the 21-cell
  * resolution matrix is unchanged, the cap-crossing bodies keep their named
  * contract, and the fidelity-change set equals the named list. NO network.

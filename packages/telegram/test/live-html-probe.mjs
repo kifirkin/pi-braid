@@ -86,8 +86,8 @@ for (const { name, body } of HOSTILE_CASES) {
     const mode = format.parseMode ?? "plain";
     const preInvalid =
       base?.mode === "HTML" && !checkTelegramHtml(base.text).ok;
-    // HTML wires must satisfy the checker, except where the pre-wave wire was
-    // already unparseable in that mode (a pre-existing defect, not a fix).
+    // HTML wires must satisfy the checker, except where the wire was already
+    // unparseable in that mode (a pre-existing defect, not a fix).
     const expect =
       mode === "HTML"
         ? preInvalid
