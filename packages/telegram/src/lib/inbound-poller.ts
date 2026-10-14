@@ -31,7 +31,8 @@
  * fake fetch with no pi runtime and no network.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { defaultStateFilePath, warnUnderivableRoot } from "./state-paths.js";
 import {
@@ -709,6 +710,17 @@ export async function loadState(stateFile: string): Promise<PollerState> {
   }
 }
 
+/**
+ * Persist the offset ATOMICALLY (write-temp-rename, same rationale as
+ * saveInboundQueue/savePauseState). `loadState` below falls back to offset 0 on
+ * anything it cannot parse, and offset 0 means the WHOLE backlog is redelivered
+ * — so a truncate-then-write window (a crash inside it, a reader sampling it)
+ * silently destroys exactly the guarantee this file exists to provide. The temp
+ * name is unique per write: a shared temp made concurrent savers fail each
+ * other's rename (ENOENT), while unique temps all land and the last rename wins
+ * with a whole snapshot. Two code paths save this file — the poll loop and the
+ * `telegram_inbox` tool — so overlapping savers are reachable.
+ */
 export async function saveState(
   stateFile: string,
   state: PollerState,
@@ -719,11 +731,13 @@ export async function saveState(
   } catch {
     // parent may already exist and be non-writable-required; write will surface real errors
   }
+  const tmp = `${stateFile}.${randomUUID()}.tmp`;
   await writeFile(
-    stateFile,
+    tmp,
     JSON.stringify({ offset: state.offset }, null, 2) + "\n",
     "utf8",
   );
+  await rename(tmp, stateFile);
 }
 
 // Poller
