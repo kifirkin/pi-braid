@@ -9,6 +9,13 @@
  * continuity marker. `isBalancedMarkdown` is a pragmatic guard: Telegram's
  * `Markdown` parse_mode rejects unbalanced emphasis/links, so callers drop
  * parse_mode (fall back to plain text) when the delimiters are imbalanced.
+ *
+ * Dialect note: Telegram's `Markdown` parse_mode is the LEGACY dialect —
+ * `*bold*`, `_italic_`, `` `code` ``, `[t](u)`. The near-universal Markdown
+ * convention `**bold**` / `__italic__` is NOT bold/italic there; left as-is
+ * it reaches the wire literally. `convertMarkdownV2ToHtml` rewrites those
+ * shapes to their HTML equivalents so `resolveDeliveryFormat` can ship them
+ * rendered instead of raw.
  */
 
 import type {
@@ -169,6 +176,97 @@ export function neutralizeMarkdownMarkers(text: string): string {
     .replace(/\[([^\]\n]+)\]\(([^()\s]{1,200})\)/g, "$1");
 }
 
+/** Per-marker-kind counts produced by `convertMarkdownV2ToHtml`. */
+export interface ConversionCounts {
+  /** `**x**` → `<b>x</b>` rewrites. */
+  bold: number;
+  /** `__x__` → `<i>x</i>` rewrites. */
+  italic: number;
+  /** `` `x` `` → `<code>x</code>` rewrites. */
+  code: number;
+}
+
+/** Result of `convertMarkdownV2ToHtml`: the rewritten text plus its counts. */
+export interface MarkdownV2Conversion {
+  text: string;
+  converted: ConversionCounts;
+}
+
+/** Telegram HTML tag names (Bot API HTML parse mode), with attributes. */
+const TELEGRAM_HTML_TAG_RE =
+  /<\/?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|a|blockquote|span|tg-spoiler|tg-emoji)(?:\s[^<>]*)?>/gi;
+
+/** HTML entity reference (named, decimal, hex) — already wire-ready text. */
+const HTML_ENTITY_RE = /&(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);/g;
+
+/** Escape the three characters Telegram's HTML parser reserves. */
+function escapeHtmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Rewrite MarkdownV2-style emphasis that Telegram's legacy `Markdown`
+ * parse_mode does not understand into its HTML equivalent: `**x**` →
+ * `<b>x</b>` and `__x__` → `<i>x</i>`, plus paired backticks →
+ * `<code>x</code>`. Left as-is those shapes reach the wire literally under
+ * legacy Markdown and plain text. Balanced, single-line pairs only; code-span
+ * content stays literal and no nesting is interpreted (single-pass regexes,
+ * not a parser). Pairs may wrap arbitrarily long text: a length cap would
+ * leave a long bolded paragraph shipping raw `**`.
+ *
+ * The output is safe for `parse_mode: "HTML"`: text outside Telegram tags,
+ * entities and code spans has `&`, `<` and `>` escaped — a stray `<` is fatal
+ * to Telegram's HTML parser, and converting a body must never turn a
+ * deliverable message into an API error. The caller decides when to deliver
+ * the result: see `resolveDeliveryFormat`.
+ */
+export function convertMarkdownV2ToHtml(text: string): MarkdownV2Conversion {
+  const codeSpans: string[] = [];
+  // Protect code spans first: their content must stay literal for the
+  // emphasis passes below (a `**x**` example inside `code` is not bold).
+  let out = text.replace(/`([^`\n]+)`/g, (_m, inner: string) => {
+    codeSpans.push(inner);
+    return `\uE000${codeSpans.length - 1}\uE001`;
+  });
+  // Protect author HTML (Telegram's own tag set) and existing entities so the
+  // escaping pass below leaves them wire-ready instead of turning them into
+  // literal text (a mixed body must stay fully HTML, tags live).
+  const protectedParts: string[] = [];
+  const protect = (m: string): string => {
+    protectedParts.push(m);
+    return `\uE002${protectedParts.length - 1}\uE003`;
+  };
+  out = out.replace(TELEGRAM_HTML_TAG_RE, protect);
+  out = out.replace(HTML_ENTITY_RE, protect);
+  out = escapeHtmlText(out);
+  let bold = 0;
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, (_m, inner: string) => {
+    bold++;
+    return `<b>${inner}</b>`;
+  });
+  let italic = 0;
+  // Boundary guards mirror `neutralizeMarkdownMarkers`: a word-adjacent
+  // `__` (snake__case__name) is an identifier, not emphasis.
+  out = out.replace(
+    /(^|[\s([{*`>])__([^_\n]+?)__(?=[\s.,;:!?)\]}<]|$)/g,
+    (_m, pre: string, inner: string) => {
+      italic++;
+      return `${pre}<i>${inner}</i>`;
+    },
+  );
+  out = out.replace(/\uE002(\d+)\uE003/g, (_m, i: string) =>
+    protectedParts[Number(i)] !== undefined ? protectedParts[Number(i)] : "",
+  );
+  out = out.replace(/\uE000(\d+)\uE001/g, (_m, i: string) => {
+    const inner = codeSpans[Number(i)];
+    return inner !== undefined ? `<code>${escapeHtmlText(inner)}</code>` : "";
+  });
+  return { text: out, converted: { bold, italic, code: codeSpans.length } };
+}
+
 /** Result of `resolveDeliveryFormat`: which parse_mode ships + the body for it. */
 export interface DeliveryFormat {
   /** parse_mode to ship (undefined = plain text). */
@@ -177,6 +275,11 @@ export interface DeliveryFormat {
   text: string;
   /** True when an explicit Markdown request falls back to plain text (unbalanced). */
   downgraded?: boolean;
+  /**
+   * Per-kind counts when MarkdownV2-style markers were rewritten to HTML and
+   * the message ships as HTML (so the caller can report what happened).
+   */
+  converted?: ConversionCounts;
 }
 
 /**
@@ -186,6 +289,9 @@ export interface DeliveryFormat {
  * of leaking); otherwise the body ships as-is plain — preserving the legacy
  * default. Cross-mode tokens are neutralized so no markup meant for the other
  * mode reaches the wire raw:
+ *   - MarkdownV2 bold/italic present (`**x**`, `__x__`): converted to HTML
+ *     and shipped as HTML whatever was requested — under legacy Markdown or
+ *     plain those shapes would show literally.
  *   - HTML requested/auto-selected: Markdown markers stripped, HTML kept live.
  *   - Markdown requested + raw HTML present: tags stripped to inner text, then
  *     the Markdown balance guard still applies (unbalanced → plain + downgraded).
@@ -202,6 +308,25 @@ export function resolveDeliveryFormat(
   text: string,
   detectMarkdown: boolean = false,
 ): DeliveryFormat {
+  // MarkdownV2-style emphasis (`**x**`, `__x__`) is not legacy Markdown: left
+  // as-is it would reach the wire literally under BOTH Markdown (legacy) and
+  // plain. Rewrite it to HTML and ship HTML, whatever was requested, so the
+  // body renders the way its author meant; any other legacy markers are then
+  // neutralized and raw tags the author already wrote stay live, so a mixed
+  // body ends up fully HTML with no raw Markdown left.
+  const conv = convertMarkdownV2ToHtml(text);
+  const converted =
+    conv.converted.bold + conv.converted.italic > 0
+      ? conv.converted
+      : undefined;
+  if (converted) {
+    return {
+      parseMode: "HTML",
+      text: neutralizeMarkdownMarkers(conv.text),
+      converted,
+    };
+  }
+
   const html = hasHtmlTags(text);
   if (requested === "HTML" || (requested === undefined && html)) {
     return { parseMode: "HTML", text: neutralizeMarkdownMarkers(text) };

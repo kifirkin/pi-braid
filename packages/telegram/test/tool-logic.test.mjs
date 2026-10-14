@@ -559,7 +559,7 @@ test("runTelegramSend: rich:true bypasses the default cap — no truncation, no 
   assert.equal(typeof outcome.messageId, "number");
 });
 
-test("runTelegramSend: rich:true short message → single send (chunks:1), no craft, verbatim", async () => {
+test("runTelegramSend: rich:true short MarkdownV2 message → HTML conversion reported, single send", async () => {
   const rc = recordingClient();
   const outcome = await runTelegramSend(
     { text: "**short rich**", rich: true, parse_mode: "Markdown" },
@@ -568,7 +568,9 @@ test("runTelegramSend: rich:true short message → single send (chunks:1), no cr
   assert.equal(outcome.ok, true);
   assert.equal(outcome.chunks, 1);
   assert.equal(rc.calls.length, 1);
-  assert.equal(rc.calls[0].text, "**short rich**");
+  assert.equal(rc.calls[0].text, "<b>short rich</b>");
+  assert.equal(rc.calls[0].options.parseMode, "HTML");
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
   assert.ok(
     !rc.calls[0].text.includes("(1/1)"),
     "no marker on a single message",
@@ -586,14 +588,28 @@ test("runTelegramSend: rich:true honors parse_mode HTML on every chunk", async (
   assert.ok(rc.calls.every((c) => c.options.parseMode === "HTML"));
 });
 
-test("runTelegramSend: default path passes parse_mode through on a short send", async () => {
+test("runTelegramSend: default path passes legacy Markdown through on a short send", async () => {
+  const rc = recordingClient();
+  const outcome = await runTelegramSend(
+    { text: "*heads up* — short", parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(rc.calls[0].options.parseMode, "Markdown");
+  assert.equal(rc.calls[0].text, "*heads up* — short");
+  assert.equal(outcome.converted, undefined);
+});
+
+test("runTelegramSend: default path converts a MarkdownV2 body and reports it", async () => {
   const rc = recordingClient();
   const outcome = await runTelegramSend(
     { text: "**heads up** — short", parse_mode: "Markdown" },
     { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
   );
   assert.equal(outcome.ok, true);
-  assert.equal(rc.calls[0].options.parseMode, "Markdown");
+  assert.equal(rc.calls[0].options.parseMode, "HTML");
+  assert.equal(rc.calls[0].text, "<b>heads up</b> — short");
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
 });
 
 test("runTelegramSend: Markdown parse_mode is dropped (plain text) when delimiters are unbalanced", async () => {
@@ -692,7 +708,7 @@ test("runTelegramSend: HTML body + no parse_mode → auto-selects HTML (old leak
   assert.equal(rc.calls[0].text, "<b>bold</b> summary");
 });
 
-test("runTelegramSend: Markdown body + parse_mode HTML → markers neutralized, no raw ** leak", async () => {
+test("runTelegramSend: MarkdownV2 body + parse_mode HTML → real HTML emphasis, no raw ** leak", async () => {
   const rc = recordingClient();
   const outcome = await runTelegramSend(
     { text: "**bold** and `code`", parse_mode: "HTML" },
@@ -702,13 +718,14 @@ test("runTelegramSend: Markdown body + parse_mode HTML → markers neutralized, 
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(
     rc.calls[0].text,
-    "bold and code",
-    "markdown markers neutralized in HTML mode",
+    "<b>bold</b> and <code>code</code>",
+    "MarkdownV2 emphasis converts to HTML, never ships literal",
   );
   assert.ok(!rc.calls[0].text.includes("**"), "no raw ** on an HTML wire");
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 1 });
 });
 
-test("runTelegramSend: mixed cross-mode body → sanitized so nothing leaks raw", async () => {
+test("runTelegramSend: mixed cross-mode body → fully HTML, nothing leaks raw", async () => {
   const rc = recordingClient();
   const outcome = await runTelegramSend(
     { text: "**md bold** and <i>html italic</i>", rich: true },
@@ -720,23 +737,62 @@ test("runTelegramSend: mixed cross-mode body → sanitized so nothing leaks raw"
     "HTML",
     "mixed body with tags ships as HTML",
   );
-  assert.equal(rc.calls[0].text, "md bold and <i>html italic</i>");
-  assert.ok(!rc.calls[0].text.includes("**"), "markdown token neutralized");
+  assert.equal(rc.calls[0].text, "<b>md bold</b> and <i>html italic</i>");
+  assert.ok(!rc.calls[0].text.includes("**"), "markdown token converted");
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
 });
 
-test("runTelegramSend: Markdown body + parse_mode Markdown stays clean (regression guard)", async () => {
+test("runTelegramSend: legacy Markdown body + parse_mode Markdown stays verbatim (regression guard)", async () => {
   const rc = recordingClient();
   const outcome = await runTelegramSend(
-    { text: "**bold** and _italic_ and `code`", parse_mode: "Markdown" },
+    { text: "*bold* and _italic_ and `code`", parse_mode: "Markdown" },
     { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
   );
   assert.equal(outcome.ok, true);
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
   assert.equal(
     rc.calls[0].text,
-    "**bold** and _italic_ and `code`",
-    "markdown stays verbatim in Markdown mode",
+    "*bold* and _italic_ and `code`",
+    "legacy Markdown stays verbatim in Markdown mode",
   );
+  assert.equal(outcome.converted, undefined);
+});
+
+test("runTelegramSend: MarkdownV2 body + parse_mode Markdown → converted to HTML", async () => {
+  const rc = recordingClient();
+  const outcome = await runTelegramSend(
+    { text: "**bold** and _italic_ and `code`", parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(rc.calls[0].options.parseMode, "HTML");
+  assert.equal(
+    rc.calls[0].text,
+    "<b>bold</b> and italic and <code>code</code>",
+  );
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 1 });
+  assert.ok(!rc.calls[0].text.includes("**"), "no literal ** reaches the wire");
+});
+
+test("runTelegramSend: conversion that renders past Telegram's cap splits-to-fit instead of failing", async () => {
+  const rc = recordingClient();
+  // 4094 chars as authored (under the default cap); the <b>/</b> tags push
+  // the rendered HTML past Telegram's 4096 per-message limit.
+  const body = `**${"x".repeat(4090)}**`;
+  const outcome = await runTelegramSend(
+    { text: body, parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.ok((outcome.chunks ?? 1) > 1, "rendered-over-cap body split");
+  assert.ok(rc.calls.length > 1);
+  assert.ok(rc.calls.every((c) => c.options.parseMode === "HTML"));
+  assert.ok(
+    rc.calls.every((c) => c.text.length <= 4096),
+    "every chunk within the wire cap",
+  );
+  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
+  assert.equal(outcome.truncated, false);
 });
 
 test("runTelegramSend: rich HTML body with long text → every chunk is HTML mode, no leaks", async () => {

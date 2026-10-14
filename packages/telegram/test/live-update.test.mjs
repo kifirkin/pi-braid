@@ -251,9 +251,13 @@ test("finish: edits tracked → Done, then sends a SEPARATE crafted markdown sum
   assert.equal(stub.sends[1].chatId, OWNER_CHAT_ID);
   assert.equal(
     stub.sends[1].text,
-    "**Report ready**\n\n- Point one\n- Point two",
+    "<b>Report ready</b>\n\n- Point one\n- Point two",
   );
-  assert.equal(stub.sends[1].options.parseMode, "Markdown");
+  assert.equal(
+    stub.sends[1].options.parseMode,
+    "HTML",
+    "MarkdownV2 crafted body converts instead of shipping literal **",
+  );
 
   assert.equal(
     await tracker.isActive(),
@@ -425,7 +429,7 @@ test("finish: crafted HTML summary body ships as HTML, never leaks raw tags unde
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("finish: crafted mixed body (HTML + stray Markdown) ships as HTML with markers neutralized", async () => {
+test("finish: crafted mixed body (HTML + stray Markdown) ships as HTML with markers converted", async () => {
   const { dir, stateFile } = tmpStateFile("mixedsum");
   const stub = makeStub();
   const tracker = createLiveUpdateTracker({
@@ -446,9 +450,9 @@ test("finish: crafted mixed body (HTML + stray Markdown) ships as HTML with mark
   assert.equal(stub.sends[1].options.parseMode, "HTML");
   assert.ok(
     !stub.sends[1].text.includes("**"),
-    "markdown marker neutralized on an HTML wire",
+    "markdown marker converted on an HTML wire",
   );
-  assert.equal(stub.sends[1].text, "Lead <i>then</i> detail");
+  assert.equal(stub.sends[1].text, "<b>Lead</b> <i>then</i> detail");
   rmSync(dir, { recursive: true, force: true });
 });
 

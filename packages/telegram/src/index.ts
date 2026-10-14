@@ -881,7 +881,7 @@ export default async function telegramExtension(
       "Use telegram_send to notify or ask the human owner. Messages are LONG by default: plain text sends verbatim up to the cap (braid.telegram.sendMaxChars, default 4096 — Telegram's per-message limit); there is no tweet-length rule. Reply with telegram_send when the owner's message arrived inside a [braid-whisper - telegram ...] envelope; human input with no envelope is TUI input — answer that in-session.",
       "`text` is required and must be non-empty; over-cap text without an explicit choice returns an ERROR (nothing sent) — pick rich:true, a shorter text, or an explicit strategy (never a silent truncate).",
       "Set `rich: true` past the cap (or for formatted/split delivery): it bypasses the cap and splits the text to fit Telegram's 4096-char messages, honoring `parse_mode` (HTML or Markdown).",
-      "Author the body in the `parse_mode` you pick: HTML bodies use `<b>/<i>/<code>/<a href>`; Markdown bodies use `**bold**/_italic_/`code`/[link](url)`. Cross-mode markup is neutralized automatically — raw HTML tags never leak into a Markdown message and Markdown markers never show literally in an HTML message.",
+      'Author the body in the `parse_mode` you pick. `parse_mode:"Markdown"` is Telegram LEGACY Markdown (`*bold*`, `_italic_`, `` `code` ``, `[link](url)`); MarkdownV2 shapes (`**bold**`, `__italic__`) are not bold/italic there and are auto-converted to HTML, reported as `converted`. HTML (tags: `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, `<a href>`) is the predictable choice for anything nontrivial. Cross-mode markup is sanitized automatically: raw HTML tags never leak into a Markdown message and Markdown markers never show literally in an HTML message.',
       "Pass `options` (1-2 rows, up to 4 buttons per row: {label, value}) to let the owner answer with a tap: the choice arrives as an inbound `[decision] <token> → <label> (<value>)` message. `decisionToken` is the correlation id (generated when omitted, echoed in the result). The owner can always reply in words instead.",
     ],
     description:
@@ -891,7 +891,7 @@ export default async function telegramExtension(
       'Example (correct): text "Deploy finished, 2 tests failed — rerunning suite B" sends as-is. ' +
       'Example (over cap, no rich/limit, no distillation): a 5000-char plain body errors with "NOTHING was sent". ' +
       'Over the cap with no explicit choice: the crafting model distills to ≤ the cap; unavailable distillation = refused — never a silent truncate. Explicit choice wins: strategy:"truncate" hard-cuts; strategy:"error" refuses. ' +
-      "rich:true + parse_mode (HTML | Markdown): author the body in that format; cross-mode markup is neutralized (<b> never leaks into Markdown, ** never into HTML). Plain text default; a body with HTML tags auto-selects HTML. " +
+      'rich:true + parse_mode (HTML | Markdown): `"Markdown"` is Telegram LEGACY Markdown (`*bold*`, `_italic_`, `` `code` ``, `[t](url)`); MarkdownV2 shapes (`**bold**`, `__italic__`) are auto-converted to HTML and reported as `converted`. Cross-mode markup is neutralized; a body with HTML tags auto-selects HTML. ' +
       "voice:true sends a voice note (needs a TTS source); voiceText defaults to text. " +
       "options: 1-2 rows of up to 4 {label,value} buttons attach an inline keyboard; a tap returns to the agent as an inbound `[decision] <token> → <label> (<value>)` message (the owner can always answer in words too); decisionToken is the correlation id, generated when omitted and echoed in the result. " +
       "Returns the delivery result (message_id or error). " +
@@ -938,9 +938,7 @@ export default async function telegramExtension(
       parse_mode: Type.Optional(
         Type.Union([Type.Literal("HTML"), Type.Literal("Markdown")], {
           description:
-            "Format for the delivered text: author the body in this format (HTML tags or Markdown markers). " +
-            "Cross-mode markup is sanitized automatically — nothing from the other format leaks raw. " +
-            "Optional; plain text by default, except a body containing HTML tags auto-selects HTML.",
+            'Format for the delivered text. `"Markdown"` is Telegram LEGACY Markdown (`*bold*`, `_italic_`, `` `code` ``, `[t](url)`); MarkdownV2 (`**bold**`, `__italic__`) is not bold/italic there and is auto-converted to HTML instead, reported as `converted`. HTML is the predictable choice for anything nontrivial. Cross-mode markup is sanitized automatically: nothing from the other format leaks raw. Optional; plain text by default, except a body containing HTML tags auto-selects HTML.',
         }),
       ),
       options: Type.Optional(

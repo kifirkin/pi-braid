@@ -27,7 +27,12 @@ import {
   prepareDecisionOptions,
   type DecisionOptionRows,
 } from "./decision-buttons.js";
-import { sendMessageChunks, resolveDeliveryFormat } from "./format.js";
+import {
+  sendMessageChunks,
+  resolveDeliveryFormat,
+  TELEGRAM_MAX_TEXT_LENGTH,
+  type ConversionCounts,
+} from "./format.js";
 import { markAgentDeliveredMessage } from "./notify/agent-delivery.js";
 import {
   DEFAULT_SEND_MAX_CHARS,
@@ -94,6 +99,13 @@ export interface TelegramSendOutcome {
    */
   truncated: boolean;
   warn?: string;
+  /**
+   * Per-kind counts of MarkdownV2-style markers (`**bold**`, `__italic__`,
+   * `` `code` ``) that were rewritten to HTML so the delivered message renders
+   * them instead of showing the raw markers. Present only when a conversion
+   * happened and the message shipped as HTML.
+   */
+  converted?: ConversionCounts;
   charCount: number;
   channel: "text" | "voice";
   /** Rich split-to-fit: number of messages sent (1 = single message). */
@@ -445,6 +457,7 @@ async function runTelegramSendInner(
         channel: "text",
         chunks: result.total,
         ...(decision ? { decisionToken: decision.token } : {}),
+        ...(fmt.converted ? { converted: fmt.converted } : {}),
         ...(fmt.downgraded
           ? {
               warn: "parse_mode Markdown dropped — text has unbalanced markdown delimiters",
@@ -492,6 +505,42 @@ async function runTelegramSendInner(
   }
   const { text, truncated } = resolved;
   const fmt = resolveDeliveryFormat(parseMode, text);
+  // A convertible body sits under the cap as authored, but its HTML rendering
+  // (tags + escaped reserved characters) can cross Telegram's per-message cap
+  // on marker-dense text. Split-to-fit then, mirroring the rich path: the
+  // conversion must never turn a deliverable send into an API error.
+  if (fmt.converted && fmt.text.length > TELEGRAM_MAX_TEXT_LENGTH) {
+    const chunked = await sendMessageChunks(deps.client, {
+      token: deps.token,
+      chatId: deps.chatId,
+      text: fmt.text,
+      ...(fmt.parseMode ? { parseMode: fmt.parseMode } : {}),
+      ...(decision ? { replyMarkup: decision.keyboard } : {}),
+    });
+    if (chunked.ok) {
+      markAgentDeliveredMessage();
+      const outcome: TelegramSendOutcome = {
+        ok: true,
+        messageId: chunked.messageIds[0],
+        truncated,
+        charCount: text.length,
+        channel: "text",
+        chunks: chunked.total,
+        converted: fmt.converted,
+        ...(decision ? { decisionToken: decision.token } : {}),
+      };
+      return outcome;
+    }
+    return {
+      ok: false,
+      error: `telegram_send failed: ${chunked.error ?? "unknown error"}`,
+      truncated,
+      charCount: text.length,
+      channel: "text",
+      chunks: chunked.total,
+      ...(decision ? { decisionToken: decision.token } : {}),
+    };
+  }
   const result: TelegramSendResult = await deps.client.sendMessage(
     deps.token,
     deps.chatId,
@@ -506,6 +555,7 @@ async function runTelegramSendInner(
     charCount: text.length,
     channel: "text",
   });
+  if (fmt.converted) outcome.converted = fmt.converted;
   if (decision) outcome.decisionToken = decision.token;
   return outcome;
 }

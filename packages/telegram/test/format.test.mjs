@@ -15,6 +15,7 @@ import {
   hasHtmlTags,
   stripHtmlTags,
   neutralizeMarkdownMarkers,
+  convertMarkdownV2ToHtml,
   resolveDeliveryFormat,
 } from "../dist/lib/format.js";
 
@@ -273,25 +274,33 @@ test("neutralizeMarkdownMarkers: leaves unambiguous literals untouched (conserva
   assert.equal(neutralizeMarkdownMarkers("plain text"), "plain text");
 });
 
-test("resolveDeliveryFormat: HTML request keeps HTML tags live, neutralizes Markdown", () => {
+test("resolveDeliveryFormat: HTML request keeps HTML tags live, converts MarkdownV2 emphasis", () => {
   const r = resolveDeliveryFormat("HTML", "<b>hi</b>");
   assert.equal(r.parseMode, "HTML");
   assert.equal(r.text, "<b>hi</b>");
   const r2 = resolveDeliveryFormat("HTML", "**bold** <i>also</i>");
   assert.equal(r2.parseMode, "HTML");
-  assert.equal(r2.text, "bold <i>also</i>", "no raw ** reaches an HTML wire");
+  assert.equal(
+    r2.text,
+    "<b>bold</b> <i>also</i>",
+    "**bold** becomes real HTML bold, never a literal marker",
+  );
 });
 
-test("resolveDeliveryFormat: Markdown request keeps Markdown, strips raw HTML tags", () => {
-  const r = resolveDeliveryFormat("Markdown", "**bold**");
+test("resolveDeliveryFormat: Markdown request keeps legacy Markdown, strips raw HTML tags", () => {
+  const r = resolveDeliveryFormat("Markdown", "*bold* and _italic_");
   assert.equal(r.parseMode, "Markdown");
-  assert.equal(r.text, "**bold**");
+  assert.equal(r.text, "*bold* and _italic_");
   const r2 = resolveDeliveryFormat("Markdown", "<b>bold</b>");
   assert.equal(r2.parseMode, "Markdown");
   assert.equal(r2.text, "bold", "raw HTML tag must not leak under Markdown");
   const r3 = resolveDeliveryFormat("Markdown", "<b>x</b> **y**");
-  assert.equal(r3.parseMode, "Markdown");
-  assert.equal(r3.text, "x **y**");
+  assert.equal(r3.parseMode, "HTML");
+  assert.equal(
+    r3.text,
+    "<b>x</b> <b>y</b>",
+    "MarkdownV2 in a mixed body converts instead of shipping raw",
+  );
 });
 
 test("resolveDeliveryFormat: no request + raw HTML → auto HTML (old bug: leaked as Markdown)", () => {
@@ -299,13 +308,15 @@ test("resolveDeliveryFormat: no request + raw HTML → auto HTML (old bug: leake
   assert.equal(r.parseMode, "HTML");
   assert.equal(r.text, "<b>hi</b>");
   const r2 = resolveDeliveryFormat(undefined, "**bold**");
+  assert.equal(r2.parseMode, "HTML", "MarkdownV2 bold is auto-converted");
+  assert.equal(r2.text, "<b>bold</b>");
+  assert.deepEqual(r2.converted, { bold: 1, italic: 0, code: 0 });
+  const plain = resolveDeliveryFormat(undefined, "just words");
   assert.equal(
-    r2.parseMode,
+    plain.parseMode,
     undefined,
-    "plain remains the legacy default for pure markdown",
+    "plain stays the no-request default for marker-free text",
   );
-  assert.equal(r2.text, "**bold**");
-  assert.equal(r2.downgraded, undefined);
 });
 
 test("resolveDeliveryFormat: unbalanced Markdown request drops to plain (downgraded)", () => {
@@ -315,16 +326,19 @@ test("resolveDeliveryFormat: unbalanced Markdown request drops to plain (downgra
   assert.equal(r.text, "_unbalanced");
 });
 
-test("resolveDeliveryFormat: detectMarkdown flag auto-detects BOTH formats for a no-request body (live-update path, legacy chooseDeliveryMode)", () => {
+test("resolveDeliveryFormat: detectMarkdown flag auto-detects formats for a no-request body (live-update path)", () => {
   const html = resolveDeliveryFormat(undefined, "<b>bold</b>", true);
   assert.equal(html.parseMode, "HTML");
   assert.equal(html.text, "<b>bold</b>");
+  const legacy = resolveDeliveryFormat(undefined, "*bold* and _italic_", true);
+  assert.equal(legacy.parseMode, "Markdown");
+  assert.equal(legacy.text, "*bold* and _italic_");
   const md = resolveDeliveryFormat(undefined, "**bold** and _italic_", true);
-  assert.equal(md.parseMode, "Markdown");
-  assert.equal(md.text, "**bold** and _italic_");
+  assert.equal(md.parseMode, "HTML", "MarkdownV2 converts even when detected");
+  assert.equal(md.text, "<b>bold</b> and italic");
   const mixed = resolveDeliveryFormat(undefined, "**lead** <i>then</i>", true);
   assert.equal(mixed.parseMode, "HTML");
-  assert.equal(mixed.text, "lead <i>then</i>");
+  assert.equal(mixed.text, "<b>lead</b> <i>then</i>");
   const plain = resolveDeliveryFormat(undefined, "just words", true);
   assert.equal(
     plain.parseMode,
@@ -332,4 +346,110 @@ test("resolveDeliveryFormat: detectMarkdown flag auto-detects BOTH formats for a
     "marker-free text is balanced markdown (legacy live-update behavior)",
   );
   assert.equal(plain.text, "just words");
+});
+
+// ── MarkdownV2 → HTML conversion ───────────────────────────────────────────
+
+test("convertMarkdownV2ToHtml: **bold**, __italic__, `code` → HTML with per-kind counts", () => {
+  const r = convertMarkdownV2ToHtml("**B** and __i__ and `c`");
+  assert.equal(r.text, "<b>B</b> and <i>i</i> and <code>c</code>");
+  assert.deepEqual(r.converted, { bold: 1, italic: 1, code: 1 });
+});
+
+test("convertMarkdownV2ToHtml: unbalanced / word-adjacent markers stay literal", () => {
+  const r = convertMarkdownV2ToHtml("**open and snake__case__name");
+  assert.equal(r.text, "**open and snake__case__name");
+  assert.deepEqual(r.converted, { bold: 0, italic: 0, code: 0 });
+});
+
+test("convertMarkdownV2ToHtml: code-span content stays literal (no nested emphasis)", () => {
+  const r = convertMarkdownV2ToHtml("literal `**x**` stays");
+  assert.equal(r.text, "literal <code>**x**</code> stays");
+  assert.deepEqual(r.converted, { bold: 0, italic: 0, code: 1 });
+});
+
+test("convertMarkdownV2ToHtml: reserved characters in body text are escaped (no API parse error)", () => {
+  const r = convertMarkdownV2ToHtml("**done** latency < 50ms & rising");
+  assert.equal(r.text, "<b>done</b> latency &lt; 50ms &amp; rising");
+});
+
+test("convertMarkdownV2ToHtml: author HTML tags and entities stay wire-ready", () => {
+  const r = convertMarkdownV2ToHtml("**a** <i>keep</i> &lt;kept&gt;");
+  assert.equal(r.text, "<b>a</b> <i>keep</i> &lt;kept&gt;");
+});
+
+test("convertMarkdownV2ToHtml: code-span content is escaped inside <code>", () => {
+  const r = convertMarkdownV2ToHtml("**x** `a < b`");
+  assert.equal(r.text, "<b>x</b> <code>a &lt; b</code>");
+});
+
+test("convertMarkdownV2ToHtml: a long balanced pair converts (no short inner cap)", () => {
+  const long = "y".repeat(500);
+  const r = convertMarkdownV2ToHtml(`**${long}** and __${long}__`);
+  assert.equal(r.text, `<b>${long}</b> and <i>${long}</i>`);
+  assert.deepEqual(r.converted, { bold: 1, italic: 1, code: 0 });
+});
+
+test("resolveDeliveryFormat: a converted body with a stray < stays deliverable (HTML-escaped)", () => {
+  const r = resolveDeliveryFormat("Markdown", "**done** latency < 50ms");
+  assert.equal(r.parseMode, "HTML");
+  assert.equal(r.text, "<b>done</b> latency &lt; 50ms");
+});
+
+// Required contract matrix: {requested} × {body}. Cells with a MarkdownV2
+// body must resolve to HTML with the markers converted (revert the conversion
+// and they go red); legacy Markdown stays on the legacy rails; an unbalanced
+// marker is never converted and keeps the documented downgrade.
+const MATRIX_BODIES = {
+  plain: "deploy finished, 12 tests green",
+  mdv2: "**deploy finished** and __12 tests green__",
+  legacy: "*deploy finished* and _12 tests green_",
+  mixed: "**deploy finished** <i>12 tests green</i>",
+  unbalanced: "**deploy finished",
+};
+const CONVERTED_MDV2 = { bold: 1, italic: 1, code: 0 };
+const CONVERTED_MIXED = { bold: 1, italic: 0, code: 0 };
+const MDV2_TEXT = "<b>deploy finished</b> and <i>12 tests green</i>";
+const MIXED_TEXT = "<b>deploy finished</b> <i>12 tests green</i>";
+
+test("resolveDeliveryFormat matrix: {no mode, Markdown, HTML} × {plain, mdv2, legacy, mixed, unbalanced}", () => {
+  const cells = [
+    [undefined, "plain", undefined, MATRIX_BODIES.plain, undefined],
+    [undefined, "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    [undefined, "legacy", undefined, MATRIX_BODIES.legacy, undefined],
+    [undefined, "mixed", "HTML", MIXED_TEXT, CONVERTED_MIXED],
+    [undefined, "unbalanced", undefined, MATRIX_BODIES.unbalanced, undefined],
+    ["Markdown", "plain", "Markdown", MATRIX_BODIES.plain, undefined],
+    ["Markdown", "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    ["Markdown", "legacy", "Markdown", MATRIX_BODIES.legacy, undefined],
+    ["Markdown", "mixed", "HTML", MIXED_TEXT, CONVERTED_MIXED],
+    ["Markdown", "unbalanced", undefined, MATRIX_BODIES.unbalanced, undefined],
+    ["HTML", "plain", "HTML", MATRIX_BODIES.plain, undefined],
+    ["HTML", "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    [
+      "HTML",
+      "legacy",
+      "HTML",
+      "*deploy finished* and 12 tests green",
+      undefined,
+    ],
+    ["HTML", "mixed", "HTML", MIXED_TEXT, CONVERTED_MIXED],
+    ["HTML", "unbalanced", "HTML", MATRIX_BODIES.unbalanced, undefined],
+  ];
+  for (const [requested, key, mode, text, converted] of cells) {
+    const r = resolveDeliveryFormat(requested, MATRIX_BODIES[key]);
+    const label = `requested=${requested ?? "none"} body=${key}`;
+    assert.equal(r.parseMode, mode, `${label}: resolved mode`);
+    assert.equal(r.text, text, `${label}: delivered text`);
+    assert.deepEqual(r.converted, converted, `${label}: converted report`);
+    if (mode === "HTML" && key !== "unbalanced") {
+      assert.ok(
+        !/\*\*|__/.test(r.text),
+        `${label}: no raw MarkdownV2 marker on an HTML wire`,
+      );
+    }
+  }
+  // Unbalanced Markdown request keeps the documented downgrade to plain text.
+  const unbal = resolveDeliveryFormat("Markdown", MATRIX_BODIES.unbalanced);
+  assert.equal(unbal.downgraded, true, "unbalanced Markdown still downgrades");
 });
