@@ -210,6 +210,17 @@ export function overLimitError(textLen: number, limit: number): string {
 }
 
 /**
+ * The cap a plain send actually enforces: the explicit `limit` when it is a
+ * usable positive number, else the settings-driven default. Shared so the
+ * pre-send length check and the conversion's `renderedCap` agree on one value.
+ */
+function resolveEffectiveLimit(limit: unknown, defaultLimit: number): number {
+  return typeof limit === "number" && Number.isFinite(limit) && limit >= 1
+    ? Math.floor(limit)
+    : defaultLimit;
+}
+
+/**
  * Resolve the outbound plain text under the truncation contract.
  *
  *   body ≤ effectiveLimit            -> send verbatim (no crafting)
@@ -236,12 +247,7 @@ async function resolveSendText(
   },
 ): Promise<{ text: string; truncated: boolean } | { error: string }> {
   const trimmed = text.trim();
-  const effectiveLimit =
-    typeof opts.limit === "number" &&
-    Number.isFinite(opts.limit) &&
-    opts.limit >= 1
-      ? Math.floor(opts.limit)
-      : opts.defaultLimit;
+  const effectiveLimit = resolveEffectiveLimit(opts.limit, opts.defaultLimit);
 
   if (trimmed.length <= effectiveLimit) {
     return { text: trimmed, truncated: false };
@@ -488,6 +494,7 @@ async function runTelegramSendInner(
     deps.sendMaxChars >= 1
       ? Math.floor(deps.sendMaxChars)
       : resolveSendMaxChars();
+  const effectiveLimit = resolveEffectiveLimit(params.limit, defaultLimit);
   const resolved = await resolveSendText(validated.text, {
     limit: params.limit,
     defaultLimit,
@@ -504,7 +511,12 @@ async function runTelegramSendInner(
     };
   }
   const { text, truncated } = resolved;
-  const fmt = resolveDeliveryFormat(parseMode, text);
+  // The conversion may grow the body (tags, escaped characters). Cap it at the
+  // effective limit: when the rendered result would cross the cap the
+  // conversion is refused and the text ships as authored (it was within the
+  // cap before conversion), so a converted body never bypasses a configured
+  // sendMaxChars.
+  const fmt = resolveDeliveryFormat(parseMode, text, false, effectiveLimit);
   // A convertible body sits under the cap as authored, but its HTML rendering
   // (tags + escaped reserved characters) can cross Telegram's per-message cap
   // on marker-dense text. Split-to-fit then, mirroring the rich path: the

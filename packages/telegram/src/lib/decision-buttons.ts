@@ -13,9 +13,11 @@
  *    `findDecisionOptionLabel` recovers the tapped button's label from the
  *    message markup, and `handleDecisionCallbackQuery` answers the tap
  *    (toast) and returns the delivery payload (an `IncomingOwnerMessage`
- *    the caller hands to the same inbound path as a text message). A tap is
- *    single-use: the first tap of a token delivers and strips the keyboard,
- *    every later tap is acknowledged only. Control callbacks
+ *    the caller hands to the same inbound path as a text message). Each ROW
+ *    of a keyboard is one question: answering it drops that row from the
+ *    message and keeps the unanswered rows (Telegram shows the updated markup
+ *    in place), a later tap of an answered row is acknowledged only, and a
+ *    later tap of a still-open row delivers normally. Control callbacks
  *    (`pause`/`resume`/`status`) fail the prefix check and keep their own
  *    handler's path.
  *
@@ -275,37 +277,48 @@ export interface DecisionCallbackOutcome {
   error?: string;
 }
 
-/** What the first tap of a decision token carried. */
+/** What one answered button of a decision token carried. */
 interface AnsweredDecision {
   value: string;
   /** The tapped button's label, when the message markup was recoverable. */
   label?: string;
-  /** Epoch ms of the answering tap (insertion order for eviction). */
+  /** Epoch ms of the answering tap (token insertion order for eviction). */
   at: number;
 }
 
+/** Answers of one token, keyed by button value (insertion order = tap order). */
+type TokenAnswers = Map<string, AnsweredDecision>;
+
 /**
- * Answered decision tokens, oldest first. Single-use semantics: the first tap
- * of a token answers the question for this process's lifetime; every later
- * tap is acknowledged but not delivered. Process-global by design — one
- * question asked once is answered once, across handler invocations.
+ * Answered decision tokens, oldest first. Each button is single-use within its
+ * question: the first tap of a value answers that question for this process's
+ * lifetime; a later tap of the same value is acknowledged but not delivered.
+ * A token with several rows can therefore be answered several times (once per
+ * row) — the keyboard keeps the rows still open (see
+ * `updateDecisionKeyboard`). Process-global by design — one question asked
+ * once is answered once, across handler invocations.
  *
  * Bounded so a long-lived process cannot grow the map without limit: the most
- * recent answers are kept and the oldest evicted; an evicted token is treated
+ * recent tokens are kept and the oldest evicted; an evicted token is treated
  * as unanswered (its next tap delivers).
  */
-const ANSWERED_DECISIONS = new Map<string, AnsweredDecision>();
+const ANSWERED_DECISIONS = new Map<string, TokenAnswers>();
 
 /** Answered tokens remembered before the oldest is evicted. */
 const MAX_ANSWERED_DECISIONS = 64;
 
-/** Remember the first answer to `token`, evicting the oldest over the bound. */
+/** Remember the answer to `value` under `token`, evicting the oldest token. */
 function rememberAnsweredDecision(
   token: string,
   value: string,
   label?: string,
-): void {
-  ANSWERED_DECISIONS.set(token, {
+): TokenAnswers {
+  let answers = ANSWERED_DECISIONS.get(token);
+  if (!answers) {
+    answers = new Map();
+    ANSWERED_DECISIONS.set(token, answers);
+  }
+  answers.set(value, {
     value,
     ...(label ? { label } : {}),
     at: Date.now(),
@@ -315,44 +328,108 @@ function rememberAnsweredDecision(
     if (oldest === undefined) break;
     ANSWERED_DECISIONS.delete(oldest);
   }
+  return answers;
 }
 
-/** Does the tapped message still carry an inline keyboard to strip? */
-function hasInlineKeyboard(message: TelegramMessage): boolean {
-  const markup = message.reply_markup as
+/** Inline keyboard rows of a message, or undefined when it carries none. */
+function inlineRows(
+  message: TelegramMessage | undefined,
+): TelegramReplyMarkup["inline_keyboard"] | undefined {
+  const markup = message?.reply_markup as
     | { inline_keyboard?: unknown }
     | undefined;
-  return (
-    Array.isArray(markup?.inline_keyboard) && markup.inline_keyboard.length > 0
+  const rows = markup?.inline_keyboard;
+  if (!Array.isArray(rows)) return undefined;
+  return rows.filter(
+    (row): row is Array<{ text: string; callback_data: string }> =>
+      Array.isArray(row),
   );
 }
 
+/** Values of one row that belong to `token`. */
+function rowValues(row: unknown[], token: string): string[] {
+  const values: string[] = [];
+  for (const button of row) {
+    const parsed = parseDecisionCallbackData(
+      (button as { callback_data?: unknown } | null)?.callback_data,
+    );
+    if (parsed && parsed.token === token) values.push(parsed.value);
+  }
+  return values;
+}
+
 /**
- * Best-effort keyboard strip: an empty inline_keyboard removes the buttons so
- * the owner's client cannot tap them again. Never blocks the caller — both an
- * ok:false result and a thrown/rejected edit are swallowed; the first tap's
- * failure is logged as a warn (the owner may still see the keyboard), the
- * repeat path's as debug (the question is already answered either way).
+ * Is the tapped button on a question that is still open? A row is open while
+ * any of its buttons is unanswered; a button that is not on the keyboard any
+ * more (or a message with no markup, where nothing can be looked up) is not a
+ * new question — with no markup a first tap still delivers.
  */
-async function stripDecisionKeyboard(
+function tappedRowIsOpen(
+  message: TelegramMessage | undefined,
+  token: string,
+  callbackData: string,
+  answers: TokenAnswers,
+): boolean {
+  const rows = inlineRows(message);
+  if (rows === undefined) return true;
+  const row = rows.find((candidate) =>
+    candidate.some(
+      (button) =>
+        (button as { callback_data?: unknown } | null)?.callback_data ===
+        callbackData,
+    ),
+  );
+  if (!row) return false;
+  const values = rowValues(row, token);
+  return values.length > 0 && values.some((value) => !answers.has(value));
+}
+
+/**
+ * Shrink the tapped message's keyboard in place: the answered row (the row
+ * carrying the tapped button) is dropped and the open questions stay.
+ * Telegram does not update the markup itself, so without this edit the whole
+ * keyboard would collapse client-side after the first tap and the remaining
+ * questions of a multi-row message would become unanswerable (the F9 finding).
+ * Rows that were fully answered earlier (a stale markup still carrying them)
+ * are dropped too; foreign rows are left alone. Best-effort: an ok:false result
+ * or a thrown edit is swallowed — the answer is delivered either way. The
+ * first tap's failure is logged as a warn (the owner may still see the
+ * keyboard), the repeat path's as debug (the question is already answered
+ * either way).
+ */
+async function updateDecisionKeyboard(
   deps: DecisionCallbackDeps,
   message: TelegramMessage,
+  token: string,
+  answers: TokenAnswers,
+  tappedData: string,
   bestEffort = false,
 ): Promise<void> {
+  const rows = inlineRows(message);
+  if (!rows || rows.length === 0) return;
+  const kept = rows.filter((row) => {
+    // The row of the tapped button is the question just answered.
+    if (row.some((button) => button?.callback_data === tappedData))
+      return false;
+    const values = rowValues(row, token);
+    // Foreign rows (not ours) are left alone; ours are kept while open.
+    return values.length === 0 || values.some((value) => !answers.has(value));
+  });
+  if (kept.length === rows.length) return; // nothing to shrink
   let failure: string | undefined;
   try {
     const result = await deps.client.editMessageReplyMarkup(
       deps.token,
       message.chat.id,
       message.message_id,
-      { replyMarkup: { inline_keyboard: [] } },
+      { replyMarkup: { inline_keyboard: kept } },
     );
     if (!result.ok) failure = result.error ?? "unknown error";
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);
   }
   if (failure === undefined) return;
-  const detail = `keyboard strip failed for message ${message.message_id}: ${failure}`;
+  const detail = `keyboard update failed for message ${message.message_id}: ${failure}`;
   if (bestEffort) {
     deps.log?.("debug", `telegram decision: repeat-tap ${detail}`);
     return;
@@ -364,23 +441,36 @@ async function stripDecisionKeyboard(
 }
 
 /**
- * Acknowledge a repeat tap: name the first answer in the toast, deliver
- * nothing, and re-strip the keyboard when the tapped message still carries
- * one (the first strip can have failed or raced the tap).
+ * Acknowledge a repeat tap: name the answered value (or the token's oldest
+ * answer when the tapped value was never delivered), re-shrink the keyboard
+ * when the tapped message still carries answered rows, deliver nothing.
  */
 async function answerRepeatTap(
   deps: DecisionCallbackDeps,
   callbackQueryId: string,
   message: TelegramMessage | undefined,
-  first: AnsweredDecision,
+  token: string,
+  answers: TokenAnswers,
+  tappedValue: string,
+  tappedData: string,
 ): Promise<DecisionCallbackOutcome> {
+  const named = answers.get(tappedValue) ?? answers.values().next().value;
   const answer = await deps.client.answerCallbackQuery(
     deps.token,
     callbackQueryId,
-    { text: `already answered: ${first.label ?? first.value}` },
+    {
+      text: `already answered: ${named?.label ?? named?.value ?? tappedValue}`,
+    },
   );
-  if (message && hasInlineKeyboard(message)) {
-    await stripDecisionKeyboard(deps, message, true);
+  if (message) {
+    await updateDecisionKeyboard(
+      deps,
+      message,
+      token,
+      answers,
+      tappedData,
+      true,
+    );
   }
   return { handled: true, answered: answer.ok };
 }
@@ -391,10 +481,13 @@ async function answerRepeatTap(
  * back `handled: false` with nothing answered, so the caller's control path
  * stays byte-for-byte in charge of pause/resume/status/unknown.
  *
- * Single-use per token: the first tap of a token is recorded BEFORE any
+ * Single-use per QUESTION: the first tap of a value is recorded BEFORE any
  * network call (two racing taps cannot both pass the record check), then
- * acknowledged and its keyboard stripped. Every later tap of the same token
- * is acknowledged with the first answer named and delivers nothing.
+ * acknowledged and the answered row is dropped from the keyboard while the
+ * open rows stay. A later tap of an answered value — or of a button that is no
+ * longer on the keyboard — is acknowledged with the answer named and delivers
+ * nothing; a later tap of a still-open row of the same token delivers, so a
+ * two-question message can be answered twice (F9).
  *
  * Delivery is NOT done here: the caller owns it (index.ts hands the payload
  * to the same coalescing + steer handoff a text message takes).
@@ -409,21 +502,33 @@ export async function handleDecisionCallbackQuery(
     return { handled: false, answered: false };
   }
 
-  const answered = ANSWERED_DECISIONS.get(parsed.token);
-  if (answered) {
+  const priorAnswers = ANSWERED_DECISIONS.get(parsed.token);
+  if (
+    priorAnswers &&
+    (priorAnswers.has(parsed.value) ||
+      !tappedRowIsOpen(
+        callbackQuery.message,
+        parsed.token,
+        callbackQuery.data ?? "",
+        priorAnswers,
+      ))
+  ) {
     return answerRepeatTap(
       deps,
       callbackQuery.id,
       callbackQuery.message,
-      answered,
+      parsed.token,
+      priorAnswers,
+      parsed.value,
+      callbackQuery.data ?? "",
     );
   }
 
   const label = findDecisionOptionLabel(update, callbackQuery.data ?? "");
   const shown = label ?? parsed.value;
   // Record before the first network call: a racing duplicate of this tap sees
-  // the token answered and takes the repeat path instead of a second delivery.
-  rememberAnsweredDecision(parsed.token, parsed.value, label);
+  // the value answered and takes the repeat path instead of a second delivery.
+  const answers = rememberAnsweredDecision(parsed.token, parsed.value, label);
 
   const answer = await deps.client.answerCallbackQuery(
     deps.token,
@@ -445,7 +550,13 @@ export async function handleDecisionCallbackQuery(
     };
   }
 
-  await stripDecisionKeyboard(deps, message);
+  await updateDecisionKeyboard(
+    deps,
+    message,
+    parsed.token,
+    answers,
+    callbackQuery.data ?? "",
+  );
 
   const delivery: IncomingOwnerMessage = {
     updateId: update.update_id,
