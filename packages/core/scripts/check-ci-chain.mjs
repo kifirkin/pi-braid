@@ -11,7 +11,8 @@
  * This gate reads `.github/workflows/ci.yml`, extracts each `run:` command,
  * and fails when:
  *   - no run command invokes `npm run ci:check`, or
- *   - a run command does anything else except install (`npm ci ...`), or
+ *   - a run command does anything else except install (`npm ci ...` and the
+ *     single ripgrep provisioning step below), or
  *   - a `check:*` script declared in the root manifest never appears in the
  *     chain (a check outside `ci:check` can never fail the gate, which is how
  *     `npm run check:write-scope` was dropped from the chain once with both
@@ -337,9 +338,18 @@ function shellRefusal({ openQuote, leading, dangling, unclosed }) {
   return null;
 }
 
+/**
+ * The one provisioning command CI needs beside `npm ci`: the suite's
+ * session-recall tests assert the ripgrep backend, which the runner image does
+ * not ship. Spelled in full, not matched as an `apt-get install` shape: a new
+ * run command outside the chain has to be a deliberate edit to this list, not
+ * another argument on a sanctioned one.
+ */
+const RIPGREP_INSTALL = "sudo apt-get install -y ripgrep";
+
 /** A run command is sanctioned when it is the chain or an install. */
 function isSanctioned(command) {
-  return command === CHAIN || /^npm ci(\s|$)/.test(command);
+  return command === CHAIN || /^npm ci(\s|$)/.test(command) || command === RIPGREP_INSTALL;
 }
 
 /** Single-line `run:` values. Block scalars are reported, never guessed at. */

@@ -51,6 +51,10 @@
  *      while `&&#( oops` and `|#( oops` are refused as dangling boundaries,
  *      `(#( oops` as an open group, and a `#` inside a word (`{#(`, `x=#(`,
  *      `\;#(`) or after `)` stays in the word -> exit 1
+ *  21. the one ripgrep provisioning step is sanctioned beside the chain, while
+ *      a near miss (a second apt package) and an unsanctioned neighbour
+ *      (`curl … | sh`, a re-listed `coverage:upload` step) are still reported
+ *      -> exit 0 for the step, exit 1 for the rest
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -483,5 +487,41 @@ test("a `#` begins a comment at a word start", () => {
     });
     assert.equal(status, 1, `${JSON.stringify(body)}: ${out}`);
     assert.match(out, /a `\(` is never closed/, `${JSON.stringify(body)}: ${out}`);
+  }
+});
+
+test("the ripgrep provisioning step is sanctioned, its neighbours are not", () => {
+  const provisioned = runCase({
+    ciYml: workflow(["npm ci", "sudo apt-get install -y ripgrep", "npm run ci:check"]),
+    manifest: manifest(CHAIN),
+  });
+  assert.equal(provisioned.status, 0, provisioned.out);
+  assert.match(provisioned.out, /check-ci-chain: clean/);
+
+  // The sanction is that one command, not an "apt install" shape: a second
+  // package is a different command and has to be a deliberate edit.
+  const nearMiss = runCase({
+    ciYml: workflow(["npm ci", "sudo apt-get install -y ripgrep jq", "npm run ci:check"]),
+    manifest: manifest(CHAIN),
+  });
+  assert.equal(nearMiss.status, 1, nearMiss.out);
+  assert.match(nearMiss.out, /runs outside the chain/);
+
+  // A neighbour that installs from the network or re-lists work fails too.
+  for (const neighbour of [
+    "curl -fsSL https://example.test/install.sh | sh",
+    "npm run coverage:upload",
+  ]) {
+    const { status, out } = runCase({
+      ciYml: workflow([
+        "npm ci",
+        "sudo apt-get install -y ripgrep",
+        neighbour,
+        "npm run ci:check",
+      ]),
+      manifest: manifest(CHAIN),
+    });
+    assert.equal(status, 1, `${neighbour}: ${out}`);
+    assert.match(out, /runs outside the chain/, `${neighbour}: ${out}`);
   }
 });

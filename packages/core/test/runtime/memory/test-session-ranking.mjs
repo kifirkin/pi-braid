@@ -64,14 +64,27 @@ function test(name, fn) {
 
 // ── Pre-fix ranking, mirrored (`rg -c` line counts) ──────────────────────────
 
+/**
+ * Run rg, translating a missing binary into the dependency it is: the pre-fix
+ * line-count control below is rg backend semantics, and a machine without rg
+ * must fail this file by name, not through a bare ENOENT.
+ */
+function execRg(args) {
+  try {
+    return execFileSync("rg", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    throw new Error(
+      "ripgrep (rg) is not on PATH: this file asserts the rg backend semantics (the pre-fix line-count control and the occurrence ranks)",
+      { cause: err },
+    );
+  }
+}
+
 function rgLines(patterns, dir) {
   let output;
   try {
-    output = execFileSync(
-      "rg",
-      ["-i", "-c", "-F", ...patterns.flatMap((p) => ["-e", p]), dir],
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    );
+    output = execRg(["-i", "-c", "-F", ...patterns.flatMap((p) => ["-e", p]), dir]);
   } catch (err) {
     if (err.status === 1) return [];
     throw err;

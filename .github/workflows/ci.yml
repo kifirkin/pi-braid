@@ -27,6 +27,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The memory session-recall tests assert the rg backend; the runner
+      # image does not ship ripgrep.
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
       # CI runs the same chain as local. Do not add a check step here: add it
       # to `ci:check` in package.json instead. `check:ci-chain` fails the
       # build when this file re-lists a check.

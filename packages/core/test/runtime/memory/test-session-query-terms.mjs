@@ -70,15 +70,33 @@ const PHRASE = "hierarchical summarisation";
 const RARE = "summarisation";
 const COMMON = "hierarchical";
 
+/**
+ * Run rg, translating a missing binary into the dependency it is: the pre-fix
+ * control and the occurrence counts below are rg backend semantics, and a
+ * machine without rg must fail this file by name, not through a bare ENOENT.
+ */
+function execRg(args) {
+  try {
+    return execFileSync("rg", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    // `code` travels with the named error below so a caller can tell the
+    // missing binary from rg's own exit 1.
+    const missing = new Error(
+      "ripgrep (rg) is not on PATH: this file asserts the rg backend semantics (the pre-fix control and the occurrence counts)",
+      { cause: err },
+    );
+    missing.code = "ENOENT";
+    throw missing;
+  }
+}
+
 // ── Pre-fix implementation, copied from 2531d002 (search.ts, rg branch) ──────
 
 function legacySearchFiles(query, sessionsDir) {
   let output;
   try {
-    output = execFileSync("rg", ["-i", "-c", "-F", query, sessionsDir], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    output = execRg(["-i", "-c", "-F", query, sessionsDir]);
   } catch (err) {
     if (err.status === 1) return [];
     throw err;
@@ -180,11 +198,9 @@ try {
     let status = 0;
     let output;
     try {
-      output = execFileSync("rg", ["-i", "-c", "-F", PHRASE, termsDir], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      output = execRg(["-i", "-c", "-F", PHRASE, termsDir]);
     } catch (err) {
+      if (err.code === "ENOENT") throw err; // already names the missing dependency
       status = err.status;
       output = err.stdout ?? "";
     }

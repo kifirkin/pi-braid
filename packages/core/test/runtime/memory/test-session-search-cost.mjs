@@ -25,7 +25,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,9 +53,17 @@ function test(name, fn) {
     });
 }
 
-/** Absolute path of the real rg, resolved before the shim takes over PATH. */
-const REAL_RG = execFileSync("/bin/sh", ["-c", "command -v rg"], { encoding: "utf-8" }).trim();
-assert.ok(REAL_RG, "rg must be on PATH for this test");
+/**
+ * Absolute path of the real rg, resolved before the shim takes over PATH. A
+ * missing binary is a named failure, never a skip: every assertion below pins
+ * the rg backend, so a machine without it cannot pass this file by accident.
+ */
+const probe = spawnSync("/bin/sh", ["-c", "command -v rg"], { encoding: "utf-8" });
+const REAL_RG = (probe.stdout ?? "").trim();
+assert.ok(
+  REAL_RG,
+  "ripgrep (rg) is not on PATH: this file asserts the rg backend semantics (invocation counts recorded by the shim)",
+);
 
 const root = await mkdtemp(join(tmpdir(), "session-search-cost-"));
 const sessionsDir = join(root, "sessions");
