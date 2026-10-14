@@ -29,13 +29,13 @@ Empirically, the effect is stark: **identity framing produces 0–38% compliance
 
 **Markers to convert** (drop the modifier, keep the verb):
 
-| Flag                            | Why                 | Conversion                           |
-| ------------------------------- | ------------------- | ------------------------------------ |
-| `MUST`, `REQUIRED`, `MANDATORY` | Deontic trigger     | "You work through tools"             |
-| `ALWAYS`, `CRITICAL`            | Absolute urgency    | "You verify"                         |
-| `NEVER`                         | Prohibition pattern | "You don't skip tests"               |
-| `VERIFICATION REQUIRED`         | Combined trigger    | "You verify"                         |
-| `"ruled by"`, `"governed by"`   | External locus      | "Your guidelines shape how you work" |
+| Flag                                                                                           | Why                 | Conversion                           |
+| ---------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------ |
+| `MUST`, `REQUIRED`, `MANDATORY` <!-- doc-ref-exempt: prohibition flag quoted as an example --> | Deontic trigger     | "You work through tools"             |
+| `ALWAYS`, `CRITICAL`                                                                           | Absolute urgency    | "You verify"                         |
+| `NEVER`                                                                                        | Prohibition pattern | "You don't skip tests"               |
+| `VERIFICATION REQUIRED`                                                                        | Combined trigger    | "You verify"                         |
+| `"ruled by"`, `"governed by"`                                                                  | External locus      | "Your guidelines shape how you work" |
 
 **Identity words** filter behavior toward specific qualities:
 

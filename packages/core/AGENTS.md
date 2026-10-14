@@ -158,9 +158,9 @@ ROADMAP.md. Key ongoing concerns:
 - **In scope** (braid's value-add): cognitive, metacognition, memory,
   context management, error tracking, health, behavior, timer. Keep these.
 - **CRUD-shaped consolidation**: some tools are better as action-based
-  APIs within fewer tool surfaces. The `memory_recall` + `memory_episodes` +
-  `memory_heuristics` → `memory` consolidation is already done.
-  `verify_claim`/`verify_decomposition` could merge into `verify`.
+  APIs within fewer tool surfaces. The `memory_recall` + `memory_episodes` + <!-- doc-ref-exempt: consolidated tool named as history -->
+  `memory_heuristics` → `memory` consolidation is already done. <!-- doc-ref-exempt: consolidated tool named as history -->
+  `verify_claim`/`verify_decomposition` could merge into `verify`. <!-- doc-ref-exempt: proposed merge target, not a shipped tool -->
 - **scratchpad vs task**: both track progress but serve different
   purposes. scratchpad = structured state (goal/plan/decisions/learnings
   with priority + persistence + recycling). task = simple TODO list

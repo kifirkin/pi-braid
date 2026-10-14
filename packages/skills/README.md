@@ -126,7 +126,7 @@ The rules:
 
 1. **Content-only.** No `.js`, `.ts`, `.mjs`, or `.cjs` files anywhere. Skills are markdown.
 2. **No private data.** No absolute filesystem paths, usernames, API keys, internal-only URLs, or env-var secret values in any committed file. The scanner enforces this.
-3. **No project-specific content in `SKILL.md`.** Use placeholders (`TARGET_BOT`, `MY_HANDLE`, `<path>`, `<repo-url>`) for anything that names a specific engagement, target, user, or local layout.
+3. **No project-specific content in `SKILL.md`.** Use placeholders (`TARGET_BOT`, `MY_HANDLE`, `<path>`, `<repo-url>`) for anything that names a specific engagement, target, user, or local layout. <!-- doc-ref-exempt: placeholder convention named by the rule -->
 4. **Frontmatter required.** Each `SKILL.md` must start with `---` and include at least `name` and `description`.
 
 See [`AGENTS.md`](AGENTS.md) for the full set of local contracts.

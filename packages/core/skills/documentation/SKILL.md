@@ -15,9 +15,9 @@ Analyze a codebase and generate structured documentation for AI assistants and d
 
 ### 1. Setup
 
-- Validate `codebase_path` exists
-- Create `output_dir` (default: `.agents/summary`) if needed
-- If `update_mode`: check `{output_dir}/.last_commit` for baseline, use `git log` for changes since
+- Validate `codebase_path` exists <!-- doc-ref-exempt: skill input placeholder -->
+- Create `output_dir` (default: `.agents/summary`) if needed <!-- doc-ref-exempt: skill input placeholder -->
+- If `update_mode`: check `{output_dir}/.last_commit` for baseline, use `git log` for changes since <!-- doc-ref-exempt: skill input placeholder -->
 
 ### 2. Analyze
 
@@ -25,7 +25,7 @@ Analyze a codebase and generate structured documentation for AI assistants and d
 - Identify tech stack and dependencies
 - Find key interfaces, APIs, integration points
 - Analyze design patterns and code structure
-- If `update_mode`: prioritize modified components
+- If `update_mode`: prioritize modified components <!-- doc-ref-exempt: skill input placeholder -->
 - Save to `{output_dir}/codebase_info.md`
 
 ### 3. Generate Documentation

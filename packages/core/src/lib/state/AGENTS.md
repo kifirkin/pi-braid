@@ -175,7 +175,7 @@ code with no ctx threading.
 
 - **Adding new state**: pick the right file from the State Policy table first. If you're tempted to add a `let` at module scope, stop: either use `getExtensionState` (with a ctx) or add a getter to `global-state.ts` (without a ctx).
 - **Migrating a module-level `let`**: replace it with `const foo = getExtensionState(ctx, "key", factory)` and pass `foo` through the call chain. The helpers in `extension-state.ts` (`getSessionIdSafe`, `getLeafIdSafe`) make the session-key derivation clean.
-- **Adding a process-global slot**: add a `let _foo: ... | undefined = undefined;` and a `getFoo()` function in `global-state.ts`. Other files import the getter. Never export the `let` directly.
+- **Adding a process-global slot**: add a `let _foo: ... | undefined = undefined;` and a `getFoo()` function in `global-state.ts`. Other files import the getter. Never export the `let` directly. <!-- doc-ref-exempt: naming-convention placeholder -->
 - **Test-injectable singletons** (e.g., id generators in `lib/utils/id.ts`): use a `set*()` / `reset*()` pair around the `let`. This is a legitimate pattern for test isolation, not stateful data, and is exempt from the rule.
 
 ## Verification

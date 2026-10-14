@@ -196,7 +196,7 @@ one out-of-loop watcher per extension load:
 ## Migration status
 
 The migration target is `pi.registerProvider()` (old compat API) to
-`createProvider()` + `setProvider()` on the pi-ai `Models` instance.
+`createProvider()` + `setProvider()` on the pi-ai `Models` instance. <!-- doc-ref-exempt: pi-ai migration target, not shipped here -->
 
 **Current stance: defer to pi-core.** The compat path works today. The cleanest
 migration requires pi-core to expose a `ModelRegistry.getRegisteredProviders()`

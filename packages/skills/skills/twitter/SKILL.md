@@ -284,11 +284,11 @@ If your interpretation of a bot reply seems too tidy - "MAJOR HINT", "BREAKTHROU
 
 - Intent/post URL with text prefill works - wait 3-5s for Draft.js hydration
 - Always scope DOM to `[role="dialog"]` - compose is a modal overlay
-- NEVER force-click `tweetButton` - navigates to /home without submitting
+- NEVER force-click `tweetButton` - navigates to /home without submitting <!-- doc-ref-exempt: DOM selector in the browser recipe -->
 - Button check: `aria-disabled="true"` = disabled, becomes enabled after text hydrates
 - 280 char hard limit - verify with `compose.innerText?.trim()?.length` before posting
 - If `in_reply_to` breaks prefill - omit it and post standalone
-- Use `browser_upload_image` with `clickBtn` - attaches via CDP, bypasses React state
+- Use `browser_upload_image` with `clickBtn` - attaches via CDP, bypasses React state <!-- doc-ref-exempt: host tool name and DOM selector in the browser recipe -->
 
 ### Image Attachment Detection
 

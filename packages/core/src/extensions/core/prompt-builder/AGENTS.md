@@ -52,7 +52,7 @@ Each identity constant is a short declarative block, framed as WHO the agent IS 
 
 ### Historical: values layer (deleted 2026-06-30, behavior modes removed 2026-07-13)
 
-The prompt-builder previously held an 8-value statement layer in `behavioral-guardrails.ts` plus a runtime contrast-mode injection via `contrast-phrase-library.ts`. Both files were deleted as bloat, then the dynamic behavior-mode system was **restored** in a leaner form (`behavior-modes.ts`, 4 modes x 1-2 directives, wired to enforcement signals via `determineContrastMode()`), and itself removed later: the directives were distilled into static identity invariants in `identity.ts`, and the prompt-builder no longer listens for enforcement signals.
+The prompt-builder previously held an 8-value statement layer in `behavioral-guardrails.ts` plus a runtime contrast-mode injection via `contrast-phrase-library.ts`. Both files were deleted as bloat, then the dynamic behavior-mode system was **restored** in a leaner form (`behavior-modes.ts`, 4 modes x 1-2 directives, wired to enforcement signals via `determineContrastMode()`), and itself removed later: the directives were distilled into static identity invariants in `identity.ts`, and the prompt-builder no longer listens for enforcement signals. <!-- doc-ref-exempt: removed contrast-mode helper named as history -->
 
 What stayed deleted: the 8 static value statements (EPISTEMIC_INTEGRITY, BROAD_PERSPECTIVE, etc.). Verifier tools (`verify`, `verify_claim`, `finalize`) carry that rigor.
 
@@ -136,7 +136,7 @@ If all five pass, add a new constant to `identity.ts`, wire it into the identity
 
 ### Renaming conventions
 
-- `reconstructX` is the accepted prefix for cached rebuilders that return the rendered string (`reconstructMemorySection`, `reconstructProjectDocsSection`)
+- `reconstructX` is the accepted prefix for cached rebuilders that return the rendered string (`reconstructMemorySection`, `reconstructProjectDocsSection`) <!-- doc-ref-exempt: naming-convention prefix -->
 - A `format*` function that returns a string for the prompt is a smell; a section helper should return a `PromptSection`
 
 ## Verification

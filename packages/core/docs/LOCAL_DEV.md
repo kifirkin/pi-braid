@@ -226,7 +226,7 @@ recorded per path in the agent home.
 ### Debugging collisions
 
 If pi reports `"<skill>" collision`, the first copy registered won and the later
-one was skipped (`loadSkills` in pi-core keys skills by name and reports the
+one was skipped (`loadSkills` in pi-core keys skills by name and reports the <!-- doc-ref-exempt: pi-core skill loader named as the collision source -->
 winner and loser paths):
 
 1. Check `local-packages/node_modules/pi-braid/package.json` - it declares

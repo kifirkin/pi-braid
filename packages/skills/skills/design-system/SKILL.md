@@ -132,14 +132,14 @@ components:
     textColor: "{colors.on-primary-container}"
 ```
 
-| Property                  | Allowed values                              |
-| ------------------------- | ------------------------------------------- |
-| `backgroundColor`         | Color hex or `{colors.xxx}` token reference |
-| `textColor`               | Color hex or `{colors.xxx}` token reference |
-| `typography`              | `{typography.xxx}` token reference          |
-| `rounded`                 | Dimension or `{rounded.xxx}` reference      |
-| `padding`                 | Dimension or `{spacing.xxx}` reference      |
-| `size`, `height`, `width` | Dimension                                   |
+| Property                                                                           | Allowed values                              |
+| ---------------------------------------------------------------------------------- | ------------------------------------------- |
+| `backgroundColor` <!-- doc-ref-exempt: style property named in the token table --> | Color hex or `{colors.xxx}` token reference |
+| `textColor` <!-- doc-ref-exempt: style property named in the token table -->       | Color hex or `{colors.xxx}` token reference |
+| `typography`                                                                       | `{typography.xxx}` token reference          |
+| `rounded`                                                                          | Dimension or `{rounded.xxx}` reference      |
+| `padding`                                                                          | Dimension or `{spacing.xxx}` reference      |
+| `size`, `height`, `width`                                                          | Dimension                                   |
 
 **Variants**: use suffixes like `-hover`, `-active`, `-pressed`, `-disabled`, `-selected`
 

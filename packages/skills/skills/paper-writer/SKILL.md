@@ -235,7 +235,7 @@ Three paragraphs:
 
 - Conference papers > arXiv preprints (prefer peer-reviewed)
 - Include DOI when available
-- Use BibTeX keys: `authorYYYYkeyword` (e.g., `vaswani2017attention`)
+- Use BibTeX keys: `authorYYYYkeyword` (e.g., `vaswani2017attention`) <!-- doc-ref-exempt: BibTeX key placeholder -->
 - For reproducibility, cite code repositories and dataset papers
 
 ### Algorithm Environments

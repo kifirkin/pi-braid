@@ -27,7 +27,7 @@ storage layer).
 - The unified `memory` tool covering all three memory domains
   (semantic recall, episodic case-based reasoning, procedural
   heuristics). Previously this surface was split across three
-  tools (`memory_recall`, `memory_episodes`, `memory_heuristics`)
+  tools (`memory_recall`, `memory_episodes`, `memory_heuristics`) <!-- doc-ref-exempt: consolidated tools named as history -->
   that have now been consolidated.
 
 ## Tools exposed

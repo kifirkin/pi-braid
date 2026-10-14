@@ -53,9 +53,10 @@
     "check:labels": "node scripts/check-labels.mjs",
     "check:docs": "node scripts/check-doc-status.mjs",
     "check:doc-drift": "node scripts/check-doc-drift.mjs",
+    "check:instruction-strings": "node scripts/check-instruction-strings.mjs",
     "check:doc-index": "node scripts/check-doc-index.mjs",
     "check:schema": "node scripts/check-braid-schema.mjs",
-    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:doc-index && npm run check:deps && npm run check:labels && npx tsc --noEmit && npm test",
+    "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:instruction-strings && npm run check:doc-index && npm run check:deps && npm run check:labels && npx tsc --noEmit && npm test",
     "release:local": "node scripts/publish-local.mjs",
     "publish:local": "node scripts/publish-local.mjs",
     "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid"

@@ -250,11 +250,11 @@ release's section as a template for tone and depth.
 
 ### 2. Bump the version in `package.json`
 
-| Change type  | Bump    | Example       |
-| ------------ | ------- | ------------- |
-| Breaking     | `MAJOR` | 0.2.5 → 1.0.0 |
-| New feature  | `MINOR` | 0.2.5 → 0.3.0 |
-| Bug fix only | `PATCH` | 0.2.5 → 0.2.6 |
+| Change type  | Bump                                                                   | Example       |
+| ------------ | ---------------------------------------------------------------------- | ------------- |
+| Breaking     | `MAJOR` <!-- doc-ref-exempt: semver change class in the bump table --> | 0.2.5 → 1.0.0 |
+| New feature  | `MINOR` <!-- doc-ref-exempt: semver change class in the bump table --> | 0.2.5 → 0.3.0 |
+| Bug fix only | `PATCH` <!-- doc-ref-exempt: semver change class in the bump table --> | 0.2.5 → 0.2.6 |
 
 ### 3. Verify the build
 

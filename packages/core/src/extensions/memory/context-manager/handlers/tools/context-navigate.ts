@@ -183,10 +183,10 @@ export function registerContextNavigate(pi: ExtensionAPI): void {
       "Navigate session history. " +
       "Pipeline: tag your position before archival — use action=tag to create a save point, " +
       "then call context_compress(action='archive') to compress older messages. " +
-      "action=log: view conversation history with milestones (like context_log). " +
+      "action=log: view conversation history with milestones (like context_log). " + // tool-ref-exempt: legacy name cited in the action description as its predecessor
       "action=checkout: navigate to any point in history. Auto-tags the current position as 'before-<target>' and captures recent context into the branch summary. " +
       "Provide a `message` describing what you're going to do at the target. " +
-      "action=tag: create a named save point (like context_tag). " +
+      "action=tag: create a named save point (like context_tag). " + // tool-ref-exempt: legacy name cited in the action description as its predecessor
       "When to use: tag before any major operation (starting complex work, before a risky edit). " +
       "Log when you feel lost in history. Checkout to explore a leaf branch, then checkout back to resume.",
     parameters: contextNavigateSchema,
