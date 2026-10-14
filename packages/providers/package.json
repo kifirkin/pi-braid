@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "typescript": "6.0.2",
-    "@earendil-works/pi-ai": "^1.1.0"
+    "@earendil-works/pi-ai": "^1.2.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
