@@ -32,5 +32,5 @@ test("corpus: the checker agrees with every recorded live HTML parse verdict", (
     [],
     `checker/live disagreements:\n${report.failures.join("\n")}`,
   );
-  assert.equal(report.cases, 97);
+  assert.equal(report.cases, 100);
 });

@@ -844,6 +844,9 @@ test("checkTelegramHtml: attribute shapes follow the live parser (calibrated)", 
     ['<tg-emoji emoji-id="00123">y</tg-emoji>', false],
     ['<tg-emoji emoji-id="0">y</tg-emoji>', false],
     ['<tg-emoji emoji-id="123">y</tg-emoji>', true],
+    ['<tg-emoji emoji-id="1234567890123456789">y</tg-emoji>', true],
+    ['<tg-emoji emoji-id="9223372036854775807">y</tg-emoji>', true],
+    ['<tg-emoji emoji-id="9999999999999999999">y</tg-emoji>', false],
   ];
   for (const [wire, ok] of cases) {
     assert.equal(checkTelegramHtml(wire).ok, ok, `${wire} must be ${ok}`);

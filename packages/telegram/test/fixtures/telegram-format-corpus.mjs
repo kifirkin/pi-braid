@@ -516,7 +516,8 @@ export const CAP_CASES = [
  * The checker calibration corpus: every case was sent to the live API with
  * `parse_mode: "HTML"` (undeliverable chat id; parse verdicts precede chat
  * validation) and its verdict recorded, including the attribute-shape set
- * (end-tag attributes, unquoted-value delimiters, emoji-id canonical form).
+ * (end-tag attributes, unquoted-value delimiters, emoji-id canonical form
+ * and value ceiling).
  * The corpus test replays the verdicts against the local checker; the live
  * probe re-queries them.
  */
@@ -650,6 +651,21 @@ export const HTML_PARSE_CASES = [
     "attr: emoji-id canonical neighbour",
     '<tg-emoji emoji-id="123">y</tg-emoji>',
     "PARSES",
+  ],
+  [
+    "attr: emoji-id below int64 ceiling",
+    '<tg-emoji emoji-id="1234567890123456789">y</tg-emoji>',
+    "PARSES",
+  ],
+  [
+    "attr: emoji-id at int64 ceiling",
+    '<tg-emoji emoji-id="9223372036854775807">y</tg-emoji>',
+    "PARSES",
+  ],
+  [
+    "attr: emoji-id above int64 ceiling",
+    '<tg-emoji emoji-id="9999999999999999999">y</tg-emoji>',
+    "REJECTED",
   ],
 ].map(([name, body, verdict]) => ({ name, body, verdict }));
 
