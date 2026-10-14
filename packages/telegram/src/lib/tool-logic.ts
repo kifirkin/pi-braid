@@ -100,10 +100,10 @@ export interface TelegramSendOutcome {
   truncated: boolean;
   warn?: string;
   /**
-   * Per-kind counts of MarkdownV2-style markers (`**bold**`, `__italic__`,
-   * `` `code` ``) that were rewritten to HTML so the delivered message renders
-   * them instead of showing the raw markers. Present only when a conversion
-   * happened and the message shipped as HTML.
+   * Per-kind counts of MarkdownV2 delimiter pairs (`**bold**`, `__underline__`,
+   * `~strike~`, `||spoiler||`, `` `code` ``) that were rewritten to HTML so the
+   * delivered message renders them instead of showing the raw markers. Present
+   * only when a conversion happened and the message shipped as HTML.
    */
   converted?: ConversionCounts;
   charCount: number;

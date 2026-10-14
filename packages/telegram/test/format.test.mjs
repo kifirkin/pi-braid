@@ -310,7 +310,13 @@ test("resolveDeliveryFormat: no request + raw HTML → auto HTML (old bug: leake
   const r2 = resolveDeliveryFormat(undefined, "**bold**");
   assert.equal(r2.parseMode, "HTML", "MarkdownV2 bold is auto-converted");
   assert.equal(r2.text, "<b>bold</b>");
-  assert.deepEqual(r2.converted, { bold: 1, italic: 0, code: 0 });
+  assert.deepEqual(r2.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
   const plain = resolveDeliveryFormat(undefined, "just words");
   assert.equal(
     plain.parseMode,
@@ -350,22 +356,90 @@ test("resolveDeliveryFormat: detectMarkdown flag auto-detects formats for a no-r
 
 // ── MarkdownV2 → HTML conversion ───────────────────────────────────────────
 
-test("convertMarkdownV2ToHtml: **bold**, __italic__, `code` → HTML with per-kind counts", () => {
-  const r = convertMarkdownV2ToHtml("**B** and __i__ and `c`");
-  assert.equal(r.text, "<b>B</b> and <i>i</i> and <code>c</code>");
-  assert.deepEqual(r.converted, { bold: 1, italic: 1, code: 1 });
+test("convertMarkdownV2ToHtml: **bold**, __underline__, `code` → HTML with per-kind counts", () => {
+  const r = convertMarkdownV2ToHtml("**B** and __u__ and `c`");
+  assert.equal(r.text, "<b>B</b> and <u>u</u> and <code>c</code>");
+  assert.deepEqual(r.converted, {
+    bold: 1,
+    underline: 1,
+    strike: 0,
+    spoiler: 0,
+    code: 1,
+  });
+});
+
+test("convertMarkdownV2ToHtml: ~strike~ → <s>; a tilde run, lone ~ or spaced pair stays literal", () => {
+  const r = convertMarkdownV2ToHtml("~struck~ and 5~10ms");
+  assert.equal(r.text, "<s>struck</s> and 5~10ms");
+  assert.deepEqual(r.converted, {
+    bold: 0,
+    underline: 0,
+    strike: 1,
+    spoiler: 0,
+    code: 0,
+  });
+  // GFM's `~~x~~` is not a MarkdownV2 pair — it must reach the wire whole,
+  // never half-rewritten into `~<s>x</s>~`.
+  assert.equal(convertMarkdownV2ToHtml("~~kept~~").text, "~~kept~~");
+  assert.equal(convertMarkdownV2ToHtml("~~kept~~").converted.strike, 0);
+  // A spaced tilde is a shell/prose operator (`cd ~ && ls ~`), not emphasis.
+  assert.equal(
+    convertMarkdownV2ToHtml("cd ~ && ls ~").text,
+    "cd ~ &amp;&amp; ls ~",
+  );
+  assert.equal(convertMarkdownV2ToHtml("~ x ~").text, "~ x ~");
+});
+
+test("convertMarkdownV2ToHtml: ||spoiler|| → <tg-spoiler>, the || operator stays literal", () => {
+  const r = convertMarkdownV2ToHtml("||secret||");
+  assert.equal(r.text, "<tg-spoiler>secret</tg-spoiler>");
+  assert.deepEqual(r.converted, {
+    bold: 0,
+    underline: 0,
+    strike: 0,
+    spoiler: 1,
+    code: 0,
+  });
+  // `x || y || z` is a logical OR in prose, not a spoiler.
+  assert.equal(convertMarkdownV2ToHtml("x || y || z").text, "x || y || z");
+  assert.equal(convertMarkdownV2ToHtml("cmd || fallback").converted.spoiler, 0);
+  assert.equal(convertMarkdownV2ToHtml("|| x ||").text, "|| x ||");
 });
 
 test("convertMarkdownV2ToHtml: unbalanced / word-adjacent markers stay literal", () => {
   const r = convertMarkdownV2ToHtml("**open and snake__case__name");
   assert.equal(r.text, "**open and snake__case__name");
-  assert.deepEqual(r.converted, { bold: 0, italic: 0, code: 0 });
+  assert.deepEqual(r.converted, {
+    bold: 0,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
 });
 
 test("convertMarkdownV2ToHtml: code-span content stays literal (no nested emphasis)", () => {
   const r = convertMarkdownV2ToHtml("literal `**x**` stays");
   assert.equal(r.text, "literal <code>**x**</code> stays");
-  assert.deepEqual(r.converted, { bold: 0, italic: 0, code: 1 });
+  assert.deepEqual(r.converted, {
+    bold: 0,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 1,
+  });
+});
+
+test("convertMarkdownV2ToHtml: every pair inside a code span stays literal", () => {
+  const r = convertMarkdownV2ToHtml("literal `**x** __y__ ~z~ ||s||` stays");
+  assert.equal(r.text, "literal <code>**x** __y__ ~z~ ||s||</code> stays");
+  assert.deepEqual(r.converted, {
+    bold: 0,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 1,
+  });
 });
 
 test("convertMarkdownV2ToHtml: reserved characters in body text are escaped (no API parse error)", () => {
@@ -386,8 +460,14 @@ test("convertMarkdownV2ToHtml: code-span content is escaped inside <code>", () =
 test("convertMarkdownV2ToHtml: a long balanced pair converts (no short inner cap)", () => {
   const long = "y".repeat(500);
   const r = convertMarkdownV2ToHtml(`**${long}** and __${long}__`);
-  assert.equal(r.text, `<b>${long}</b> and <i>${long}</i>`);
-  assert.deepEqual(r.converted, { bold: 1, italic: 1, code: 0 });
+  assert.equal(r.text, `<b>${long}</b> and <u>${long}</u>`);
+  assert.deepEqual(r.converted, {
+    bold: 1,
+    underline: 1,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
 });
 
 test("resolveDeliveryFormat: a converted body with a stray < stays deliverable (HTML-escaped)", () => {
@@ -399,33 +479,56 @@ test("resolveDeliveryFormat: a converted body with a stray < stays deliverable (
 // Required contract matrix: {requested} × {body}. Cells with a MarkdownV2
 // body must resolve to HTML with the markers converted (revert the conversion
 // and they go red); legacy Markdown stays on the legacy rails; an unbalanced
-// marker is never converted and keeps the documented downgrade.
+// marker is never converted and keeps the documented downgrade. One body per
+// MarkdownV2 delimiter pair: `**` bold + `__` underline in `mdv2`, `~` strike,
+// `||` spoiler.
 const MATRIX_BODIES = {
   plain: "deploy finished, 12 tests green",
   mdv2: "**deploy finished** and __12 tests green__",
+  strike: "~deploy finished~ and the ~~literal~~ run",
+  spoiler: "||deploy finished|| and ||12 tests green||",
   legacy: "*deploy finished* and _12 tests green_",
   mixed: "**deploy finished** <i>12 tests green</i>",
   unbalanced: "**deploy finished",
 };
-const CONVERTED_MDV2 = { bold: 1, italic: 1, code: 0 };
-const CONVERTED_MIXED = { bold: 1, italic: 0, code: 0 };
-const MDV2_TEXT = "<b>deploy finished</b> and <i>12 tests green</i>";
+const COUNTS = (kinds) => ({
+  bold: 0,
+  underline: 0,
+  strike: 0,
+  spoiler: 0,
+  code: 0,
+  ...kinds,
+});
+const CONVERTED_MDV2 = COUNTS({ bold: 1, underline: 1 });
+const CONVERTED_STRIKE = COUNTS({ strike: 1 });
+const CONVERTED_SPOILER = COUNTS({ spoiler: 2 });
+const CONVERTED_MIXED = COUNTS({ bold: 1 });
+const MDV2_TEXT = "<b>deploy finished</b> and <u>12 tests green</u>";
+const STRIKE_TEXT = "<s>deploy finished</s> and the ~~literal~~ run";
+const SPOILER_TEXT =
+  "<tg-spoiler>deploy finished</tg-spoiler> and <tg-spoiler>12 tests green</tg-spoiler>";
 const MIXED_TEXT = "<b>deploy finished</b> <i>12 tests green</i>";
 
-test("resolveDeliveryFormat matrix: {no mode, Markdown, HTML} × {plain, mdv2, legacy, mixed, unbalanced}", () => {
+test("resolveDeliveryFormat matrix: {no mode, Markdown, HTML} × {plain, mdv2, strike, spoiler, legacy, mixed, unbalanced}", () => {
   const cells = [
     [undefined, "plain", undefined, MATRIX_BODIES.plain, undefined],
     [undefined, "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    [undefined, "strike", "HTML", STRIKE_TEXT, CONVERTED_STRIKE],
+    [undefined, "spoiler", "HTML", SPOILER_TEXT, CONVERTED_SPOILER],
     [undefined, "legacy", undefined, MATRIX_BODIES.legacy, undefined],
     [undefined, "mixed", "HTML", MIXED_TEXT, CONVERTED_MIXED],
     [undefined, "unbalanced", undefined, MATRIX_BODIES.unbalanced, undefined],
     ["Markdown", "plain", "Markdown", MATRIX_BODIES.plain, undefined],
     ["Markdown", "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    ["Markdown", "strike", "HTML", STRIKE_TEXT, CONVERTED_STRIKE],
+    ["Markdown", "spoiler", "HTML", SPOILER_TEXT, CONVERTED_SPOILER],
     ["Markdown", "legacy", "Markdown", MATRIX_BODIES.legacy, undefined],
     ["Markdown", "mixed", "HTML", MIXED_TEXT, CONVERTED_MIXED],
     ["Markdown", "unbalanced", undefined, MATRIX_BODIES.unbalanced, undefined],
     ["HTML", "plain", "HTML", MATRIX_BODIES.plain, undefined],
     ["HTML", "mdv2", "HTML", MDV2_TEXT, CONVERTED_MDV2],
+    ["HTML", "strike", "HTML", STRIKE_TEXT, CONVERTED_STRIKE],
+    ["HTML", "spoiler", "HTML", SPOILER_TEXT, CONVERTED_SPOILER],
     [
       "HTML",
       "legacy",
@@ -449,6 +552,11 @@ test("resolveDeliveryFormat matrix: {no mode, Markdown, HTML} × {plain, mdv2, l
       );
     }
   }
+  // The per-pair markers leave no literal delimiter on the HTML wire.
+  const strike = resolveDeliveryFormat("Markdown", MATRIX_BODIES.strike);
+  assert.ok(!/(^|[^~])~[^~]/.test(strike.text), "no lone ~ on the strike wire");
+  const spoiler = resolveDeliveryFormat("Markdown", MATRIX_BODIES.spoiler);
+  assert.ok(!/\|\|/.test(spoiler.text), "no literal || on the spoiler wire");
   // Unbalanced Markdown request keeps the documented downgrade to plain text.
   const unbal = resolveDeliveryFormat("Markdown", MATRIX_BODIES.unbalanced);
   assert.equal(unbal.downgraded, true, "unbalanced Markdown still downgrades");

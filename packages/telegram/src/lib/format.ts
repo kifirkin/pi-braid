@@ -11,11 +11,12 @@
  * parse_mode (fall back to plain text) when the delimiters are imbalanced.
  *
  * Dialect note: Telegram's `Markdown` parse_mode is the LEGACY dialect —
- * `*bold*`, `_italic_`, `` `code` ``, `[t](u)`. The near-universal Markdown
- * convention `**bold**` / `__italic__` is NOT bold/italic there; left as-is
- * it reaches the wire literally. `convertMarkdownV2ToHtml` rewrites those
- * shapes to their HTML equivalents so `resolveDeliveryFormat` can ship them
- * rendered instead of raw.
+ * `*bold*`, `_italic_`, `` `code` ``, `[t](u)`. The MarkdownV2 delimiter
+ * pairs (`**x**` bold, `__x__` underline, `~x~` strikethrough, `||x||`
+ * spoiler) have no legacy meaning; left as-is they reach the wire literally.
+ * `convertMarkdownV2ToHtml` rewrites them to their HTML equivalents
+ * (`<b>`, `<u>`, `<s>`, `<tg-spoiler>`) so `resolveDeliveryFormat` can ship
+ * them rendered instead of raw.
  */
 
 import type {
@@ -180,8 +181,12 @@ export function neutralizeMarkdownMarkers(text: string): string {
 export interface ConversionCounts {
   /** `**x**` → `<b>x</b>` rewrites. */
   bold: number;
-  /** `__x__` → `<i>x</i>` rewrites. */
-  italic: number;
+  /** `__x__` → `<u>x</u>` rewrites. */
+  underline: number;
+  /** `~x~` → `<s>x</s>` rewrites. */
+  strike: number;
+  /** `||x||` → `<tg-spoiler>x</tg-spoiler>` rewrites. */
+  spoiler: number;
   /** `` `x` `` → `<code>x</code>` rewrites. */
   code: number;
 }
@@ -210,12 +215,13 @@ function escapeHtmlText(text: string): string {
 /**
  * Rewrite MarkdownV2-style emphasis that Telegram's legacy `Markdown`
  * parse_mode does not understand into its HTML equivalent: `**x**` →
- * `<b>x</b>` and `__x__` → `<i>x</i>`, plus paired backticks →
- * `<code>x</code>`. Left as-is those shapes reach the wire literally under
- * legacy Markdown and plain text. Balanced, single-line pairs only; code-span
- * content stays literal and no nesting is interpreted (single-pass regexes,
- * not a parser). Pairs may wrap arbitrarily long text: a length cap would
- * leave a long bolded paragraph shipping raw `**`.
+ * `<b>x</b>`, `__x__` → `<u>x</u>`, `~x~` → `<s>x</s>` and `||x||` →
+ * `<tg-spoiler>x</tg-spoiler>`, plus paired backticks → `<code>x</code>`.
+ * Left as-is those shapes reach the wire literally under legacy Markdown and
+ * plain text. Balanced, single-line pairs only; code-span content stays
+ * literal and no nesting is interpreted (single-pass regexes, not a parser).
+ * Pairs may wrap arbitrarily long text: a length cap would leave a long
+ * bolded paragraph shipping raw `**`.
  *
  * The output is safe for `parse_mode: "HTML"`: text outside Telegram tags,
  * entities and code spans has `&`, `<` and `>` escaped — a stray `<` is fatal
@@ -247,14 +253,37 @@ export function convertMarkdownV2ToHtml(text: string): MarkdownV2Conversion {
     bold++;
     return `<b>${inner}</b>`;
   });
-  let italic = 0;
+  let underline = 0;
   // Boundary guards mirror `neutralizeMarkdownMarkers`: a word-adjacent
   // `__` (snake__case__name) is an identifier, not emphasis.
   out = out.replace(
     /(^|[\s([{*`>])__([^_\n]+?)__(?=[\s.,;:!?)\]}<]|$)/g,
     (_m, pre: string, inner: string) => {
-      italic++;
-      return `${pre}<i>${inner}</i>`;
+      underline++;
+      return `${pre}<u>${inner}</u>`;
+    },
+  );
+  let strike = 0;
+  // MarkdownV2 strikethrough is a SINGLE-tilde pair, and a `~` adjacent to
+  // another `~` (GFM `~~x~~`) is no MarkdownV2 delimiter: the guards exclude
+  // tilde runs, so `~~x~~` stays whole instead of being half-rewritten into
+  // `~<s>x</s>~`. Whitespace at an inner edge marks prose (`cd ~ && ls ~`),
+  // not formatting, and stays literal.
+  out = out.replace(
+    /(^|[\s([{*`>])~(?!~)([^\s~](?:[^~\n]*[^\s~])?)~(?!~)(?=[\s.,;:!?)\]}<]|$)/g,
+    (_m, pre: string, inner: string) => {
+      strike++;
+      return `${pre}<s>${inner}</s>`;
+    },
+  );
+  let spoiler = 0;
+  // `||` is MarkdownV2's spoiler delimiter and also the logical-OR operator in
+  // prose and shell; the inner-edge rule keeps `x || y || z` literal.
+  out = out.replace(
+    /(^|[\s([{*`>])\|\|([^\s|](?:[^|\n]*[^\s|])?)\|\|(?=[\s.,;:!?)\]}<]|$)/g,
+    (_m, pre: string, inner: string) => {
+      spoiler++;
+      return `${pre}<tg-spoiler>${inner}</tg-spoiler>`;
     },
   );
   out = out.replace(/\uE002(\d+)\uE003/g, (_m, i: string) =>
@@ -264,7 +293,10 @@ export function convertMarkdownV2ToHtml(text: string): MarkdownV2Conversion {
     const inner = codeSpans[Number(i)];
     return inner !== undefined ? `<code>${escapeHtmlText(inner)}</code>` : "";
   });
-  return { text: out, converted: { bold, italic, code: codeSpans.length } };
+  return {
+    text: out,
+    converted: { bold, underline, strike, spoiler, code: codeSpans.length },
+  };
 }
 
 /** Result of `resolveDeliveryFormat`: which parse_mode ships + the body for it. */
@@ -289,9 +321,10 @@ export interface DeliveryFormat {
  * of leaking); otherwise the body ships as-is plain — preserving the legacy
  * default. Cross-mode tokens are neutralized so no markup meant for the other
  * mode reaches the wire raw:
- *   - MarkdownV2 bold/italic present (`**x**`, `__x__`): converted to HTML
- *     and shipped as HTML whatever was requested — under legacy Markdown or
- *     plain those shapes would show literally.
+ *   - MarkdownV2 delimiter pairs present (`**x**` bold, `__x__` underline,
+ *     `~x~` strikethrough, `||x||` spoiler): converted to HTML and shipped as
+ *     HTML whatever was requested — under legacy Markdown or plain those
+ *     shapes would show literally.
  *   - HTML requested/auto-selected: Markdown markers stripped, HTML kept live.
  *   - Markdown requested + raw HTML present: tags stripped to inner text, then
  *     the Markdown balance guard still applies (unbalanced → plain + downgraded).
@@ -308,16 +341,18 @@ export function resolveDeliveryFormat(
   text: string,
   detectMarkdown: boolean = false,
 ): DeliveryFormat {
-  // MarkdownV2-style emphasis (`**x**`, `__x__`) is not legacy Markdown: left
-  // as-is it would reach the wire literally under BOTH Markdown (legacy) and
-  // plain. Rewrite it to HTML and ship HTML, whatever was requested, so the
-  // body renders the way its author meant; any other legacy markers are then
+  // MarkdownV2 delimiter pairs (`**x**` bold, `__x__` underline, `~x~`
+  // strikethrough, `||x||` spoiler) are not legacy Markdown: left as-is they
+  // would reach the wire literally under BOTH Markdown (legacy) and plain.
+  // Rewrite them to HTML and ship HTML, whatever was requested, so the body
+  // renders the way its author meant; any other legacy markers are then
   // neutralized and raw tags the author already wrote stay live, so a mixed
   // body ends up fully HTML with no raw Markdown left.
   const conv = convertMarkdownV2ToHtml(text);
+  const counts = conv.converted;
   const converted =
-    conv.converted.bold + conv.converted.italic > 0
-      ? conv.converted
+    counts.bold + counts.underline + counts.strike + counts.spoiler > 0
+      ? counts
       : undefined;
   if (converted) {
     return {

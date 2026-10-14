@@ -570,7 +570,13 @@ test("runTelegramSend: rich:true short MarkdownV2 message → HTML conversion re
   assert.equal(rc.calls.length, 1);
   assert.equal(rc.calls[0].text, "<b>short rich</b>");
   assert.equal(rc.calls[0].options.parseMode, "HTML");
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
   assert.ok(
     !rc.calls[0].text.includes("(1/1)"),
     "no marker on a single message",
@@ -609,7 +615,13 @@ test("runTelegramSend: default path converts a MarkdownV2 body and reports it", 
   assert.equal(outcome.ok, true);
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(rc.calls[0].text, "<b>heads up</b> — short");
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
 });
 
 test("runTelegramSend: Markdown parse_mode is dropped (plain text) when delimiters are unbalanced", async () => {
@@ -722,7 +734,13 @@ test("runTelegramSend: MarkdownV2 body + parse_mode HTML → real HTML emphasis,
     "MarkdownV2 emphasis converts to HTML, never ships literal",
   );
   assert.ok(!rc.calls[0].text.includes("**"), "no raw ** on an HTML wire");
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 1 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 1,
+  });
 });
 
 test("runTelegramSend: mixed cross-mode body → fully HTML, nothing leaks raw", async () => {
@@ -739,7 +757,13 @@ test("runTelegramSend: mixed cross-mode body → fully HTML, nothing leaks raw",
   );
   assert.equal(rc.calls[0].text, "<b>md bold</b> and <i>html italic</i>");
   assert.ok(!rc.calls[0].text.includes("**"), "markdown token converted");
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
 });
 
 test("runTelegramSend: legacy Markdown body + parse_mode Markdown stays verbatim (regression guard)", async () => {
@@ -770,8 +794,50 @@ test("runTelegramSend: MarkdownV2 body + parse_mode Markdown → converted to HT
     rc.calls[0].text,
     "<b>bold</b> and italic and <code>code</code>",
   );
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 1 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 1,
+  });
   assert.ok(!rc.calls[0].text.includes("**"), "no literal ** reaches the wire");
+});
+
+test("runTelegramSend: __underline__, ~strike~ and ||spoiler|| convert and are counted", async () => {
+  const rc = recordingClient();
+  const outcome = await runTelegramSend(
+    {
+      text: "__underline__ and ~strike~ and ||spoiler||",
+      parse_mode: "Markdown",
+    },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(rc.calls[0].options.parseMode, "HTML");
+  assert.equal(
+    rc.calls[0].text,
+    "<u>underline</u> and <s>strike</s> and <tg-spoiler>spoiler</tg-spoiler>",
+  );
+  assert.deepEqual(outcome.converted, {
+    bold: 0,
+    underline: 1,
+    strike: 1,
+    spoiler: 1,
+    code: 0,
+  });
+});
+
+test("runTelegramSend: a spaced operator pair (~ / ||) never converts", async () => {
+  const rc = recordingClient();
+  const outcome = await runTelegramSend(
+    { text: "cmd || fallback and cd ~ && ls ~", parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(rc.calls[0].options.parseMode, "Markdown");
+  assert.equal(rc.calls[0].text, "cmd || fallback and cd ~ && ls ~");
+  assert.equal(outcome.converted, undefined);
 });
 
 test("runTelegramSend: conversion that renders past Telegram's cap splits-to-fit instead of failing", async () => {
@@ -791,7 +857,13 @@ test("runTelegramSend: conversion that renders past Telegram's cap splits-to-fit
     rc.calls.every((c) => c.text.length <= 4096),
     "every chunk within the wire cap",
   );
-  assert.deepEqual(outcome.converted, { bold: 1, italic: 0, code: 0 });
+  assert.deepEqual(outcome.converted, {
+    bold: 1,
+    underline: 0,
+    strike: 0,
+    spoiler: 0,
+    code: 0,
+  });
   assert.equal(outcome.truncated, false);
 });
 
