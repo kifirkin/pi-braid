@@ -616,3 +616,148 @@ test("telegram_send options + rich: the keyboard rides the LAST chunk only", asy
     inline_keyboard: [[{ text: "A", callback_data: "dec:tok1:a" }]],
   });
 });
+
+// ── multi-question keyboards survive a tap (F9) ────────────────────────────
+
+test("multi-question: a tap drops only the answered row, keeping the open question (F9)", async () => {
+  const { client, calls } = fakeClient();
+  const markup = {
+    inline_keyboard: [
+      [{ text: "Deploy now", callback_data: "dec:mq1:a" }],
+      [{ text: "Skip", callback_data: "dec:mq1:b" }],
+    ],
+  };
+  const outcome = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({ data: "dec:mq1:a", id: "cq-mq1-1", replyMarkup: markup }),
+  );
+  assert.equal(outcome.delivery.text, "[decision] mq1 → Deploy now (a)");
+  assert.equal(calls.editMessageReplyMarkup.length, 1);
+  assert.deepEqual(calls.editMessageReplyMarkup[0].options, {
+    replyMarkup: {
+      inline_keyboard: [[{ text: "Skip", callback_data: "dec:mq1:b" }]],
+    },
+  });
+  // The other question is still OPEN: its row was kept, not emptied.
+  assert.notDeepEqual(calls.editMessageReplyMarkup[0].options.replyMarkup, {
+    inline_keyboard: [],
+  });
+});
+
+test("multi-question: the second question of the same token delivers with the updated markup", async () => {
+  const { client, calls } = fakeClient();
+  const remaining = {
+    inline_keyboard: [[{ text: "Skip", callback_data: "dec:mq2:b" }]],
+  };
+  const first = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:mq2:a",
+      id: "cq-mq2-1",
+      replyMarkup: {
+        inline_keyboard: [
+          [{ text: "Deploy now", callback_data: "dec:mq2:a" }],
+          [{ text: "Skip", callback_data: "dec:mq2:b" }],
+        ],
+      },
+    }),
+  );
+  assert.equal(first.delivery.text, "[decision] mq2 → Deploy now (a)");
+  const second = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:mq2:b",
+      id: "cq-mq2-2",
+      replyMarkup: remaining,
+    }),
+  );
+  assert.equal(second.handled, true);
+  assert.equal(second.delivery.text, "[decision] mq2 → Skip (b)");
+  // With both rows answered the keyboard is finally emptied.
+  assert.deepEqual(calls.editMessageReplyMarkup.at(-1).options, {
+    replyMarkup: { inline_keyboard: [] },
+  });
+});
+
+test("multi-question: a stale markup still delivers the open row and drops only answered rows", async () => {
+  const { client, calls } = fakeClient();
+  const stale = {
+    inline_keyboard: [
+      [{ text: "Deploy now", callback_data: "dec:mq3:a" }],
+      [{ text: "Skip", callback_data: "dec:mq3:b" }],
+    ],
+  };
+  await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({ data: "dec:mq3:a", id: "cq-mq3-1", replyMarkup: stale }),
+  );
+  const second = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({ data: "dec:mq3:b", id: "cq-mq3-2", replyMarkup: stale }),
+  );
+  assert.equal(second.delivery.text, "[decision] mq3 → Skip (b)");
+  assert.deepEqual(calls.editMessageReplyMarkup.at(-1).options, {
+    replyMarkup: { inline_keyboard: [] },
+  });
+});
+
+test("multi-question: a repeat tap never empties a keyboard that still has open rows", async () => {
+  const { client, calls } = fakeClient();
+  const remaining = {
+    inline_keyboard: [[{ text: "Skip", callback_data: "dec:mq4:b" }]],
+  };
+  await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:mq4:a",
+      id: "cq-mq4-1",
+      replyMarkup: {
+        inline_keyboard: [
+          [{ text: "Deploy now", callback_data: "dec:mq4:a" }],
+          [{ text: "Skip", callback_data: "dec:mq4:b" }],
+        ],
+      },
+    }),
+  );
+  const editsBefore = calls.editMessageReplyMarkup.length;
+  const repeat = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:mq4:a",
+      id: "cq-mq4-2",
+      replyMarkup: remaining,
+    }),
+  );
+  assert.equal(repeat.answered, true);
+  assert.equal(repeat.delivery, undefined);
+  for (const edit of calls.editMessageReplyMarkup.slice(editsBefore)) {
+    assert.notDeepEqual(
+      edit.options,
+      { replyMarkup: { inline_keyboard: [] } },
+      "an open row must never be emptied by a repeat tap",
+    );
+  }
+});
+
+test("multi-question: a single-row keyboard still empties on its first tap", async () => {
+  const { client, calls } = fakeClient();
+  const outcome = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:mq5:a",
+      id: "cq-mq5-1",
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: "Yes", callback_data: "dec:mq5:a" },
+            { text: "No", callback_data: "dec:mq5:b" },
+          ],
+        ],
+      },
+    }),
+  );
+  assert.equal(outcome.delivery.text, "[decision] mq5 → Yes (a)");
+  assert.deepEqual(calls.editMessageReplyMarkup[0].options, {
+    replyMarkup: { inline_keyboard: [] },
+  });
+});

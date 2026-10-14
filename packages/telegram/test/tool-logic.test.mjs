@@ -15,6 +15,7 @@ import {
   clearAgentDeliveredMessage,
   wasAgentDeliveredMessage,
 } from "../dist/lib/notify/agent-delivery.js";
+import { checkTelegramHtml } from "../dist/lib/html-check.js";
 
 import { BOT_TOKEN, OWNER_CHAT_ID } from "./fixtures.mjs";
 
@@ -840,31 +841,123 @@ test("runTelegramSend: a spaced operator pair (~ / ||) never converts", async ()
   assert.equal(outcome.converted, undefined);
 });
 
-test("runTelegramSend: conversion that renders past Telegram's cap splits-to-fit instead of failing", async () => {
+test("runTelegramSend: a rendering past the default cap refuses the conversion and ships the authored text", async () => {
   const rc = recordingClient();
-  // 4094 chars as authored (under the default cap); the <b>/</b> tags push
-  // the rendered HTML past Telegram's 4096 per-message limit.
+  // 4094 chars as authored (under the default cap); the <b>/</b> tags would
+  // push the rendered HTML past Telegram's 4096 per-message limit. Refusing
+  // the conversion keeps one message under the cap instead of splitting it.
   const body = `**${"x".repeat(4090)}**`;
   const outcome = await runTelegramSend(
     { text: body, parse_mode: "Markdown" },
     { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
   );
   assert.equal(outcome.ok, true);
-  assert.ok((outcome.chunks ?? 1) > 1, "rendered-over-cap body split");
-  assert.ok(rc.calls.length > 1);
-  assert.ok(rc.calls.every((c) => c.options.parseMode === "HTML"));
-  assert.ok(
-    rc.calls.every((c) => c.text.length <= 4096),
-    "every chunk within the wire cap",
+  assert.equal(
+    rc.calls.length,
+    1,
+    "no split when the conversion would cross the cap",
   );
-  assert.deepEqual(outcome.converted, {
-    bold: 1,
-    underline: 0,
-    strike: 0,
-    spoiler: 0,
-    code: 0,
-  });
+  assert.equal(rc.calls[0].options.parseMode, "Markdown");
+  assert.equal(rc.calls[0].text, body, "authored text ships verbatim");
+  assert.ok(rc.calls[0].text.length <= 4096, "wire within the cap");
+  assert.equal(outcome.converted, undefined);
+  assert.equal(outcome.chunks, undefined, "single message, no chunk count");
   assert.equal(outcome.truncated, false);
+});
+
+test("runTelegramSend: a raised limit keeps the conversion and splits tag-aware within 4096", async () => {
+  const rc = recordingClient();
+  // 6004 chars authored with the cap raised to 7000: the conversion runs and
+  // Telegram's hard 4096 forces a tag-aware split — every chunk closes its
+  // tags and reopens them, so each one parses on its own.
+  const outcome = await runTelegramSend(
+    { text: `**${"z".repeat(6000)}**`, limit: 7000, parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.ok(outcome.chunks > 1, "split across Telegram's 4096 cap");
+  assert.ok((outcome.converted?.bold ?? 0) > 0, "conversion happened");
+  for (const call of rc.calls) {
+    assert.equal(call.options.parseMode, "HTML");
+    assert.ok(
+      call.text.length <= 4096,
+      `chunk ${call.text.length} within 4096`,
+    );
+    assert.equal(
+      checkTelegramHtml(call.text).ok,
+      true,
+      `chunk parses: ${checkTelegramHtml(call.text).error ?? ""}`,
+    );
+  }
+});
+
+test("runTelegramSend: rich split keeps every HTML chunk parseable (R2)", async () => {
+  const rc = recordingClient();
+  // One bold pair wrapping 9000 chars: the rendered body crosses 4096 many
+  // times. Each chunk must close `</b>` at its end and reopen `<b>` at the
+  // next, or Telegram rejects the fragment.
+  const outcome = await runTelegramSend(
+    { text: `**${"y".repeat(9000)}**`, rich: true, parse_mode: "Markdown" },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.ok(outcome.chunks >= 3);
+  for (const call of rc.calls) {
+    assert.equal(call.options.parseMode, "HTML");
+    assert.ok(
+      call.text.length <= 4096,
+      `chunk ${call.text.length} within 4096`,
+    );
+    assert.equal(
+      checkTelegramHtml(call.text).ok,
+      true,
+      `chunk parses: ${checkTelegramHtml(call.text).error ?? ""}`,
+    );
+    assert.match(call.text, /<b>/, "chunk reopens bold");
+    assert.match(call.text, /<\/b>/, "chunk closes bold");
+  }
+});
+
+test("runTelegramSend: a configured sendMaxChars caps the rendered body (F8)", async () => {
+  const bodies = [
+    `~${"x".repeat(295)}~`, // 297 authored -> 302 rendered
+    `||${"x".repeat(293)}||`, // 297 authored -> 315 rendered
+    `__${"x".repeat(295)}__`, // 297 authored -> 302 rendered
+  ];
+  for (const body of bodies) {
+    const rc = recordingClient();
+    const outcome = await runTelegramSend(
+      { text: body },
+      {
+        client: rc.client,
+        token: BOT_TOKEN,
+        chatId: OWNER_CHAT_ID,
+        sendMaxChars: 300,
+      },
+    );
+    assert.equal(outcome.ok, true);
+    assert.equal(rc.calls.length, 1);
+    assert.ok(
+      rc.calls[0].text.length <= 300,
+      `rendered body within the configured cap: ${rc.calls[0].text.length}`,
+    );
+    assert.equal(rc.calls[0].options.parseMode, undefined);
+    assert.equal(outcome.converted, undefined);
+  }
+  // Control: inside the configured cap the conversion still runs.
+  const rc = recordingClient();
+  const outcome = await runTelegramSend(
+    { text: `~${"x".repeat(200)}~` },
+    {
+      client: rc.client,
+      token: BOT_TOKEN,
+      chatId: OWNER_CHAT_ID,
+      sendMaxChars: 300,
+    },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(rc.calls[0].options.parseMode, "HTML");
+  assert.equal(outcome.converted?.strike, 1);
 });
 
 test("runTelegramSend: rich HTML body with long text → every chunk is HTML mode, no leaks", async () => {
@@ -887,6 +980,13 @@ test("runTelegramSend: rich HTML body with long text → every chunk is HTML mod
     rc.calls.every((c) => /<b>/.test(c.text)),
     "HTML tags preserved across chunks (no leak)",
   );
+  for (const call of rc.calls) {
+    assert.equal(
+      checkTelegramHtml(call.text).ok,
+      true,
+      `chunk parses: ${checkTelegramHtml(call.text).error ?? ""}`,
+    );
+  }
 });
 
 // ── agent-delivery flag (owner double-message fix) ─────────────────────────

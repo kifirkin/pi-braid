@@ -110,15 +110,26 @@ core-side hook (out of scope; see Follow-ups).
   (`braid.telegram.sendMaxChars`, default 4096) and the craft hook entirely:
   the text is delivered verbatim via `sendMessageChunks`, split on paragraph→line→word
   boundaries (never mid-word), every chunk carrying a `(i/N)` continuity marker.
+  Bodies that ship with `parse_mode` HTML are split **tag-aware**
+  (`splitHtmlText`): a cut never lands inside a tag or entity, the tags open at
+  the cut are closed at the end of the chunk and reopened at the start of the
+  next one, so every chunk parses on its own (the same splitter serves the
+  plain-path split when a converted body exceeds Telegram's 4096 cap).
 - Default path (`rich` unset): plain text up to the cap (+ craft hook above it), and
-  `parse_mode` is honored on the single send.
+  `parse_mode` is honored on the single send. The conversion is capped at the
+  effective limit: when the HTML rendering of a MarkdownV2 body would cross the
+  cap (`braid.telegram.sendMaxChars` or an explicit `limit`), the conversion is
+  refused and the authored text ships as-is, so the wire never exceeds the cap.
 - **Markdown safety net** (`isBalancedMarkdown` in `format.ts`): Telegram's
   `Markdown` parse*mode rejects unbalanced emphasis/link delimiters. When the payload
   has unbalanced `**`/`*`/backtick/`[` `]`, `parse_mode`is dropped and the text is
 delivered plain (with a`warn` in the outcome) instead of surfacing an API error.
-  HTML has no paired-delimiter rule and passes through. (Heuristic, not a parser -
-  documented limitation: split-to-fit is NOT HTML/Markdown-tag-aware; keeping chunks
-  on paragraph boundaries keeps balanced tags intact in practice.)
+  HTML has no paired-delimiter rule and passes through. The MarkdownV2→HTML
+  conversion is validated against Telegram's HTML parser (`checkTelegramHtml`)
+  before it ships: a conversion whose output would cross delimiter pairs or
+  emit unbalanced/broken author tags is refused (the authored text ships on
+  the unconverted path), so the converter cannot turn a deliverable body into
+  an API error.
 
 ## Env flags (BRAID*TG*\_ canonical; TELEGRAM\_\_ owner-side aliases)
 
@@ -134,8 +145,13 @@ delivered plain (with a`warn` in the outcome) instead of surfacing an API error.
   `sendChatAction(token, chatId, action?)`, `parseMode` option (`parse_mode` in the
   body) on `sendMessage` + `editMessageText`; `TelegramClient` interface + factory
   updated.
-- `format.ts`: `splitLongText(text, maxLen?, reserved?)`, `isBalancedMarkdown(text)`,
+- `format.ts`: `splitLongText(text, maxLen?, reserved?)`,
+  `splitHtmlText(text, maxLen?, reserved?)`, `isBalancedMarkdown(text)`,
+  `convertMarkdownV2ToHtml(text, {renderedCap?})`, `resolveDeliveryFormat(requested, text, detectMarkdown?, renderedCap?)`,
   `sendMessageChunks(client, {token, chatId, text, parseMode?})`.
+- `html-check.ts`: `checkTelegramHtml(text)`, a local mirror of Telegram's HTML
+  parser rules (tag set, attribute quoting, span/tg-emoji attribute requirements,
+  strict nesting), calibrated against the live API by `test/live-html-probe.mjs`.
 - `notify/live-update.ts`: `createLiveUpdateTracker` (start/update/finish/isActive/
   getState) + `loadLiveState`/`saveLiveState`/`clearLiveState` + `defaultLiveUpdateStateFile`.
 - `notify/craft.ts`: `buildRichSummaryPrompts` (rich-markdown variant).
@@ -165,7 +181,8 @@ Run: `cd packages/telegram && node test/run-tests.mjs` (all files green) and
 
 - Wire periodic `update()` to a verified streaming hook when one is available, so the
   tracked message updates mid-turn rather than only at start/finish.
-- Height: an HTML/Markdown-tag-aware splitter if rich messages with markup spanning
-  chunk boundaries ever bite.
+- Delivered: an HTML-tag-aware splitter (`splitHtmlText`) keeps rich messages
+  with markup spanning chunk boundaries parseable per chunk; a converted body
+  that would cross the cap is refused instead of split.
 - If agent-driven `telegram_inbox` escalation should also trigger `start()`, that
   needs a core-side hook (sendUserMessage is called from core, not this package).
