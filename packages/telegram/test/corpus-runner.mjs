@@ -13,9 +13,13 @@
  *      review recorded it;
  *   5. the cap-crossing bodies (R2/F8) keep their named wire contract: a
  *      refused conversion ships the authored body in one capped message, a
- *      tag-aware split keeps every HTML chunk parseable;
+ *      tag-aware split keeps every HTML chunk parseable, and a single tag
+ *      longer than the cap refuses the body (nothing sent);
  *   6. the set of cases whose delivered wire changed against the recorded
- *      baseline equals EXPECTED_FIDELITY_CHANGES exactly.
+ *      baseline equals EXPECTED_FIDELITY_CHANGES exactly;
+ *   7. the exact before/after wires of every changed case-mode pair equal
+ *      EXPECTED_WIRES (a case cannot keep "changing" while shipping a
+ *      different wrong body).
  *
  * Run standalone after a build (`node test/corpus-runner.mjs`; `npm test`
  * builds first) or via test/corpus.test.mjs. Exit code 1 on any violation.
@@ -34,6 +38,7 @@ import { runTelegramSend } from "../dist/lib/tool-logic.js";
 import {
   CAP_CASES,
   EXPECTED_FIDELITY_CHANGES,
+  EXPECTED_WIRES,
   HOSTILE_CASES,
   HTML_PARSE_CASES,
   MATRIX_BODIES,
@@ -85,6 +90,9 @@ export async function runCorpus() {
   const notes = [];
   const modeLabel = (requested) =>
     requested === undefined ? "none" : requested;
+  const bodyByName = new Map(
+    HOSTILE_CASES.map(({ name, body }) => [name, body]),
+  );
 
   // ── 1-3. hostile corpus: wire validity + baseline fidelity ───────────────
   let changedModePairs = 0;
@@ -183,6 +191,22 @@ export async function runCorpus() {
       chatId: OWNER_CHAT_ID,
       ...capCase.deps,
     });
+    if (capCase.expect.error) {
+      if (outcome.ok) {
+        failures.push(`cap ${capCase.name}: refusal expected, send succeeded`);
+      }
+      if (calls.length !== 0) {
+        failures.push(
+          `cap ${capCase.name}: ${calls.length} sends despite refusal`,
+        );
+      }
+      if (!/cap|4096/.test(outcome.error ?? "")) {
+        failures.push(
+          `cap ${capCase.name}: refusal without an over-cap error: ${JSON.stringify(outcome.error)}`,
+        );
+      }
+      continue;
+    }
     if (!outcome.ok) {
       failures.push(`cap ${capCase.name}: send failed (${outcome.error})`);
       continue;
@@ -260,6 +284,58 @@ export async function runCorpus() {
     }
   }
 
+  // ── 8. the exact changed wires ───────────────────────────────────────────
+  let wireRows = 0;
+  for (const row of EXPECTED_WIRES) {
+    wireRows++;
+    const body = bodyByName.get(row.case);
+    const base = BASELINE.cases[row.case]?.find(
+      (entry) => entry.requested === modeLabel(row.requested),
+    );
+    if (body === undefined || !base) {
+      failures.push(
+        `pinned wire row without case/baseline: ${JSON.stringify(row.case)} [${modeLabel(row.requested)}]`,
+      );
+      continue;
+    }
+    const format = resolveDeliveryFormat(row.requested, body);
+    const afterMode = format.parseMode ?? "plain";
+    if (base.mode !== row.before.parseMode || base.text !== row.before.text) {
+      failures.push(
+        `baseline drift for ${JSON.stringify(row.case)} [${modeLabel(row.requested)}]: ` +
+          `recorded ${JSON.stringify({ parseMode: base.mode, text: base.text })} != pinned ${JSON.stringify(row.before)}`,
+      );
+    }
+    if (afterMode !== row.after.parseMode || format.text !== row.after.text) {
+      failures.push(
+        `changed wire for ${JSON.stringify(row.case)} [${modeLabel(row.requested)}]: ` +
+          `derived ${JSON.stringify({ parseMode: afterMode, text: format.text })} != pinned ${JSON.stringify(row.after)}`,
+      );
+    }
+  }
+  // The pinned rows and the observed change set must be the same set: either
+  // side missing a pair is fixture/runner drift.
+  const pairKey = (name, label) => `${name}\u0000${label}`;
+  const pinnedKeys = new Set(
+    EXPECTED_WIRES.map((row) => pairKey(row.case, modeLabel(row.requested))),
+  );
+  const observedKeys = new Set();
+  for (const [name, modes] of observedChanges) {
+    for (const mode of modes) observedKeys.add(pairKey(name, mode));
+  }
+  for (const key of pinnedKeys) {
+    if (!observedKeys.has(key)) {
+      failures.push(
+        `pinned wire row is not in the observed change set: ${key}`,
+      );
+    }
+  }
+  for (const key of observedKeys) {
+    if (!pinnedKeys.has(key)) {
+      failures.push(`observed change without a pinned wire row: ${key}`);
+    }
+  }
+
   return {
     counts: {
       hostileCases: HOSTILE_CASES.length,
@@ -272,6 +348,7 @@ export async function runCorpus() {
       capCases: CAP_CASES.length,
       htmlParseCases: HTML_PARSE_CASES.length,
       expectedChanges: EXPECTED_FIDELITY_CHANGES.length,
+      expectedWires: wireRows,
     },
     failures,
     notes,
@@ -303,7 +380,8 @@ if (isMain) {
       `html-wires=${report.counts.htmlWires} (pre-existing-invalid=${report.counts.preExistingInvalid}), ` +
       `changed=${report.counts.changedModePairs} mode-pairs (${report.counts.expectedChanges} named cases), ` +
       `verdict-wires=${report.counts.verdictRows}, matrix=${report.counts.matrixCells}, ` +
-      `caps=${report.counts.capCases}, html-parse=${parse.cases}`,
+      `caps=${report.counts.capCases}, html-parse=${parse.cases}, ` +
+      `pinned-wires=${report.counts.expectedWires}`,
   );
   const failures = [...report.failures, ...parse.failures];
   for (const failure of failures) console.error(`FAIL ${failure}`);

@@ -114,7 +114,9 @@ core-side hook (out of scope; see Follow-ups).
   (`splitHtmlText`): a cut never lands inside a tag or entity, the tags open at
   the cut are closed at the end of the chunk and reopened at the start of the
   next one, so every chunk parses on its own (the same splitter serves the
-  plain-path split when a converted body exceeds Telegram's 4096 cap).
+  plain-path split when a converted body exceeds Telegram's 4096 cap). A tag
+  longer than the cap cannot be represented without cutting it: such a body is
+  refused with an explicit over-cap error and nothing is sent.
 - Default path (`rich` unset): plain text up to the cap (+ craft hook above it), and
   `parse_mode` is honored on the single send. The conversion is capped at the
   effective limit: when the HTML rendering of a MarkdownV2 body would cross the
