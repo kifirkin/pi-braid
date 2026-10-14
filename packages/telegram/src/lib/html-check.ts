@@ -20,7 +20,8 @@
  *    not contain `/`, `<`, `=`, `"` or `'`;
  *  - an end tag takes no attributes (whitespace before `>` stays legal);
  *  - `span` requires class="tg-spoiler" (exactly), `tg-emoji` requires a
- *    canonical numeric `emoji-id` (no leading zeros, not zero);
+ *    canonical numeric `emoji-id` (no leading zeros, not zero, at most
+ *    9223372036854775807);
  *  - strict LIFO nesting, case-insensitively; no self-closing tags;
  *  - a `<` that starts no valid tag is an error ("Unsupported start tag");
  *  - everything outside tags is literal text: Telegram does not validate
@@ -71,6 +72,21 @@ const NAME_START_RE = /[A-Za-z]/;
 const NAME_CHAR_RE = /[A-Za-z0-9-]/;
 const ATTR_NAME_RE = /^[A-Za-z0-9_-]+$/;
 const SPACE_RE = /\s/;
+const EMOJI_ID_RE = /^[1-9]\d{0,18}$/;
+/** The signed 64-bit maximum Telegram accepts as an `emoji-id` value. */
+const EMOJI_ID_MAX = "9223372036854775807";
+
+/**
+ * Live, `emoji-id` is a signed 64-bit integer: a canonical digit string
+ * above `EMOJI_ID_MAX` fails with the same error as a malformed one. The
+ * canonical form has no leading zeros, so 19 digits is the only length that
+ * can exceed the maximum, and equal-length digit strings compare
+ * numerically.
+ */
+function isValidEmojiId(value: string): boolean {
+  if (!EMOJI_ID_RE.test(value)) return false;
+  return value.length < EMOJI_ID_MAX.length || value <= EMOJI_ID_MAX;
+}
 
 /**
  * Parse the tag starting at `start` (which must be `<`). Returns null when no
@@ -194,9 +210,10 @@ export function parseTelegramTagAt(
   }
   if (name === "tg-emoji" && !closing) {
     const id = attributes.find((a) => a.name === "emoji-id");
-    // Live: a leading zero (`00123`) and a bare zero both fail with
-    // "Invalid custom emoji identifier specified"; `123` parses.
-    if (!id?.value || !/^[1-9]\d{0,18}$/.test(id.value)) {
+    // Live: a leading zero (`00123`), a bare zero, and any value above the
+    // signed 64-bit maximum fail with "Invalid custom emoji identifier
+    // specified"; `123` and `9223372036854775807` parse.
+    if (!id?.value || !isValidEmojiId(id.value)) {
       error ??= "Invalid custom emoji identifier specified";
     }
   }
@@ -208,8 +225,12 @@ export type TelegramHtmlVerdict = { ok: true } | { ok: false; error: string };
 
 /**
  * Check a body against Telegram's HTML parser rules. `ok: false` means the
- * API would reject it with "can't parse entities: …"; the error text mirrors
- * the API's wording (without byte offsets) so it reads like the wire error.
+ * API would reject it with "can't parse entities: …". The error text follows
+ * the API's wording on the calibrated classes; where it carries an offset,
+ * that offset is the checker's own position in the body, not a copy of the
+ * API's: it agrees with live on the recorded end-tag rows, while
+ * "Unexpected end of name token" reports the tag's start where the API
+ * reports the value's start.
  */
 export function checkTelegramHtml(text: string): TelegramHtmlVerdict {
   if (!text) return { ok: true };
