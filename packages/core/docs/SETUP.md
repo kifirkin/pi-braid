@@ -5,7 +5,7 @@
 
 Complete reference for installing braid, configuring pi to load it, enabling companion skill packs, and troubleshooting common setup issues.
 
-> **TL;DR for new users.** Clone → build → register in `~/.pi/agent/settings.json` → done. See the [Fast start](#fast-start) section.
+> **TL;DR for new users.** `pi install npm:pi-braid` → done. See the [Fast start](#fast-start) section.
 
 ---
 
@@ -33,7 +33,8 @@ Complete reference for installing braid, configuring pi to load it, enabling com
 
 The Node floor is the `engines` field in `package.json` (mirrored by every
 workspace manifest); if this table and `engines` ever disagree, trust
-`engines`.
+`engines`. git is only needed for the checkout install paths - `pi install`
+from npm needs no checkout at all.
 
 **How the pi version resolves.** braid declares the `@earendil-works/pi-*`
 packages as peer dependencies with unconstrained (`*`) ranges. npm resolves
@@ -47,33 +48,32 @@ version your install resolved to rather than pinning its own;
 
 ## Fast start
 
-The three-step minimum:
+The minimum, for most users:
 
 ```bash
-# 1. Clone and build
-git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
-cd ~/pi-braid && npm install && npm run build
+# 1. Install braid from npm (user-global - applies to every pi session)
+pi install npm:pi-braid
 
-# 2. Register with pi (user-global — applies to every pi session)
-cat > ~/.pi/agent/settings.json <<'JSON'
-{
-  "packages": [
-    "file:~/pi-braid/packages/core"
-  ]
-}
-JSON
-
-# 3. Use pi as normal
+# 2. Use pi as normal
 pi
 ```
 
 That's it. Now every `pi` invocation will load braid alongside pi-core.
+`pi install` writes the declaration to `~/.pi/agent/settings.json` and installs
+the package under pi's npm directory - no clone, no build step. `pi list` shows
+the configured packages.
 
-> **Register `packages/core`, not the repo root.** The root `package.json` has
-> no `pi` field, so `file:~/pi-braid` loads nothing. `packages/core` declares
-> both `pi.extensions` (the braid extensions) and `pi.skills` (the core skill
-> set, which ships inside the package). `packages/skills` carries the on-demand
-> set, registered per project - see [§ Skills](#skills).
+Add-ons, each its own install:
+
+```bash
+pi install npm:pi-braid-skills     # the on-demand skill pack (per project)
+pi install npm:pi-braid-contrib    # standalone tool extensions
+pi install npm:pi-braid-providers  # extra LLM providers + the key ring
+pi install npm:pi-braid-telegram   # bidirectional Telegram channel
+```
+
+To work on braid itself instead, see [§ Install paths](#install-paths) option 2
+(checkout).
 
 ### Verify
 
@@ -83,9 +83,27 @@ Inside pi, the `<available_skills>` block in the system prompt lists the core sk
 
 ## Install paths
 
-### 1. User-global clone (recommended)
+### 1. npm install (recommended)
 
-Install once, applies to every pi session across all projects.
+One command, applies to every pi session across all projects:
+
+```bash
+pi install npm:pi-braid
+```
+
+`pi install` writes the package declaration to `~/.pi/agent/settings.json` and
+installs the package under pi's npm directory (`~/.pi/agent/npm/`), so there is
+no clone and no build step. `pi list` shows the configured packages;
+`pi remove npm:pi-braid` removes this one; `pi update --extensions` reconciles
+package installs (see pi's own package docs for the full command set).
+
+Add `--local` (or `-l`) to write the declaration to `<project>/.pi/settings.json`
+instead - the natural fit for the per-project [skill pack](#skills).
+
+### 2. User-global checkout (working on braid)
+
+For running braid from source - to modify it, or to track `main`. Build the
+checkout, then register the `file:` paths:
 
 ```bash
 git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
@@ -103,7 +121,13 @@ Settings:
 }
 ```
 
-### 2. Local-packages install (canonical, matches `docs/LOCAL_DEV.md`)
+> **Register `packages/core`, not the repo root.** The root `package.json` has
+> no `pi` field, so `file:~/pi-braid` loads nothing. `packages/core` declares
+> both `pi.extensions` (the braid extensions) and `pi.skills` (the core skill
+> set, which ships inside the package). `packages/skills` carries the on-demand
+> set, registered per project - see [§ Skills](#skills).
+
+### 3. Local-packages install (maintainer)
 
 The maintainer path: publish braid into `~/.pi/agent/local-packages`, then
 register the installed path. `npm run publish:local` packs `packages/core` into
@@ -133,9 +157,18 @@ project that wants it - see [§ Skills](#skills).
 See [`LOCAL_DEV.md`](LOCAL_DEV.md) for the full publish/link flow, the version
 scheme, and the skills-collision rule.
 
-### 3. Project-scoped clone (per-project isolation)
+### 4. Project-scoped install (per-project isolation)
 
 For projects that should always have braid regardless of the user's global config:
+
+```bash
+pi install --local npm:pi-braid
+```
+
+`--local` writes the declaration to `<project>/.pi/settings.json`; pi reads
+that file only after project trust is granted.
+
+To pin a checkout into the project instead:
 
 ```bash
 git clone https://github.com/kifirkin/pi-braid.git <project>/.pi/extensions/pi-braid
@@ -155,19 +188,20 @@ Settings:
 
 Project-scoped wins on collision with user-global (per pi's resolution order), and a project-scoped `braid.modules` block is not read by braid at all: pi owns that file and applies it only for a trusted project, so pin braid's module state in `~/.pi/agent/settings.json` or toggle it (which persists under `~/.pi/agent/braid/`).
 
-### 4. Once-per-session flag (no install)
+### 5. Once-per-session flag (no install)
 
 If you don't want to commit braid to either config - useful for trying it on one task:
 
 ```bash
-pi -e /path/to/pi-braid/packages/core
+pi -e npm:pi-braid                      # from npm
+pi -e /path/to/pi-braid/packages/core   # from a checkout
 ```
 
-`pi -e <path>` adds an extension directory for that session only. No clone required; the path must point to a built package (i.e. you've already run `npm install && npm run build`).
+`pi -e <source|path>` adds an extension for that session only. No clone required; a checkout path must point to a built package (i.e. you've already run `npm install && npm run build`).
 
-### 5. Direct path from a clone anywhere
+### 6. Direct path from a clone anywhere
 
-Same idea as option 1 but the path can be anywhere on disk:
+Same idea as option 2 but the path can be anywhere on disk:
 
 ```bash
 git clone https://github.com/kifirkin/pi-braid.git /some/other/path
@@ -183,15 +217,16 @@ cd /some/other/path && npm install && npm run build
 
 ### Choosing an install path
 
-| Path                      | Pros                                                       | Cons                                          |
-| ------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| 1. User-global clone      | One install, all projects                                  | Affects every project (occasionally unwanted) |
-| 2. Local-packages install | Versioned tgz or live symlink; matches the maintainer flow | Requires the publish/link step                |
-| 3. Project-scoped clone   | Per-project isolation; version-pinned                      | Need to rebuild per project after `git pull`  |
-| 4. `-e` flag              | Zero config                                                | Must rebuild each session; easy to forget     |
-| 5. Direct path            | Same as #1 with arbitrary location                         | Same                                          |
+| Path                      | Pros                                                       | Cons                                        |
+| ------------------------- | ---------------------------------------------------------- | ------------------------------------------- |
+| 1. npm install            | One command, no clone or build; all projects               | Needs network access for the install        |
+| 2. User-global checkout   | Run the source; edit and rebuild in place                  | You own the build; affects every project    |
+| 3. Local-packages install | Versioned tgz or live symlink; matches the maintainer flow | Requires the publish/link step              |
+| 4. Project-scoped install | Per-project isolation; version-pinned                      | A checkout needs a rebuild after `git pull` |
+| 5. `-e` flag              | Zero config; try one session                               | Must be passed every time                   |
+| 6. Direct path            | Same as #2 with arbitrary location                         | Same                                        |
 
-The recommended default is **option 1** for users who want braid everywhere, **option 2** for maintainers following `LOCAL_DEV.md`, **option 3** for users who pin extensions per project.
+The recommended default is **option 1**. Options 2 and 6 are checkout variants for working on braid or tracking `main`; option 3 is the maintainer flow; option 4 isolates one project; option 5 tries it once.
 
 ---
 
@@ -205,7 +240,8 @@ braid's skills come in two tiers.
 - **On-demand set** - the separate `pi-braid-skills` pack
   (`packages/skills/skills/`: eight `SKILL.md` plus shared content under
   `skills/_shared/`), registered in the settings file of the project that wants
-  it.
+  it (`pi install --local npm:pi-braid-skills`, or a `file:` spec from a
+  checkout).
 
 Every skill is one `SKILL.md`. The catalog table (one row per skill, with its
 verdict and one-line description, covering both tiers) is
@@ -221,7 +257,14 @@ Skills in a registered package are listed in the system prompt's
 
 `pi-braid-skills` and `pi-braid-contrib` are not separate repositories - since
 the monorepo migration they are in-repo workspaces
-(`packages/skills`, `packages/contrib`). Register the workspaces you want:
+(`packages/skills`, `packages/contrib`). From npm:
+
+```bash
+pi install npm:pi-braid-contrib    # the code-only extension workspace
+pi install npm:pi-braid-skills     # the on-demand skill set, per project
+```
+
+From a checkout, register the workspace paths you want:
 
 ```jsonc
 // ~/.pi/agent/settings.json

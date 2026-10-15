@@ -30,7 +30,21 @@ It runs as a pi _extension package_ - install once, use everywhere on your pi se
 pi install npm:pi-braid
 ```
 
-Or point pi at a checked-out workspace in `~/.pi/agent/settings.json`:
+One command, no clone, no build: `pi install` registers the package with pi and
+installs it under pi's npm directory. It carries the suite and the core skill
+set that ships with it. The on-demand skill pack and the other companions are
+add-ons, each its own install: `pi install npm:pi-braid-skills`,
+`pi install npm:pi-braid-contrib`, `pi install npm:pi-braid-providers`,
+`pi install npm:pi-braid-telegram`.
+
+### From a checkout (working on braid)
+
+Build the workspace and point pi at the local path:
+
+```bash
+git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
+cd ~/pi-braid && npm install && npm run build
+```
 
 ```json
 {
@@ -38,6 +52,9 @@ Or point pi at a checked-out workspace in `~/.pi/agent/settings.json`:
 }
 ```
 
+pi loads each workspace through the `pi.extensions` / `pi.skills`
+fields in its `package.json` (no workspaces auto-discovery - register the paths
+you want).
 `packages/core` carries the suite and the core skill set that ships with it;
 `packages/skills` carries the on-demand skill pack, registered per project. Add
 `packages/providers`, `packages/contrib`, or `packages/telegram` as needed. The install-path
@@ -62,29 +79,18 @@ reference is [`docs/SETUP.md`](docs/SETUP.md).
 ## Fast start (TL;DR)
 
 ```bash
-# 1. Clone
-git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
-cd ~/pi-braid && npm install && npm run build
+# 1. Register braid with pi (one-time, user-global)
+pi install npm:pi-braid
 
-# 2. Register the workspaces you want with pi (one-time, user-global)
-# Core is the metacognitive suite and its core skill set; add contrib/providers/telegram as needed.
-cat > ~/.pi/agent/settings.json <<'JSON'
-{
-  "packages": [
-    "file:~/pi-braid/packages/core",
-    "file:~/pi-braid/packages/contrib"
-  ]
-}
-JSON
-
-# 3. Use pi as normal — braid loads automatically
+# 2. Use pi as normal — braid loads automatically
 pi
 ```
 
-That's it. pi loads each workspace through the `pi.extensions` / `pi.skills`
-fields in its `package.json` (no workspaces auto-discovery - register the paths
-you want). To enable pi-braid only for one project, or to use all five
-workspaces, see [docs/SETUP.md](docs/SETUP.md) § Install paths. For the full setup
+That's it: `pi install` writes the declaration to `~/.pi/agent/settings.json`,
+so there is no clone, no build, and nothing to edit by hand. Working on braid
+itself? [§ Install](#install) carries the checkout path. To enable pi-braid only
+for one project, or to use all five workspaces, see
+[docs/SETUP.md](docs/SETUP.md) § Install paths. For the full setup
 reference (per-project installs, skills, module toggles, troubleshooting), see
 **[`docs/SETUP.md`](docs/SETUP.md)**. New to pi and braid? Start with
 **[`docs/BEGINNERS.md`](docs/BEGINNERS.md)**.

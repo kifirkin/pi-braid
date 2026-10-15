@@ -23,6 +23,28 @@ It is a monorepo of five workspaces; the one you care about first is
 
 ## 2. Install
 
+The fast way, from npm:
+
+```bash
+pi install npm:pi-braid
+```
+
+`pi install` registers the package with pi in `~/.pi/agent/settings.json` and
+installs it under pi's npm directory, so there is nothing to clone and nothing
+to build. This one package carries the metacognitive suite and the core skill
+set; the other packages are add-ons:
+
+```bash
+pi install npm:pi-braid-skills     # the on-demand skill pack (per project)
+pi install npm:pi-braid-contrib    # standalone tool extensions
+pi install npm:pi-braid-providers  # extra LLM providers
+pi install npm:pi-braid-telegram   # bidirectional Telegram channel
+```
+
+### Working from a checkout
+
+If you want to modify braid or run the latest `main`, clone and build instead:
+
 ```bash
 git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
 cd ~/pi-braid && npm install && npm run build

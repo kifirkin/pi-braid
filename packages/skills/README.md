@@ -10,7 +10,12 @@ Skill pack for the [pi](https://github.com/earendil-works/pi) coding agent. This
 pi install npm:pi-braid-skills
 ```
 
-Or register the workspace in `~/.pi/agent/settings.json`:
+Add `--local` (`-l`) to write the declaration to the project's
+`.pi/settings.json` instead of your user settings - the pack is usually wanted
+per project. pi reads that file only after project trust is granted.
+
+Running from a checkout instead? Register the workspace in
+`~/.pi/agent/settings.json`:
 
 ```json
 {
@@ -88,7 +93,8 @@ Shared reference files (not skills, not in the catalog):
 
 ## Installation
 
-This package is loaded by pi. Two ways:
+This package is loaded by pi. Most users want [§ Install](#install) above; the
+two registration shapes below are for running the pack from a checkout.
 
 ### As a local path
 
@@ -96,7 +102,7 @@ Add the skills workspace to your pi settings (`~/.pi/agent/settings.json`):
 
 ```json
 {
-  "packages": ["~/.pi/agent/pi-braid/packages/skills"]
+  "packages": ["file:~/pi-braid/packages/skills"]
 }
 ```
 

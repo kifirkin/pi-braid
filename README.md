@@ -31,9 +31,30 @@ Core alone gives you the metacognitive layer. Add `skills` for the agent skill l
 | npm             | bundled    | `npm --version`            |
 | git             | any recent | `git --version`            |
 
-braid declares the pi packages as peer dependencies with unconstrained ranges; `npm install` resolves them (see [SETUP § Prerequisites](packages/core/docs/SETUP.md#prerequisites) for how the pi version resolves).
+braid declares the pi packages as peer dependencies with unconstrained ranges; `npm install` resolves them (see [SETUP § Prerequisites](packages/core/docs/SETUP.md#prerequisites) for how the pi version resolves). git is only needed for the checkout install path below.
 
-## First run (about five minutes)
+## Install
+
+braid is published on npm. The core package is the one most readers want - one command, no clone, no build:
+
+```bash
+pi install npm:pi-braid
+```
+
+`pi install` registers the package in your user settings and installs it under pi's npm directory; the next `pi` start loads the metacognitive suite and the core skill set that ships with it.
+
+The other packages are add-ons, each its own install:
+
+```bash
+pi install npm:pi-braid-skills     # the on-demand skill pack (usually registered per project)
+pi install npm:pi-braid-contrib    # standalone tool extensions (browser, codebase, diff, ...)
+pi install npm:pi-braid-providers  # extra LLM providers + the multi-key ring
+pi install npm:pi-braid-telegram   # bidirectional Telegram channel
+```
+
+### From a checkout (working on braid)
+
+To run braid from source - to modify it, or to track `main` - clone a checkout and build it:
 
 ```bash
 # 1. Clone and build
@@ -49,12 +70,9 @@ cat > ~/.pi/agent/settings.json <<'JSON'
   ]
 }
 JSON
-
-# 3. Use pi as normal — braid loads automatically
-pi
 ```
 
-It worked when the system prompt lists the bundled skills under `<available_skills>`. Register `packages/core` + `packages/skills`, not the repo root: the root `package.json` has no `pi` field, so `file:~/pi-braid` loads nothing.
+Then use pi as normal - braid loads automatically. It worked when the system prompt lists the bundled skills under `<available_skills>`. Register `packages/core` + `packages/skills`, not the repo root: the root `package.json` has no `pi` field, so `file:~/pi-braid` loads nothing.
 
 Copy-ready configuration lives in [`examples/`](examples): the full `braid.*` settings surface, provider/Telegram environment variables, and cwd-routed session profiles. More install paths (local-packages, project-scoped, once-per-session flag) in [SETUP § Install paths](packages/core/docs/SETUP.md#install-paths). New to pi and braid? Start with [`packages/core/docs/BEGINNERS.md`](packages/core/docs/BEGINNERS.md).
 
