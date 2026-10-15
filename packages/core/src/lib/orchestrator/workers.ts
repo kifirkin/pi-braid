@@ -21,6 +21,7 @@
  */
 
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -33,8 +34,13 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { getWorkersFilePath, projectsDir } from "../config/braid-paths.js";
+import { braidDir, getWorkersFilePath, projectsDir } from "../config/braid-paths.js";
+import { getCloseGateWellFormedness } from "../config/braid-settings.js";
+import type { CloseGateWellFormednessMode } from "../config/braid-settings.js";
+import { createLogger } from "../core/logger.js";
 import { getAllLocks, releaseLock } from "./locks.js";
+
+const log = createLogger("orchestrator:workers");
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -759,6 +765,245 @@ function assertGateEvidence(
   }
 }
 
+// ── Gate-row well-formedness (the close path) ──────────────────────────────
+// Four string predicates over each recorded row, none of which reads what the
+// command does and none of which re-runs it: (a) the cmd parses under
+// `sh -n`; (b) after leading `VAR=x` assignments are stripped, the first token
+// resolves to an executable; (c) the field is the command alone, with no
+// top-level decoration by which the recorded exit would belong to another
+// command; (d) a completed close records exit 0 under every row. A failing
+// row is logged, and in enforce mode refused; shadow mode is the shipped
+// default. Replay stays the sampler's sampled job: nothing here executes a
+// cmd, `sh -n` parses only and `command -v` only looks a token up.
+
+/** Predicate letters, in the order the four are evaluated. */
+export type GateRowPredicate = "a" | "b" | "c" | "d";
+
+export interface GateRowViolation {
+  predicate: GateRowPredicate;
+  detail: string;
+}
+
+/** One leading `VAR=value` assignment, quoted value or not. */
+const ENV_ASSIGNMENT_RE =
+  /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s]*)(?=\s|$)/;
+
+/**
+ * Strip leading env assignments one at a time. A single-assignment regex
+ * applied in a loop, rather than one repeated group: the repeated form
+ * backtracks over the whole field when it fails to match, and this runs before
+ * any row is judged, on a field a caller controls.
+ */
+function stripLeadingEnvAssignments(cmd: string): string {
+  let rest = cmd;
+  for (;;) {
+    const match = rest.match(ENV_ASSIGNMENT_RE);
+    if (!match) return rest;
+    rest = rest.slice(match[0].length);
+  }
+}
+
+/** The first whitespace-delimited token after leading env assignments, or null. */
+export function firstCommandToken(cmd: string): string | null {
+  const rest = stripLeadingEnvAssignments(cmd).trimStart();
+  const token = rest.split(/\s+/, 1)[0];
+  return token.length > 0 ? token : null;
+}
+
+/** One `sh` look-up outcome: ok, row-fail with the shell's own line, or no shell. */
+type ShellCheck = { ok: true } | { ok: false; detail: string } | { unavailable: true };
+
+function runShell(args: string[]): ShellCheck {
+  try {
+    execFileSync("sh", args, {
+      stdio: ["ignore", "ignore", "pipe"],
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    return { ok: true };
+  } catch (error) {
+    const e = error as { code?: unknown; status?: unknown; stderr?: unknown };
+    if (e.code === "ENOENT") return { unavailable: true };
+    if (e.code === "ERR_INVALID_ARG_VALUE") {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, detail: `sh rejected the field (${message})` };
+    }
+    if (e.status == null) return { unavailable: true };
+    const stderr = typeof e.stderr === "string" ? e.stderr : "";
+    const line = stderr
+      .split("\n")
+      .map((candidate) => candidate.trim())
+      .find((candidate) => candidate.length > 0);
+    return { ok: false, detail: line ?? `sh exited ${String(e.status)}` };
+  }
+}
+
+/**
+ * The (c) instrument: a top-level decoration that makes the field more than
+ * the command, so the recorded exit cannot be attributed to what the field
+ * names: an unquoted `;` or newline (whatever follows owns the exit), a
+ * background `&` (the shell owns it), or a word-starting `#` (the field
+ * carries a comment). Quotes, command substitutions and redirections are
+ * shell syntax rather than decorations and are skipped, so `2>&1 | tail`,
+ * `cd x && npm run ci:check` and a quoted `';'` stay accepted. Returns the
+ * decoration found, or null when the field carries none.
+ */
+export function findTopLevelDecoration(cmd: string): string | null {
+  type Frame = "top" | "subst";
+  type Quote = "single" | "double" | "backtick";
+  const frames: Frame[] = ["top"];
+  let quote: Quote | null = null;
+  let wordStart = true;
+
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    const next = cmd[i + 1];
+
+    if (quote === "single") {
+      if (ch === "'") quote = null;
+      continue;
+    }
+    if (quote === "backtick") {
+      if (ch === "\\") i++;
+      else if (ch === "`") quote = null;
+      continue;
+    }
+    if (quote === "double") {
+      if (ch === "\\") i++;
+      else if (ch === '"') quote = null;
+      else if (ch === "$" && next === "(") {
+        frames.push("subst");
+        i++;
+      } else if (ch === "`") quote = "backtick";
+      continue;
+    }
+
+    // Unquoted: at the top level, or inside a command substitution.
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "'") {
+      quote = "single";
+      wordStart = false;
+      continue;
+    }
+    if (ch === '"') {
+      quote = "double";
+      wordStart = false;
+      continue;
+    }
+    if (ch === "`") {
+      quote = "backtick";
+      wordStart = false;
+      continue;
+    }
+    if (ch === "$" && next === "(") {
+      frames.push("subst");
+      i++;
+      wordStart = false;
+      continue;
+    }
+
+    if (frames[frames.length - 1] === "subst") {
+      if (ch === "(") frames.push("subst");
+      else if (ch === ")") frames.pop();
+      continue;
+    }
+
+    if (ch === ";") return ";";
+    if (ch === "\n") return "newline";
+    if (ch === "#" && wordStart) return "comment";
+    if (ch === "&") {
+      const previous = cmd[i - 1];
+      const andAnd = next === "&";
+      const redirection = previous === ">" || previous === "<" || next === ">";
+      if (!andAnd && !redirection) return "&";
+      if (andAnd) i++;
+      wordStart = false;
+      continue;
+    }
+    wordStart = ch === " " || ch === "\t";
+  }
+  return null;
+}
+
+/**
+ * Run the four predicates over one recorded row and return the first
+ * violation, or null when the row is well formed. (a)/(b) need `sh`; when the
+ * shell cannot be spawned they are left unjudged (the string-only (c) and (d)
+ * still run), so a missing instrument cannot fail every row.
+ */
+export function findGateRowViolation(
+  cmd: string,
+  exit: number,
+  outcome: WorkerOutcome,
+): GateRowViolation | null {
+  const parse = runShell(["-n", "-c", cmd]);
+  if ("ok" in parse && !parse.ok) {
+    return { predicate: "a", detail: `does not parse under sh -n (${parse.detail})` };
+  }
+  if ("ok" in parse) {
+    const token = firstCommandToken(cmd);
+    if (token === null) {
+      return { predicate: "b", detail: "no command token after the env prefixes" };
+    }
+    const resolved = runShell(["-c", 'command -v "$1" >/dev/null 2>&1', "sh", token]);
+    if ("ok" in resolved && !resolved.ok) {
+      return { predicate: "b", detail: `first token "${token}" does not resolve to an executable` };
+    }
+  }
+  const decoration = findTopLevelDecoration(cmd);
+  if (decoration !== null) {
+    return {
+      predicate: "c",
+      detail: `top-level ${decoration}: not the command alone`,
+    };
+  }
+  if (outcome === "completed" && exit !== 0) {
+    return { predicate: "d", detail: `exit ${exit} recorded under a completed outcome` };
+  }
+  return null;
+}
+
+/** Where close-gate refusals land: one JSONL line per failing row. */
+export function closeGateRefusalLogPath(): string {
+  return join(braidDir(), "orchestrator", "close-gate-refusals.jsonl");
+}
+
+export interface CloseGateRefusalRecord {
+  at: string;
+  workerId: string;
+  /** Zero-based index into the close's gate evidence rows. */
+  row: number;
+  predicate: GateRowPredicate;
+  cmd: string;
+  mode: CloseGateWellFormednessMode;
+  outcome: WorkerOutcome;
+  detail: string;
+}
+
+/** Warned once per process about an unwritable refusal log. */
+let _warnedRefusalLogFailure = false;
+
+/**
+ * Append one refusal line. Never throws: a failed append warns once and
+ * leaves the close's own behavior untouched, so an unwritable braid root
+ * cannot refuse a close that shadow mode would have accepted.
+ */
+export function logCloseGateRefusal(record: CloseGateRefusalRecord): void {
+  try {
+    const file = closeGateRefusalLogPath();
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, `${JSON.stringify(record)}\n`, { encoding: "utf8", mode: 0o600 });
+  } catch (error) {
+    if (_warnedRefusalLogFailure) return;
+    _warnedRefusalLogFailure = true;
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`close-gate refusal log not writable; refusals continue unlogged: ${message}`);
+  }
+}
+
 /**
  * Close an entry with a terminal outcome and optional gate evidence.
  * Already-closed entries are left untouched (first close wins); the checks
@@ -770,6 +1015,14 @@ function assertGateEvidence(
  * bare `completed` with no gates at all. That contradiction is refused now,
  * and each provided gate is shape-checked (non-empty `cmd`, numeric `exit`)
  * before any write — a violation leaves the row and the lock table untouched.
+ *
+ * Every provided row is then read for well-formedness: its `cmd` must parse
+ * under `sh -n`, resolve its first token, and name the command alone, and a
+ * completed close's exits must be 0. The mode is settings-driven
+ * (`braid.orchestrator.closeGateWellFormedness`): "shadow" (default) records
+ * a refusal line and proceeds, "enforce" refuses before any write or lock
+ * release, "off" skips the read. No gate is re-run; replay stays the
+ * sampler's sampled job.
  *
  * Releases the worker's file locks: close is terminal, and a lock that
  * survives it blocks the next spawn on the same files. The release runs with
@@ -789,6 +1042,30 @@ export function closeWorker(
   if (entry.closedAt) return entry;
 
   assertGateEvidence(workerId, parsed, gates);
+
+  const wellFormedness = getCloseGateWellFormedness();
+  if (wellFormedness.mode !== "off" && gates && gates.length > 0) {
+    for (let i = 0; i < gates.length; i++) {
+      const violation = findGateRowViolation(gates[i].cmd, gates[i].exit, parsed);
+      if (!violation) continue;
+      logCloseGateRefusal({
+        at: new Date().toISOString(),
+        workerId,
+        row: i,
+        predicate: violation.predicate,
+        cmd: gates[i].cmd,
+        mode: wellFormedness.mode,
+        outcome: parsed,
+        detail: violation.detail,
+      });
+      if (wellFormedness.mode === "enforce") {
+        throw new Error(
+          `closeWorker: gates[${i}] fails predicate (${violation.predicate}): ${violation.detail}; ` +
+            `cmd: ${gates[i].cmd} (worker ${workerId}, outcome ${parsed})`,
+        );
+      }
+    }
+  }
 
   releaseLock(workerId, located.key);
 

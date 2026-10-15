@@ -182,6 +182,12 @@ const EXCLUSIONS = [
     reason: "single home for braid state paths; lock/worker registries are braid-wide state",
   },
   {
+    path: "packages/core/src/lib/config/braid-settings.ts",
+    classes: ["domain-literal"],
+    reason:
+      "the braid.* settings-key registry: a section name is a key path (`braid.orchestrator.*`), not policy, so naming the owning section is the file's content",
+  },
+  {
     path: "packages/core/src/lib/orchestrator/slop-scanner.ts",
     classes: ["wave-word", "round-label", "phase-label"],
     reason: "defines the detector's pattern ids and intent examples — its own vocabulary",
@@ -269,7 +275,7 @@ const EXCLUSIONS = [
 // ratchet: strict mode fails when the list exceeds it. Raising the number is
 // a deliberate edit to this constant, visible in review, never a side effect
 // of adding an entry.
-const EXCLUSION_BUDGET = 21;
+const EXCLUSION_BUDGET = 22;
 
 // ── File collection ──────────────────────────────────────────────────────────────────────
 

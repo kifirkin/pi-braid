@@ -606,7 +606,11 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
         description:
           "Gate evidence for close-worker: command plus exit code, recorded with a timestamp. " +
           `A completed close whose entry carries none of a fresh output file, a branch advance or ` +
-          `merge, and a passing gate is flagged "${WORKER_EFFECT_EVIDENCE_FLAG}" (advisory, non-blocking).`,
+          `merge, and a passing gate is flagged "${WORKER_EFFECT_EVIDENCE_FLAG}" (advisory, non-blocking). ` +
+          "Every row is also read for well-formedness at close time (parses under sh -n, first token " +
+          "resolves, no top-level decoration, exit 0 under a completed outcome); the read ships in " +
+          "shadow mode, so a failing row is logged and the close proceeds, until " +
+          'braid.orchestrator.closeGateWellFormedness is set to "enforce".',
       }),
     ),
     includeClosed: Type.Optional(

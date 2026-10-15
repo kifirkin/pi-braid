@@ -51,6 +51,11 @@ export {
   WORKER_EFFECT_EVIDENCE_FLAG,
   workerEffectEvidence,
   workerEffectEvidenceForEntry,
+  firstCommandToken,
+  findTopLevelDecoration,
+  findGateRowViolation,
+  closeGateRefusalLogPath,
+  logCloseGateRefusal,
 } from "./workers.js";
 
 export type {
@@ -75,4 +80,7 @@ export type {
   WorkerEffectFacts,
   WorkerStats,
   WorkerLatencySummary,
+  GateRowPredicate,
+  GateRowViolation,
+  CloseGateRefusalRecord,
 } from "./workers.js";
