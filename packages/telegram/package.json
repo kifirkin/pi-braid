@@ -28,12 +28,13 @@
     ]
   },
   "scripts": {
-    "prepublishOnly": "npm run typecheck && npm run build",
+    "prepublishOnly": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "node test/run-tests.mjs",
     "check:doc-index": "node ../../packages/core/scripts/check-doc-index.mjs",
-    "publish:local": "node ../../packages/core/scripts/publish-local.mjs telegram"
+    "publish:local": "node ../../packages/core/scripts/publish-local.mjs telegram",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "6.0.2",
