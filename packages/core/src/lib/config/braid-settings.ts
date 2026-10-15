@@ -67,6 +67,24 @@ interface BraidConfig {
     };
   };
   /**
+   * Orchestrator-layer config. `closeGateWellFormedness` gates the close
+   * path's gate evidence at close time: every recorded `{cmd, exit}` row is
+   * read as a string (parse, first-token resolution, no top-level
+   * decoration) and a completed close's exits must be 0. No gate is re-run.
+   *
+   * Example:
+   *   "braid": { "orchestrator": { "closeGateWellFormedness": "shadow" } }
+   */
+  orchestrator?: {
+    /**
+     * "shadow" (default) logs a failing row to the refusal log and lets the
+     * close proceed; "enforce" refuses the close naming the row, predicate
+     * and cmd; "off" skips the read entirely. An unknown value warns once
+     * and falls back to "shadow".
+     */
+    closeGateWellFormedness?: string;
+  };
+  /**
    * Memory-layer config. Review-before-write quality gate on durable episode
    * writes: `writeGate` controls the per-site policies (repair/dedupe/reject)
    * and the heartbeat cooldown. Defaults live in
@@ -413,6 +431,62 @@ export function resolveOverCorrectionGate(raw: unknown): OverCorrectionGateConfi
  */
 export function getOverCorrectionGateConfig(): OverCorrectionGateConfig {
   return resolveOverCorrectionGate(readSettings().braid?.enforcement?.overCorrectionGate);
+}
+
+// ── close-gate well-formedness (braid.orchestrator.closeGateWellFormedness) ──
+// The close path reads every recorded gate evidence row {cmd, exit} against
+// four string predicates before the row is stamped (see
+// lib/orchestrator/workers.ts). Shipped default: shadow, so a failing row is
+// logged and the close proceeds, and a first ship cannot refuse honest closes.
+
+/** Close-gate modes: off (inert), shadow (log only), enforce (refuse). */
+export type CloseGateWellFormednessMode = "off" | "shadow" | "enforce";
+
+export interface CloseGateWellFormednessConfig {
+  mode: CloseGateWellFormednessMode;
+}
+
+/** Default mode: shadow; the validator logs before it is allowed to refuse. */
+export const CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS: CloseGateWellFormednessConfig = {
+  mode: "shadow",
+};
+
+/** Warned once per process about an invalid closeGateWellFormedness value. */
+let _warnedInvalidCloseGateWellFormedness = false;
+
+function _warnInvalidCloseGateWellFormedness(value: unknown): void {
+  if (_warnedInvalidCloseGateWellFormedness) return;
+  _warnedInvalidCloseGateWellFormedness = true;
+  _log.warn(
+    "Invalid braid.orchestrator.closeGateWellFormedness in settings.json - ignoring " +
+      'and using the default (mode "shadow"). Expected "off" | "shadow" | "enforce".',
+    { value },
+  );
+}
+
+/**
+ * Pure resolver for braid.orchestrator.closeGateWellFormedness. Absent value
+ * ⇒ mode "shadow". A value outside the enum warns once and falls back to
+ * "shadow", so a typo can neither silently disarm the validator (off) nor
+ * arm it (enforce). Kept pure so the default merge is unit-testable without
+ * touching live settings.json.
+ */
+export function resolveCloseGateWellFormedness(raw: unknown): CloseGateWellFormednessConfig {
+  if (raw === undefined || raw === null) return { ...CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS };
+  if (raw === "off" || raw === "shadow" || raw === "enforce") return { mode: raw };
+  _warnInvalidCloseGateWellFormedness(raw);
+  return { ...CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS };
+}
+
+/**
+ * Read the effective close-gate well-formedness mode from settings.json,
+ * fresh on every call (no caching), like the other readers. Default: mode
+ * "shadow".
+ */
+export function getCloseGateWellFormedness(): CloseGateWellFormednessConfig {
+  return resolveCloseGateWellFormedness(
+    readSettings().braid?.orchestrator?.closeGateWellFormedness,
+  );
 }
 
 /**
