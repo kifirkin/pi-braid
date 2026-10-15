@@ -191,5 +191,5 @@ ROADMAP.md. Key ongoing concerns:
 
 - **Prefer implementing, improving, or fixing over removal.** Only remove truly dead code (unreferenced, deprecated with no path forward). This is a hard project rule.
 - **Braid is a value-add layer over pi core.** Out-of-scope tools (debug/research affordances) get flagged in the plan but not auto-removed. See the archived tool-inventory audit (2026-06-17) and the current state in `docs/ROADMAP.md`.
-- **Test-based lint over ESLint custom rules.** Q15 was deferred. Use scan-style test files (e.g., `test-promise-allsettled-pattern.mjs`) as the linting substrate. ESLint setup is a separate project.
+- **Test-based lint over ESLint custom rules.** ESLint custom-rule work is deferred to a separate project; use scan-style test files (e.g., `test-promise-allsettled-pattern.mjs`) as the linting substrate.
 - **Module-level `let` is banned for stateful data.** Use `getExtensionState(ctx, key, factory)` for per-session state, `global-state.ts` for process-global. The 28 documented exceptions live in `src/lib/state/AGENTS.md`.

@@ -2,7 +2,7 @@
  * Critic Stats - lightweight runtime observability for LLM judge calls.
  *
  * Tracks per-critic call counts by tier (heuristic/utility/session/failed),
- * latency, and token usage (Q16: for cost analysis). Module-level counters
+ * latency, and token usage (for cost analysis). Module-level counters
  * are safe within a single-agent session; call `resetCriticStats()` on
  * session boundaries.
  *
@@ -20,14 +20,14 @@ export interface CriticCallEntry {
   /** Total latency across all calls (ms) - for average calculation. */
   totalLatencyMs: number;
   /**
-   * Q16: total input tokens across all LLM-tier calls. Heuristic and
+   * Total input tokens across all LLM-tier calls. Heuristic and
    * failed tiers do not consume tokens (heuristic is local; failed means
    * we never got a successful LLM response). Use this + totalOutputTokens
    * to compute cost = (input * $in/1k) + (output * $out/1k) at report time.
    */
   totalInputTokens: number;
   /**
-   * Q16: total output tokens across all LLM-tier calls. See
+   * Total output tokens across all LLM-tier calls. See
    * `totalInputTokens` for cost formula.
    */
   totalOutputTokens: number;
@@ -39,11 +39,11 @@ export interface CriticStats {
   /** Aggregate across all critics. */
   totals: Record<CriticTier, number>;
   /**
-   * Q16: aggregate input tokens across all LLM-tier calls. Heuristic and
+   * Aggregate input tokens across all LLM-tier calls. Heuristic and
    * failed tiers contribute 0.
    */
   totalsInputTokens: number;
-  /** Q16: aggregate output tokens across all LLM-tier calls. */
+  /** Aggregate output tokens across all LLM-tier calls. */
   totalsOutputTokens: number;
   /** Labels in insertion order. */
   criticLabels: string[];
@@ -52,7 +52,7 @@ export interface CriticStats {
 }
 
 /**
- * Q16: optional token usage passed by callers that have access to the
+ * Optional token usage passed by callers that have access to the
  * LLM result. `input` and `output` are provider-reported token counts
  * (typically from `result.usage` on the LLM response). Both are optional
  * because some providers omit them, and the heuristic/failed paths never
@@ -75,7 +75,7 @@ const perCritic = new Map<string, Map<CriticTier, CriticCallEntry>>();
  * @param label - Human-readable critic label (e.g. "Topic Coverage")
  * @param tier - Which tier produced the result
  * @param latencyMs - Duration of the classification call
- * @param usage - Q16: optional LLM token usage (input/output). Heuristic
+ * @param usage - Optional LLM token usage (input/output). Heuristic
  *   and failed tiers should omit this; LLM tiers should pass the usage
  *   from the LLM response.
  */

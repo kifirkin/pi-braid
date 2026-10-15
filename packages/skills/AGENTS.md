@@ -19,7 +19,7 @@ These four rules are non-negotiable. They're enforced by the root `.github/workf
 
 Never commit:
 
-- Absolute filesystem paths (`/Users/...`, `C:\Users\...`, `/home/<you>/...`, `~/projects/<private>/...`)
+- Absolute filesystem paths (`/Users/<name>/...`, `C:\Users\...`, `/home/<you>/...`, `~/projects/<private>/...`)
 - Usernames (yours or anyone else's)
 - API keys, tokens, bearer headers, env-var values with secret-y names
 - Internal-only URLs (private proxies, internal staging environments)
