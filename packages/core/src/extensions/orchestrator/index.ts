@@ -46,6 +46,9 @@ import {
   resolveRequestId,
   computeWorkerStats,
   workerEffectEvidenceForEntry,
+  locateResultSchema,
+  readPopulationStamps,
+  populationRefusalDetail,
   WORKER_EFFECT_EVIDENCE_FLAG,
   WORKER_SPECS,
   WORKER_OUTCOMES,
@@ -58,6 +61,7 @@ import {
   type WorkerEffectEvidence,
   type WorkerEntry,
   type WorkerStats,
+  type PopulationRead,
 } from "../../lib/orchestrator/index.js";
 
 const log = createLogger("orchestrator");
@@ -150,6 +154,35 @@ function isSafeRef(ref: string): boolean {
 }
 
 /**
+ * The commit census: how many entries the tree at `revision` holds. This is
+ * the index-independent equivalent of `git ls-files | wc -l` at that revision
+ * — it reads the named revision's tree rather than the caller's index, since
+ * the caller's worktree is not necessarily checked out where the gate scanned.
+ * Null when git cannot resolve the revision.
+ */
+function censusAt(revision: string, repoRoot: string | undefined): number | null {
+  if (!repoRoot) return null;
+  const out = git(repoRoot, ["ls-tree", "-r", "--name-only", revision]);
+  if (out === undefined) return null;
+  return out === "" ? 0 : out.split("\n").length;
+}
+
+/**
+ * The gate rows the merge path reads its population record from. A row that
+ * was already closed carries its recorded gates, and those win; the normal
+ * flow merges before close-worker, so the fallback is the worker's result
+ * block — the result contract's `gate_evidence`, located in the session the
+ * row names. No session and no gates is an empty read, not an error: the
+ * comparison is a reader, and a missing record prints as one.
+ */
+function closeGateRows(entry: WorkerEntry | undefined): unknown[] {
+  if (entry && Array.isArray(entry.gates) && entry.gates.length > 0) return entry.gates;
+  const located = locateResultSchema(entry?.workerSession ?? null);
+  const rows = located?.schema.gate_evidence;
+  return Array.isArray(rows) ? rows : [];
+}
+
+/**
  * What a merge attempt produced: the report to print, plus the base tip when
  * this call actually advanced the base. The two travel together so the audit
  * mark can never be written for a merge that did not happen.
@@ -172,6 +205,7 @@ function verifyAndMergeBase(
   workerBranch: string,
   base: string,
   repoRoot: string | undefined,
+  population: PopulationRead,
 ): MergeOutcome {
   /** A refusal or no-op: nothing was merged, so nothing may be marked merged. */
   const nothingMerged = (report: string): MergeOutcome => ({
@@ -211,6 +245,11 @@ function verifyAndMergeBase(
   const diff = getDiff(workerBranch, base, repoRoot);
   const scan = surfaceScanReport(diff);
 
+  // The population read rides directly under the outcome line: it is the
+  // reason a refusal happened, and on a merge it is the recorded-versus-git
+  // pair the merge claim is certified against.
+  const populationNote = population.lines.length > 0 ? `\n${population.lines.join("\n")}` : "";
+
   const finish = (
     lead: string,
     deletedLead: string,
@@ -238,7 +277,7 @@ function verifyAndMergeBase(
     // what the registry now says.
     const audit = mergeAuditNote(workerId, mergeSha, repoRoot);
     return {
-      report: `${lead}${audit}\nBranch: ${workerBranch} (${
+      report: `${lead}${audit}${populationNote}\nBranch: ${workerBranch} (${
         deleted ? "deleted" : onWorkerBranch ? "kept: this worktree is on it" : deletedLead
       })${worktreeNote}${settleBlock}\nDiff summary:\n${diff.slice(0, 2000)}\n${scan}`,
       mergeSha,
@@ -253,6 +292,19 @@ function verifyAndMergeBase(
       `Worker ${workerId} already contained in ${base}: ${short(tip)} is an ancestor of ${base} (${short(baseBefore)}). Nothing merged.`,
       "kept: still checked out",
       null,
+    );
+  }
+
+  // A recorded population below the census at its own revision is the claim
+  // this read exists to test: the gate certified fewer tracked entries than
+  // that revision holds, so the merge waits for a re-run on the staged tree.
+  const standingDetail = populationRefusalDetail(population);
+  if (standingDetail) {
+    return nothingMerged(
+      `NOT merged: ${standingDetail}\n` +
+        `Base unchanged at ${short(baseBefore)}. Locks and branch kept.\n${population.lines.join(
+          "\n",
+        )}`,
     );
   }
 
@@ -602,16 +654,33 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       }),
     ),
     gates: Type.Optional(
-      Type.Array(Type.Object({ cmd: Type.String(), exit: Type.Number() }), {
-        description:
-          "Gate evidence for close-worker: command plus exit code, recorded with a timestamp. " +
-          `A completed close whose entry carries none of a fresh output file, a branch advance or ` +
-          `merge, and a passing gate is flagged "${WORKER_EFFECT_EVIDENCE_FLAG}" (advisory, non-blocking). ` +
-          "Every row is also read for well-formedness at close time (parses under sh -n, first token " +
-          "resolves, no top-level decoration, exit 0 under a completed outcome); the read ships in " +
-          "shadow mode, so a failing row is logged and the close proceeds, until " +
-          'braid.orchestrator.closeGateWellFormedness is set to "enforce".',
-      }),
+      Type.Array(
+        Type.Object({
+          cmd: Type.String(),
+          exit: Type.Number(),
+          stamp: Type.Optional(
+            Type.String({
+              description:
+                "Population record for a gate whose subject is a file or row population: " +
+                '"scanned <n> <unit> at <revision>" (n a non-negative integer, unit one ' +
+                "lowercase word, revision a 7-to-40-char hex sha or a ref name). " +
+                "verify-and-merge reads a stamped `files` row against that revision's " +
+                "tracked-entry census and refuses the merge when the recorded number sits " +
+                "below it.",
+            }),
+          ),
+        }),
+        {
+          description:
+            "Gate evidence for close-worker: command plus exit code, recorded with a timestamp. " +
+            `A completed close whose entry carries none of a fresh output file, a branch advance or ` +
+            `merge, and a passing gate is flagged "${WORKER_EFFECT_EVIDENCE_FLAG}" (advisory, non-blocking). ` +
+            "Every row is also read for well-formedness at close time (parses under sh -n, first token " +
+            "resolves, no top-level decoration, exit 0 under a completed outcome); the read ships in " +
+            "shadow mode, so a failing row is logged and the close proceeds, until " +
+            'braid.orchestrator.closeGateWellFormedness is set to "enforce".',
+        },
+      ),
     ),
     includeClosed: Type.Optional(
       Type.Boolean({ description: "list-workers: include closed entries (default false)." }),
@@ -649,7 +718,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       lastStep?: string;
       requestId?: string;
       outcome?: string;
-      gates?: Array<{ cmd: string; exit: number }>;
+      gates?: Array<{ cmd: string; exit: number; stamp?: string }>;
       includeClosed?: boolean;
       includeStats?: boolean;
       liveStatus?: string;
@@ -1024,7 +1093,8 @@ Register the worker (orchestrate action=register-worker) for a structured verdic
         // of the three yields one.
         const lockRows = getAllLocks(repoRoot);
         const lockBranch = Object.values(lockRows).find((row) => row.workerId === workerId)?.branch;
-        const entryBranch = readWorkers(repoRoot).workers[workerId]?.branch ?? undefined;
+        const entry = readWorkers(repoRoot).workers[workerId];
+        const entryBranch = entry?.branch ?? undefined;
         const workerBranch = branch ?? entryBranch ?? lockBranch;
 
         if (!workerBranch) {
@@ -1034,7 +1104,19 @@ Register the worker (orchestrate action=register-worker) for a structured verdic
           );
         }
 
-        const outcome = verifyAndMergeBase(workerId, workerBranch, baseBranch ?? "main", repoRoot);
+        // The close's population record is read before the merge: the stamped
+        // rows are the reporter's own numbers, and the census they are compared
+        // against comes from git alone.
+        const population = readPopulationStamps(closeGateRows(entry), (revision) =>
+          censusAt(revision, repoRoot),
+        );
+        const outcome = verifyAndMergeBase(
+          workerId,
+          workerBranch,
+          baseBranch ?? "main",
+          repoRoot,
+          population,
+        );
         // The merge sha travels in details as well as in the report, so a
         // parent can verify the claim it was handed without parsing prose; the
         // worktree branch travels with it, because a merge that leaves the

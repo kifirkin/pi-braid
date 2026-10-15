@@ -61,6 +61,14 @@ export interface WorkerGate {
   cmd: string;
   exit: number;
   at: string;
+  /**
+   * What the gate's population scan recorded, in the contract's shape
+   * (`scanned <n> <unit> at <revision>`). Optional: a gate with no population
+   * subject carries none, and a row recorded before the field existed stays
+   * valid. Stored verbatim; the read that compares it against the repo lives
+   * on the merge path.
+   */
+  stamp?: string;
 }
 
 /** One duplicate admission a live entry turned away, and the request it refused. */
@@ -733,7 +741,7 @@ export function recordWorkerMerge(
 function assertGateEvidence(
   workerId: string,
   outcome: WorkerOutcome,
-  gates: Array<{ cmd: string; exit: number }> | undefined,
+  gates: Array<{ cmd: string; exit: number; stamp?: string }> | undefined,
 ): void {
   if (gates !== undefined && !Array.isArray(gates)) {
     throw new Error(
@@ -753,7 +761,7 @@ function assertGateEvidence(
         `closeWorker: gates[${i}] must be an object carrying cmd and exit (worker ${workerId})`,
       );
     }
-    const { cmd, exit } = gate as { cmd?: unknown; exit?: unknown };
+    const { cmd, exit, stamp } = gate as { cmd?: unknown; exit?: unknown; stamp?: unknown };
     if (typeof cmd !== "string" || cmd.trim() === "") {
       throw new Error(
         `closeWorker: gates[${i}].cmd must be a non-empty string (worker ${workerId})`,
@@ -761,6 +769,13 @@ function assertGateEvidence(
     }
     if (typeof exit !== "number" || !Number.isFinite(exit)) {
       throw new Error(`closeWorker: gates[${i}].exit must be a number (worker ${workerId})`);
+    }
+    // Only the field's type is decided here: whether a stamp is the contract's
+    // shape, or is missing from a gate that scanned a population, is the
+    // readers' business (the result validator warns; the merge path compares).
+    // A non-string stamp cannot be read by either, so it is a shape refusal.
+    if (stamp !== undefined && typeof stamp !== "string") {
+      throw new Error(`closeWorker: gates[${i}].stamp must be a string (worker ${workerId})`);
     }
   }
 }
@@ -1004,6 +1019,181 @@ export function logCloseGateRefusal(record: CloseGateRefusalRecord): void {
   }
 }
 
+// ── Population stamps (the merge-side census read) ────────────────────────
+// A gate whose subject is a population of files or rows may record what it
+// scanned, and at which revision, as an optional `stamp` on its evidence row:
+//
+//   scanned <n> <unit> at <revision>
+//
+// `n` is a non-negative integer, `unit` one lowercase word (`files`, `rows`,
+// ...), and `revision` a 7-to-40-char hex sha or a ref name. The stamp is the
+// reporter's own claim, so it is worth exactly what one comparison against git
+// makes it worth: the merge path resolves the named revision, counts the
+// entries that revision's tree holds, and refuses the merge when the recorded
+// number sits below that census (a scan that ran before staging, certifying
+// fewer tracked entries than the commit carries). The parse and the comparison
+// are pure, with the count supplied by the caller; nothing here reads what the
+// scanned files mean.
+
+export interface PopulationStamp {
+  /** Population size the gate recorded. */
+  n: number;
+  /** The population's unit, one lowercase word. */
+  unit: string;
+  /** Commit sha or ref name the gate read. */
+  revision: string;
+}
+
+/**
+ * Bare-token revision rules: an all-hex token is a sha only at 7-40 chars, so
+ * a six-char prefix does not slip through the ref-name alternative as a
+ * revision git can never resolve.
+ */
+const POPULATION_STAMP_RE =
+  /^scanned (\d+) ([a-z]+) at ([0-9a-fA-F]{7,40}|[A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+const ALL_HEX_RE = /^[0-9a-fA-F]+$/;
+
+/** Parse the stamp shape above; null when the value is not that shape. */
+export function parsePopulationStamp(value: unknown): PopulationStamp | null {
+  if (typeof value !== "string") return null;
+  const match = POPULATION_STAMP_RE.exec(value);
+  if (!match) return null;
+  const [, rawN, unit, revision] = match;
+  if (ALL_HEX_RE.test(revision) && (revision.length < 7 || revision.length > 40)) return null;
+  return { n: Number(rawN), unit, revision };
+}
+
+/** What one gate row's stamp read decided. */
+export type PopulationVerdict =
+  | "absent"
+  | "unreadable"
+  | "other-subject"
+  | "unresolved"
+  | "match"
+  | "below"
+  | "above";
+
+export interface PopulationRowRead {
+  /** Zero-based index into the close's gate rows. */
+  row: number;
+  /** The row's command, as recorded (empty when the row carries none). */
+  cmd: string;
+  /** The raw stamp value, as recorded; undefined when the field is absent. */
+  raw: unknown;
+  /** True when the row carries a stamp field at all (even an unreadable one). */
+  present: boolean;
+  /** The parsed stamp, or null when absent or unreadable. */
+  stamp: PopulationStamp | null;
+  /** The census at the stamp's revision, or null when not compared. */
+  census: number | null;
+  /** `census - recorded`, or null when there is no comparison. */
+  delta: number | null;
+  verdict: PopulationVerdict;
+}
+
+export interface PopulationRead {
+  rows: PopulationRowRead[];
+  /** Rows whose unit is `files` and whose revision resolved (the comparisons). */
+  comparisons: PopulationRowRead[];
+  /** The first comparison recorded below its census; null when none stands. */
+  standing: PopulationRowRead | null;
+  /** True when any row carries a parseable `files` stamp. */
+  recorded: boolean;
+  /** The report lines, one per readable row, in row order. */
+  lines: string[];
+}
+
+/** The census lookup the caller supplies: revision to tree size, or null. */
+export type PopulationCensus = (revision: string) => number | null;
+
+function populationLines(rows: PopulationRowRead[]): string[] {
+  const lines: string[] = [];
+  for (const row of rows) {
+    if (row.verdict === "unreadable") {
+      lines.push(`population stamp unreadable: row ${row.row} ${JSON.stringify(row.raw)}`);
+      continue;
+    }
+    if (row.stamp === null || row.stamp.unit !== "files") continue;
+    if (row.verdict === "unresolved") {
+      lines.push(
+        `population delta: recorded ${row.stamp.n} at ${row.stamp.revision} ` +
+          `(row ${row.row}; revision unresolved, not compared)`,
+      );
+    } else if (row.census !== null) {
+      lines.push(
+        `population delta: recorded ${row.stamp.n} vs census ${row.census} at ` +
+          `${row.stamp.revision} (row ${row.row})`,
+      );
+    }
+  }
+  if (!rows.some((row) => row.stamp !== null && row.stamp.unit === "files")) {
+    lines.push("no recorded population");
+  }
+  return lines;
+}
+
+/**
+ * Read every gate row for a population stamp and compare the `files` ones
+ * against the census the caller supplies for their named revision. Pure: the
+ * count is a lookup parameter, so the parse and the comparison are testable
+ * without a repository. Rows of another unit are not census subjects and are
+ * left uncompared; an unreadable stamp is named, never silently dropped.
+ */
+export function readPopulationStamps(gates: unknown, censusAt: PopulationCensus): PopulationRead {
+  const rows: PopulationRowRead[] = [];
+  const list = Array.isArray(gates) ? gates : [];
+  for (let i = 0; i < list.length; i++) {
+    const gate: unknown = list[i];
+    const record =
+      gate && typeof gate === "object" && !Array.isArray(gate)
+        ? (gate as Record<string, unknown>)
+        : null;
+    const cmd = typeof record?.cmd === "string" ? record.cmd : "";
+    const present = record !== null && record.stamp !== undefined;
+    const raw: unknown = present ? record.stamp : undefined;
+    const stamp = present ? parsePopulationStamp(raw) : null;
+
+    let census: number | null = null;
+    let delta: number | null = null;
+    let verdict: PopulationVerdict;
+    if (!present) verdict = "absent";
+    else if (stamp === null) verdict = "unreadable";
+    else if (stamp.unit !== "files") verdict = "other-subject";
+    else {
+      census = censusAt(stamp.revision);
+      if (census === null) verdict = "unresolved";
+      else {
+        delta = census - stamp.n;
+        verdict = delta === 0 ? "match" : delta > 0 ? "below" : "above";
+      }
+    }
+    rows.push({ row: i, cmd, raw, present, stamp, census, delta, verdict });
+  }
+
+  return {
+    rows,
+    comparisons: rows.filter((row) => row.stamp !== null && row.census !== null),
+    standing: rows.find((row) => row.verdict === "below") ?? null,
+    recorded: rows.some((row) => row.stamp !== null && row.stamp.unit === "files"),
+    lines: populationLines(rows),
+  };
+}
+
+/**
+ * The refusal sentence for the first standing delta: row index, stamp, census,
+ * delta, and the remedy. Null when no comparison sits below its census, so a
+ * caller cannot refuse on an empty read.
+ */
+export function populationRefusalDetail(read: PopulationRead): string | null {
+  const row = read.standing;
+  if (!row || row.stamp === null || row.census === null || row.delta === null) return null;
+  return (
+    `row ${row.row} stamp "scanned ${row.stamp.n} ${row.stamp.unit} at ${row.stamp.revision}" ` +
+    `records ${row.stamp.n} but the census at ${row.stamp.revision} is ${row.census} ` +
+    `(delta ${row.delta}); re-run the gate on the staged tree and re-issue the close`
+  );
+}
+
 /**
  * Close an entry with a terminal outcome and optional gate evidence.
  * Already-closed entries are left untouched (first close wins); the checks
@@ -1013,8 +1203,10 @@ export function logCloseGateRefusal(record: CloseGateRefusalRecord): void {
  * A completed close carries evidence: the reporter contract requires a
  * non-empty `gate_evidence` block, and a probe measured this path storing a
  * bare `completed` with no gates at all. That contradiction is refused now,
- * and each provided gate is shape-checked (non-empty `cmd`, numeric `exit`)
- * before any write — a violation leaves the row and the lock table untouched.
+ * and each provided gate is shape-checked (non-empty `cmd`, numeric `exit`,
+ * string `stamp` when present) before any write — a violation leaves the row
+ * and the lock table untouched. A valid `stamp` is stored verbatim, so the
+ * merge path can read the recorded population off the row.
  *
  * Every provided row is then read for well-formedness: its `cmd` must parse
  * under `sh -n`, resolve its first token, and name the command alone, and a
@@ -1032,7 +1224,7 @@ export function logCloseGateRefusal(record: CloseGateRefusalRecord): void {
 export function closeWorker(
   workerId: string,
   outcome: WorkerOutcome,
-  gates?: Array<{ cmd: string; exit: number }>,
+  gates?: Array<{ cmd: string; exit: number; stamp?: string }>,
   cwd?: string,
 ): WorkerEntry | null {
   const parsed = parseWorkerOutcome(outcome);
@@ -1076,7 +1268,12 @@ export function closeWorker(
   if (parsed === "completed" && !entry.resultAt) entry.resultAt = nowIso;
   if (gates && gates.length > 0) {
     for (const gate of gates) {
-      entry.gates.push({ cmd: gate.cmd, exit: gate.exit, at: nowIso });
+      entry.gates.push({
+        cmd: gate.cmd,
+        exit: gate.exit,
+        at: nowIso,
+        ...(gate.stamp === undefined ? {} : { stamp: gate.stamp }),
+      });
     }
   }
 

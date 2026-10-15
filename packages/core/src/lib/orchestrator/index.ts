@@ -45,6 +45,7 @@ export {
   closeWorker,
   recordWorkerMerge,
   validateResultSchema,
+  locateResultSchema,
   evaluateWorker,
   checkWorker,
   computeWorkerStats,
@@ -56,6 +57,9 @@ export {
   findGateRowViolation,
   closeGateRefusalLogPath,
   logCloseGateRefusal,
+  parsePopulationStamp,
+  readPopulationStamps,
+  populationRefusalDetail,
 } from "./workers.js";
 
 export type {
@@ -83,4 +87,10 @@ export type {
   GateRowPredicate,
   GateRowViolation,
   CloseGateRefusalRecord,
+  ResultSchemaLocation,
+  PopulationStamp,
+  PopulationVerdict,
+  PopulationRowRead,
+  PopulationRead,
+  PopulationCensus,
 } from "./workers.js";
