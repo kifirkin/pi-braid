@@ -35,6 +35,16 @@
  *     EXCLUSION_BUDGET: strict mode fails when it grows past the cap, and
  *     raising the cap is a deliberate, review-visible edit to the constant.
  *
+ * The summary line carries the population scan's three facts, because it is
+ * the printed source a population stamp is transcribed from: the files read,
+ * the enumerated population the run was over (the index it walked, via
+ * `git ls-files`), and the revision the scan certifies (the branch the tree
+ * is on, or the short sha when HEAD is detached; a branch is the destination
+ * a pre-commit run certifies, while the moment's own sha equals the pre-staging
+ * index and could never show the gap). The merge path compares a stamped
+ * population against that revision's census, so both numbers and the revision
+ * belong on the line.
+ *
  * This script defines the pattern literals it searches for, so it skips
  * itself (same convention as check-private-data.mjs).
  */
@@ -543,8 +553,31 @@ for (const finding of reported) byClass.get(finding.class).push(finding);
 
 // ── Output ──────────────────────────────────────────────────────────────────
 
+/**
+ * The revision the scan certifies: the branch the tree is on, or the short
+ * sha when HEAD is detached. A branch names the destination a run made before
+ * the commit will land on, which is the revision whose census the merge path
+ * can compare; the moment's own sha is the pre-staging index's twin, so a
+ * stamp naming it matches by construction and the one-file gap never shows.
+ */
+function scannedRevision() {
+  try {
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd: root,
+      encoding: "utf-8",
+    }).trim();
+    if (branch && branch !== "HEAD") return branch;
+    return execSync("git rev-parse --short HEAD", { cwd: root, encoding: "utf-8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
 const mode = strict ? "strict" : "report-only";
-console.log(`Placement check (${mode}) — ${scanned} tracked files scanned`);
+console.log(
+  `Placement check (${mode}) — ${scanned} tracked files scanned of ${files.length} ` +
+    `tracked at ${scannedRevision()}`,
+);
 
 for (const className of classes) {
   const hits = byClass.get(className);
