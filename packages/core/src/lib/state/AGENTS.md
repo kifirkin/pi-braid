@@ -73,7 +73,7 @@ The sites below are EXPLICITLY acceptable violations of the
 "no module-level let" rule. Each is justified by a specific runtime
 constraint that prevents using `getExtensionState` or `global-state.ts`.
 
-The Q15 lint test that once enforced this list is NOT present in the tree
+The lint test that once enforced this list is NOT present in the tree
 (absent since the monorepo curation); the table below is documentation-only until the lint is revived.
 If it is revived, `extensions/core/skills-tool/auto-inject.ts` needs rows for
 `_skillsCache` and `_durableStore` - process-global caches whose source of
@@ -160,8 +160,8 @@ code with no ctx threading.
 
 | Date       | Action                                          | Result                                                                                                                                                                                                                                                                                                                                                       |
 | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-06-13 | First Q5 audit                                  | 7 sites migrated to `getExtensionState`.                                                                                                                                                                                                                                                                                                                     |
-| 2026-06-17 | Second Q5 audit                                 | 2 additional sites (`nudge-analytics`, `memory singleton`) moved to `global-state.ts`.                                                                                                                                                                                                                                                                       |
+| 2026-06-13 | First state-policy audit                        | 7 sites migrated to `getExtensionState`.                                                                                                                                                                                                                                                                                                                     |
+| 2026-06-17 | Second state-policy audit                       | 2 additional sites (`nudge-analytics`, `memory singleton`) moved to `global-state.ts`.                                                                                                                                                                                                                                                                       |
 | 2026-06-17 | `test-no-module-level-let.mjs` added            | 27 documented exceptions enumerated. Test enforces the policy.                                                                                                                                                                                                                                                                                               |
 | 2026-06-27 | DR-C-4 runtime check added                      | `_timerExtensionFactoryState` added (28 documented exceptions). Process-global counter for the timer extension factory; logs a warning when the single-process-per-session assumption is violated.                                                                                                                                                           |
 | 2026-07-01 | GAP #3: cross-session evidence pool persistence | `loadedFromDisk` added (29 documented exceptions). Async-storage lazy-load guard for the evidence pool JSON file.                                                                                                                                                                                                                                            |
@@ -182,7 +182,7 @@ code with no ctx threading.
 
 - `npm run typecheck` - any new `let` at module scope in `lib/` is suspicious; review the State Policy table.
 - `test/runtime/enforcement/test-enforcement-substate.mjs` - state factory contracts.
-- The `test-no-module-level-let.mjs` lint test (added in Q15, NOT in-tree today) historically scanned `src/extensions/` and `src/lib/` for new `let` declarations and asserted that the documented exceptions (in the table above) are the only ones. Until it is revived, treat any new module-level `let` in those trees as requiring a row here plus a rationale.
+- The `test-no-module-level-let.mjs` lint test (NOT in-tree today) historically scanned `src/extensions/` and `src/lib/` for new `let` declarations and asserted that the documented exceptions (in the table above) are the only ones. Until it is revived, treat any new module-level `let` in those trees as requiring a row here plus a rationale.
 
 ## Child DOX Index
 

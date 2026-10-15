@@ -796,7 +796,7 @@ export default async function telegramExtension(
   // env var in stable order. Resolved once at boot; the pool advances past
   // auth/quota/rate failures at call time and the winning key is remembered
   // for the process lifetime (stt-keys.ts). Transcription is bounded to two
-  // rounds; round 2 amplifies quiet audio via ffmpeg when
+  // rounds; the second amplifies quiet audio via ffmpeg when
   // BRAID_TG_STT_NORMALIZE is on (default).
   const sttKeys = await resolveSttKeyCandidates({
     explicit: env(ENV_STT_API_KEY),

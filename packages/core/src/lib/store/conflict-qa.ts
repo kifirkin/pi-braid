@@ -335,7 +335,7 @@ export async function checkResponseForResolution(
     {
       timeoutMs: 60_000,
       label: "Conflict Resolution",
-      // Q9: keyword overlap heuristic misses nuanced resolution. Always use LLM.
+      // Keyword overlap heuristic misses nuanced resolution. Always use LLM.
       tierPolicy: "always-llm",
     },
   );

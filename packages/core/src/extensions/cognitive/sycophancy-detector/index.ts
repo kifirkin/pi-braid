@@ -129,7 +129,7 @@ async function detectVbC(responseText: string, ctx: ExtensionContext): Promise<V
     { text: truncated },
     {
       ...CRITICS.vbCDetection.options,
-      // Q9: regex on "You're right...however" misses nuance. Always use LLM.
+      // Regex on "You're right...however" misses nuance. Always use LLM.
       tierPolicy: "always-llm",
       label: CRITICS.vbCDetection.label,
       fallback: () => "no",

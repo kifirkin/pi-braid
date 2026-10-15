@@ -18,7 +18,7 @@ All exported from `./index.ts`:
 ## Recurring timers (`intervalMs`)
 
 Pass `intervalMs` to `scheduleTimer` to make a timer re-fire on a cadence until
-cancelled (round 21j). On expiry `TimerManager.checkExpired` does **not** remove
+cancelled. On expiry `TimerManager.checkExpired` does **not** remove
 the timer; it re-arms the live map entry to
 `Math.max(prev firesAt + intervalMs, now + intervalMs)` (one fire per tick even
 if many periods passed - no catch-up burst) and the fire path persists the
@@ -34,14 +34,14 @@ and retire the fire: no redelivery or armed wake ladder outlives a cancel
 Persisted recurrence survives a reload: `recoverPersistedTimers` threads
 `intervalMs` through `restoreTimer`.
 
-**Bounded recurrence (`count`, round 21q):** pass an optional `count` (= total
+**Bounded recurrence (`count`):** pass an optional `count` (= total
 fires) alongside `intervalMs` to make a recurring timer STOP ITSELF after N
 fires instead of repeating forever - the native answer to a finite baby-sit
 window ("check every 60s, 5 times, then stop"). `checkExpired` tracks a `fires`
 counter (delivered on the snapshot; persisted with the timer) and, once
 `fires >= count`, deletes the timer exactly like a one-shot - no re-arm, and
 the fire path removes the disk entry so it cannot resurrect on reload. An
-unbounded recurring timer (no `count`) stays exactly as in round 21j. `timer`
+unbounded recurring timer (no `count`) keeps the original behaviour. `timer`
 action=set exposes this as `count`; `timer` action=list shows repeat state as
 `repeat fires/count` (e.g. `2/5` bounded, `2/∞` unbounded). `count` is
 ill-defined without `interval_seconds` (a one-shot fires once by definition) -

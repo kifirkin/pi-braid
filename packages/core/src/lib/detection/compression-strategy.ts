@@ -68,7 +68,7 @@ export async function determineCompressionLevel(
       {
         timeoutMs: 60_000,
         label: CRITICS.compressionUrgency.label,
-        // Q9 B-class: compressionUrgencyFallback has 4-way classification
+        // B-class: compressionUrgencyFallback has 4-way classification
         // (AGGRESSIVE/SEMANTIC/CONSERVATIVE/NONE) from threshold-based
         // heuristic. tierPolicy: fallback-only downweights to 0.5.
         fallback: () =>

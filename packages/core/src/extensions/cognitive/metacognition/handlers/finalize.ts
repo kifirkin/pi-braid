@@ -52,7 +52,7 @@ async function recordToMemory(
     }));
     // THREE-MEMORY-STORE RECALL FIX: episodes must be tagged with the SAME
     // project identifier that recall compares against (deriveProjectIdFromCwd -
-    // last 2 path segments). Storing the raw cwd (e.g. "/Users/.../pi-braid")
+    // last 2 path segments). Storing the raw cwd (e.g. "/srv/checkouts/agents/pi-braid")
     // instead made every finalize episode look CROSS-PROJECT relative to a
     // current project "agents/pi-braid", so it was penalized/filtered wrongly.
     const project = deriveProjectIdFromCwd(ctx.cwd ?? "");
@@ -473,9 +473,9 @@ export async function recordDeliverables(
       files: entries,
     };
     fs.appendFileSync(manifestPath, JSON.stringify(record) + "\n");
-    log.info(`B17: recorded ${entries.length} project-scoped deliverables to ${manifestPath}`);
+    log.info(`recorded ${entries.length} project-scoped deliverables to ${manifestPath}`);
   } catch (err) {
-    log.debug(`B17: deliverables manifest skipped: ${(err as Error).message}`);
+    log.debug(`deliverables manifest skipped: ${(err as Error).message}`);
   }
 }
 

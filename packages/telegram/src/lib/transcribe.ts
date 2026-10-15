@@ -25,9 +25,9 @@
  * is remembered process-lifetime (tried first next time). Observability
  * names candidate index + source kind only — never key material.
  *
- * Retry orchestrator (): `transcribeVoiceReliable` bounds inbound
- * transcription to two rounds — round 1 on the raw bytes; when it fails or
- * returns an empty transcript and normalization is enabled, round 2 on
+ * Retry orchestrator: `transcribeVoiceReliable` bounds inbound
+ * transcription to two rounds — the first round on the raw bytes; when it fails or
+ * returns an empty transcript and normalization is enabled, the second round on
  * ffmpeg-amplified bytes. The final failure line carries endpoint host,
  * round count, the last candidate index/source, the last error class, and
  * the remediation hint.
@@ -464,10 +464,10 @@ function endpointHost(baseUrl: string | undefined, mode: string): string {
 
 /**
  * The inbound orchestrator: bounded to TWO transcription rounds.
- * Round 1 runs the key-pool failover on the raw bytes; when it fails or
+ * The first round runs the key-pool failover on the raw bytes; when it fails or
  * returns an EMPTY transcript and normalization is enabled, the bytes are
- * amplified (ffmpeg; absent ffmpeg → round 2 skipped silently) and round 2
- * reruns the pool on the normalized bytes. Counters (attempts, successes by
+ * amplified (ffmpeg; absent ffmpeg → the second round is skipped silently)
+ * and the second round reruns the pool on the normalized bytes. Counters (attempts, successes by
  * candidate index, normalizations applied, failures by class) live in
  * stt-keys.ts. The final failure error carries endpoint host, round count,
  * the requests issued in that round (the transport retry named on its own),
