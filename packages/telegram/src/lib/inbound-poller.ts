@@ -553,10 +553,10 @@ export async function extractIncomingMessage(
           downloaded: true,
         };
         if (isSttConfigured(media.stt)) {
-          // Retry orchestrator: bounded to two rounds — round 1 raw bytes,
-          // round 2 ffmpeg-amplified when the first fails or comes back
-          // empty and normalization is enabled (stt config carries the gate
-          // and the key pool; counters live in stt-keys.ts).
+          // Retry orchestrator: bounded to two rounds — the first on raw
+          // bytes, the second ffmpeg-amplified when the first fails or comes
+          // back empty and normalization is enabled (stt config carries the
+          // gate and the key pool; counters live in stt-keys.ts).
           const tr = await transcribeVoiceReliable({
             bytes: result.bytes,
             baseUrl: media.stt?.baseUrl,

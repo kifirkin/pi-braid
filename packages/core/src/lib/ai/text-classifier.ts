@@ -391,7 +391,7 @@ export async function classify(
     log.debug("[text-classifier] TIER 1 skipped (tierPolicy=always-llm)");
   }
 
-  // ── Q17 cache check: between Tier 1 (heuristic) and Tier 2 (LLM) ─────────
+  // ── Cache check: between Tier 1 (heuristic) and Tier 2 (LLM) ─────────────
   // Skip the cache for tierPolicy=always-llm (the caller explicitly wants
   // an LLM call, not a cached or heuristic result). Also skip when no
   // label is provided (we have nothing to record the cache hit against
@@ -447,7 +447,7 @@ export async function classify(
         `[text-classifier] TIER ${tierNum} (${tier.name} -> ${tier.model.id}): "${result.label}" ${latency}ms`,
       );
       if (options?.label) recordCriticCall(options.label, tier.name, latency, result.usage);
-      // Q17: cache the result for future identical calls within TTL
+      // Cache the result for future identical calls within TTL
       if (options?.label) {
         setCachedResult(getCacheKey(options.label, criteria.systemPrompt, userMessage), {
           label: result.label,

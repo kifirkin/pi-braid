@@ -1,7 +1,7 @@
 /**
  * Critic Cache - short-window LRU cache for classify() results.
  *
- * ROADMAP Q17: avoid redundant LLM calls when the same critic receives
+ * ROADMAP: avoid redundant LLM calls when the same critic receives
  * the same (systemPrompt, userPrompt) within a short window.
  *
  * Most useful for the topic-drift 3-call fanout where 2 of the 3 calls

@@ -77,7 +77,7 @@ const COMMENT_PATTERNS: LinePattern[] = [
   {
     id: "wave-word",
     intent:
-      "Wave label in prose (wave 3, Wave-4) — internal process metadata, not a technical fact.",
+      "Wave label in prose (wave N, Wave-N) — internal process metadata, not a technical fact.",
     regex: /\b[Ww]ave[-\s]?\d+\b/,
   },
   {
@@ -87,7 +87,7 @@ const COMMENT_PATTERNS: LinePattern[] = [
   },
   {
     id: "round-label",
-    intent: "Round label (round 20) — internal process metadata.",
+    intent: "Round label (round N) — internal process metadata.",
     regex: /\bround\s+\d+[a-z]?\b/i,
   },
   {

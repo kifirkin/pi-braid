@@ -266,7 +266,7 @@ async function isHintTooGeneric(
     {
       timeoutMs: 60_000,
       label: CRITICS.hintQuality.label,
-      // Q9 B-class: heuristic is permissive ("yes" by default).
+      // B-class: heuristic is permissive ("yes" by default).
       // tierPolicy: fallback-only downweights to 0.5 confidence.
       fallback: () => hintQualityFallback(task, steps),
       tierPolicy: "fallback-only",

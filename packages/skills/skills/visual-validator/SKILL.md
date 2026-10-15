@@ -35,13 +35,13 @@ This skill is the **VALIDATE** step. Pair it with:
 
 Always extract for any visual asset:
 
-| Metric              | Value                  |
-| ------------------- | ---------------------- |
-| Dimensions          | {width}×{height}px     |
-| Aspect Ratio        | {ratio}:1              |
-| Dominant Colors     | Top 5 hex codes with % |
-| Information Density | high/medium/low        |
-| Layout Quadrants    | Q1-Q4 element summary  |
+| Metric              | Value                        |
+| ------------------- | ---------------------------- |
+| Dimensions          | {width}×{height}px           |
+| Aspect Ratio        | {ratio}:1                    |
+| Dominant Colors     | Top 5 hex codes with %       |
+| Information Density | high/medium/low              |
+| Layout Quadrants    | Element summary per quadrant |
 
 ---
 

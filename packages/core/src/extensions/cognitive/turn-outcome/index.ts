@@ -86,7 +86,7 @@ async function detectLoop(
 
   let result: Awaited<ReturnType<typeof classifyWithOffline>> | null;
   try {
-    // Q9 B-class: toolLoopFallback returns "no" by default (safe but
+    // B-class: toolLoopFallback returns "no" by default (safe but
     // uninformative). tierPolicy: fallback-only downweights the
     // heuristic to 0.5 confidence so consumers can tell it's degraded.
     result = await classifyWithOffline(

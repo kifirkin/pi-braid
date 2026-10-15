@@ -47,7 +47,7 @@ Triage split: intentional surface (documented, owned), accidental coupling (a fa
 
 ## Where Results Go
 
-One row per instance in `braid-docs/research/PLACEMENT-LEDGER.md`, append-only: date, wave or task, layer, class, fix, status. No instance without a row; no row without an evidence reference. The ledger is the audit's memory; a fix that leaves no row will be re-discovered, re-scoped, and re-fixed by someone else later.
+One row per instance in the project's placement ledger, append-only: date, task, layer, class, fix, status. No instance without a row; no row without an evidence reference. The ledger is the audit's memory; a fix that leaves no row will be re-discovered, re-scoped, and re-fixed by someone else later.
 
 ---
 
