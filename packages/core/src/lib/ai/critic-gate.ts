@@ -50,7 +50,7 @@ export interface CriticGateOptions {
   /** Timeout in ms (default: 60_000). ESC/signal is the primary cancel path; timeout is a fallback. */
   timeoutMs?: number;
   /**
-   * Tier policy passed through to classify(). P2-11: B-class
+   * Tier policy passed through to classify(). B-class
    * gates (e.g., the think/hypothesize depth heuristics) should
    * use "fallback-only" to downweight the heuristic to 0.5
    * confidence. A-class gates should use "always-llm" to skip

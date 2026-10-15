@@ -694,7 +694,7 @@ export function resetAuxDegradedTransportWarning(): void {
 }
 
 //
-// ROADMAP DR-C-4 documents that the timer extension factory closes over a
+// The timer extension factory closes over a
 // `poller` and `sessionState` variable, which is correct for the standard
 // pi lifecycle (one process per session) but breaks under multi-session-
 // per-process. The comment block in timer/index.ts:16-41 promises a
@@ -721,7 +721,7 @@ let _timerExtensionFactoryState: TimerExtensionFactoryState | undefined;
  * The timer extension increments this on every `timerExtension(pi)` call
  * and logs a warning when the count exceeds 1 (signaling an accidental
  * double-registration that would break the single-process-per-session
- * assumption under DR-C-4).
+ * assumption).
  */
 export function getTimerExtensionFactoryState(): TimerExtensionFactoryState {
   if (!_timerExtensionFactoryState) {

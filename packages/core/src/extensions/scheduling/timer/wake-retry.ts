@@ -913,7 +913,7 @@ export class WakeRetryQueue {
   }
 }
 
-/** The process-wide queue (single pi session per process — see DR-C-4). */
+/** The process-wide queue (single pi session per process). */
 export const wakeRetryQueue = new WakeRetryQueue();
 
 /**
