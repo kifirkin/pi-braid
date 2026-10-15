@@ -210,6 +210,27 @@ When a worker signals completion, review critically before closing the pane.
 - **Worker crashes mid-task**: orchestrator detects via `agent_get` status change, spawns replacement.
 - **Orchestrator is busy**: worker retries signal with backoff (max 3, 60s apart), then writes results to a well-known path.
 
+### Gate evidence rows and the population stamp
+
+`close-worker` takes `gates` as `{cmd, exit}` rows, one per gate the wave ran. A gate whose
+subject is a file or row population records what it scanned, and at which revision, as an
+optional `stamp` on its row:
+
+```json
+{"cmd": "node scripts/check-placement.mjs --strict", "exit": 0, "stamp": "scanned 914 files at <revision>"}
+```
+
+`n` is a non-negative integer, `unit` one lowercase word (`files`, `rows`, `cases`, `lines`),
+and `revision` a 7-to-40-char hex sha or a ref name. `check-result` warns — it does not fail —
+when a row whose command carries a walk, list or count verb (`ls`, `find`, `fd`, `git ls-files`,
+`wc`, `rg`, `grep`) carries no stamp or an unreadable one.
+
+`verify-and-merge` reads the close's stamped `files` rows and compares each number against that
+revision's tracked-entry census. A recorded number below the census refuses the merge and names
+the delta: the gate certified fewer files than the commit carries, which is what a run before
+`git add` looks like. Re-run the gate on the staged tree and re-issue the close. A close with no
+stamped `files` row prints `no recorded population` and merges.
+
 ## Completion Signal
 
 ### For orchestrate-spawned workers

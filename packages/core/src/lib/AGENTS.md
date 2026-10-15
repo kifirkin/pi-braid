@@ -27,7 +27,7 @@ shared conventions.
 | [`cognitive/`](./cognitive/AGENTS.md)     | Whisper-delivery libraries - project-relevant hints and active OpenSpec specs for the prompt.                |
 | `errors/`                                 | Unified LLM error classifier - provider-failure taxonomy (balance, rate-limit, context-window, transient).   |
 | [`harness/`](./harness/AGENTS.md)         | Self-harness loop - failure-trace collection, weakness mining, candidate proposal and validation.            |
-| `orchestrator/`                           | Multi-agent coordination - file-lock registry, worker registry with close-time gate-row well-formedness, worker branches, conflict detection, merge verification. |
+| `orchestrator/`                           | Multi-agent coordination - file-lock registry, worker registry with close-time gate-row well-formedness and the population-stamp read the merge path compares against the repo, worker branches, conflict detection, merge verification. |
 | [`telemetry/`](./telemetry/AGENTS.md)     | Bounded telemetry accumulators for the degradation-detection loop (drift signals, context/RSS heartbeat).    |
 | `verification/`                           | Cross-file verification - downstream import tracing and derived-file coordination checks.                    |
 
