@@ -282,10 +282,15 @@ await testAsync("T7 a merge that did not happen carries no success and no mergeS
   assert.equal(result.details.worktreeBranch, "parked", `the worktree branch must be reported on refusals too\n${JSON.stringify(result.details)}`);
 });
 
-await testAsync("T8 the tool description publishes both contracts", async () => {
+await testAsync("T8 the tool description publishes each contract", async () => {
   const description = orchestrateTool.description;
   assert.match(description, /verify-and-merge requires workerId/, description);
   assert.match(description, /never switches a worktree's branch/, description);
+  assert.match(
+    description,
+    /stamped `files` row is compared against the census of the revision it names/,
+    description,
+  );
   const workerIdParam = orchestrateTool.parameters.properties.workerId.description;
   for (const action of ["spawn-worker", "register-worker", "update-worker", "check-worker", "close-worker", "verify-and-merge"]) {
     assert.match(workerIdParam, new RegExp(action), `workerId must name ${action} as requiring it: ${workerIdParam}`);
