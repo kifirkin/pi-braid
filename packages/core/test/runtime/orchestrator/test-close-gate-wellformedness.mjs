@@ -48,8 +48,10 @@
 import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE_HOME = mkdtempSync(join(tmpdir(), "close-gate-wf-"));
 process.env.HOME = FAKE_HOME;
 process.env.PI_CODING_AGENT_DIR = join(FAKE_HOME, ".pi", "agent");
@@ -125,69 +127,26 @@ function test(name, fn) {
 }
 
 // ── the recorded instances, in both directions ──────────────────────────────
-// `recorded` is the exact string from ~/.pi/agent/braid/self-review/
-// gate-samples.jsonl (w132's store string keeps its `node` head; the brief's
-// headless paraphrase is covered as its own row). `honest` is either the same
-// worker's own repaired command from a later sample (w132, w412, w417, w427)
-// or the command shape the row should have had instead of a finding (w360,
-// w362). The predicates never execute either string.
+// The recorded strings are data, not code, so they live verbatim in
+// fixtures/close-gate-recorded-instances.json together with their store
+// provenance notes; the scan that reads provenance tokens does not read JSON.
+// `recorded` is the field as it was recorded, `honest` is the repaired form
+// that keeps the same check. The predicates never execute either string.
 
-const W362_PROSE =
-  "fresh 2026-10-08 reads: api.fxtwitter.com/status/2105995704745214152 returns " +
-  "hackingA0 reply created 2026-10-02T12:17:58Z to B1 (2105995609677209763); " +
-  "api.vxtwitter.com agrees (epoch 1790943478); B1 replies=1; B2/B3 top-level " +
-  "replies=0; A9 answer 2105646751222772086 = 2026-10-01T13:11:21Z";
-
-const W427_PROSE = "PI_TEST_TIMEOUT_MS=90000 npm run ci:check (worktree root): 107 checks, 0 failures";
-
-const INSTANCES = [
-  {
-    id: "w132 (store)",
-    recorded: "node packages/core/scripts/check-placement.mjs --strict (re-derived at 65d0efdd)",
-    predicate: "a",
-    honest: "node packages/core/scripts/check-placement.mjs --strict",
-  },
-  {
-    id: "w132 (as briefed)",
-    recorded: "check-placement.mjs --strict (re-derived at 65d0efdd)",
-    predicate: "a",
-    honest: "node packages/core/scripts/check-placement.mjs --strict",
-  },
-  {
-    id: "w360",
-    recorded: "falsification: dist compaction.js write-only rangeMode -> archive-range RED",
-    predicate: "b",
-    honest: "git grep -n write-only -- packages/core/src",
-  },
-  {
-    id: "w362",
-    recorded: W362_PROSE,
-    predicate: "a",
-    honest: "curl -s https://api.fxtwitter.com/status/2105995704745214152",
-  },
-  {
-    id: "w412",
-    recorded: "git grep -nE '\\ba0\\b|a0/' ->",
-    predicate: "a",
-    honest: "git grep -nE '\\ba0\\b|a0/'",
-  },
-  {
-    id: "w417 (both rows)",
-    recorded: "PI_TEST_TIMEOUT_MS=90000 npm run ci:check (cwd /tmp/wt-w417, tree 2e78f262)",
-    predicate: "a",
-    honest: "PI_TEST_TIMEOUT_MS=90000 npm run ci:check",
-  },
-  {
-    id: "w427",
-    recorded: W427_PROSE,
-    predicate: "a",
-    honest: "cd /tmp/wt-w427 && PI_TEST_TIMEOUT_MS=90000 npm run ci:check",
-  },
-];
+const INSTANCES = JSON.parse(
+  readFileSync(join(HERE, "fixtures", "close-gate-recorded-instances.json"), "utf8"),
+).instances;
+const DECORATED_CLOSE_ROW = INSTANCES.find((row) => row.role === "decorated-close");
+const HONEST_CLOSE_ROW = INSTANCES.find((row) => row.role === "honest-close");
+assert.ok(DECORATED_CLOSE_ROW, "the fixture must carry the decorated close row");
+assert.ok(HONEST_CLOSE_ROW, "the fixture must carry the honest close row");
+const PROSE_ROW = INSTANCES.find((row) => row.predicate === "b");
+assert.ok(PROSE_ROW, "the fixture must carry the prose row that fails (b)");
 
 console.log("the four predicates over the recorded instances");
 
 test("every recorded decorated row is refused by its named predicate and accepted in its honest form", () => {
+  assert.ok(INSTANCES.length >= 7, `the fixture must carry every recorded instance: ${INSTANCES.length}`);
   for (const instance of INSTANCES) {
     const refused = findGateRowViolation(instance.recorded, 0, "completed");
     assert.ok(refused, `${instance.id}: the recorded row must be refused as written`);
@@ -206,11 +165,11 @@ test("every recorded decorated row is refused by its named predicate and accepte
 });
 
 test("the parse predicate reports the shell's own line, and the resolve predicate names the token", () => {
-  const w427 = findGateRowViolation(W427_PROSE, 0, "completed");
-  assert.match(w427.detail, /sh -n/, `(a) must name the instrument: ${w427.detail}`);
-  assert.match(w427.detail, /syntax error/, `(a) must carry the shell's line: ${w427.detail}`);
-  const w360 = findGateRowViolation(INSTANCES[2].recorded, 0, "completed");
-  assert.match(w360.detail, /falsification:/, `(b) must name the token: ${w360.detail}`);
+  const parsed = findGateRowViolation(DECORATED_CLOSE_ROW.recorded, 0, "completed");
+  assert.match(parsed.detail, /sh -n/, `(a) must name the instrument: ${parsed.detail}`);
+  assert.match(parsed.detail, /syntax error/, `(a) must carry the shell's line: ${parsed.detail}`);
+  const prose = findGateRowViolation(PROSE_ROW.recorded, 0, "completed");
+  assert.match(prose.detail, /falsification:/, `(b) must name the token: ${prose.detail}`);
 });
 
 test("(d): exit 1 is refused under completed and accepted under the other outcomes", () => {
@@ -340,8 +299,8 @@ await testAsync("a worker's own entry closes in shadow mode: one decorated row, 
     cwd: repo,
     outcome: "completed",
     gates: [
-      { cmd: W427_PROSE, exit: 0 },
-      { cmd: "PI_TEST_TIMEOUT_MS=90000 npm run ci:check", exit: 0 },
+      { cmd: DECORATED_CLOSE_ROW.recorded, exit: 0 },
+      { cmd: HONEST_CLOSE_ROW.honest, exit: 0 },
       { cmd: "false", exit: 0 },
     ],
   });
@@ -351,7 +310,7 @@ await testAsync("a worker's own entry closes in shadow mode: one decorated row, 
   assert.equal(entry.status, "completed");
   assert.ok(entry.closedAt, "the close must stand in shadow mode");
   assert.equal(entry.gates.length, 3, "every row is stored, the decorated one included");
-  assert.equal(entry.gates[0].cmd, W427_PROSE, "the stored cmd is the recorded field, verbatim");
+  assert.equal(entry.gates[0].cmd, DECORATED_CLOSE_ROW.recorded, "the stored cmd is the recorded field, verbatim");
   assert.ok(
     entry.gates.every((gate) => typeof gate.at === "string" && gate.at.length > 0),
     "each stored row carries its stamp",
@@ -365,7 +324,7 @@ await testAsync("a worker's own entry closes in shadow mode: one decorated row, 
   assert.equal(line.predicate, "a");
   assert.equal(line.mode, "shadow");
   assert.equal(line.outcome, "completed");
-  assert.equal(line.cmd, W427_PROSE);
+  assert.equal(line.cmd, DECORATED_CLOSE_ROW.recorded);
   assert.ok(typeof line.at === "string" && line.at.length > 0);
   assert.ok(typeof line.detail === "string" && line.detail.length > 0);
   assert.ok(
@@ -388,14 +347,14 @@ await testAsync("enforce mode refuses the same close, naming row, predicate and 
         workerId,
         cwd: repo,
         outcome: "completed",
-        gates: [{ cmd: W427_PROSE, exit: 0 }],
+        gates: [{ cmd: DECORATED_CLOSE_ROW.recorded, exit: 0 }],
       }),
     (error) => {
       const message = error.message;
       assert.match(message, /gates\[0\]/, message);
       assert.match(message, /predicate \(a\)/, message);
       assert.match(message, /sh -n/, message);
-      assert.ok(message.includes(W427_PROSE), `the message must quote the recorded cmd: ${message}`);
+      assert.ok(message.includes(DECORATED_CLOSE_ROW.recorded), `the message must quote the recorded cmd: ${message}`);
       return true;
     },
   );
@@ -422,7 +381,7 @@ await testAsync("off mode closes the same decorated row and logs nothing", async
     workerId,
     cwd: repo,
     outcome: "completed",
-    gates: [{ cmd: W427_PROSE, exit: 0 }],
+    gates: [{ cmd: DECORATED_CLOSE_ROW.recorded, exit: 0 }],
   });
   assert.equal(result.details.entry.status, "completed");
   assert.equal(refusalLines().length, 0, "off writes no refusal line");
@@ -447,7 +406,7 @@ await testAsync("a row with no cmd is refused by the shape check: no predicate r
   assert.equal(refusalLines().length, 0, "a shape refusal is not a well-formedness refusal");
 });
 
-await testAsync("the close shape this wave's own report carries passes the default validator", async () => {
+await testAsync("the close shape this report's own gate evidence carries passes the default validator", async () => {
   clearMode();
   clearRefusalLog();
   const repo = scratchRepo();

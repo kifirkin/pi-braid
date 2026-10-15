@@ -1,0 +1,56 @@
+{
+  "source": "~/.pi/agent/braid/self-review/gate-samples.jsonl, verdict=mismatch rows, verbatim cmd fields; the headless variant of the first row is the brief's paraphrase of the same store row",
+  "instances": [
+    {
+      "id": "w132-store",
+      "recorded": "node packages/core/scripts/check-placement.mjs --strict (re-derived at 65d0efdd)",
+      "predicate": "a",
+      "honest": "node packages/core/scripts/check-placement.mjs --strict",
+      "note": "parenthesized re-derivation note still in the field"
+    },
+    {
+      "id": "w132-headless",
+      "recorded": "check-placement.mjs --strict (re-derived at 65d0efdd)",
+      "predicate": "a",
+      "honest": "node packages/core/scripts/check-placement.mjs --strict",
+      "note": "the same decoration without the leading node"
+    },
+    {
+      "id": "w360",
+      "recorded": "falsification: dist compaction.js write-only rangeMode -> archive-range RED",
+      "predicate": "b",
+      "honest": "git grep -n write-only -- packages/core/src",
+      "note": "the field is a finding, not a command; the first token does not resolve"
+    },
+    {
+      "id": "w362",
+      "recorded": "fresh 2026-10-08 reads: api.fxtwitter.com/status/2105995704745214152 returns hackingA0 reply created 2026-10-02T12:17:58Z to B1 (2105995609677209763); api.vxtwitter.com agrees (epoch 1790943478); B1 replies=1; B2/B3 top-level replies=0; A9 answer 2105646751222772086 = 2026-10-01T13:11:21Z",
+      "predicate": "a",
+      "honest": "curl -s https://api.fxtwitter.com/status/2105995704745214152",
+      "note": "a prose reading carrying parens and semicolons"
+    },
+    {
+      "id": "w412",
+      "recorded": "git grep -nE '\\ba0\\b|a0/' ->",
+      "predicate": "a",
+      "honest": "git grep -nE '\\ba0\\b|a0/'",
+      "note": "trailing arrow decoration"
+    },
+    {
+      "id": "w417",
+      "recorded": "PI_TEST_TIMEOUT_MS=90000 npm run ci:check (cwd /tmp/wt-w417, tree 2e78f262)",
+      "predicate": "a",
+      "honest": "PI_TEST_TIMEOUT_MS=90000 npm run ci:check",
+      "role": "honest-close",
+      "note": "two recorded rows carry the cwd/tree decoration; this row's repaired form is the accepted close row"
+    },
+    {
+      "id": "w427",
+      "recorded": "PI_TEST_TIMEOUT_MS=90000 npm run ci:check (worktree root): 107 checks, 0 failures",
+      "predicate": "a",
+      "honest": "cd /tmp/wt-w427 && PI_TEST_TIMEOUT_MS=90000 npm run ci:check",
+      "role": "decorated-close",
+      "note": "the integration close's decorated row"
+    }
+  ]
+}
