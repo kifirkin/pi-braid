@@ -192,7 +192,7 @@ async function filterRelevantHints(hints: string[], ctx: ExtensionContext): Prom
         { hint, currentTask },
         {
           timeoutMs: 60_000,
-          // Q9 B-class: prefer-heuristic runs the regex fallback first
+          // B-class: prefer-heuristic runs the regex fallback first
           // (fast path for obvious rejections), but if it returns "yes",
           // the utility model verifies — rejecting generic hints that the
           // permissive regex would otherwise let through.

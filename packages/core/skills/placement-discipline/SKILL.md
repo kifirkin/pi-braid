@@ -43,7 +43,7 @@ Every impl, audit, and verify report carries a `## Placement` section with three
 
 ## The Ledger
 
-Placement leaks and their repairs go one row per instance into `braid-docs/research/PLACEMENT-LEDGER.md` (append-only): date, wave or task, layer, class, fix, status. The periodic audit (`misdirection-audit` skill) reads this ledger; recurrence of a class is the signal to promote it from "found once" to "gated".
+Placement leaks and their repairs go one row per instance into the project's placement ledger (append-only): date, task, layer, class, fix, status. The periodic audit (`misdirection-audit` skill) reads this ledger; recurrence of a class is the signal to promote it from "found once" to "gated".
 
 ---
 

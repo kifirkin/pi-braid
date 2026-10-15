@@ -90,7 +90,7 @@ export interface PostLoopClassifyOptions<T extends string = string> {
   validLabels?: string[];
 
   /**
-   * Analytics label for critic-stats tracking. Required for Q16 cost
+   * Analytics label for critic-stats tracking. Required for cost
    * attribution. The classifier routes this to recordCriticCall().
    */
   label?: string;

@@ -72,7 +72,7 @@ Do not improvise around these; say the topic has no shipped doc and name the sub
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Worker registry internals: admission, lifecycle, result verdicts, locks | source headers in the core package: `packages/core/src/lib/orchestrator/`, `packages/core/src/extensions/orchestrator/index.ts` |
 | Compaction defaults inside pi-core (reserve math, keep-recent window)   | not braid's to own: the `pi-reference` skill, then pi-core's own compaction doc                                                 |
-| Research reports, audits, worker reports                                | a separate braid-docs repo, NOT shipped with any package: background, never the contract                                        |
+| Research reports, audits, worker reports                                | the author's private docs repo, NOT shipped with any package: background, never the contract                                    |
 
 ## Reading a long doc without flooding the session
 
