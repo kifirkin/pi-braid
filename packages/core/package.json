@@ -39,7 +39,7 @@
     ]
   },
   "scripts": {
-    "prepublishOnly": "npm run typecheck && npm run build",
+    "prepublishOnly": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "prebuild": "npm run clean",
     "build": "tsc",
@@ -59,7 +59,8 @@
     "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:instruction-strings && npm run check:doc-index && npm run check:deps && npm run check:labels && npx tsc --noEmit && npm test",
     "release:local": "node scripts/publish-local.mjs",
     "publish:local": "node scripts/publish-local.mjs",
-    "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid"
+    "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
