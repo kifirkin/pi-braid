@@ -553,7 +553,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
   label: "Orchestrate",
   promptSnippet: "Coordinate parallel agent workers (spawn/check/merge, locks)",
   description:
-    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. " +
+    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. A close's stamped `files` row is compared against the census of the revision it names, and a number below that census refuses the merge before any ref moves. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. " +
     `Worker lifecycle speaks in four vocabularies: ${renderStatusLayers()}.`,
   parameters: Type.Object({
     action: Type.Union(
