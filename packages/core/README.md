@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
-[![pi-coding-agent ≥ 0.85](https://img.shields.io/badge/pi--coding--agent-%E2%89%A50.85-blueviolet)](https://github.com/earendil-works/pi)
+[![pi-coding-agent ≥ 1.2.0](https://img.shields.io/badge/pi--coding--agent-%E2%89%A51.2.0-blueviolet)](https://github.com/earendil-works/pi)
 
 Honest self-aware agent with a metacognitive suite and extras on top of [pi-coding-agent](https://github.com/earendil-works/pi). The suite adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
 
@@ -126,7 +126,7 @@ pi loads extensions from a `packages` entry in `<cwd>/.pi/settings.json` (projec
 ```
 
 This package is the **core** workspace. The monorepo also contains four
-sibling packages (see [`../../README.md`](../../README.md) for the full map):
+sibling packages (see [`../../README.md`](https://github.com/kifirkin/pi-braid/blob/main/README.md) for the full map):
 
 | Package       | Role                                                                 |
 | ------------- | -------------------------------------------------------------------- |
@@ -219,7 +219,7 @@ skills in the system prompt's `<available_skills>` block; the agent opens a
 
 The catalog table (one row per skill, with its verdict and one-line
 description, covering both tiers) lives in
-**[`../skills/README.md`](../skills/README.md)**, and
+**[`../skills/README.md`](https://github.com/kifirkin/pi-braid/blob/main/packages/skills/README.md)**, and
 `find packages/core/skills -name SKILL.md | wc -l` counts the core set at any
 time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 
@@ -227,16 +227,16 @@ time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 
 ## Documentation
 
-| Doc                                        | For                                                                     |
-| ------------------------------------------ | ----------------------------------------------------------------------- |
-| [`docs/BEGINNERS.md`](docs/BEGINNERS.md)   | **First walkthrough**: install → how agents use braid → first extension |
-| [`docs/SETUP.md`](docs/SETUP.md)           | **Full setup reference**, install paths, troubleshooting                |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md)       | Active roadmap + shipped milestones + open themes                       |
-| [`README.md`](README.md)                   | This overview                                                           |
-| [`AGENTS.md`](AGENTS.md)                   | Repository structure, DOX contract, conventions                         |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | Development setup, code style, PR workflow, release                     |
-| [`docs/HISTORY.md`](docs/HISTORY.md)       | Consolidated project history, archived roadmap, research                |
-| [`../../CHANGELOG.md`](../../CHANGELOG.md) | Release notes (curated)                                                 |
+| Doc                                                                                 | For                                                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [`docs/BEGINNERS.md`](docs/BEGINNERS.md)                                            | **First walkthrough**: install → how agents use braid → first extension |
+| [`docs/SETUP.md`](docs/SETUP.md)                                                    | **Full setup reference**, install paths, troubleshooting                |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md)                                                | Active roadmap + shipped milestones + open themes                       |
+| [`README.md`](README.md)                                                            | This overview                                                           |
+| [`AGENTS.md`](AGENTS.md)                                                            | Repository structure, DOX contract, conventions                         |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                | Development setup, code style, PR workflow, release                     |
+| [`docs/HISTORY.md`](docs/HISTORY.md)                                                | Consolidated project history, archived roadmap, research                |
+| [`../../CHANGELOG.md`](https://github.com/kifirkin/pi-braid/blob/main/CHANGELOG.md) | Release notes (curated)                                                 |
 
 ---
 

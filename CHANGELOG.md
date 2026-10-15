@@ -34,7 +34,14 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
-## Core — 0.40.0 / Telegram — 0.1.4 / Providers — 1.0.4 / Skills — 0.2.0 / Contrib — 0.1.0 (2026-10-14: first public release)
+## Core — 0.40.1 / Providers — 1.0.5 / Skills — 0.2.1 (2026-10-15: gallery metadata repairs)
+
+- **Core README badge** — the pi-coding-agent minimum states `1.2.0` (the current pi line), not the stale `0.85`.
+- **Cross-package README links** — links that left their own package in the `pi-braid` and `pi-braid-skills` READMEs now point at the repository on GitHub, so they resolve on the package gallery instead of breaking or landing on unrelated content.
+- **Providers manifest** — `pi-braid-providers` declares an `exports` entry, matching its sibling packages.
+- **Release date** — the first-public-release heading below carries the true publication date, 2026-10-15.
+
+## Core — 0.40.0 / Telegram — 0.1.4 / Providers — 1.0.4 / Skills — 0.2.0 / Contrib — 0.1.0 (2026-10-15: first public release)
 
 The first npm publication: all five packages go out together at the versions
 above.
