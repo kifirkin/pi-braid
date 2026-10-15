@@ -539,7 +539,7 @@ export function createMemoryTool(
                     ],
                     details: {
                       found: true,
-                      entryType: "episode", // P1-8 / DR-H-6: explicit discriminator, not a synthesized CognitiveMemoryEntry
+                      entryType: "episode", // explicit discriminator, not a synthesized CognitiveMemoryEntry
                       memory: {
                         id: ep.id,
                         content: `${ep.task}: ${ep.solution}`,

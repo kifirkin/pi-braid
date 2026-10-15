@@ -1040,7 +1040,7 @@ export default function timerExtension(pi: ExtensionAPI): void {
   factoryState.callCount += 1;
   if (factoryState.callCount > 1) {
     log.warn(
-      `[timer] DR-C-4: timerExtension(pi) called ${factoryState.callCount} times in this process. ` +
+      `[timer] timerExtension(pi) called ${factoryState.callCount} times in this process. ` +
         `The single-process-per-session assumption is violated; ` +
         `poller/sessionState closures may conflict across sessions. ` +
         `See src/extensions/scheduling/timer/index.ts:16-41 for the migration path.`,
