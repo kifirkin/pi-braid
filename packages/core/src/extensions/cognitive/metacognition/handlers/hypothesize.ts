@@ -16,7 +16,7 @@ import { createLogger } from "../../../../lib/core/logger.js";
 const log = createLogger("hypothesize");
 
 /**
- * P2-11 B-class: preserve the 4 regex dimension checks as the Tier 1 fallback
+ * B-class: preserve the 4 regex dimension checks as the Tier 1 fallback
  * for hypothesis signal detection. The LLM path enhances when the heuristic
  * returns "none" or when the agent needs richer signal analysis.
  */
@@ -159,7 +159,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         input: { problem, evidence: evidence || "(none provided)" },
         fallback: () => (problem.length > 50 && (evidence?.length ?? 0) > 30 ? "deep" : "yes"),
         timeoutMs: 60_000,
-        // P2-11 B-class: length-based heuristic is a poor proxy for
+        // B-class: length-based heuristic is a poor proxy for
         // "needs deep analysis" (a short problem with rich evidence can
         // need deep; a long problem with no evidence doesn't).
         // tierPolicy: fallback-only downweights to 0.5 confidence so
@@ -299,7 +299,7 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
         // Score hypotheses with heuristic signals + evidence pool
         const { scored, annotated } = scoreHypothesisOutput(text, evidence, ctx ?? undefined);
 
-        // P2-11 B-class: enhance signal detection with LLM when heuristic fails
+        // B-class: enhance signal detection with LLM when heuristic fails
         // (tierPolicy: fallback-only means the heuristic fires first with 0.5 confidence,
         // and the LLM path covers edge cases the regexes miss).
         try {

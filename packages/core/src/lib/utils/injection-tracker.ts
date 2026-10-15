@@ -694,7 +694,7 @@ export function sendTrackedMessage(
    */
   wakeDefer?: { onBusy: () => void; isWithdrawn?: () => boolean },
 ): boolean {
-  // ROADMAP P1-4 / EW-7.3: braid.suppressNudges is the universal
+  // braid.suppressNudges is the universal
   // off-switch. Apply it here so every sendTrackedMessage call site
   // (20+ callers across enforcement, dreamer, memory, timer, drift,
   // hints, etc.) automatically respects the setting without each

@@ -355,7 +355,7 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
               : "yes";
           },
           timeoutMs: 60_000,
-          // P2-11 B-class: keyword-list heuristic misses many decisions that
+          // B-class: keyword-list heuristic misses many decisions that
           // warrant review (any non-listed architectural decision gets "yes"
           // i.e. skipped). tierPolicy: fallback-only downweights to 0.5
           // confidence so the Tier 2 LLM has the final say.
