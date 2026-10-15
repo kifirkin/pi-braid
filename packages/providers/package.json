@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-providers",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "LLM provider for pi-coding-agent: Venice models via the agent-zero gateway, with a multi-key ring",
   "type": "module",
   "files": [
@@ -8,6 +8,9 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": "./index.ts"
+  },
   "keywords": [
     "pi-package",
     "pi",
