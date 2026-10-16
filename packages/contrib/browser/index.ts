@@ -77,6 +77,11 @@ function readBrowserSettings(): BrowserSettings {
   };
 }
 
+// Below readBrowserSettings on purpose: the generated braid schema pins that
+// reader's evidence to this file's line 76, and check-braid-schema fails on any
+// line added above it. Bump the pin in gen-braid-schema.mjs to move this up.
+import { readToggleVerdict } from "../module-toggle.js";
+
 // TUI renderer factory
 
 /**
@@ -1416,6 +1421,14 @@ function registerAdvancedCommands(pi: ExtensionAPI): void {
 
 // Extension entry
 export default function browserExtension(pi: ExtensionAPI) {
+  const toggle = readToggleVerdict(["browser"]);
+  if (toggle.disabled) {
+    log.info(
+      `[browser] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   const settings = readBrowserSettings();
 
   // session_shutdown cleanup (always runs)

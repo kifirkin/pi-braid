@@ -49,6 +49,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 
 const log = createLogger("codebase");
 
@@ -785,6 +786,14 @@ const codebaseSchema = Type.Object({
 // Extension factory
 
 export default function codebaseExtension(pi: ExtensionAPI): void {
+  const toggle = readToggleVerdict(["codebase"]);
+  if (toggle.disabled) {
+    log.info(
+      `[codebase] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   const tool: ToolDefinition = {
     name: "codebase",
     exposure: "deferred",

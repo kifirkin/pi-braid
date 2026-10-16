@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 
 const log = createLogger("diff");
 
@@ -229,6 +230,14 @@ function escapePath(p: string): string {
 }
 
 export default function diffExtension(pi: ExtensionAPI) {
+  const toggle = readToggleVerdict(["diff"]);
+  if (toggle.disabled) {
+    log.info(
+      `[diff] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   pi.registerTool({
     name: "file_diff",
     exposure: "deferred",

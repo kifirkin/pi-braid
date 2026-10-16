@@ -33,6 +33,7 @@ import type {
 import { Type } from "typebox";
 
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 
 const log = createLogger("repl");
 
@@ -675,6 +676,14 @@ function createReplTool() {
 }
 
 export default function replExtension(pi: ExtensionAPI): void {
+  const toggle = readToggleVerdict(["repl"]);
+  if (toggle.disabled) {
+    log.info(
+      `[repl] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   const replTool = createReplTool();
   pi.registerTool(replTool);
   log.info("REPL extension registered.");

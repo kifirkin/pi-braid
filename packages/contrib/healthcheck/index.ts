@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 import { healthcheckDir } from "pi-braid/lib";
 import { Type } from "typebox";
 import type {
@@ -52,6 +53,14 @@ const healthcheckSchema = Type.Object({
 });
 
 export default function healthcheckExtension(pi: ExtensionAPI) {
+  const toggle = readToggleVerdict(["healthcheck"]);
+  if (toggle.disabled) {
+    log.info(
+      `[healthcheck] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   pi.registerTool({
     name: "healthcheck",
     exposure: "deferred",

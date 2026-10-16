@@ -6,6 +6,7 @@
   "files": [
     "index.ts",
     "logger.ts",
+    "module-toggle.ts",
     "state-paths.ts",
     "browser/",
     "codebase/",
@@ -29,7 +30,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs"
+    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/contrib-toggles.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs"
   },
   "keywords": [
     "pi-package",
