@@ -348,7 +348,7 @@ The 12 contrib extension names: `browser`, `codebase`, `diff`, `healthcheck`, `n
   - `braid.contrib.browserAdvanced: true` - the 7 advanced browser tools (opt-in).
   - `braid.contrib.pathSecurity.block: true` - hard-block dangerous operations instead of soft-warn.
   - `braid.contrib.observatory.record: true` - record session lifecycle events.
-  - `braid.contrib.networkMonitor` - `{ profileName, reachabilityUrl, curlTimeoutSecs, disconnectDelayMs, connectTimeoutMs, pollIntervalMs, cooldownMs, autoReconnect, autoWatch, probeIntervalMs, maxAttemptsPerOutage, reconnectCooldownMs }`.
+  - `braid.contrib.networkMonitor` - `{ client, profileName, reachabilityUrl, curlTimeoutSecs, disconnectDelayMs, connectTimeoutMs, pollIntervalMs, cooldownMs, autoReconnect, autoWatch, probeIntervalMs, outageThreshold, maxAttemptsPerOutage, reconnectCooldownMs, logFile }`. The watcher toggles only after `outageThreshold` consecutive failed probes (default 3, probes spaced by `probeIntervalMs`); the toggle mechanism comes from the client adapter (app deep links, or the NE profile via `scutil --nc stop|start`), and settings are re-read while the extension runs.
   - `braid.contrib["rate-limiter"]` - `{ rpm, tpm, providers: { <provider>: { rpm, tpm } } }` ceilings; note the hyphenated key (the bundle toggle name for the extension itself is `rateLimiter`).
   - `braid.contrib._global.enabled: [...]` - global tool list managed by the tool-config extension.
 

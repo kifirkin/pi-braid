@@ -1,16 +1,16 @@
 /**
- * Mocked tests for the client-agnostic tunnel core (tunnel.ts) and the
- * per-client adapter table (clients.ts).
+ * Mocked tests for the client-agnostic tunnel core (tunnel.ts), the per-client
+ * adapter table (clients.ts), and the live settings source (settings.ts).
  *
  * Run with: node --experimental-strip-types packages/contrib/network-monitor/test.ts
  * (from the pi-braid root). No real tunnel is touched: exec and sleep are
  * fully mocked. This is the build-time gate; the live reconnect test is the
  * orchestrator's job with the owner present.
  *
- * The mechanism tests use a synthetic client (the FIXTURE below) so the
- * shared layer's tests carry no vendor name; the adapter tests assert the
- * shipped facts and the fail-closed gate. The v2raytun fixture values match
- * the adapter's own, so a drift between them is visible.
+ * The mechanism tests use a synthetic client (the FACTS below) so the shared
+ * layer's tests carry no vendor name; the adapter tests assert the shipped
+ * facts and the fail-closed gate. The v2raytun fixture values match the
+ * adapter's own, so a drift between them is visible.
  */
 
 import * as fs from "node:fs";
@@ -20,22 +20,38 @@ import { acquireLock, DEFAULT_LOCK_TTL_MS } from "./lock.ts";
 import { createLogFileSink } from "./log-file.ts";
 import {
   TUNNEL_CLIENTS,
-  clientRefusal,
   isClientId,
+  missingFacts,
   operableClient,
+  probeClient,
+  probeRefusal,
+  toggleRefusal,
+  wellFormedToggle,
+  type ToggleMechanism,
+  type TunnelClientAdapter,
 } from "./clients.ts";
 import {
+  createLiveSettings,
+  parseSettings,
+  DEFAULTS,
+  type SettingsDocument,
+} from "./settings.ts";
+import {
   createTunnelWatcher,
+  describeToggle,
   parseNcList,
   probeText,
   probeTunnel,
   reconnectTunnel,
   startTunnelWatcher,
+  togglePlan,
   type Deps,
   type ExecResult,
   type ProbeResult,
   type ReconnectOutcome,
+  type WatchFrame,
   type WatcherDeps,
+  type WatcherSettings,
 } from "./tunnel.ts";
 
 let failures = 0;
@@ -71,25 +87,52 @@ function ok(code: number, stdout = ""): ExecResult {
   return { stdout, stderr: "", code };
 }
 
-/** Synthetic client used by the mechanism tests (all facts data-supplied). */
-const FIXTURE = {
+/** Synthetic client facts used by the mechanism tests (no vendor name). */
+const FACTS = {
   displayName: "TestTunnel",
   bundleId: "test.bundle.id",
   profileName: "TestTunnel",
   appProcess: "testtunnel",
   extensionProcess: "test.bundle.id.ext",
-  disconnectLink: "testtunnel://disconnect",
-  connectLink: "testtunnel://connect",
 };
+
+/** Synthetic clients used by the adapter-shape tests. */
+const LINK_TOGGLE: Extract<ToggleMechanism, { kind: "link" }> = {
+  kind: "link",
+  connect: "testtunnel://connect",
+  disconnect: "testtunnel://disconnect",
+};
+const NE_PROFILE_TOGGLE: Extract<ToggleMechanism, { kind: "ne-profile" }> = {
+  kind: "ne-profile",
+  profile: "TestTunnel",
+};
+
+/** A plain adapter for shape tests; overrides select the capability gaps. */
+function adapterOf(
+  overrides: Partial<TunnelClientAdapter>,
+): TunnelClientAdapter {
+  return {
+    id: "happ",
+    displayName: "Fixture",
+    bundleId: FACTS.bundleId,
+    profileName: FACTS.profileName,
+    appProcess: FACTS.appProcess,
+    extensionProcess: FACTS.extensionProcess,
+    toggle: LINK_TOGGLE,
+    validation: "fixture",
+    installHint: null,
+    ...overrides,
+  };
+}
 
 /** Two app-owned NE profiles with OS-assigned names; the live one second. */
 const TWO_PROFILE_LIST = [
-  `* (Connected)      00000000-0000-4000-8000-000000000002 VPN (${FIXTURE.bundleId}) "TestTunnel 2" [VPN:${FIXTURE.bundleId}]`,
-  `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FIXTURE.bundleId}) "TestTunnel" [VPN:${FIXTURE.bundleId}]`,
+  `* (Connected)      00000000-0000-4000-8000-000000000002 VPN (${FACTS.bundleId}) "TestTunnel 2" [VPN:${FACTS.bundleId}]`,
+  `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FACTS.bundleId}) "TestTunnel" [VPN:${FACTS.bundleId}]`,
 ].join("\n");
 
 /** scutil --nc list output when only the anchor profile exists. */
-const ANCHOR_LIST_LINE = `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FIXTURE.bundleId}) "TestTunnel" [VPN:${FIXTURE.bundleId}]`;
+const ANCHOR_LIST_LINE = `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FACTS.bundleId}) "TestTunnel" [VPN:${FACTS.bundleId}]`;
 
 interface FakeExecOptions {
   /** scutil first-line status to return (anchor and unlisted profiles). */
@@ -106,6 +149,10 @@ interface FakeExecOptions {
   connectFlipsProfile?: boolean;
   /** `open <fixture connect link>` flips curl to 302. */
   connectFlipsRoute?: boolean;
+  /** `scutil --nc start <profile>` flips scutil to Connected. */
+  startFlipsProfile?: boolean;
+  /** `scutil --nc start <profile>` flips curl to 302. */
+  startFlipsRoute?: boolean;
   /** scutil --nc list output; defaults to the anchor profile alone. */
   ncList?: string;
   /** Per-profile statuses, e.g. a stale anchor beside a live sibling. */
@@ -130,6 +177,12 @@ function makeDeps(o: FakeExecOptions): {
     calls.push(`${cmd} ${args.join(" ")}`);
     if (cmd === "scutil") {
       if (args[1] === "list") return ok(0, ncList);
+      if (args[1] === "start") {
+        if (o.startFlipsProfile) ncStatus = "Connected";
+        if (o.startFlipsRoute) curlCode = "302";
+        return ok(0);
+      }
+      if (args[1] === "stop") return ok(0);
       probeCount += 1;
       if (
         o.connectAfterProbes !== undefined &&
@@ -147,7 +200,7 @@ function makeDeps(o: FakeExecOptions): {
       return ok(isApp ? o.appExit : o.extExit);
     }
     if (cmd === "open") {
-      if (args[0] === FIXTURE.connectLink) {
+      if (args[0] === LINK_TOGGLE.connect) {
         if (o.connectFlipsProfile) ncStatus = "Connected";
         if (o.connectFlipsRoute) curlCode = "302";
       }
@@ -172,7 +225,7 @@ function makeDeps(o: FakeExecOptions): {
 }
 
 const baseOpts = {
-  ...FIXTURE,
+  ...FACTS,
   reachabilityUrl: "https://api.telegram.org",
   curlTimeoutSecs: 6,
 };
@@ -189,24 +242,49 @@ console.log("probe: connected + reachable + both alive");
   check("status Connected", r.profileStatus === "Connected", r.profileStatus);
   check("reachable", r.reachable, r.reachabilityCode);
   check("app alive", r.appAlive);
-  check("extension alive", r.extensionAlive);
+  check("extension alive", r.extensionAlive === true);
   check("not down", !r.down);
   check("not routeOnlyDrop", !r.routeOnlyDrop);
   check(
     "app pattern comes from the options",
-    calls.some((c) => c === `pgrep -x ${FIXTURE.appProcess}`),
+    calls.some((c) => c === `pgrep -x ${FACTS.appProcess}`),
     calls.join(","),
   );
   check(
     "extension pattern comes from the options",
-    calls.some((c) => c === `pgrep -f ${FIXTURE.extensionProcess}`),
+    calls.some((c) => c === `pgrep -f ${FACTS.extensionProcess}`),
     calls.join(","),
   );
   check(
     "verdict line carries the display name",
-    firstLine(probeText(r)).startsWith(`${FIXTURE.displayName}: UP`),
+    firstLine(probeText(r)).startsWith(`${FACTS.displayName}: UP`),
     firstLine(probeText(r)),
   );
+}
+
+console.log(
+  "probe: a client with no separate extension process skips that leg",
+);
+{
+  const { deps, calls } = makeDeps({
+    ncStatus: "Connected",
+    curlCode: "302",
+    appExit: 0,
+    extExit: 0,
+  });
+  const r = await probeTunnel({ ...baseOpts, extensionProcess: null }, deps);
+  check(
+    "no pgrep -f ran",
+    calls.every((c) => !c.startsWith("pgrep -f")),
+    calls.join(","),
+  );
+  check("extension liveness is not applicable", r.extensionAlive === null);
+  check(
+    "detail says not applicable",
+    r.detail.includes("extension: n/a"),
+    r.detail,
+  );
+  check("still up when the route answers", !r.down);
 }
 
 console.log("probe: disconnected -> down");
@@ -246,7 +324,7 @@ console.log("probe: app and extension dead");
   });
   const r = await probeTunnel(baseOpts, deps);
   check("app dead", !r.appAlive);
-  check("extension dead", !r.extensionAlive);
+  check("extension dead", r.extensionAlive === false);
 }
 
 console.log("probe: unknown status line");
@@ -343,7 +421,7 @@ console.log(
   "probe: scutil --nc list parsing uses OS names, not an assumed one",
 );
 {
-  const parsed = parseNcList(TWO_PROFILE_LIST, FIXTURE.bundleId);
+  const parsed = parseNcList(TWO_PROFILE_LIST, FACTS.bundleId);
   check("two app profiles parsed", parsed.length === 2, String(parsed.length));
   check(
     "names come from the list",
@@ -356,10 +434,11 @@ console.log(
   );
 }
 
-console.log("adapters: v2raytun facts present; happ and incy fail closed");
+console.log("adapters: capability-scoped, mechanism carried as data");
 {
   const v = TUNNEL_CLIENTS.v2raytun;
-  check("v2raytun operable", clientRefusal(v) === null, clientRefusal(v) ?? "");
+  check("v2raytun probe refusal is null", probeRefusal(v) === null);
+  check("v2raytun toggle refusal is null", toggleRefusal(v) === null);
   check("v2raytun narrows to an operable client", operableClient(v) !== null);
   check(
     "v2raytun bundle id is the host app's",
@@ -367,9 +446,10 @@ console.log("adapters: v2raytun facts present; happ and incy fail closed");
     String(v.bundleId),
   );
   check(
-    "v2raytun routes are the app binary's",
-    v.connectLink === "v2raytun://connect" &&
-      v.disconnectLink === "v2raytun://disconnect",
+    "v2raytun toggle is the app's deep links",
+    v.toggle?.kind === "link" &&
+      v.toggle.connect === "v2raytun://connect" &&
+      v.toggle.disconnect === "v2raytun://disconnect",
   );
   check(
     "v2raytun process patterns match the live processes",
@@ -378,51 +458,99 @@ console.log("adapters: v2raytun facts present; happ and incy fail closed");
   );
 
   const h = TUNNEL_CLIENTS.happ;
-  const hRefusal = clientRefusal(h);
-  check("happ refused", hRefusal !== null);
   check(
-    "happ refusal names the missing machine facts",
-    (hRefusal ?? "").includes("bundleId") &&
-      (hRefusal ?? "").includes("extensionProcess"),
-    hRefusal ?? "",
+    "happ probes without a separate extension process",
+    probeRefusal(h) === null,
+  );
+  check("happ has no extension process pattern", h.extensionProcess === null);
+  check(
+    "happ probe facts are the host-validated ones",
+    h.bundleId === "su.ffg.happ" &&
+      h.profileName === "Happ" &&
+      h.appProcess === "Happ",
+    `${h.bundleId}/${h.profileName}/${h.appProcess}`,
   );
   check(
-    "happ refusal carries the install command",
-    (hRefusal ?? "").includes("brew install --cask happ"),
-    hRefusal ?? "",
+    "happ toggle is its NE profile, not a deep link",
+    h.toggle?.kind === "ne-profile" && h.toggle.profile === "Happ",
+    JSON.stringify(h.toggle),
   );
-  check(
-    "happ claims no control links (none documented)",
-    h.connectLink === null && h.disconnectLink === null,
-  );
-  check(
-    "happ does not narrow to an operable client",
-    operableClient(h) === null,
-  );
+  check("happ narrows to an operable client", operableClient(h) !== null);
 
   const i = TUNNEL_CLIENTS.incy;
-  const iRefusal = clientRefusal(i);
-  check("incy refused on machine facts", iRefusal !== null);
+  const iProbe = probeRefusal(i);
+  const iToggle = toggleRefusal(i);
+  check("incy cannot be probed on this host", iProbe !== null);
   check(
-    "incy refusal names the machine facts, not the documented links",
-    (iRefusal ?? "").includes("bundleId") &&
-      (iRefusal ?? "").includes("appProcess"),
-    iRefusal ?? "",
+    "incy probe refusal names the machine facts",
+    (iProbe ?? "").includes("bundleId") &&
+      (iProbe ?? "").includes("appProcess"),
+    iProbe ?? "",
+  );
+  check("incy cannot be toggled either", iToggle !== null);
+  check(
+    "incy toggle refusal names the missing probe facts",
+    (iToggle ?? "").includes("bundleId"),
+    iToggle ?? "",
   );
   check(
     "incy links are the documented ones",
-    i.connectLink === "incy://connect" &&
-      i.disconnectLink === "incy://disconnect",
+    i.toggle?.kind === "link" &&
+      i.toggle.connect === "incy://connect" &&
+      i.toggle.disconnect === "incy://disconnect",
   );
   check(
     "incy refusal carries the install command",
-    (iRefusal ?? "").includes("brew install --cask incy"),
-    iRefusal ?? "",
+    (iProbe ?? "").includes("brew install --cask incy"),
+    iProbe ?? "",
   );
   check(
     "incy does not narrow to an operable client",
     operableClient(i) === null,
   );
+
+  // Capability scoping: a probe-only client probes but never toggles.
+  const probeOnly = adapterOf({
+    id: "incy",
+    toggle: null,
+    validation: "fixture: no toggle mechanism",
+  });
+  check("probe-only client can be probed", probeClient(probeOnly) !== null);
+  check(
+    "probe-only client has no probe refusal",
+    probeRefusal(probeOnly) === null,
+  );
+  check(
+    "probe-only client cannot be toggled",
+    toggleRefusal(probeOnly) !== null,
+  );
+  check(
+    "probe-only client is not operable",
+    operableClient(probeOnly) === null,
+  );
+  check(
+    "probe capability ignores the extension process",
+    missingFacts(adapterOf({ extensionProcess: null }), "probe").length === 0,
+  );
+  check(
+    "toggle capability demands a mechanism",
+    missingFacts(adapterOf({ toggle: null }), "toggle").join(",") ===
+      "toggle mechanism",
+    missingFacts(adapterOf({ toggle: null }), "toggle").join(","),
+  );
+  const emptyLink = adapterOf({
+    toggle: { kind: "link", connect: "", disconnect: "x" },
+  });
+  check(
+    "an empty link is not a mechanism",
+    !wellFormedToggle(emptyLink.toggle),
+  );
+  check("an empty link refuses toggling", toggleRefusal(emptyLink) !== null);
+  check(
+    "a null mechanism refuses toggling",
+    toggleRefusal(adapterOf({ toggle: null })) !== null,
+  );
+  check("a complete mechanism is well formed", wellFormedToggle(LINK_TOGGLE));
 
   check(
     "client id validation",
@@ -433,7 +561,46 @@ console.log("adapters: v2raytun facts present; happ and incy fail closed");
   );
 }
 
-console.log("reconnect: sequence and success");
+console.log("mechanism: link and NE-profile toggles plan different commands");
+{
+  const link = togglePlan(LINK_TOGGLE);
+  check(
+    "link toggle opens the disconnect link first",
+    link.disconnect.cmd === "open" &&
+      link.disconnect.args[0] === LINK_TOGGLE.disconnect,
+  );
+  check(
+    "link toggle opens the connect link second",
+    link.connect.cmd === "open" && link.connect.args[0] === LINK_TOGGLE.connect,
+  );
+  const ne = togglePlan(NE_PROFILE_TOGGLE);
+  check(
+    "NE-profile toggle stops the profile",
+    ne.disconnect.cmd === "scutil" &&
+      ne.disconnect.args.join(" ") === "--nc stop TestTunnel",
+    ne.disconnect.args.join(" "),
+  );
+  check(
+    "NE-profile toggle starts the profile",
+    ne.connect.cmd === "scutil" &&
+      ne.connect.args.join(" ") === "--nc start TestTunnel",
+    ne.connect.args.join(" "),
+  );
+  check(
+    "describeToggle reads like the commands it runs",
+    describeToggle(NE_PROFILE_TOGGLE) ===
+      "scutil --nc stop TestTunnel then scutil --nc start TestTunnel",
+    describeToggle(NE_PROFILE_TOGGLE),
+  );
+  check(
+    "describeToggle quotes a single-arg command",
+    describeToggle(LINK_TOGGLE) ===
+      'open "testtunnel://disconnect" then open "testtunnel://connect"',
+    describeToggle(LINK_TOGGLE),
+  );
+}
+
+console.log("reconnect: sequence and success (deep-link mechanism)");
 {
   const { deps, calls, sleeps } = makeDeps({
     ncStatus: "Disconnected",
@@ -446,6 +613,7 @@ console.log("reconnect: sequence and success");
   const r = await reconnectTunnel(
     {
       ...baseOpts,
+      toggle: LINK_TOGGLE,
       disconnectDelayMs: 2000,
       connectTimeoutMs: 30000,
       pollIntervalMs: 100,
@@ -456,16 +624,16 @@ console.log("reconnect: sequence and success");
   check("reconnect ok", r.ok, r.reason);
   check(
     "disconnect link opened",
-    calls.some((c) => c === `open ${FIXTURE.disconnectLink}`),
+    calls.some((c) => c === `open ${LINK_TOGGLE.disconnect}`),
   );
   check(
     "connect link opened",
-    calls.some((c) => c === `open ${FIXTURE.connectLink}`),
+    calls.some((c) => c === `open ${LINK_TOGGLE.connect}`),
   );
   check(
     "disconnect before connect",
-    calls.indexOf(`open ${FIXTURE.disconnectLink}`) <
-      calls.indexOf(`open ${FIXTURE.connectLink}`),
+    calls.indexOf(`open ${LINK_TOGGLE.disconnect}`) <
+      calls.indexOf(`open ${LINK_TOGGLE.connect}`),
   );
   check(
     "sleep between disconnect and connect",
@@ -473,6 +641,42 @@ console.log("reconnect: sequence and success");
     `sleeps=${sleeps.join(",")}`,
   );
   check("final probe Connected", r.final?.profileStatus === "Connected");
+}
+
+console.log("reconnect: the NE-profile mechanism drives scutil, not links");
+{
+  const { deps, calls } = makeDeps({
+    ncStatus: "Disconnected",
+    curlCode: "000",
+    appExit: 0,
+    extExit: 0,
+    startFlipsProfile: true,
+    startFlipsRoute: true,
+  });
+  const r = await reconnectTunnel(
+    {
+      ...baseOpts,
+      toggle: NE_PROFILE_TOGGLE,
+      disconnectDelayMs: 1,
+      connectTimeoutMs: 200,
+      pollIntervalMs: 5,
+      lockFile: lockPath("mechanism"),
+    },
+    deps,
+  );
+  check("reconnect ok", r.ok, r.reason);
+  check(
+    "profile stopped before it is started",
+    calls.indexOf("scutil --nc stop TestTunnel") >= 0 &&
+      calls.indexOf("scutil --nc stop TestTunnel") <
+        calls.indexOf("scutil --nc start TestTunnel"),
+    calls.join(","),
+  );
+  check(
+    "no deep link was opened",
+    calls.every((c) => !c.startsWith("open ")),
+    calls.join(","),
+  );
 }
 
 console.log("reconnect: timeout when tunnel never comes up");
@@ -486,6 +690,7 @@ console.log("reconnect: timeout when tunnel never comes up");
   const r = await reconnectTunnel(
     {
       ...baseOpts,
+      toggle: LINK_TOGGLE,
       disconnectDelayMs: 10,
       connectTimeoutMs: 250,
       pollIntervalMs: 50,
@@ -509,6 +714,7 @@ console.log("reconnect: probe-before-toggle skips an up tunnel");
   const r = await reconnectTunnel(
     {
       ...baseOpts,
+      toggle: LINK_TOGGLE,
       disconnectDelayMs: 5,
       connectTimeoutMs: 100,
       pollIntervalMs: 5,
@@ -519,8 +725,10 @@ console.log("reconnect: probe-before-toggle skips an up tunnel");
   check("ok", r.ok, r.reason);
   check("skipped", r.skipped === true, r.reason);
   check(
-    "no deep link opened",
-    calls.every((c) => !c.startsWith("open ")),
+    "no toggle command ran",
+    calls.every(
+      (c) => !c.startsWith("open ") && !c.startsWith("scutil --nc stop"),
+    ),
     calls.join(","),
   );
   check("final probe up", r.final !== null && !r.final.down);
@@ -538,6 +746,7 @@ console.log("reconnect: route still dead after the toggle is not success");
   const r = await reconnectTunnel(
     {
       ...baseOpts,
+      toggle: LINK_TOGGLE,
       disconnectDelayMs: 1,
       connectTimeoutMs: 60,
       pollIntervalMs: 5,
@@ -558,7 +767,7 @@ console.log("reconnect: route still dead after the toggle is not success");
   );
   check(
     "toggle was attempted (pre-probe found it down)",
-    calls.some((c) => c === `open ${FIXTURE.disconnectLink}`),
+    calls.some((c) => c === `open ${LINK_TOGGLE.disconnect}`),
   );
 }
 
@@ -583,7 +792,7 @@ console.log(
     exec: async (cmd, args) => {
       if (
         cmd === "open" &&
-        args[0] === FIXTURE.disconnectLink &&
+        args[0] === LINK_TOGGLE.disconnect &&
         disconnectCalls++ === 0
       ) {
         await firstDisconnectGate;
@@ -594,6 +803,7 @@ console.log(
   };
   const opts = {
     ...baseOpts,
+    toggle: LINK_TOGGLE,
     disconnectDelayMs: 1,
     connectTimeoutMs: 200,
     pollIntervalMs: 5,
@@ -614,7 +824,7 @@ console.log(
   );
   check(
     "second toggled nothing",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
+    countCalls(env.calls, `open ${LINK_TOGGLE.disconnect}`) === 0,
     env.calls.join(","),
   );
   const release = releaseFirstDisconnect as unknown as () => void;
@@ -684,6 +894,106 @@ console.log(
   check("broken sink swallows write errors", !threw && broken !== null);
 }
 
+console.log("settings: parse, defaults, and out-of-range fallbacks");
+{
+  const defaults = parseSettings({});
+  check("absent -> defaults, enabled", defaults.enabled);
+  check(
+    "the hysteresis default is at least three probes",
+    defaults.outageThreshold >= 3,
+    String(defaults.outageThreshold),
+  );
+  check(
+    "defaults match the exported DEFAULTS",
+    defaults.client === DEFAULTS.client &&
+      defaults.probeIntervalMs === DEFAULTS.probeIntervalMs,
+  );
+  const off = parseSettings({
+    braid: { contrib: { networkMonitor: false } },
+  });
+  check("false disables", !off.enabled);
+  check("false keeps the documented defaults", off.client === DEFAULTS.client);
+  const on = parseSettings({ braid: { contrib: { networkMonitor: true } } });
+  check("true enables with defaults", on.enabled);
+  const tuned = parseSettings({
+    braid: {
+      contrib: {
+        networkMonitor: {
+          client: "happ",
+          outageThreshold: 5,
+          autoWatch: false,
+          logFile: "/tmp/nm.log",
+          curlTimeoutSecs: "nope",
+          maxAttemptsPerOutage: -2,
+        },
+      },
+    },
+  });
+  check("object tunes the client", tuned.client === "happ");
+  check("object tunes the threshold", tuned.outageThreshold === 5);
+  check("object tunes autoWatch", tuned.autoWatch === false);
+  check("object tunes logFile", tuned.logFile === "/tmp/nm.log");
+  check(
+    "non-numeric and non-positive values fall back",
+    tuned.curlTimeoutSecs === DEFAULTS.curlTimeoutSecs &&
+      tuned.maxAttemptsPerOutage === DEFAULTS.maxAttemptsPerOutage,
+  );
+}
+
+console.log(
+  "settings: a live source re-reads, and a broken read keeps last good",
+);
+{
+  let doc: SettingsDocument = {
+    braid: { contrib: { networkMonitor: false } },
+  };
+  let readError: Error | null = null;
+  const live = createLiveSettings(() => {
+    if (readError) throw readError;
+    return doc;
+  });
+  const first = live.current();
+  check("disabled is read at once", !first.enabled);
+  // The incident: the write that should have stopped the monitor did nothing.
+  doc = {
+    braid: {
+      contrib: {
+        networkMonitor: { client: "happ", outageThreshold: 4 },
+      },
+    },
+  };
+  const second = live.current();
+  check(
+    "a later read sees the edit",
+    second.enabled && second.client === "happ",
+  );
+  check("a later read sees the new knob", second.outageThreshold === 4);
+  readError = new Error("settings.json: Unexpected end of JSON input");
+  const duringFailure = live.current();
+  check(
+    "a broken read keeps the last good settings",
+    duringFailure.client === "happ" && duringFailure.outageThreshold === 4,
+  );
+  check(
+    "the failure is reported",
+    (live.error() ?? "").includes("Unexpected end of JSON input"),
+    live.error() ?? "",
+  );
+  // A corrupt file must never re-enable a disabled monitor.
+  doc = { braid: { contrib: { networkMonitor: false } } };
+  readError = null;
+  check("disabled again", !live.current().enabled);
+  readError = new Error("settings.json: EACCES");
+  check("still disabled through a broken read", !live.current().enabled);
+  readError = null;
+  live.current();
+  check("error clears on a clean read", live.error() === null);
+  check(
+    "missing document means defaults",
+    createLiveSettings(() => null).current().enabled,
+  );
+}
+
 // Watcher (autoWatch) tests
 
 function mkProbe(down: boolean, routeOnlyDrop = false): ProbeResult {
@@ -693,11 +1003,11 @@ function mkProbe(down: boolean, routeOnlyDrop = false): ProbeResult {
       ? "Disconnected"
       : "Connected";
   return {
-    displayName: FIXTURE.displayName,
+    displayName: FACTS.displayName,
     profileStatus: status,
-    profileName: FIXTURE.profileName,
+    profileName: FACTS.profileName,
     profileRaw: status,
-    profiles: [{ name: FIXTURE.profileName, status, raw: status }],
+    profiles: [{ name: FACTS.profileName, status, raw: status }],
     reachabilityCode: down ? "000" : "200",
     reachable: !down,
     appAlive: true,
@@ -708,77 +1018,127 @@ function mkProbe(down: boolean, routeOnlyDrop = false): ProbeResult {
   };
 }
 
+const WATCH_DEFAULTS: WatcherSettings = {
+  autoReconnect: true,
+  maxAttemptsPerOutage: 3,
+  reconnectCooldownMs: 60_000,
+  outageThreshold: 3,
+};
+
+/** A frame whose probe is scripted; the last state repeats when exhausted. */
+function frameOf(o: {
+  probe: () => Promise<ProbeResult>;
+  reconnect?: () => Promise<ReconnectOutcome>;
+  toggleRefusal?: string;
+  settings?: Partial<WatcherSettings>;
+}): WatchFrame {
+  const frame: WatchFrame = {
+    probeIntervalMs: 90_000,
+    settings: { ...WATCH_DEFAULTS, ...o.settings },
+    probe: o.probe,
+  };
+  if (o.reconnect) frame.reconnect = o.reconnect;
+  if (o.toggleRefusal) frame.toggleRefusal = o.toggleRefusal;
+  return frame;
+}
+
+function scriptedProbe(states: boolean[]): () => Promise<ProbeResult> {
+  let i = 0;
+  return async () => {
+    const down = states[Math.min(i, states.length - 1)] ?? false;
+    i += 1;
+    return mkProbe(down);
+  };
+}
+
+function countingProbe(base: () => Promise<ProbeResult>): {
+  probe: () => Promise<ProbeResult>;
+  calls: () => number;
+} {
+  let n = 0;
+  return {
+    probe: async () => {
+      n += 1;
+      return base();
+    },
+    calls: () => n,
+  };
+}
+
+const plannerOf = (frame: WatchFrame) => () => frame;
+
+console.log("watcher: no toggle at K-1 consecutive failed probes; toggle at K");
+{
+  const probe = scriptedProbe([false, true, true, true, false]);
+  let toggles = 0;
+  const w = createTunnelWatcher(
+    plannerOf(
+      frameOf({
+        probe,
+        reconnect: async () => {
+          toggles += 1;
+          return { ok: true, attempts: 1, final: null, reason: "injected" };
+        },
+        settings: {
+          outageThreshold: 3,
+          maxAttemptsPerOutage: 1,
+          reconnectCooldownMs: 1,
+        },
+      }),
+    ),
+    { sleep: async () => {}, log: () => {} },
+  );
+  await w.tick(); // baseline up
+  await w.tick(); // failure 1/3
+  check("one failed probe does not toggle", toggles === 0, String(toggles));
+  check("the streak is open", w.state.failures === 1 && w.state.confirming);
+  await w.tick(); // failure 2/3
+  check("two failed probes do not toggle", toggles === 0, String(toggles));
+  check(
+    "still below the threshold",
+    w.state.failures === 2 && w.state.confirming,
+  );
+  await w.tick(); // failure 3/3 -> toggle
+  check("the K-th failed probe toggles", toggles === 1, String(toggles));
+  check(
+    "verified recovery resets the streak",
+    w.state.failures === 0 && !w.state.confirming && !w.state.lastDown,
+  );
+}
+
 console.log(
-  "watcher: UP→DOWN triggers exactly one reconnect flow with verify-after probe",
+  "watcher: a lag (a reachable probe) resets the streak; the second outage starts over",
 );
 {
-  const env = makeDeps({
-    ncStatus: "Connected",
-    curlCode: "302",
-    appExit: 0,
-    extExit: 0,
-    connectFlipsProfile: true,
-    connectFlipsRoute: true,
-  });
-  let probeCalls = 0;
-  const info: string[] = [];
+  const probe = scriptedProbe([true, true, false, true, true, true, false]);
+  let toggles = 0;
   const w = createTunnelWatcher(
-    {
-      autoReconnect: true,
-      maxAttemptsPerOutage: 3,
-      reconnectCooldownMs: 60_000,
-    },
-    {
-      probe: async () => {
-        probeCalls += 1;
-        return probeTunnel(baseOpts, env.deps);
-      },
-      reconnect: () =>
-        reconnectTunnel(
-          {
-            ...baseOpts,
-            disconnectDelayMs: 5,
-            connectTimeoutMs: 100,
-            pollIntervalMs: 5,
-            lockFile: lockPath("watch-heal"),
-          },
-          env.deps,
-        ),
-      sleep: env.deps.sleep,
-      log: (m) => info.push(m),
-    },
+    plannerOf(
+      frameOf({
+        probe,
+        reconnect: async () => {
+          toggles += 1;
+          return { ok: true, attempts: 1, final: null, reason: "injected" };
+        },
+        settings: { maxAttemptsPerOutage: 1, reconnectCooldownMs: 1 },
+      }),
+    ),
+    { sleep: async () => {}, log: () => {} },
   );
-  await w.tick(); // baseline UP
-  check("baseline probe ran", probeCalls === 1, String(probeCalls));
+  await w.tick(); // failure 1
+  await w.tick(); // failure 2
+  await w.tick(); // reachable again: the lag was not an outage
+  check("the streak reset on the reachable probe", w.state.failures === 0);
+  check("nothing toggled through the lag", toggles === 0, String(toggles));
+  await w.tick(); // failure 1 of the next streak
+  await w.tick(); // failure 2
   check(
-    "no reconnect while up",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
+    "the previous streak does not count toward the new one",
+    toggles === 1 ? false : w.state.failures === 2,
+    `toggles=${toggles} failures=${w.state.failures}`,
   );
-  env.setNcStatus("Disconnected");
-  env.setCurlCode("000"); // the drop takes the route down with it
-  await w.tick(); // UP->DOWN -> outage; the deep-link cycle brings both facts back
-  check(
-    "one disconnect link",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 1,
-  );
-  check(
-    "one connect link",
-    countCalls(env.calls, `open ${FIXTURE.connectLink}`) === 1,
-  );
-  check("verify-after probe ran", probeCalls === 3, String(probeCalls));
-  check(
-    "state back to up",
-    w.state.lastDown === false && w.state.attempts === 0,
-  );
-  check(
-    "recovery logged",
-    info.some((m) => m.includes("recovered after reconnect")),
-  );
-  await w.tick(); // still up → nothing
-  check(
-    "no reconnect while still up",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 1,
-  );
+  await w.tick(); // failure 3 -> toggle
+  check("the new outage toggles at K", toggles === 1, String(toggles));
 }
 
 console.log(
@@ -794,30 +1154,39 @@ console.log(
   const warn: string[] = [];
   const notices: string[] = [];
   const w = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 3, reconnectCooldownMs: 500 },
+    plannerOf(
+      frameOf({
+        probe: () => probeTunnel(baseOpts, env.deps),
+        reconnect: () =>
+          reconnectTunnel(
+            {
+              ...baseOpts,
+              toggle: LINK_TOGGLE,
+              disconnectDelayMs: 1,
+              connectTimeoutMs: 0,
+              pollIntervalMs: 5,
+              lockFile: lockPath("watch-cap"),
+            },
+            env.deps,
+          ),
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 3,
+          reconnectCooldownMs: 500,
+        },
+      }),
+    ),
     {
-      probe: () => probeTunnel(baseOpts, env.deps),
-      reconnect: () =>
-        reconnectTunnel(
-          {
-            ...baseOpts,
-            disconnectDelayMs: 1,
-            connectTimeoutMs: 0,
-            pollIntervalMs: 5,
-            lockFile: lockPath("watch-cap"),
-          },
-          env.deps,
-        ),
       sleep: env.deps.sleep,
       log: () => {},
       warn: (m) => warn.push(m),
       notify: (m) => notices.push(m),
     },
   );
-  await w.tick(); // baseline already down → outage, 3 attempts
+  await w.tick(); // baseline down at threshold 1 -> outage, 3 attempts
   check(
     "exactly maxAttempts reconnect flows",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 3,
+    countCalls(env.calls, `open ${LINK_TOGGLE.disconnect}`) === 3,
   );
   check(
     "cooldown sleep between attempts",
@@ -828,11 +1197,14 @@ console.log(
     warn.length === 1 && /persists after 3/.test(warn[0]),
     warn.join("|"),
   );
-  check("attempts capped", w.state.attempts === 3 && w.state.lastDown === true);
-  await w.tick(); // still down, no transition → no action
+  check(
+    "attempts capped and stood down",
+    w.state.attempts === 3 && w.state.lastDown === true && w.state.stoodDown,
+  );
+  await w.tick(); // still down, no transition -> no action
   check(
     "no hammering on later down probes",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 3,
+    countCalls(env.calls, `open ${LINK_TOGGLE.disconnect}`) === 3,
   );
   check("no second warn", warn.length === 1);
   check(
@@ -843,7 +1215,7 @@ console.log(
 }
 
 console.log(
-  "watcher: DOWN→UP resets attempt counter; second outage re-attempts",
+  "watcher: DOWN->UP resets attempt counter; second outage re-attempts",
 );
 {
   const env = makeDeps({
@@ -855,31 +1227,39 @@ console.log(
   const warn: string[] = [];
   let reconnectCalls = 0;
   const w = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 2, reconnectCooldownMs: 10 },
+    plannerOf(
+      frameOf({
+        probe: () => probeTunnel(baseOpts, env.deps),
+        reconnect: async () => {
+          reconnectCalls += 1;
+          return {
+            ok: false,
+            attempts: 0,
+            final: null,
+            reason: "injected failure",
+          };
+        },
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 2,
+          reconnectCooldownMs: 10,
+        },
+      }),
+    ),
     {
-      probe: () => probeTunnel(baseOpts, env.deps),
-      reconnect: async () => {
-        reconnectCalls += 1;
-        return {
-          ok: false,
-          attempts: 0,
-          final: null,
-          reason: "injected failure",
-        };
-      },
       sleep: env.deps.sleep,
       log: () => {},
       warn: (m) => warn.push(m),
     },
   );
-  await w.tick(); // baseline down → outage: 2 attempts
+  await w.tick(); // baseline down -> outage: 2 attempts
   check("first outage attempts", reconnectCalls === 2, String(reconnectCalls));
   env.setNcStatus("Connected");
   env.setCurlCode("302"); // recovery means the route answers again
   await w.tick(); // DOWN->UP -> recovery, reset
   check(
     "attempts reset on recovery",
-    w.state.attempts === 0 && w.state.lastDown === false,
+    w.state.attempts === 0 && w.state.lastDown === false && !w.state.stoodDown,
   );
   env.setNcStatus("Disconnected");
   env.setCurlCode("000");
@@ -907,17 +1287,22 @@ console.log(
   });
   let reconnectCalls = 0;
   const w = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 1, reconnectCooldownMs: 10 },
-    {
-      probe: () => probeTunnel(baseOpts, env.deps),
-      reconnect: async () => {
-        reconnectCalls += 1;
-        env.setCurlCode("302"); // the deep-link cycle restored the route
-        return { ok: true, attempts: 1, final: null, reason: "test" };
-      },
-      sleep: env.deps.sleep,
-      log: () => {},
-    },
+    plannerOf(
+      frameOf({
+        probe: () => probeTunnel(baseOpts, env.deps),
+        reconnect: async () => {
+          reconnectCalls += 1;
+          env.setCurlCode("302"); // the toggle cycle restored the route
+          return { ok: true, attempts: 1, final: null, reason: "test" };
+        },
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 1,
+          reconnectCooldownMs: 10,
+        },
+      }),
+    ),
+    { sleep: env.deps.sleep, log: () => {} },
   );
   const baseline = await probeTunnel(baseOpts, env.deps);
   check(
@@ -948,20 +1333,29 @@ console.log(
   const warn: string[] = [];
   const notices: string[] = [];
   const w = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 1, reconnectCooldownMs: 10 },
+    plannerOf(
+      frameOf({
+        probe: () => probeTunnel(baseOpts, env.deps),
+        reconnect: () =>
+          reconnectTunnel(
+            {
+              ...baseOpts,
+              toggle: LINK_TOGGLE,
+              disconnectDelayMs: 1,
+              connectTimeoutMs: 20,
+              pollIntervalMs: 5,
+              lockFile: lockPath("watch-routedeadd"),
+            },
+            env.deps,
+          ),
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 1,
+          reconnectCooldownMs: 10,
+        },
+      }),
+    ),
     {
-      probe: () => probeTunnel(baseOpts, env.deps),
-      reconnect: () =>
-        reconnectTunnel(
-          {
-            ...baseOpts,
-            disconnectDelayMs: 1,
-            connectTimeoutMs: 20,
-            pollIntervalMs: 5,
-            lockFile: lockPath("watch-routedeadd"),
-          },
-          env.deps,
-        ),
       sleep: env.deps.sleep,
       log: () => {},
       warn: (m) => warn.push(m),
@@ -980,6 +1374,104 @@ console.log(
     notices.length === 1 && /standing down/.test(notices[0]),
     notices.join("|"),
   );
+}
+
+console.log(
+  "watcher: a probe-only client confirms the outage and stands down without toggling",
+);
+{
+  const warn: string[] = [];
+  const w = createTunnelWatcher(
+    plannerOf(
+      frameOf({
+        probe: scriptedProbe([true, true, true]),
+        toggleRefusal: 'Client "incy" is not operable: no bundleId',
+        settings: { outageThreshold: 1 },
+      }),
+    ),
+    { sleep: async () => {}, log: () => {}, warn: (m) => warn.push(m) },
+  );
+  await w.tick();
+  check("stood down instead of toggling", w.state.stoodDown);
+  check(
+    "the refusal is in the warning",
+    warn.length === 1 && warn[0].includes("no bundleId"),
+    warn.join("|"),
+  );
+}
+
+console.log(
+  "watcher: a distress signal opens the confirmation sequence and never toggles alone",
+);
+{
+  let probeCalls = 0;
+  let reconcile = 0;
+  const states = [false, true, true, true, false]; // up, then down, then heals
+  const w = createTunnelWatcher(
+    plannerOf(
+      frameOf({
+        probe: async () => {
+          const down = states[Math.min(probeCalls, states.length - 1)] ?? false;
+          probeCalls += 1;
+          return mkProbe(down);
+        },
+        reconnect: async () => {
+          reconcile += 1;
+          return { ok: true, attempts: 1, final: null, reason: "injected" };
+        },
+        settings: { maxAttemptsPerOutage: 1, reconnectCooldownMs: 1 },
+      }),
+    ),
+    { sleep: async () => {}, log: () => {} },
+  );
+  await w.tick(); // baseline up
+  check("baseline probe ran", probeCalls === 1 && w.state.failures === 0);
+  await w.signalDistress("agent run aborted (provider abort)");
+  check("the signal probed immediately", probeCalls === 2, String(probeCalls));
+  check(
+    "the signal alone counted one failed probe",
+    w.state.failures === 1 && w.state.confirming,
+  );
+  check("the signal alone toggled nothing", reconcile === 0, String(reconcile));
+  await w.tick(); // failure 2
+  check("still no toggle below K", reconcile === 0, String(reconcile));
+  await w.tick(); // failure 3 -> toggle
+  check("K failed probes toggle", reconcile === 1, String(reconcile));
+  check(
+    "a signal after the recovery resets the streak",
+    w.state.failures === 0,
+  );
+}
+
+console.log(
+  "watcher: a distress signal while stood down is ignored, not a retrigger",
+);
+{
+  const probe = countingProbe(scriptedProbe([true]));
+  const w = createTunnelWatcher(
+    plannerOf(
+      frameOf({
+        probe: probe.probe,
+        reconnect: async () => ({
+          ok: false,
+          attempts: 0,
+          final: null,
+          reason: "injected",
+        }),
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 1,
+          reconnectCooldownMs: 1,
+        },
+      }),
+    ),
+    { sleep: async () => {}, log: () => {}, warn: () => {} },
+  );
+  await w.tick(); // outage: one attempt, then stood down
+  check("stood down", w.state.stoodDown);
+  const before = probe.calls();
+  await w.signalDistress("agent run aborted");
+  check("the signal probed nothing", probe.calls() === before);
 }
 
 console.log(
@@ -1003,7 +1495,7 @@ console.log(
     exec: async (cmd, args) => {
       if (
         cmd === "open" &&
-        args[0] === FIXTURE.disconnectLink &&
+        args[0] === LINK_TOGGLE.disconnect &&
         disconnectCalls++ === 0
       ) {
         await gate;
@@ -1014,6 +1506,7 @@ console.log(
   };
   const opts = {
     ...baseOpts,
+    toggle: LINK_TOGGLE,
     disconnectDelayMs: 1,
     connectTimeoutMs: 200,
     pollIntervalMs: 5,
@@ -1021,24 +1514,35 @@ console.log(
   };
   const outcomes: ReconnectOutcome[] = [];
   const logB: string[] = [];
-  const watcherA = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 1, reconnectCooldownMs: 10 },
-    {
-      probe: () => probeTunnel(baseOpts, deps),
-      reconnect: () => reconnectTunnel(opts, deps),
-      sleep: env.deps.sleep,
-      log: () => {},
+  const frame = frameOf({
+    probe: () => probeTunnel(baseOpts, deps),
+    reconnect: () => reconnectTunnel(opts, deps),
+    settings: {
+      outageThreshold: 1,
+      maxAttemptsPerOutage: 1,
+      reconnectCooldownMs: 10,
     },
-  );
+  });
+  const watcherA = createTunnelWatcher(() => frame, {
+    sleep: env.deps.sleep,
+    log: () => {},
+  });
   const watcherB = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 1, reconnectCooldownMs: 10 },
+    () =>
+      frameOf({
+        probe: () => probeTunnel(baseOpts, deps),
+        reconnect: async () => {
+          const outcome = await reconnectTunnel(opts, deps);
+          outcomes.push(outcome);
+          return outcome;
+        },
+        settings: {
+          outageThreshold: 1,
+          maxAttemptsPerOutage: 1,
+          reconnectCooldownMs: 10,
+        },
+      }),
     {
-      probe: () => probeTunnel(baseOpts, deps),
-      reconnect: async () => {
-        const outcome = await reconnectTunnel(opts, deps);
-        outcomes.push(outcome);
-        return outcome;
-      },
       sleep: env.deps.sleep,
       log: (m) => logB.push(m),
     },
@@ -1058,7 +1562,7 @@ console.log(
   );
   check(
     "second cycle toggled nothing",
-    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
+    countCalls(env.calls, `open ${LINK_TOGGLE.disconnect}`) === 0,
     env.calls.join(","),
   );
   const release = releaseFirstDisconnect as unknown as () => void;
@@ -1072,76 +1576,75 @@ console.log(
 }
 
 console.log(
-  "watcher: autoWatch false → no timer, no probe; true → timer + stop clears",
+  "watcher timer: a stand-down creates no probe, and live settings resume it",
 );
 {
   const created: number[] = [];
   const cleared: unknown[] = [];
-  let createdCb: (() => void) | undefined = undefined;
+  let fireCb: (() => void) | undefined;
   const timers = {
     created,
     cleared,
-    setInterval: (cb: () => void, ms: number) => {
-      createdCb = cb;
+    setTimeout: (cb: () => void, ms: number) => {
+      fireCb = cb;
       created.push(ms);
       return {};
     },
-    clearInterval: (t: unknown) => {
+    clearTimeout: (t: unknown) => {
       cleared.push(t);
     },
   };
+  let mode: "off" | "run" = "off";
   let probeCalls = 0;
   const deps: WatcherDeps = {
-    probe: async () => {
-      probeCalls += 1;
-      return mkProbe(false);
-    },
-    reconnect: async () => ({
-      ok: true,
-      attempts: 0,
-      final: null,
-      reason: "test",
-    }),
     sleep: async () => {},
+    log: () => {},
   };
-  const off = startTunnelWatcher(
-    {
-      autoWatch: false,
-      probeIntervalMs: 1000,
-      autoReconnect: true,
-      maxAttemptsPerOutage: 3,
-      reconnectCooldownMs: 1000,
-    },
-    deps,
-    timers,
-  );
-  check("no handle when autoWatch false", off === null);
-  check(
-    "no timer created",
-    timers.created.length === 0 && createdCb === undefined,
-  );
+  const planner = () =>
+    mode === "off"
+      ? {
+          standDown: "autoWatch is off in settings",
+          probeIntervalMs: 1234,
+        }
+      : frameOf({
+          probe: async () => {
+            probeCalls += 1;
+            return mkProbe(false);
+          },
+          reconnect: async () => ({
+            ok: true,
+            attempts: 0,
+            final: null,
+            reason: "test",
+          }),
+        });
+  const handle = startTunnelWatcher(planner, deps, timers);
   await flush();
-  check("no probe ran", probeCalls === 0, String(probeCalls));
-
-  const on = startTunnelWatcher(
-    {
-      autoWatch: true,
-      probeIntervalMs: 1234,
-      autoReconnect: true,
-      maxAttemptsPerOutage: 3,
-      reconnectCooldownMs: 1000,
-    },
-    deps,
-    timers,
-  );
+  check("no probe while standing down", probeCalls === 0, String(probeCalls));
   check(
-    "timer created with probeIntervalMs",
-    timers.created.length === 1 && timers.created[0] === 1234,
+    "timer scheduled at the stand-down cadence",
+    created.length === 1 && created[0] === 1234,
   );
+  mode = "run";
+  (fireCb as unknown as () => void)();
   await flush();
-  check("initial probe ran", probeCalls === 1, String(probeCalls));
-  on?.stop();
-  check("stop clears timer", timers.cleared.length === 1);
+  check("the next fire probes once the setting flips", probeCalls === 1);
+  check(
+    "timer scheduled at the frame cadence",
+    created.length === 2 && created[1] === 90_000,
+  );
+  handle.signalDistress("test signal");
+  await flush();
+  check("the handle exposes the distress seam", probeCalls === 2);
+  handle.stop();
+  check("stop clears the timer", cleared.length === 1);
+  const afterStop = created.length;
+  (fireCb as unknown as () => void)();
+  await flush();
+  check(
+    "a fired timer after stop does nothing",
+    created.length === afterStop && probeCalls === 2,
+  );
 }
 
 console.log("watcher: in-flight guard skips probe ticks during reconnect");
@@ -1152,19 +1655,23 @@ console.log("watcher: in-flight guard skips probe ticks during reconnect");
   let releaseReconnect: (() => void) | null = null;
   const info: string[] = [];
   const w = createTunnelWatcher(
-    { autoReconnect: true, maxAttemptsPerOutage: 3, reconnectCooldownMs: 1000 },
+    plannerOf(
+      frameOf({
+        probe: async () => {
+          probeCalls += 1;
+          return mkProbe(probeDown);
+        },
+        reconnect: async () => {
+          reconnectCalls += 1;
+          await new Promise<void>((resolve) => {
+            releaseReconnect = resolve;
+          });
+          return { ok: true, attempts: 1, final: null, reason: "released" };
+        },
+        settings: { outageThreshold: 1 },
+      }),
+    ),
     {
-      probe: async () => {
-        probeCalls += 1;
-        return mkProbe(probeDown);
-      },
-      reconnect: async () => {
-        reconnectCalls += 1;
-        await new Promise<void>((resolve) => {
-          releaseReconnect = resolve;
-        });
-        return { ok: true, attempts: 1, final: null, reason: "released" };
-      },
       sleep: async () => {},
       log: (m) => info.push(m),
     },
@@ -1188,6 +1695,60 @@ console.log("watcher: in-flight guard skips probe ticks during reconnect");
     "recovered and released inFlight",
     w.state.lastDown === false && !w.state.inFlight,
   );
+}
+
+console.log(
+  "watcher timer: a planner that throws is logged and retried, never dropped",
+);
+{
+  const created: number[] = [];
+  let fireCb: (() => void) | undefined;
+  const timers = {
+    setTimeout: (cb: () => void, ms: number) => {
+      fireCb = cb;
+      created.push(ms);
+      return {};
+    },
+    clearTimeout: () => {},
+  };
+  const warn: string[] = [];
+  let planned = 0;
+  let probeCalls = 0;
+  const handle = startTunnelWatcher(
+    () => {
+      planned += 1;
+      if (planned === 1) throw new Error("planner exploded");
+      return frameOf({
+        probe: async () => {
+          probeCalls += 1;
+          return mkProbe(false);
+        },
+        reconnect: async () => ({
+          ok: true,
+          attempts: 0,
+          final: null,
+          reason: "test",
+        }),
+      });
+    },
+    { sleep: async () => {}, log: () => {}, warn: (m) => warn.push(m) },
+    timers,
+  );
+  await flush();
+  check(
+    "the throw is warned about, not swallowed",
+    warn.length === 1 && warn[0].includes("planner exploded"),
+    warn.join("|"),
+  );
+  check(
+    "the chain reschedules itself",
+    created.length === 1 && created[0] === 60_000,
+    created.join(","),
+  );
+  (fireCb as unknown as () => void)();
+  await flush();
+  check("the next fire probes", probeCalls === 1, String(probeCalls));
+  handle.stop();
 }
 
 console.log(`\n${checks} checks, ${failures} failures`);

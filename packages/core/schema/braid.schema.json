@@ -171,92 +171,98 @@
                   "default": true,
                   "description": "Reconnect automatically when the tunnel is down.",
                   "type": "boolean",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "autoWatch": {
                   "default": true,
                   "description": "Watch the tunnel state without an explicit trigger.",
                   "type": "boolean",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "client": {
                   "default": "v2raytun",
                   "description": "Tunnel client the tools act on (v2raytun | happ | incy).",
                   "type": "string",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "connectTimeoutMs": {
                   "default": 30000,
                   "description": "Timeout for the reconnect attempt.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "cooldownMs": {
                   "default": 60000,
                   "description": "Cooldown between reconnect actions.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "curlTimeoutSecs": {
                   "default": 6,
                   "description": "Per-probe curl timeout.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "disconnectDelayMs": {
                   "default": 2000,
                   "description": "Delay between detecting a drop and declaring it.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "logFile": {
                   "default": "",
                   "description": "Append-only log file for watcher lines (empty = off).",
                   "type": "string",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "maxAttemptsPerOutage": {
                   "default": 3,
                   "description": "Reconnect attempts before an outage escalates.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
+                },
+                "outageThreshold": {
+                  "default": 3,
+                  "description": "Consecutive failed probes before the watcher toggles the tunnel.",
+                  "type": "number",
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "pollIntervalMs": {
                   "default": 2000,
                   "description": "Tunnel-state poll interval.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "probeIntervalMs": {
                   "default": 90000,
                   "description": "Background probe interval.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "profileName": {
                   "default": "",
                   "description": "NE profile name override for the probe (empty = the client adapter's own).",
                   "type": "string",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "reachabilityUrl": {
                   "default": "https://api.telegram.org",
                   "description": "URL the probe fetches to decide reachability.",
                   "type": "string",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 },
                 "reconnectCooldownMs": {
                   "default": 60000,
                   "description": "Cooldown after a successful reconnect.",
                   "type": "number",
-                  "x-source": "packages/contrib/network-monitor/index.ts:153"
+                  "x-source": "packages/contrib/network-monitor/settings.ts:83"
                 }
               },
               "type": [
                 "boolean",
                 "object"
               ],
-              "x-source": "packages/contrib/network-monitor/index.ts:153"
+              "x-source": "packages/contrib/network-monitor/settings.ts:83"
             },
             "observatory": {
               "description": "Observatory extension toggle and config.",

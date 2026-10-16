@@ -52,7 +52,7 @@ export const READER_FILES = [
   "packages/contrib/rate-limiter/index.ts",
   "packages/contrib/rate-limiter/settings.ts",
   "packages/contrib/observatory/index.ts",
-  "packages/contrib/network-monitor/index.ts",
+  "packages/contrib/network-monitor/settings.ts",
   "packages/contrib/index.ts",
   "packages/providers/presend-guard.ts",
   "packages/providers/ring-lifecycle.ts",
@@ -82,7 +82,7 @@ const CONST_SOURCES = {
   PRESGUARD_DEFAULT_ENABLED: "packages/providers/presend-guard.ts",
   DEFAULT_SEND_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
   DEFAULT_NOTIFY_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
-  DEFAULTS: "packages/contrib/network-monitor/index.ts",
+  DEFAULTS: "packages/contrib/network-monitor/settings.ts",
 };
 
 /**
@@ -303,6 +303,7 @@ function networkMonitorRows() {
     ["probeIntervalMs", "number", "Background probe interval."],
     ["maxAttemptsPerOutage", "number", "Reconnect attempts before an outage escalates."],
     ["reconnectCooldownMs", "number", "Cooldown after a successful reconnect."],
+    ["outageThreshold", "number", "Consecutive failed probes before the watcher toggles the tunnel."],
     ["logFile", "string", "Append-only log file for watcher lines (empty = off)."],
   ];
   return fields.map(([leaf, type, description]) => ({
@@ -310,8 +311,8 @@ function networkMonitorRows() {
     type,
     description,
     read: {
-      file: "packages/contrib/network-monitor/index.ts",
-      line: 153,
+      file: "packages/contrib/network-monitor/settings.ts",
+      line: 83,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
     mech: { const: "DEFAULTS", prop: leaf },
@@ -540,8 +541,8 @@ const OVERLAY_ROWS = [
     default: true,
     description: "Tunnel watch/reconnect probe; false disables, an object tunes it.",
     read: {
-      file: "packages/contrib/network-monitor/index.ts",
-      line: 153,
+      file: "packages/contrib/network-monitor/settings.ts",
+      line: 83,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
   },
