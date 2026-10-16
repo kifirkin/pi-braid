@@ -678,7 +678,10 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
             "Every row is also read for well-formedness at close time (parses under sh -n, first token " +
             "resolves, no top-level decoration, exit 0 under a completed outcome); the read ships in " +
             "shadow mode, so a failing row is logged and the close proceeds, until " +
-            'braid.orchestrator.closeGateWellFormedness is set to "enforce".',
+            'braid.orchestrator.closeGateWellFormedness is set to "enforce". ' +
+            "Rows the seat's production-write class marks as writes are refused unless the close " +
+            "records every named preflight piece somewhere in its rows; the class data is the seat's, " +
+            "and no class data means no refusal.",
         },
       ),
     ),
