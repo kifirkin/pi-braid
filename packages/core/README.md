@@ -132,7 +132,7 @@ pi loads extensions from a `packages` entry in `<cwd>/.pi/settings.json` (projec
 ```
 
 This package is the **core** workspace. The monorepo also contains four
-sibling packages (see [`../../README.md`](https://github.com/kifirkin/pi-braid/blob/main/README.md) for the full map):
+sibling packages (see the root [`README.md`](https://github.com/kifirkin/pi-braid/blob/main/README.md) for the full map):
 
 | Package       | Role                                                                 |
 | ------------- | -------------------------------------------------------------------- |
@@ -225,7 +225,7 @@ skills in the system prompt's `<available_skills>` block; the agent opens a
 
 The catalog table (one row per skill, with its verdict and one-line
 description, covering both tiers) lives in
-**[`../skills/README.md`](https://github.com/kifirkin/pi-braid/blob/main/packages/skills/README.md)**, and
+**[`packages/skills/README.md`](https://github.com/kifirkin/pi-braid/blob/main/packages/skills/README.md)**, and
 `find packages/core/skills -name SKILL.md | wc -l` counts the core set at any
 time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 
@@ -233,16 +233,16 @@ time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 
 ## Documentation
 
-| Doc                                                                                 | For                                                                     |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`docs/BEGINNERS.md`](docs/BEGINNERS.md)                                            | **First walkthrough**: install → how agents use braid → first extension |
-| [`docs/SETUP.md`](docs/SETUP.md)                                                    | **Full setup reference**, install paths, troubleshooting                |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md)                                                | Active roadmap + shipped milestones + open themes                       |
-| [`README.md`](README.md)                                                            | This overview                                                           |
-| [`AGENTS.md`](AGENTS.md)                                                            | Repository structure, DOX contract, conventions                         |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                | Development setup, code style, PR workflow, release                     |
-| [`docs/HISTORY.md`](docs/HISTORY.md)                                                | Consolidated project history, archived roadmap, research                |
-| [`../../CHANGELOG.md`](https://github.com/kifirkin/pi-braid/blob/main/CHANGELOG.md) | Release notes (curated)                                                 |
+| Doc                                                                           | For                                                                     |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [`docs/BEGINNERS.md`](docs/BEGINNERS.md)                                      | **First walkthrough**: install → how agents use braid → first extension |
+| [`docs/SETUP.md`](docs/SETUP.md)                                              | **Full setup reference**, install paths, troubleshooting                |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md)                                          | Active roadmap + shipped milestones + open themes                       |
+| [`README.md`](README.md)                                                      | This overview                                                           |
+| [`AGENTS.md`](AGENTS.md)                                                      | Repository structure, DOX contract, conventions                         |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                          | Development setup, code style, PR workflow, release                     |
+| [`docs/HISTORY.md`](docs/HISTORY.md)                                          | Consolidated project history, archived roadmap, research                |
+| [`CHANGELOG.md`](https://github.com/kifirkin/pi-braid/blob/main/CHANGELOG.md) | Release notes (curated)                                                 |
 
 ---
 
