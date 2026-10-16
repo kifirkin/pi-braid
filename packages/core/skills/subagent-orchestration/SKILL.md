@@ -231,6 +231,27 @@ the delta: the gate certified fewer files than the commit carries, which is what
 `git add` looks like. Re-run the gate on the staged tree and re-issue the close. A close with no
 stamped `files` row prints `no recorded population` and merges.
 
+### Claim verifiers and the instrument-capability warn
+
+Each claim's `verified_by` is read against a small registry of instrument shapes: search and <!-- doc-ref-exempt: seat-side result-block field; the parser lives in the orchestrator seat, not this repo -->
+count verbs (`grep`, `rg`, `wc`, `count`, `hits`), artifact citations (a report, a readme, a
+description), execution verbs (`boot`, `install`, `exit`, `suite`), content verbs (`read`,
+`measured`, `bytes`, `entries`), and enumeration instruments (`git ls-files`, an AST or
+type-aware census, a suite run, a row count). The claim's wording is read against the property
+class it asserts, and `check-result` warns — it does not fail — when the pair cannot observe
+what the claim asserts:
+
+- a coverage or elimination claim ("gone", "no remaining", "every reader") grounded on a
+  search or count verb with no census named;
+- a content claim grounded only on an artifact citation (a description is not the content);
+- a classification claim ("only", "private", "leak") grounded on a bare count with no
+  decomposition named.
+
+The warn names the census shape it wants (`git ls-files`, an AST or type-aware census, a suite
+run, or an explicit row count) and the counter line `claim-capability: k/n checked, m warn(s)`
+reports the share. The tier is warn-only: a mismatched pair leaves the block valid and the exit
+code unchanged. A verifier the registry cannot classify is left to the seat's re-derivation.
+
 ## Completion Signal
 
 ### For orchestrate-spawned workers
