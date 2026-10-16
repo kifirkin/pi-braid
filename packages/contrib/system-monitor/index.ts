@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 
 const log = createLogger("system-monitor");
 
@@ -236,6 +237,15 @@ function collectDelta(
 }
 
 export default function systemMonitorExtension(pi: ExtensionAPI) {
+  const toggle = readToggleVerdict(["systemMonitor"]);
+  if (toggle.disabled) {
+    log.info(
+      `[system-monitor] disabled via settings ` +
+        `(braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   pi.registerTool({
     name: "system_monitor",
     exposure: "deferred",

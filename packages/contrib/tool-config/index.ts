@@ -1,4 +1,5 @@
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 import {
   registerSessionStartHandler,
   SessionPhase,
@@ -48,6 +49,14 @@ import {
 } from "@earendil-works/pi-tui";
 
 export default function assistantExtension(pi: ExtensionAPI) {
+  const toggle = readToggleVerdict(["toolConfig"]);
+  if (toggle.disabled) {
+    log.info(
+      `[tool-config] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   // Interactive tool enable/disable with fuzzy search and scrollable list.
   // State persisted to session so it survives reloads and branch navigation.
   let toolEnabled: Set<string> = new Set();

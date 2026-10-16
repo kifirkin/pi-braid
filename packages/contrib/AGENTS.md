@@ -49,7 +49,8 @@ all 12 are listed individually in `package.json` → `pi.extensions` for native 
 
 ## Per-extension settings reference
 
-Read from `~/.pi/agent/settings.json` under `braid.contrib.<name>`.
+Read from `~/.pi/agent/settings.json` under `braid.contrib.<name>`. Each module reads its own key
+when it loads; the toggle behaves the same under native package loading and through the bundle.
 
 **Native pi way** (recommended): use pi's package filtering in settings.json to select
 which extensions to load from `pi.extensions` (all 12 listed individually in
@@ -65,5 +66,5 @@ which extensions to load from `pi.extensions` (all 12 listed individually in
 | `braid.contrib.observatory: { record: true }`                    | `false`             | Writes session lifecycle events to `<braidDir>/observatory/sessions/*.jsonl` (`~/.pi/agent/braid` by default).                                                                                                                                                                                                                                           |
 | `braid.contrib.rate-limiter: { rpm, tpm, providers: {...} }`     | built-in defaults   | Per-provider RPM/TPM limits. Falls back to built-in defaults for anthropic/openai/google/groq, then global `rpm`/`tpm`, then hardcoded (30/500K). Also controls the 15s max-wait ceiling.                                                                                                                                                                |
 | `braid.contrib.networkMonitor: { client, outageThreshold, ... }` | built-in defaults   | Tunnel watch/reconnect. The watcher probes the selected client (`client: v2raytun \| happ \| incy`) and toggles only after `outageThreshold` consecutive failed probes (default 3); the toggle mechanism comes from the client adapter (app deep links, or the NE profile via `scutil --nc stop\|start`). Settings are re-read while the extension runs. |
-| `braid.contrib.<name>: false`                                    | `true`              | Disable the whole extension.                                                                                                                                                                                                                                                                                                                             |
+| `braid.contrib.<name>: false`                                    | `true`              | Disable the whole extension: its tools, commands and hooks are not registered. Only a literal `false` disables; an absent key, `true` or a config object leaves it enabled. Read when the extension loads - restart the agent after changing it.                                                                                                         |
 | `braid.contrib._global.enabled: ["t1", "t2"]`                    | (none)              | Per-tool enable list used by the `/tools` TUI. Tools not in the list are disabled at runtime via `pi.setActiveTools()`.                                                                                                                                                                                                                                  |

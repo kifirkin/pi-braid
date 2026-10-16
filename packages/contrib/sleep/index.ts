@@ -20,6 +20,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 
 const log = createLogger("sleep");
 
@@ -52,6 +53,14 @@ const sleepSchema = Type.Object({
 });
 
 export default function sleepExtension(pi: ExtensionAPI): void {
+  const toggle = readToggleVerdict(["sleep"]);
+  if (toggle.disabled) {
+    log.info(
+      `[sleep] disabled via settings (braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   pi.registerTool({
     name: "sleep",
     label: "Sleep",

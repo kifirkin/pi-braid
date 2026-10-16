@@ -1,5 +1,8 @@
 import { createLogger } from "../logger.js";
+import { readToggleVerdict } from "../module-toggle.js";
 import {
+  CANONICAL_KEY,
+  DEPRECATED_KEY,
   createSettingsResolver,
   DEFAULT_LIMITS,
   type RateLimitConfig,
@@ -47,6 +50,15 @@ function loadLimits(): RateLimiterSettings {
 }
 
 export default function (pi: ExtensionAPI) {
+  const toggle = readToggleVerdict([CANONICAL_KEY, DEPRECATED_KEY]);
+  if (toggle.disabled) {
+    log.info(
+      `[rate-limiter] disabled via settings ` +
+        `(braid.contrib.${toggle.key}: false).`,
+    );
+    return;
+  }
+
   // In-memory only state - transient by design (only last 60 seconds matter)
   // Not persisted to avoid session tree pollution
   const state = new Map<string, RateLimitEntry>();

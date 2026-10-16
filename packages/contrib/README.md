@@ -68,7 +68,11 @@ Then toggle extensions and behavior from `~/.pi/agent/settings.json` under `brai
 | `braid.contrib.observatory: { record: true }`                    | `false`             | Writes session lifecycle events to `<braidDir>/observatory/sessions/*.jsonl`                                                                                                                                                                                          |
 | `braid.contrib.rate-limiter: { rpm, tpm, providers }`            | built-in defaults   | Per-provider RPM/TPM ceilings and max-wait                                                                                                                                                                                                                            |
 | `braid.contrib.networkMonitor: { client, outageThreshold, ... }` | built-in defaults   | Tunnel watch/reconnect. The watcher toggles only after `outageThreshold` consecutive failed probes (default 3); the toggle mechanism comes from the client adapter (deep links, or the NE profile via `scutil --nc stop\|start`); settings are re-read while running. |
-| `braid.contrib.<name>: false`                                    | `true`              | Disables an entire extension                                                                                                                                                                                                                                          |
+| `braid.contrib.<name>: false`                                    | `true`              | Disables an entire extension (a literal `false` only; every other value, and an absent key, enables)                                                                                                                                                                  |
+
+`braid.contrib.<name>: false` is honored on both loading paths: the bundle skips a disabled module,
+and a module loaded through `pi.extensions` registers nothing. The value is read when the extension
+loads, so restart the agent after changing it.
 
 ## Trust and safety
 
