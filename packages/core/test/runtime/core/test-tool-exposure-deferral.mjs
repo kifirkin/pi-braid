@@ -103,6 +103,8 @@ const DEFERRED_TOOLS = [
   "skill_stats",
   "system_monitor",
   "topic_drift",
+  "tunnel_reconnect",
+  "tunnel_status",
   "v2raytun_reconnect",
   "v2raytun_status",
 ];

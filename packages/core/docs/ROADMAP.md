@@ -58,10 +58,12 @@ provenance; they are no longer work.
 4. **CI private-data gate** - RESOLVED: `check-private-data.mjs` is a CI step
    and scans the whole tree by default (tracked plus untracked); the
    staged-file checks are a local pre-commit convenience.
-5. **Skills pack** - finish validating the six skills still marked
+5. **Skills pack** - finish validating the five skills still marked
    `verdict: UNVALIDATED` (`braid-reference`, `misdirection-audit`,
-   `placement-discipline`, `probe-evaluation`, `v2raytun-reconnect`,
-   `voice-replies`); keep the pack catalog fresh as decision rows land.
+   `placement-discipline`, `probe-evaluation`, `voice-replies`); keep the pack
+   catalog fresh as decision rows land. The machine-local `tunnel-control`
+   skill is `KEEP` with its v2RayTun arm validated; its Happ and Incy arms
+   stay unvalidated until a host installs those clients.
 6. **Extension surface** - ongoing de-bloat of tool/extension counts;
    subagent-RPC hardening. Worker-stats reporting shipped (`list-workers`
    `includeStats`); the orchestrator's metrics-emission half (writing
@@ -80,7 +82,7 @@ knowledge base.
 8. **Small-correctness batch** - RESOLVED: the `prompt_inspect` exclusion is
    pinned by `test-prompt-inspect-exclusion.mjs`; the watchdog tunnel-counter
    canary is a getMe-based liveness probe
-   (`telegram/src/lib/inbound-poller.ts`); the v2raytun status description is
+   (`telegram/src/lib/inbound-poller.ts`); the tunnel status description is
    complete in the shipped skill. Effort S.
 9. **Cross-provider fallback on quota death** - RESOLVED: the route-order
    engine walks to the next route, with bounded turn-level fail-back

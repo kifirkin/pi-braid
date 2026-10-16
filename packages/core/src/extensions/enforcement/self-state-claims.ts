@@ -29,6 +29,7 @@
 export const SELF_STATE_PROBE_TOOLS = [
   "session_health",
   "health_maintenance",
+  "tunnel_status",
   "v2raytun_status",
   "telegram_send",
 ] as const;
@@ -109,7 +110,7 @@ const NEGATION_HEDGE =
 
 /** Probe-tool names that, named in the claim clause itself, exempt it: citing the check ("I ran session_health: healthy") is probe awareness, not an ungrounded assertion. */
 const PROBE_NAME =
-  /(?:session_health|health_maintenance|v2raytun_status|telegram_send|telegram_poller)/i;
+  /(?:session_health|health_maintenance|tunnel_status|v2raytun_status|telegram_send|telegram_poller)/i;
 
 /** Scan input: a subset of JudgeContext fields. */
 export interface SelfStateScanInput {
@@ -197,7 +198,7 @@ export function renderSelfStateClaimsSection(claims: SelfStateClaim[]): string {
   }
   lines.push(
     "",
-    "These claims cannot be verified by build or test evidence: they need a decisive in-session probe call (session_health, health_maintenance, v2raytun_status, telegram_send), and the evidence window above shows none.",
+    "These claims cannot be verified by build or test evidence: they need a decisive in-session probe call (session_health, health_maintenance, tunnel_status, v2raytun_status, telegram_send), and the evidence window above shows none.",
     'Rule: flag each listed claim as an issue (category "claim") unless TASK EVIDENCE, TOOL EXECUTION LOG, or chunk summaries above show a probe call supporting it. Hedged or negative self-state ("poller not running", "reachability unverified") is honest and must NOT be flagged.',
   );
   return lines.join("\n");

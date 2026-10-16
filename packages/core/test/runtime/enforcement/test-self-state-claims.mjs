@@ -79,7 +79,7 @@ await test("fixture 1: prompt renders SELF-STATE CLAIMS section with rule", asyn
   assert.ok(prompt.includes("## SELF-STATE CLAIMS"), "section present");
   assert.ok(prompt.includes(`- "${CLAIM_TEXT}"`), "claim listed verbatim in prompt");
   assert.ok(
-    prompt.includes("session_health, health_maintenance, v2raytun_status, telegram_send"),
+    prompt.includes("session_health, health_maintenance, tunnel_status, v2raytun_status, telegram_send"),
     "rule names the probe set",
   );
   assert.ok(prompt.includes('category "claim"'), "rule names the issue category");
@@ -124,6 +124,14 @@ await test("fixture 2c: probe in toolLog -> no candidates", async () => {
     toolLog: ["Turn 3: [v2raytun_status] tunnel up"],
   });
   assert.deepStrictEqual(claims, [], "current-window probe suppresses candidates");
+});
+
+await test("fixture 2d: the general tunnel_status probe -> no candidates", async () => {
+  const claims = selfState.findSelfStateClaims({
+    responseText: CLAIM_TEXT,
+    toolsUsed: ["bash", "tunnel_status"],
+  });
+  assert.deepStrictEqual(claims, [], "general probe tool suppresses candidates");
 });
 
 // ── 3. Negative control: non-self-state claims ──────────────────────────────

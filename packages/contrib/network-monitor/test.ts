@@ -1,10 +1,16 @@
 /**
- * Mocked tests for the v2raytun network-monitor core (v2raytun.ts).
+ * Mocked tests for the client-agnostic tunnel core (tunnel.ts) and the
+ * per-client adapter table (clients.ts).
  *
  * Run with: node --experimental-strip-types packages/contrib/network-monitor/test.ts
  * (from the pi-braid root). No real tunnel is touched: exec and sleep are
  * fully mocked. This is the build-time gate; the live reconnect test is the
  * orchestrator's job with the owner present.
+ *
+ * The mechanism tests use a synthetic client (the FIXTURE below) so the
+ * shared layer's tests carry no vendor name; the adapter tests assert the
+ * shipped facts and the fail-closed gate. The v2raytun fixture values match
+ * the adapter's own, so a drift between them is visible.
  */
 
 import * as fs from "node:fs";
@@ -12,6 +18,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { acquireLock, DEFAULT_LOCK_TTL_MS } from "./lock.ts";
 import { createLogFileSink } from "./log-file.ts";
+import {
+  TUNNEL_CLIENTS,
+  clientRefusal,
+  isClientId,
+  operableClient,
+} from "./clients.ts";
 import {
   createTunnelWatcher,
   parseNcList,
@@ -24,7 +36,7 @@ import {
   type ProbeResult,
   type ReconnectOutcome,
   type WatcherDeps,
-} from "./v2raytun.ts";
+} from "./tunnel.ts";
 
 let failures = 0;
 let checks = 0;
@@ -59,30 +71,40 @@ function ok(code: number, stdout = ""): ExecResult {
   return { stdout, stderr: "", code };
 }
 
+/** Synthetic client used by the mechanism tests (all facts data-supplied). */
+const FIXTURE = {
+  displayName: "TestTunnel",
+  bundleId: "test.bundle.id",
+  profileName: "TestTunnel",
+  appProcess: "testtunnel",
+  extensionProcess: "test.bundle.id.ext",
+  disconnectLink: "testtunnel://disconnect",
+  connectLink: "testtunnel://connect",
+};
+
 /** Two app-owned NE profiles with OS-assigned names; the live one second. */
 const TWO_PROFILE_LIST = [
-  '* (Connected)      00000000-0000-4000-8000-000000000002 VPN (com.databridges.privacy.v2RayTun) "v2RayTun 2" [VPN:com.databridges.privacy.v2RayTun]',
-  '* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (com.databridges.privacy.v2RayTun) "v2RayTun" [VPN:com.databridges.privacy.v2RayTun]',
+  `* (Connected)      00000000-0000-4000-8000-000000000002 VPN (${FIXTURE.bundleId}) "TestTunnel 2" [VPN:${FIXTURE.bundleId}]`,
+  `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FIXTURE.bundleId}) "TestTunnel" [VPN:${FIXTURE.bundleId}]`,
 ].join("\n");
 
 /** scutil --nc list output when only the anchor profile exists. */
-const ANCHOR_LIST_LINE =
-  '* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (com.databridges.privacy.v2RayTun) "v2RayTun" [VPN:com.databridges.privacy.v2RayTun]';
+const ANCHOR_LIST_LINE = `* (Disconnected)   00000000-0000-4000-8000-000000000001 VPN (${FIXTURE.bundleId}) "TestTunnel" [VPN:${FIXTURE.bundleId}]`;
 
 interface FakeExecOptions {
   /** scutil first-line status to return (anchor and unlisted profiles). */
   ncStatus: string;
   /** curl http code to return. */
   curlCode: string;
-  /** pgrep exit code for the app (-x v2RayTun). */
+  /** pgrep exit code for the app (-x pattern). */
   appExit: number;
-  /** pgrep exit code for the extension (-f ...snextension). */
+  /** pgrep exit code for the extension (-f pattern). */
   extExit: number;
   /** After this many probe calls, scutil flips to Connected (for reconnect). */
   connectAfterProbes?: number;
-  /** `open v2raytun://connect` flips scutil to Connected. */
+  /** `open <fixture connect link>` flips scutil to Connected. */
   connectFlipsProfile?: boolean;
-  /** `open v2raytun://connect` flips curl to 302. */
+  /** `open <fixture connect link>` flips curl to 302. */
   connectFlipsRoute?: boolean;
   /** scutil --nc list output; defaults to the anchor profile alone. */
   ncList?: string;
@@ -125,7 +147,7 @@ function makeDeps(o: FakeExecOptions): {
       return ok(isApp ? o.appExit : o.extExit);
     }
     if (cmd === "open") {
-      if (args[0] === "v2raytun://connect") {
+      if (args[0] === FIXTURE.connectLink) {
         if (o.connectFlipsProfile) ncStatus = "Connected";
         if (o.connectFlipsRoute) curlCode = "302";
       }
@@ -150,14 +172,14 @@ function makeDeps(o: FakeExecOptions): {
 }
 
 const baseOpts = {
-  profileName: "v2RayTun",
+  ...FIXTURE,
   reachabilityUrl: "https://api.telegram.org",
   curlTimeoutSecs: 6,
 };
 
 console.log("probe: connected + reachable + both alive");
 {
-  const { deps } = makeDeps({
+  const { deps, calls } = makeDeps({
     ncStatus: "Connected",
     curlCode: "302",
     appExit: 0,
@@ -170,6 +192,21 @@ console.log("probe: connected + reachable + both alive");
   check("extension alive", r.extensionAlive);
   check("not down", !r.down);
   check("not routeOnlyDrop", !r.routeOnlyDrop);
+  check(
+    "app pattern comes from the options",
+    calls.some((c) => c === `pgrep -x ${FIXTURE.appProcess}`),
+    calls.join(","),
+  );
+  check(
+    "extension pattern comes from the options",
+    calls.some((c) => c === `pgrep -f ${FIXTURE.extensionProcess}`),
+    calls.join(","),
+  );
+  check(
+    "verdict line carries the display name",
+    firstLine(probeText(r)).startsWith(`${FIXTURE.displayName}: UP`),
+    firstLine(probeText(r)),
+  );
 }
 
 console.log("probe: disconnected -> down");
@@ -233,12 +270,12 @@ console.log("probe: connected sibling profile wins over the stale anchor");
     appExit: 0,
     extExit: 0,
     ncList: TWO_PROFILE_LIST,
-    ncProfiles: { "v2RayTun 2": "Connected" },
+    ncProfiles: { "TestTunnel 2": "Connected" },
   });
   const r = await probeTunnel(baseOpts, deps);
   check(
     "reports the connected sibling",
-    r.profileName === "v2RayTun 2",
+    r.profileName === "TestTunnel 2",
     r.profileName,
   );
   check("status Connected", r.profileStatus === "Connected");
@@ -251,7 +288,7 @@ console.log("probe: connected sibling profile wins over the stale anchor");
   const text = probeText(r);
   check(
     "verdict UP, never DOWN",
-    text.startsWith("v2RayTun: UP") && !text.includes("DOWN"),
+    text.startsWith("TestTunnel: UP") && !text.includes("DOWN"),
     firstLine(text),
   );
 }
@@ -306,19 +343,93 @@ console.log(
   "probe: scutil --nc list parsing uses OS names, not an assumed one",
 );
 {
-  const parsed = parseNcList(
-    TWO_PROFILE_LIST,
-    "com.databridges.privacy.v2RayTun",
-  );
+  const parsed = parseNcList(TWO_PROFILE_LIST, FIXTURE.bundleId);
   check("two app profiles parsed", parsed.length === 2, String(parsed.length));
   check(
     "names come from the list",
-    parsed.map((p) => p.name).join(",") === "v2RayTun 2,v2RayTun",
+    parsed.map((p) => p.name).join(",") === "TestTunnel 2,TestTunnel",
     parsed.map((p) => p.name).join(","),
   );
   check(
     "statuses parsed",
     parsed[0].status === "Connected" && parsed[1].status === "Disconnected",
+  );
+}
+
+console.log("adapters: v2raytun facts present; happ and incy fail closed");
+{
+  const v = TUNNEL_CLIENTS.v2raytun;
+  check("v2raytun operable", clientRefusal(v) === null, clientRefusal(v) ?? "");
+  check("v2raytun narrows to an operable client", operableClient(v) !== null);
+  check(
+    "v2raytun bundle id is the host app's",
+    v.bundleId === "com.databridges.privacy.v2RayTun",
+    String(v.bundleId),
+  );
+  check(
+    "v2raytun routes are the app binary's",
+    v.connectLink === "v2raytun://connect" &&
+      v.disconnectLink === "v2raytun://disconnect",
+  );
+  check(
+    "v2raytun process patterns match the live processes",
+    v.appProcess === "v2RayTun" &&
+      v.extensionProcess === "com.databridges.privacy.v2RayTun.snextension",
+  );
+
+  const h = TUNNEL_CLIENTS.happ;
+  const hRefusal = clientRefusal(h);
+  check("happ refused", hRefusal !== null);
+  check(
+    "happ refusal names the missing machine facts",
+    (hRefusal ?? "").includes("bundleId") &&
+      (hRefusal ?? "").includes("extensionProcess"),
+    hRefusal ?? "",
+  );
+  check(
+    "happ refusal carries the install command",
+    (hRefusal ?? "").includes("brew install --cask happ"),
+    hRefusal ?? "",
+  );
+  check(
+    "happ claims no control links (none documented)",
+    h.connectLink === null && h.disconnectLink === null,
+  );
+  check(
+    "happ does not narrow to an operable client",
+    operableClient(h) === null,
+  );
+
+  const i = TUNNEL_CLIENTS.incy;
+  const iRefusal = clientRefusal(i);
+  check("incy refused on machine facts", iRefusal !== null);
+  check(
+    "incy refusal names the machine facts, not the documented links",
+    (iRefusal ?? "").includes("bundleId") &&
+      (iRefusal ?? "").includes("appProcess"),
+    iRefusal ?? "",
+  );
+  check(
+    "incy links are the documented ones",
+    i.connectLink === "incy://connect" &&
+      i.disconnectLink === "incy://disconnect",
+  );
+  check(
+    "incy refusal carries the install command",
+    (iRefusal ?? "").includes("brew install --cask incy"),
+    iRefusal ?? "",
+  );
+  check(
+    "incy does not narrow to an operable client",
+    operableClient(i) === null,
+  );
+
+  check(
+    "client id validation",
+    isClientId("v2raytun") &&
+      isClientId("happ") &&
+      isClientId("incy") &&
+      !isClientId("nope"),
   );
 }
 
@@ -345,16 +456,16 @@ console.log("reconnect: sequence and success");
   check("reconnect ok", r.ok, r.reason);
   check(
     "disconnect link opened",
-    calls.some((c) => c === "open v2raytun://disconnect"),
+    calls.some((c) => c === `open ${FIXTURE.disconnectLink}`),
   );
   check(
     "connect link opened",
-    calls.some((c) => c === "open v2raytun://connect"),
+    calls.some((c) => c === `open ${FIXTURE.connectLink}`),
   );
   check(
     "disconnect before connect",
-    calls.indexOf("open v2raytun://disconnect") <
-      calls.indexOf("open v2raytun://connect"),
+    calls.indexOf(`open ${FIXTURE.disconnectLink}`) <
+      calls.indexOf(`open ${FIXTURE.connectLink}`),
   );
   check(
     "sleep between disconnect and connect",
@@ -447,7 +558,7 @@ console.log("reconnect: route still dead after the toggle is not success");
   );
   check(
     "toggle was attempted (pre-probe found it down)",
-    calls.some((c) => c === "open v2raytun://disconnect"),
+    calls.some((c) => c === `open ${FIXTURE.disconnectLink}`),
   );
 }
 
@@ -472,7 +583,7 @@ console.log(
     exec: async (cmd, args) => {
       if (
         cmd === "open" &&
-        args[0] === "v2raytun://disconnect" &&
+        args[0] === FIXTURE.disconnectLink &&
         disconnectCalls++ === 0
       ) {
         await firstDisconnectGate;
@@ -503,7 +614,7 @@ console.log(
   );
   check(
     "second toggled nothing",
-    countCalls(env.calls, "open v2raytun://disconnect") === 0,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
     env.calls.join(","),
   );
   const release = releaseFirstDisconnect as unknown as () => void;
@@ -582,10 +693,11 @@ function mkProbe(down: boolean, routeOnlyDrop = false): ProbeResult {
       ? "Disconnected"
       : "Connected";
   return {
+    displayName: FIXTURE.displayName,
     profileStatus: status,
-    profileName: "v2RayTun",
+    profileName: FIXTURE.profileName,
     profileRaw: status,
-    profiles: [{ name: "v2RayTun", status, raw: status }],
+    profiles: [{ name: FIXTURE.profileName, status, raw: status }],
     reachabilityCode: down ? "000" : "200",
     reachable: !down,
     appAlive: true,
@@ -640,18 +752,18 @@ console.log(
   check("baseline probe ran", probeCalls === 1, String(probeCalls));
   check(
     "no reconnect while up",
-    countCalls(env.calls, "open v2raytun://disconnect") === 0,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
   );
   env.setNcStatus("Disconnected");
   env.setCurlCode("000"); // the drop takes the route down with it
   await w.tick(); // UP->DOWN -> outage; the deep-link cycle brings both facts back
   check(
     "one disconnect link",
-    countCalls(env.calls, "open v2raytun://disconnect") === 1,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 1,
   );
   check(
     "one connect link",
-    countCalls(env.calls, "open v2raytun://connect") === 1,
+    countCalls(env.calls, `open ${FIXTURE.connectLink}`) === 1,
   );
   check("verify-after probe ran", probeCalls === 3, String(probeCalls));
   check(
@@ -665,7 +777,7 @@ console.log(
   await w.tick(); // still up → nothing
   check(
     "no reconnect while still up",
-    countCalls(env.calls, "open v2raytun://disconnect") === 1,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 1,
   );
 }
 
@@ -705,7 +817,7 @@ console.log(
   await w.tick(); // baseline already down → outage, 3 attempts
   check(
     "exactly maxAttempts reconnect flows",
-    countCalls(env.calls, "open v2raytun://disconnect") === 3,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 3,
   );
   check(
     "cooldown sleep between attempts",
@@ -720,7 +832,7 @@ console.log(
   await w.tick(); // still down, no transition → no action
   check(
     "no hammering on later down probes",
-    countCalls(env.calls, "open v2raytun://disconnect") === 3,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 3,
   );
   check("no second warn", warn.length === 1);
   check(
@@ -891,7 +1003,7 @@ console.log(
     exec: async (cmd, args) => {
       if (
         cmd === "open" &&
-        args[0] === "v2raytun://disconnect" &&
+        args[0] === FIXTURE.disconnectLink &&
         disconnectCalls++ === 0
       ) {
         await gate;
@@ -946,7 +1058,7 @@ console.log(
   );
   check(
     "second cycle toggled nothing",
-    countCalls(env.calls, "open v2raytun://disconnect") === 0,
+    countCalls(env.calls, `open ${FIXTURE.disconnectLink}`) === 0,
     env.calls.join(","),
   );
   const release = releaseFirstDisconnect as unknown as () => void;

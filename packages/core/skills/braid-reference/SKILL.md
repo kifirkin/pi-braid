@@ -21,7 +21,7 @@ Braid ships as separate packages, and docs live under each package root. Find th
 | `skills`   | the on-demand pack: `skills/<name>/SKILL.md`, `README.md`, `AGENTS.md`                |
 | `telegram` | `README.md`, `docs/`                                                                  |
 
-This file sits at `<core>/skills/braid-reference/SKILL.md`, so the core root is two levels up. The core skill set ships with the core package; the `skills` package root carries only the on-demand pack; machine-local skills such as `v2raytun-reconnect` live in `~/.pi/agent/skills/`.
+This file sits at `<core>/skills/braid-reference/SKILL.md`, so the core root is two levels up. The core skill set ships with the core package; the `skills` package root carries only the on-demand pack; machine-local skills such as `tunnel-control` live in `~/.pi/agent/skills/`.
 
 ```bash
 # 1. core root — two levels above this SKILL.md

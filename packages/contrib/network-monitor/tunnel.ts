@@ -1,27 +1,29 @@
 /**
- * v2RayTun core logic - rootless probe + deep-link reconnect.
+ * Tunnel core logic - client-agnostic rootless probe + deep-link reconnect.
  *
  * Pure and dependency-injected: exec and sleep are passed in so tests can
  * mock them without touching a real tunnel. No pi imports here; the
- * extension entry point (index.ts) owns settings and tool registration.
+ * extension entry point (index.ts) owns settings and tool registration, and
+ * the per-client facts (bundle id, process patterns, deep-link routes,
+ * profile name) arrive as data from the adapter table (clients.ts). This
+ * module carries no vendor name.
  *
- * Probe ladder (cheapest first):
- *   1. NE roster: `scutil --nc list` -> every app-owned network-extension
- *      profile; the connected one is used, so a stale anchor profile cannot
+ * Probe ladder (cheapest first), all facts supplied via ProbeOptions:
+ *   1. NE roster: `scutil --nc list` -> every profile owned by the client's
+ *      bundle id; the connected one is used, so a stale anchor profile cannot
  *      pin the verdict to DOWN. Route reachability is the ground truth.
- *   2. NE status (anchor profile from settings): `scutil --nc status "<name>"`
- *      -> first line
+ *   2. NE status (anchor profile): `scutil --nc status "<name>"` -> first line
  *   3. Reachability: `curl -sS --max-time N -o /dev/null -w '%{http_code}' <url>`
- *   4. App alive:    `pgrep -x v2RayTun`
- *   5. Extension:    `pgrep -f databridges.privacy.v2RayTun.snextension`
+ *   4. App alive:    `pgrep -x <app process>`
+ *   5. Extension:    `pgrep -f <extension process pattern>`
  *
  * Reconnect (rung 1):
- *   probe first (an up tunnel is never bounced) -> `open
- *   "v2raytun://disconnect"` -> sleep ~2s -> `open "v2raytun://connect"` ->
- *   poll up to connectTimeout -> verify the route answers. The toggle cycle
- *   runs under a cross-process lockfile so concurrent pi processes serialize
- *   instead of double-toggling. No killall, no system-extension toggle, no
- *   config file edits (the vendor regenerates configs on connect).
+ *   probe first (an up tunnel is never bounced) -> `open "<disconnect link>"`
+ *   -> sleep ~2s -> `open "<connect link>"` -> poll up to connectTimeout ->
+ *   verify the route answers. The toggle cycle runs under a cross-process
+ *   lockfile so concurrent pi processes serialize instead of double-toggling.
+ *   No killall, no system-extension toggle, no config file edits (the vendor
+ *   regenerates configs on connect).
  */
 
 import { execFile } from "node:child_process";
@@ -67,7 +69,16 @@ export type ProfileStatus =
   | "unknown";
 
 export interface ProbeOptions {
+  /** Verdict-line label (the client's display name). */
+  displayName: string;
+  /** NE bundle id whose profiles the roster step filters on. */
+  bundleId: string;
+  /** Anchor NE profile name for `scutil --nc status`. */
   profileName: string;
+  /** `pgrep -x` pattern for the client app process. */
+  appProcess: string;
+  /** `pgrep -f` pattern for the client's system-extension process. */
+  extensionProcess: string;
   reachabilityUrl: string;
   curlTimeoutSecs: number;
 }
@@ -79,12 +90,14 @@ export interface ProfileInfo {
 }
 
 export interface ProbeResult {
-  /** Status of the reported profile: Connected when any app profile is. */
+  /** Display label the verdict line leads with. */
+  displayName: string;
+  /** Status of the reported profile: Connected when any client profile is. */
   profileStatus: ProfileStatus;
   /** Which NE profile the reported status came from. */
   profileName: string;
   profileRaw: string;
-  /** Every app-owned NE profile seen, anchor profile first. */
+  /** Every client-owned NE profile seen, anchor profile first. */
   profiles: ProfileInfo[];
   reachabilityCode: string;
   reachable: boolean;
@@ -96,8 +109,6 @@ export interface ProbeResult {
   routeOnlyDrop: boolean;
   detail: string;
 }
-
-const APP_BUNDLE_ID = "com.databridges.privacy.v2RayTun";
 
 const KNOWN_STATUSES: ProfileStatus[] = [
   "Connected",
@@ -116,7 +127,7 @@ function parseProfileStatus(firstLine: string): ProfileStatus {
 
 /**
  * Parse `scutil --nc list` for profiles belonging to `bundleId`. Line shape:
- *   * (Connected)  <uuid> VPN (com.databridges.privacy.v2RayTun) "v2RayTun 2" ...
+ *   * (Connected)  <uuid> VPN (<bundle-id>) "<name>" ...
  * Names come from the OS; no profile name is assumed here.
  */
 export function parseNcList(stdout: string, bundleId: string): ProfileInfo[] {
@@ -148,8 +159,8 @@ export async function probeTunnel(
       "%{http_code}",
       opts.reachabilityUrl,
     ]),
-    deps.exec("pgrep", ["-x", "v2RayTun"]),
-    deps.exec("pgrep", ["-f", "databridges.privacy.v2RayTun.snextension"]),
+    deps.exec("pgrep", ["-x", opts.appProcess]),
+    deps.exec("pgrep", ["-f", opts.extensionProcess]),
   ]);
 
   const anchorRaw = nc.stdout.split("\n")[0] ?? "";
@@ -159,12 +170,13 @@ export async function probeTunnel(
     raw: anchorRaw,
   };
 
-  // Enumerate the app's own profiles so a stale anchor (the app keeps a
-  // disconnected profile beside the live one) cannot hide a connected tunnel.
+  // Enumerate the client's own profiles so a stale anchor (some clients keep
+  // a disconnected profile beside the live one) cannot hide a connected
+  // tunnel.
   const profiles: ProfileInfo[] = [anchor];
   const listed = await deps.exec("scutil", ["--nc", "list"]);
   if (listed.code === 0) {
-    for (const p of parseNcList(listed.stdout, APP_BUNDLE_ID)) {
+    for (const p of parseNcList(listed.stdout, opts.bundleId)) {
       if (p.name === anchor.name) continue;
       const st = await deps.exec("scutil", ["--nc", "status", p.name]);
       const raw = st.stdout.split("\n")[0] ?? "";
@@ -192,6 +204,7 @@ export async function probeTunnel(
   ].join(" | ");
 
   return {
+    displayName: opts.displayName,
     profileStatus: selected.status,
     profileName: selected.name,
     profileRaw: selected.raw,
@@ -215,12 +228,12 @@ export function probeText(r: ProbeResult): string {
   if (r.down) {
     const lead = r.routeOnlyDrop ? "route-only drop: " : "";
     return [
-      `v2RayTun: DOWN (${lead}route unreachable; NE profile ${r.profileStatus})`,
+      `${r.displayName}: DOWN (${lead}route unreachable; NE profile ${r.profileStatus})`,
       r.detail,
     ].join("\n");
   }
   return [
-    `v2RayTun: UP (route reachable; NE profile ${r.profileStatus})`,
+    `${r.displayName}: UP (route reachable; NE profile ${r.profileStatus})`,
     r.detail,
   ].join("\n");
 }
@@ -228,6 +241,10 @@ export function probeText(r: ProbeResult): string {
 // Reconnect (rung 1: deep links, no kill)
 
 export interface ReconnectOptions extends ProbeOptions {
+  /** Deep link the client exposes to disconnect the tunnel. */
+  disconnectLink: string;
+  /** Deep link the client exposes to connect the tunnel. */
+  connectLink: string;
   disconnectDelayMs: number;
   connectTimeoutMs: number;
   pollIntervalMs: number;
@@ -249,7 +266,7 @@ export interface ReconnectOutcome {
 }
 
 /**
- * Reconnect via the app's own deep links, then poll until the probe URL
+ * Reconnect via the client's own deep links, then poll until the probe URL
  * answers (or the connect timeout elapses).
  *
  * - Probe before toggling: an up tunnel is never bounced.
@@ -286,9 +303,9 @@ export async function reconnectTunnel(
   }
 
   try {
-    await deps.exec("open", ["v2raytun://disconnect"]);
+    await deps.exec("open", [opts.disconnectLink]);
     await deps.sleep(opts.disconnectDelayMs);
-    await deps.exec("open", ["v2raytun://connect"]);
+    await deps.exec("open", [opts.connectLink]);
 
     const deadline = Date.now() + opts.connectTimeoutMs;
     let attempts = 0;

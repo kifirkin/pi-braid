@@ -290,7 +290,8 @@ function emergencyOffloadRows() {
 function networkMonitorRows() {
   const prefix = "braid.contrib.networkMonitor";
   const fields = [
-    ["profileName", "string", "Tunnel profile name the probe watches."],
+    ["client", "string", "Tunnel client the tools act on (v2raytun | happ | incy)."],
+    ["profileName", "string", "NE profile name override for the probe (empty = the client adapter's own)."],
     ["reachabilityUrl", "string", "URL the probe fetches to decide reachability."],
     ["curlTimeoutSecs", "number", "Per-probe curl timeout."],
     ["disconnectDelayMs", "number", "Delay between detecting a drop and declaring it."],
@@ -310,7 +311,7 @@ function networkMonitorRows() {
     description,
     read: {
       file: "packages/contrib/network-monitor/index.ts",
-      line: 137,
+      line: 153,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
     mech: { const: "DEFAULTS", prop: leaf },
@@ -540,7 +541,7 @@ const OVERLAY_ROWS = [
     description: "Tunnel watch/reconnect probe; false disables, an object tunes it.",
     read: {
       file: "packages/contrib/network-monitor/index.ts",
-      line: 137,
+      line: 153,
       evidence: "parsed.braid?.contrib?.networkMonitor",
     },
   },
