@@ -6,7 +6,8 @@
   "files": [
     "*.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "build-info.json"
   ],
   "exports": {
     ".": "./index.ts"
@@ -30,6 +31,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node test/provider-race.test.mjs && node test/route-table.test.mjs && node test/probe.test.mjs && node test/route-state.test.mjs && node test/ring-health.test.mjs && node test/rotation-engine.test.mjs && node test/route-failback.test.mjs && node test/providers-log.test.mjs && node test/key-ring-log.test.mjs && node test/key-ring-feedback.test.mjs && node test/key-ring-exhausted.test.mjs && node test/key-ring-hammer.test.mjs && node test/key-ring-cas-veto.test.mjs && node test/key-ring-selfheal.test.mjs && node test/ring-provider.test.mjs && node test/fallback-policy.test.mjs && node test/presend-guard.test.mjs && node test/venice-catalog.test.mjs && node test/waf-sanitize.test.mjs && node test/venice-direct-route.test.mjs && node test/venice-catalog-gen.test.mjs && node test/venice-catalog-cost.test.mjs && node test/route-walk-classes.test.mjs && node test/waf-repeat-rotation.test.mjs && node test/waf-marker-retryability.test.mjs && node test/route-usable.test.mjs && node test/virtual-router.test.mjs && node test/outage-watch.test.mjs && node test/failure-translation.test.mjs && node test/state-paths.test.mjs",
     "publish:local": "node ../core/scripts/publish-local.mjs providers",
+    "prepack": "node ../core/scripts/pack-provenance.mjs write",
+    "postpack": "node ../core/scripts/pack-provenance.mjs remove",
     "clean": "rm -rf node_modules package-lock.json",
     "reinstall": "npm run clean && npm install"
   },
@@ -38,8 +41,8 @@
     "@earendil-works/pi-ai": "^1.2.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-ai": "^1.2.0",
+    "@earendil-works/pi-coding-agent": "^1.2.0"
   },
   "author": "kifirkin",
   "license": "MIT",
