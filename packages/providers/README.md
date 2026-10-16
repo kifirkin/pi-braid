@@ -1,5 +1,11 @@
 # pi-braid-providers
 
+```bash
+pi install npm:pi-braid-providers
+```
+
+One command, no clone, no build: `pi install` registers the package with pi and installs it under pi's npm directory.
+
 Additional LLM providers for `pi-coding-agent`, built on a generalized **API key ring** for multi-key rotation and self-healing.
 
 The `providers` workspace registers providers into pi at session start. The key-ring machinery that both the agent loop and direct extension LLM calls use ships here; the provider itself is the **`agent-zero`** setup: the multi-vendor gateway that proxies Venice's models, configured from a catalog file resolved at runtime.

@@ -4,6 +4,12 @@
 
 Bidirectional Telegram channel for pi-braid.
 
+```bash
+pi install npm:pi-braid-telegram
+```
+
+One command, no clone, no build: `pi install` registers the package with pi and installs it under pi's npm directory.
+
 - **Outbound**: `telegram_send` tool - the agent sends text messages to the
   owner (or voice notes once a TTS source is configured). Messages are LONG by
   default: plain text sends verbatim up to the cap (`braid.telegram.sendMaxChars`
