@@ -217,11 +217,15 @@ subject is a file or row population records what it scanned, and at which revisi
 optional `stamp` on its row:
 
 ```json
-{"cmd": "node scripts/check-placement.mjs --strict", "exit": 0, "stamp": "scanned 914 files at <revision>"}
+{
+  "cmd": "node scripts/check-placement.mjs --strict",
+  "exit": 0,
+  "stamp": "scanned 914 files at <revision>"
+}
 ```
 
 `n` is a non-negative integer, `unit` one lowercase word (`files`, `rows`, `cases`, `lines`),
-and `revision` a 7-to-40-char hex sha or a ref name. `check-result` warns — it does not fail —
+and `revision` a 7-to-40-char hex sha or a ref name. `check-result` warns; it does not fail
 when a row whose command carries a walk, list or count verb (`ls`, `find`, `fd`, `git ls-files`,
 `wc`, `rg`, `grep`) carries no stamp or an unreadable one.
 
@@ -238,7 +242,7 @@ count verbs (`grep`, `rg`, `wc`, `count`, `hits`), artifact citations (a report,
 description), execution verbs (`boot`, `install`, `exit`, `suite`), content verbs (`read`,
 `measured`, `bytes`, `entries`), and enumeration instruments (`git ls-files`, an AST or
 type-aware census, a suite run, a row count). The claim's wording is read against the property
-class it asserts, and `check-result` warns — it does not fail — when the pair cannot observe
+class it asserts, and `check-result` warns; it does not fail, when the pair cannot observe
 what the claim asserts:
 
 - a coverage or elimination claim ("gone", "no remaining", "every reader") grounded on a
