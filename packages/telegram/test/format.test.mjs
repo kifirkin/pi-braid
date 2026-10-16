@@ -237,6 +237,16 @@ test("hasHtmlTags: detects raw HTML tags, ignores comparisons and markdown", () 
     "angeled comparison is not a tag",
   );
   assert.equal(hasHtmlTags("**bold** _italic_ `code`"), false);
+  assert.equal(
+    hasHtmlTags("see <n> for the count"),
+    false,
+    "a tag-shaped token Telegram does not accept is not HTML",
+  );
+  assert.equal(
+    hasHtmlTags("a <b/> b"),
+    false,
+    "a self-closing tag Telegram rejects is not markup this package ships",
+  );
 });
 
 test("stripHtmlTags: removes raw tags, keeps inner content, <br> becomes newline", () => {
@@ -325,6 +335,33 @@ test("resolveDeliveryFormat: no request + raw HTML → auto HTML (old bug: leake
     undefined,
     "plain stays the no-request default for marker-free text",
   );
+});
+
+test("resolveDeliveryFormat: a literal <n> and &amp; survive a no-request plain body", () => {
+  const body = "literal <n> and a literal &amp; stay put";
+  const r = resolveDeliveryFormat(undefined, body);
+  assert.equal(
+    r.parseMode,
+    undefined,
+    "a tag-shaped token Telegram rejects must not auto-select HTML parsing",
+  );
+  assert.equal(
+    r.text,
+    body,
+    "the body ships byte-identical, not stripped or escaped",
+  );
+  assert.equal(r.downgraded, undefined);
+});
+
+test("resolveDeliveryFormat: an unsupported tag does not flip the HTML path (detectMarkdown)", () => {
+  const body = "count <n> items";
+  const r = resolveDeliveryFormat(undefined, body, true);
+  assert.equal(
+    r.parseMode,
+    "Markdown",
+    "balanced marker-free text keeps the live-update default",
+  );
+  assert.equal(r.text, body);
 });
 
 test("resolveDeliveryFormat: unbalanced Markdown request drops to plain (downgraded)", () => {

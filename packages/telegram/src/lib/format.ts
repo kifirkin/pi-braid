@@ -27,7 +27,11 @@ import type {
   TelegramSendResult,
   ParseMode,
 } from "./telegram-client.js";
-import { checkTelegramHtml, parseTelegramTagAt } from "./html-check.js";
+import {
+  TELEGRAM_HTML_TAGS,
+  checkTelegramHtml,
+  parseTelegramTagAt,
+} from "./html-check.js";
 
 /** Telegram hard cap for a single text message (https://core.telegram.org/bots/api#sendmessage). */
 export const TELEGRAM_MAX_TEXT_LENGTH = 4096;
@@ -145,17 +149,26 @@ export function isBalancedMarkdown(text: string): boolean {
 // attribute value is part of the tag, so `<a href="a>b">` is one token and is
 // removed whole rather than truncated at the first `>`.
 
-/** True when the text contains raw HTML tags — a signal it was authored as HTML. */
+/** True when the text contains a tag Telegram's HTML parser accepts.
+ *
+ * Tag-shaped is not enough: auto-selecting HTML for a body carrying `<n>` or
+ * `<b/>` makes Telegram reject the whole message ("Unsupported start tag"),
+ * while as a plain body the same characters reach the reader literally. Only
+ * a token whose name is in Telegram's tag set and whose syntax the parser
+ * accepts is a signal the body was authored as HTML.
+ */
 export function hasHtmlTags(text: string): boolean {
   return findTagToken(text) !== null;
 }
 
-/** First tag-shaped token in `text`, or null. */
+/** First tag-shaped token Telegram would accept, or null. */
 function findTagToken(text: string): { start: number; end: number } | null {
   let i = text.indexOf("<");
   while (i !== -1) {
     const tag = parseTelegramTagAt(text, i);
-    if (tag) return { start: i, end: tag.end };
+    if (tag && tag.error === undefined && TELEGRAM_HTML_TAGS.has(tag.name)) {
+      return { start: i, end: tag.end };
+    }
     i = text.indexOf("<", i + 1);
   }
   return null;
