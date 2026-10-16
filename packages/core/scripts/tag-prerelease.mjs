@@ -9,6 +9,13 @@
  * (scripts/lib/version-derivation.mjs), and the annotated tag `v<version>` is
  * created at HEAD.
  *
+ * A tag names its package. Core owns the bare `v` namespace (its legacy line,
+ * v0.1.1 … v0.39.0, and nothing in it is retagged); every sibling tags as
+ * `<workspace>-v<version>` (telegram-v0.1.4, providers-v1.0.5, …). One line's
+ * tags therefore cannot block another's, and the legacy core names do not
+ * squat a sibling's release name. The scheme is recorded in the root
+ * CHANGELOG.
+ *
  * It never creates a commit and never edits package.json.
  *
  * Refusals (message on stderr, exit 1):
@@ -20,9 +27,9 @@
  *   - the derived version is not valid semver: the name would not be a version
  *     and git may not even accept it as a ref;
  *   - the tag already exists;
- *   - the derived version does not sort strictly above the highest existing
- *     `v*` tag: a rebase lowers the iteration count, and a tag below the last
- *     one would re-point a released name at different code.
+ *   - the derived version does not sort strictly above the highest existing tag
+ *     in this package's namespace: a rebase lowers the iteration count, and a
+ *     tag below the last one would re-point a released name at different code.
  *
  * Usage:
  *   node packages/core/scripts/tag-prerelease.mjs [package]   # default: core
@@ -44,6 +51,17 @@ function sh(cmd, cwd) {
 function refuse(reason) {
   console.error(`[tag-prerelease] refusing: ${reason}`);
   process.exit(1);
+}
+
+/**
+ * The tag namespace this package owns. Core keeps the bare `v`: it holds the
+ * legacy line, and a package name inside the bare namespace would be a second
+ * scheme. Every sibling carries its workspace name, so the tag names its
+ * package.
+ */
+function tagPrefix(dir) {
+  const workspace = path.basename(dir);
+  return workspace === "core" ? "" : `${workspace}-`;
 }
 
 /**
@@ -86,7 +104,8 @@ if (dirty) {
 }
 
 const { version, branch, iterations } = deriveVersionFor({ base: pkg.version, pkgDir, sh });
-const tag = `v${version}`;
+const prefix = tagPrefix(pkgDir);
+const tag = `${prefix}v${version}`;
 
 if (!isValidVersion(version)) {
   refuse(
@@ -98,11 +117,11 @@ if (sh(`git rev-parse -q --verify refs/tags/${tag}`, pkgDir)) {
   refuse(`tag ${tag} already exists`);
 }
 
-const existing = sh("git tag --list 'v*'", pkgDir).split("\n").filter(Boolean);
-const highest = highestVersion(existing.map((name) => name.replace(/^v/, "")));
+const existing = sh(`git tag --list '${prefix}v*'`, pkgDir).split("\n").filter(Boolean);
+const highest = highestVersion(existing.map((name) => name.slice(`${prefix}v`.length)));
 if (highest && compareVersions(version, highest) <= 0) {
   refuse(
-    `${tag} does not sort strictly above the highest existing tag v${highest}; ` +
+    `${tag} does not sort strictly above the highest existing tag ${prefix}v${highest}; ` +
       "a rebase lowers the iteration count, and re-tagging below a released version " +
       "would re-point that name at different code",
   );
@@ -118,4 +137,4 @@ const sha = sh("git rev-parse --short HEAD", pkgDir);
 console.log(
   `[tag-prerelease] created annotated tag ${tag} at ${sha} (base ${pkg.version}, branch ${branch}, iteration ${iterations})`,
 );
-if (highest) console.log(`[tag-prerelease] highest tag before this one: v${highest}`);
+if (highest) console.log(`[tag-prerelease] highest tag before this one: ${prefix}v${highest}`);

@@ -284,10 +284,15 @@ Check the output for:
 ```bash
 git add -A
 git commit -m "chore: release vX.Y.Z"
-git tag vX.Y.Z
+node packages/core/scripts/tag-prerelease.mjs <package>   # default: core
 git push origin main --tags
 npm publish
 ```
+
+Let `tag-prerelease.mjs` name the tag: core keeps the bare `v<version>`, every
+sibling is `<workspace>-v<version>` (`telegram-v0.1.4`, `providers-v1.0.5`).
+The scheme and the per-line namespaces are recorded at the top of
+`CHANGELOG.md`.
 
 ### 6. Post-publish
 

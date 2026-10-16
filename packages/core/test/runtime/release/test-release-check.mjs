@@ -167,7 +167,7 @@ test("fails: a tag no manifest holds and no derivation produces", () => {
 
   const { code, err } = run(repo);
   assert.equal(code, 1);
-  assert.match(err, /v0\.40\.0-main\.7: no workspace manifest holds version "0\.40\.0-main\.7"/);
+  assert.match(err, /v0\.40\.0-main\.7: no manifest for pi-braid holds version "0\.40\.0-main\.7"/);
   assert.match(err, /not the iteration version this tree derives \(0\.40\.0-main\.0\)/);
 });
 
@@ -196,22 +196,79 @@ test("fails: a tree whose derived version sits below a tag that exists", () => {
   );
 });
 
-test("fails: a tag on another version line sorting above this one", () => {
-  // One tag namespace, three version lines: the check compares a derived
-  // version against every `v*` tag, so a line that has moved above this one
-  // reads as a tag this tree has already passed. The consequence is recorded
-  // in the report; this pins the behaviour so a change to it is deliberate.
+test("clean: a sibling's tag sits in its own namespace and does not block this line", () => {
+  // One namespace per package: core reads `v*` only, so a tag on the providers
+  // line is not a version this tree has already passed.
+  const repo = fixture({ core: "0.40.0", extra: { providers: "1.0.0" } });
+  sh("git tag -a providers-v1.0.0 -m 'pi-braid-providers 1.0.0'", repo);
+
+  const { code, out } = run(repo);
+  assert.equal(code, 0, out);
+  assert.match(out, /namespace: v\*/);
+  assert.match(out, /highest existing tag: \(none\)/);
+});
+
+test("clean: a sibling package reads only its own namespace", () => {
+  const repo = fixture({ core: "0.40.0", extra: { providers: "1.0.0" } });
+  sh("git tag -a providers-v1.0.0 -m 'pi-braid-providers 1.0.0'", repo);
+
+  const { code, out } = run(repo, ["providers"]);
+  assert.equal(code, 0, out);
+  assert.match(out, /namespace: providers-v\*/);
+  assert.match(out, /providers-v1\.0\.0: annotated, matches pi-braid-providers 1\.0\.0/);
+});
+
+test("clean: a sibling's derived version is not blocked by core's legacy tags", () => {
+  const repo = fixture({ core: "0.40.0", extra: { telegram: "0.1.4" } });
+  sh("git tag -a v0.40.0 -m 'pi-braid 0.40.0'", repo);
+  sh("git tag -a v0.39.0 -m 'pi-braid 0.39.0'", repo);
+
+  const { code, out } = run(repo, ["telegram"]);
+  assert.equal(code, 0, out);
+  assert.match(out, /namespace: telegram-v\*/);
+  assert.match(out, /highest existing tag: \(none\)/);
+  assert.match(out, /ordering: \(no earlier tag\) < 0\.1\.4-main\.0/);
+});
+
+test("fails: a bare v tag that spells a sibling's version is refused", () => {
   const repo = fixture({ core: "0.40.0", extra: { providers: "1.0.0" } });
   sh("git tag -a v1.0.0 -m 'pi-braid-providers 1.0.0'", repo);
 
   const { code, err } = run(repo);
   assert.equal(code, 1);
-  assert.match(err, /sorts at or below the highest existing tag v1\.0\.0/);
+  assert.match(
+    err,
+    /v1\.0\.0: a bare v tag cannot name its package; pi-braid-providers hold version "1\.0\.0"/,
+  );
+});
+
+test("fails: a sibling's tag that no manifest for that package holds", () => {
+  const repo = fixture({ core: "0.40.0", extra: { providers: "1.0.0" } });
+  sh("git tag -a providers-v1.0.1 -m 'pi-braid-providers 1.0.1'", repo);
+
+  const { code, err } = run(repo, ["providers"]);
+  assert.equal(code, 1);
+  assert.match(
+    err,
+    /providers-v1\.0\.1: no manifest for pi-braid-providers holds version "1\.0\.1"/,
+  );
+});
+
+test("fails: a sibling's derived version below its own namespace's highest tag", () => {
+  const repo = fixture({ core: "0.40.0", extra: { telegram: "0.1.4" } });
+  sh("git tag -a telegram-v0.1.5 -m 'pi-braid-telegram 0.1.5'", repo);
+
+  const { code, err } = run(repo, ["telegram"]);
+  assert.equal(code, 1);
+  assert.match(
+    err,
+    /0\.1\.4-main\.0: the version derived for this tree sorts at or below the highest existing tag telegram-v0\.1\.5 in the telegram-v\* namespace/,
+  );
 });
 
 test("a package argument reads that package's manifest", () => {
   const repo = fixture({ core: "0.40.0", extra: { providers: "1.0.0" } });
-  sh("git tag -a v1.0.0 -m 'pi-braid-providers 1.0.0'", repo);
+  sh("git tag -a providers-v1.0.0 -m 'pi-braid-providers 1.0.0'", repo);
 
   const { code, out } = run(repo, ["providers"]);
   assert.equal(code, 0, out);

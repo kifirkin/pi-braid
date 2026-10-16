@@ -162,7 +162,8 @@ Pre-requisites:
 - `npm login` completed
 - Version bumped (`npm version patch|minor|major`)
 - CHANGELOG.md updated
-- Git tag created (`git tag v<version>`)
+- Git tag created (core: `git tag v<version>`; a sibling package:
+  `git tag <workspace>-v<version>`, e.g. `telegram-v0.1.4`)
 
 ## Disk Hygiene
 
@@ -178,7 +179,9 @@ After release:
 - Local releases use the same version as the source package.json
 - Bump version before remote publication only
 - Use `npm version` for semver bumps: `npm version patch`
-- Tag the commit: `git tag v<version> && git push origin v<version>`
+- Tag the commit in its package's namespace: core's tags are bare `v<version>`,
+  a sibling's carry the workspace name (`git tag telegram-v0.1.4`, then
+  `git push origin telegram-v0.1.4`)
 
 ## CWD Scoping
 
