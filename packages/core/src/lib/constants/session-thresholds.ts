@@ -27,9 +27,8 @@ export const NUDGE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
  * retry end). Distinct from the 5-minute `NUDGE_COOLDOWN_MS` which is
  * a cross-session cap; this is the per-site rate-limit value.
  *
- * EW-7.8: promote to constant. The "remove" path (delete the field,
- * rely on NudgeManager) needs per-NudgeType cooldown decisions and
- * is deferred.
+ * Promote to constant is deferred: the "remove" path (delete the field,
+ * rely on NudgeManager) needs per-NudgeType cooldown decisions.
  */
 export const ERROR_TRACKING_NUDGE_COOLDOWN_MS = 60_000; // 1 minute
 

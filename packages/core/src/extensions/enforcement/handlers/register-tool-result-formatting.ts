@@ -1,5 +1,5 @@
 /**
- * register-tool-result-formatting — Structured Output Catalyst (MI-3)
+ * register-tool-result-formatting — Structured Output Catalyst
  *
  * Wraps tool outputs for read/grep/find/ls in a consistent structured format
  * to improve transformer processing. Uses the tool_result event's middleware

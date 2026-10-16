@@ -711,7 +711,7 @@ export function sendTrackedMessage(
     return false;
   }
 
-  // ROADMAP EW-7.12+: apply the universal whisper envelope so the agent
+  // Apply the universal whisper envelope so the agent
   // can distinguish system-injected messages from human user input. Done
   // before the flood cap so the tracked (and potentially suppressed)
   // content reflects what would have been delivered. See

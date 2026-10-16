@@ -1,6 +1,6 @@
 <!-- status: current -->
 
-# Self-Harness Loop (LP-1): src/lib/harness/
+# Self-Harness Loop: src/lib/harness/
 
 Failure collection and weakness mining. `failure-trace-collector.ts` observes the
 tool-loop detector's per-session state (written by the enforcement extension on

@@ -80,8 +80,8 @@ export const PER_SOURCE_CAP = 2;
  * caps than PER_SOURCE_CAP are NOT supported via overrides - if a
  * source needs a lower cap, add a new explicit value here.
  *
- * EW-7.13: drop the all-sources-share cap so high-priority sources
- * can get through during a degraded turn.
+ * Drop the all-sources-share cap so high-priority sources can get
+ * through during a degraded turn.
  */
 export const PER_SOURCE_CAP_OVERRIDES: Record<string, number> = {
   // Enforcement whispers are critical/high priority. A 3rd
