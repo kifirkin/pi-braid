@@ -192,6 +192,25 @@ function observedVerdicts() {
   return [...values].sort().join(" / ");
 }
 
+/** Source of truth: packages/core/package.json → the pi peer range. */
+const corePiPeerRange = () =>
+  repoJson("packages/core/package.json").peerDependencies["@earendil-works/pi-coding-agent"];
+
+/**
+ * The core README badge states the pi constraint twice, so both sites are
+ * pinned against the manifest: the visible label ("peer-resolved" while the
+ * peer range is `*`) and the shields.io URL token encoding the same claim.
+ * A numeric minimum the manifest does not hold was the drift the badge audit
+ * found; dropping the badge means dropping these two rows in the same commit.
+ */
+const corePiPeerBadgeLabel = () =>
+  corePiPeerRange() === "*" ? "peer-resolved" : corePiPeerRange();
+
+const corePiPeerBadgeToken = () => {
+  const range = corePiPeerRange();
+  return range === "*" ? "peer--resolved" : encodeURIComponent(range).replace(/-/g, "--");
+};
+
 const SOURCE_CLAIMS = [
   // Contrib extension count: packages/contrib/package.json → pi.extensions
   {
@@ -299,6 +318,19 @@ const SOURCE_CLAIMS = [
     doc: "packages/skills/README.md",
     claim: /`verdict:` field \(([^)]+)\)/,
     extractor: observedVerdicts,
+  },
+
+  // Core README badge: the pi constraint it states, against the peer range the
+  // manifest declares (extractors above). Both badge sites are covered.
+  {
+    doc: "packages/core/README.md",
+    claim: /\[!\[pi-coding-agent ([^\]\n]+)\]\(https:\/\/img\.shields\.io\/badge\/pi--coding--agent-/,
+    extractor: corePiPeerBadgeLabel,
+  },
+  {
+    doc: "packages/core/README.md",
+    claim: /img\.shields\.io\/badge\/pi--coding--agent-([A-Za-z0-9%_.-]+?)-blueviolet/,
+    extractor: corePiPeerBadgeToken,
   },
 ];
 

@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
-[![pi-coding-agent ≥ 1.2.0](https://img.shields.io/badge/pi--coding--agent-%E2%89%A51.2.0-blueviolet)](https://github.com/earendil-works/pi)
+[![pi-coding-agent peer-resolved](https://img.shields.io/badge/pi--coding--agent-peer--resolved-blueviolet)](https://github.com/earendil-works/pi)
 
 Honest self-aware agent with a metacognitive suite and extras on top of [pi-coding-agent](https://github.com/earendil-works/pi). The suite adds enforcement, memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
 
