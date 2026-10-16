@@ -2,7 +2,7 @@
 
 # Contributing to pi-braid
 
-Thanks for your interest. This file is for **braid contributors** - people working on braid itself. If you only want to _use_ braid, see [`README.md`](README.md) and [`docs/SETUP.md`](docs/SETUP.md).
+Thanks for your interest. This file is for **braid contributors** - people working on braid itself. If you only want to _use_ braid, install the published package with `pi install npm:pi-braid` (one command, no clone, no build) and start from [`README.md`](README.md) and [`docs/SETUP.md`](docs/SETUP.md); everything below is the checkout flow a contributor needs.
 
 ---
 
