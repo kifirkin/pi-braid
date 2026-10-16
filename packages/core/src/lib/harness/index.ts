@@ -1,5 +1,5 @@
 /**
- * Self-Harness Loop (LP-1) — Public API
+ * Self-Harness Loop — Public API
  *
  * Failure Trace Collection + Weakness Mining.
  *

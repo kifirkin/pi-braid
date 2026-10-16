@@ -17,7 +17,7 @@ const log = createLogger("three-memory-stores:episodes");
 /**
  * Sanitize a string by decoding literal `\uXXXX` escape sequences that
  * may have been written by a previous code path that double-encoded
- * unicode (BUG-M3). The agent-facing `recall_search` and `episodes_search`
+ * unicode. The agent-facing `recall_search` and `episodes_search`
  * displays otherwise show literal `\u2192` instead of the real character
  * `->`. Applied at load time AND at write time (in `addEpisode`) so both
  * existing data files and new writes are healed.
@@ -88,7 +88,7 @@ export function addEpisode(
     100;
 
   // Sanitize string fields before storing so newly-added episodes
-  // never reintroduce literal \uXXXX sequences (BUG-M3 hardening).
+  // never reintroduce literal \uXXXX sequences.
   // The load-time sanitizer in index.ts:loadPastEpisodes handles
   // already-stored entries.
   const episode: Episode = sanitizeEpisode({

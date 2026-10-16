@@ -1,5 +1,5 @@
 /**
- * Types for the Self-Harness Loop (LP-1).
+ * Types for the Self-Harness Loop.
  *
  * Failure signatures represent concrete failure events detected during
  * agent operation. Weakness clusters group similar signatures to identify
