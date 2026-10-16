@@ -7,7 +7,8 @@
     "src/",
     "docs/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "build-info.json"
   ],
   "exports": {
     ".": "./src/index.ts"
@@ -34,16 +35,17 @@
     "test": "node test/run-tests.mjs",
     "check:doc-index": "node ../../packages/core/scripts/check-doc-index.mjs",
     "publish:local": "node ../../packages/core/scripts/publish-local.mjs telegram",
-    "prepack": "npm run build"
+    "prepack": "npm run build && node ../../packages/core/scripts/pack-provenance.mjs write",
+    "postpack": "node ../../packages/core/scripts/pack-provenance.mjs remove"
   },
   "devDependencies": {
     "typescript": "6.0.2",
     "typebox": "1.1.38"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "@earendil-works/pi-ai": "^1.2.0",
+    "@earendil-works/pi-coding-agent": "^1.2.0",
+    "typebox": "^1.1.38"
   },
   "author": "kifirkin",
   "license": "MIT",

@@ -44,6 +44,8 @@
  *   PI_CODING_AGENT_DIR     agent dir holding settings.json (default: ~/.pi/agent)
  *   UPDATE_TARGET_VERSION   upstream version, skips the `npm view` lookup
  *   UPDATE_RUNTIME_VERSION  installed runtime version, skips the prefix lookup
+ *   UPDATE_TYPEBOX_VERSION  typebox floor for the peer ranges, skips the
+ *                           workspace-pin lookup
  *   UPDATE_NPM              npm binary used for installs (default: npm)
  *
  * Usage:
@@ -66,16 +68,37 @@ const PI_FAMILY = [
   "@earendil-works/pi-ai",
   "@earendil-works/pi-coding-agent",
 ];
+/** The host packages the workspace manifests peer-declare: the family plus pi-tui. */
+const PI_FAMILY_PEERS = [...PI_FAMILY, "@earendil-works/pi-tui"];
 const UPSTREAM_RUNTIME_PKG = "@earendil-works/pi-coding-agent";
 /** Braid workspace packages, in publish order. */
 const BRAID_PACKAGES = ["core", "providers", "skills", "telegram", "contrib"];
+/** The host family's typebox peer, on its own version line. */
+const TYPEBOX = "typebox";
 /** The runtime update, owned by the global npm prefix under mise. */
 const RUNTIME_CMD = { bin: "pi", args: ["update"] };
 
+/** A caret floor on the version the targets name. */
+const caretRange = (v) => `^${v}`;
+
 /**
- * The repo pins that moved in the last real alignment. The `*` peers in the
- * workspace manifests are deliberately open and are not pins to rewrite; these
- * concrete ones are.
+ * The repo pins that moved in the last real alignment, plus the range surfaces
+ * the runtime's own number owns.
+ *
+ * The host family is a peer in every workspace manifest, and a peer is
+ * resolved: an open `*` there hands a registry install whatever the registry's
+ * newest is, including a new major the extension was never loaded against. The
+ * caret floor is the host's own compatibility claim rather than a looser one —
+ * pi-coding-agent declares its internals as `^<its version>` (pi-ai `^1.2.0`
+ * today) — while an exact pin would foreclose patch fixes and a tilde would
+ * refuse the family the registry currently serves. Rewriting them here is what
+ * keeps them moving with the runtime instead of drifting behind it.
+ *
+ * typebox rides the host family but not the runtime's version: its floor is
+ * the version the workspace already pins for its own suites (a dev dependency,
+ * read by resolveTypeboxFloor), so the peer range and that pin cannot drift
+ * apart. Contrib's `pi-braid` peer is the pack beside it rather than the host,
+ * and is left open deliberately.
  */
 const REPO_PIN_SPECS = [
   { file: "package.json", field: "dependencies", packages: PI_FAMILY, wrap: (v) => v },
@@ -90,6 +113,18 @@ const REPO_PIN_SPECS = [
     packages: ["@earendil-works/pi-ai"],
     wrap: (v) => `^${v}`,
   },
+  // One pair of specs per workspace, discovered from BRAID_PACKAGES: a
+  // manifest that adds or drops a host peer is already owned by the next plan.
+  ...BRAID_PACKAGES.flatMap((dir) => [
+    { file: `packages/${dir}/package.json`, field: "peerDependencies", packages: PI_FAMILY_PEERS, wrap: caretRange },
+    {
+      file: `packages/${dir}/package.json`,
+      field: "peerDependencies",
+      packages: [TYPEBOX],
+      wrap: caretRange,
+      target: "typebox",
+    },
+  ]),
 ];
 /** The explicit pi-family pins in the local-packages manifest. */
 const LOCAL_PIN_SPECS = [
@@ -176,6 +211,31 @@ function resolveRuntimeVersion() {
   return readJSON(manifest)?.version ?? "unknown";
 }
 
+/**
+ * The typebox floor the peer ranges declare. typebox is not part of the pi
+ * runtime family and does not move with its number: the floor is the version
+ * the workspace already pins for its own suites (packages/telegram's dev
+ * dependency, which is also what the repo's node_modules resolves), so the peer
+ * range and that pin cannot drift apart. `null` when the pin is absent or is
+ * not a version — an unknown floor is written nowhere.
+ */
+function resolveTypeboxFloor() {
+  const override = process.env.UPDATE_TYPEBOX_VERSION;
+  const declared =
+    override && override.trim()
+      ? override.trim()
+      : (readJSON(path.join(REPO_ROOT, "packages", "telegram", "package.json"))?.devDependencies?.[
+          TYPEBOX
+        ] ?? "");
+  const floor = String(declared).replace(/^[\^~]/, "");
+  return /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(floor) ? floor : null;
+}
+
+/** The version set one run aligns to. */
+function resolveTargets() {
+  return { pi: resolveTarget(), typebox: resolveTypeboxFloor() };
+}
+
 function installedPiVersion(name) {
   const manifest = path.join(LOCAL_PACKAGES, "node_modules", ...name.split("/"), "package.json");
   return readJSON(manifest)?.version ?? null;
@@ -202,23 +262,39 @@ function installedBraidVersions() {
 // --- pin diff ---------------------------------------------------------------
 
 /**
+ * What one spec comes to in one tree: the manifest it reads, and one row per
+ * package that manifest actually declares — the field path, the value now, and
+ * the range the targets imply. Plan and apply read the same rows, so what the
+ * plan prints is what apply writes; a spec whose target is unknown, or whose
+ * manifest declares none of its packages, yields no rows and leaves the file
+ * alone, and a manifest that is absent or unreadable is not guessed at.
+ */
+function specRows(baseDir, spec, targets) {
+  const absPath = path.join(baseDir, spec.file);
+  const manifest = readJSON(absPath);
+  const target = targets[spec.target ?? "pi"];
+  const to = target ? spec.wrap(target) : null;
+  const group = manifest?.[spec.field] ?? {};
+  const rows =
+    manifest && to !== null
+      ? spec.packages
+          .filter((name) => group[name] !== undefined)
+          .map((name) => ({ field: `${spec.field}.${name}`, from: group[name], to }))
+      : [];
+  return { absPath, manifest, rows };
+}
+
+/**
  * The pin changes an apply would write: the current value and the value the
  * target version implies. `wrap` expresses the range form the field uses
- * (exact for the root resolution, caret for the providers dev dependency).
+ * (exact for the root resolution, caret for a peer range).
  */
-function pinChanges(baseDir, specs, target) {
+function pinChanges(baseDir, specs, targets) {
   const changes = [];
   for (const spec of specs) {
-    const file = path.join(baseDir, spec.file);
-    const manifest = readJSON(file);
-    if (!manifest) continue;
-    const group = manifest[spec.field] ?? {};
-    for (const name of spec.packages) {
-      const from = group[name];
-      if (from === undefined) continue;
-      const to = spec.wrap(target);
-      if (from === to) continue;
-      changes.push({ file: spec.file, field: `${spec.field}.${name}`, from, to });
+    for (const row of specRows(baseDir, spec, targets).rows) {
+      if (row.from === row.to) continue;
+      changes.push({ file: spec.file, field: row.field, from: row.from, to: row.to });
     }
   }
   return changes;
@@ -290,10 +366,11 @@ function rollbackLines(backupDir, runtimeVersion, target) {
 // --- the plan ---------------------------------------------------------------
 
 function buildPlan() {
-  const target = resolveTarget();
+  const targets = resolveTargets();
+  const target = targets.pi;
   const runtime = resolveRuntimeVersion();
-  const repoChanges = pinChanges(REPO_ROOT, REPO_PIN_SPECS, target);
-  const localChanges = pinChanges(LOCAL_PACKAGES, LOCAL_PIN_SPECS, target);
+  const repoChanges = pinChanges(REPO_ROOT, REPO_PIN_SPECS, targets);
+  const localChanges = pinChanges(LOCAL_PACKAGES, LOCAL_PIN_SPECS, targets);
   const repoPins = PI_FAMILY.map((name) => {
     const manifest = readJSON(path.join(REPO_ROOT, "package.json"));
     return { name, pin: manifest?.dependencies?.[name] ?? null, resolved: repoPiVersion(name) };
@@ -304,6 +381,7 @@ function buildPlan() {
   });
   return {
     target,
+    targets,
     runtime,
     repoChanges,
     localChanges,
@@ -325,6 +403,9 @@ function printPlan(plan, { applied = false } = {}) {
   say(`repo root: ${REPO_ROOT}`);
   say(`local-packages: ${LOCAL_PACKAGES}`);
   say(`target (upstream ${UPSTREAM_RUNTIME_PKG}): ${plan.target}`);
+  say(
+    `typebox peer floor: ${plan.targets.typebox ?? "unresolved (the typebox peer ranges are left alone)"}`,
+  );
   say(`runtime pi: ${plan.runtime} (${mark(plan.runtime === plan.target)})`);
   say(`mode: ${applied ? "apply" : "plan (read-only; nothing is written)"}`);
   say();
@@ -431,14 +512,12 @@ function applyPlan(plan) {
   }
 
   for (const spec of REPO_PIN_SPECS) {
-    const file = path.join(REPO_ROOT, spec.file);
-    const manifest = readJSON(file);
-    if (!manifest) fail(`cannot read ${file}`);
-    const group = (manifest[spec.field] ??= {});
-    for (const name of spec.packages) {
-      if (group[name] !== undefined) group[name] = spec.wrap(plan.target);
+    const { absPath, manifest, rows } = specRows(REPO_ROOT, spec, plan.targets);
+    if (!manifest || rows.length === 0) continue;
+    for (const row of rows) {
+      manifest[spec.field][row.field.slice(spec.field.length + 1)] = row.to;
     }
-    writeJSON(file, manifest);
+    writeJSON(absPath, manifest);
   }
   say(`repo pins -> ${plan.target}`);
 

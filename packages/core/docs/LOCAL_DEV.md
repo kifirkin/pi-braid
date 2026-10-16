@@ -16,8 +16,10 @@ For one-time setup, the full install-path catalog, and module toggling see
 | git  | any           | `git --version`            |
 | pi   | peer-resolved | `which pi && pi --version` |
 
-The Node floor is the `engines` field in every workspace manifest; if this
-table and `engines` ever disagree, trust `engines`.
+The Node floor is the `engines` field in every workspace manifest; the pi floor
+is the `@earendil-works/*` peer range in the same manifests (a caret on the
+family the seat runs, kept moving by the update pipeline). If this table and a
+manifest ever disagree, trust the manifest.
 
 ## Monorepo layout
 
@@ -136,6 +138,22 @@ Example: `0.40.0-main.17`. When `package.json` already carries a full
 versioned release string (e.g. `0.40.0-main.17`), it is used verbatim instead
 of being double-suffixed.
 
+### Provenance in the tarball
+
+Every artifact carries `build-info.json` - package name, packed version, commit
+sha and branch, dirty flag, pack time (`scripts/build-info.mjs` is the one
+generator). It is written by each workspace's `prepack` (`scripts/pack-provenance.mjs`),
+expanded into the `files` allowlist of every package, and removed by `postpack`,
+so an `npm publish` pays the same step a plain `npm pack` does and the checkout
+ends as it started. `publish-local` writes the record itself before it bumps the
+manifest for the pack; the prepack step then leaves that record in place, since
+it already names the version being packed and the commit it was read from.
+
+Read the record to tell two builds of the same version apart, and to check what
+a stranger installed: `sha` plus `dirty == false` is the pair that means the
+tarball is a clean checkout of a named commit - a version string identifies
+neither.
+
 ## Upstream pi update pipeline
 
 `update-pipeline.mjs` codifies the full update run for the pair - the braid
@@ -151,11 +169,15 @@ npm run release:update:runtime -- --yes  # real sequence plus `pi update` (last)
 Default mode writes nothing. It resolves the upstream pi version, compares it
 against the repo pins and the local-packages resolution, and prints the target
 version, every pin it would change (file, field, from -> to), the braid version
-bump, the publish commands, the runtime command, and the rollback commands.
+bump, the publish commands, the runtime command, and the rollback commands. The
+host-family peers are pins here too: each workspace manifest declares the
+`@earendil-works/*` peers (and `typebox`) as an explicit caret floor, and the
+plan rewrites those ranges alongside the exact pins, so the floor moves with
+the runtime instead of drifting behind it.
 
 The local-packages trap: braid resolves the pi family from
-`~/.pi/agent/local-packages`, and its manifests declare those packages as
-`*` peers. Installing a new braid tarball NEVER moves those copies - the
+`~/.pi/agent/local-packages`, and those resolutions are not what its peer ranges
+control. Installing a new braid tarball NEVER moves those copies - the
 explicit pins in `local-packages/package.json` must be realigned to the
 upstream version as their own step. That is why `--apply` aligns both sides,
 then republishes braid, and why the runtime update is always last and only runs
