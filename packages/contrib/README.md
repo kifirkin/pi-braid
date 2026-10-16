@@ -21,7 +21,7 @@ pi install npm:pi-braid-contrib
 | `codebase`        | Repo explorer: directory tree with stats, import/export dependency graph (dead-ends, orphans, hubs, cycles), per-file impact analysis                            |
 | `diff`            | Structured file and git-revision diffing: hunks with line numbers, change types, stats                                                                           |
 | `healthcheck`     | Agent self-diagnostic: tools, extensions, shell, system resources, with recommendations                                                                          |
-| `network-monitor` | v2RayTun tunnel status probe, rootless reconnect via app deep links, autonomous watcher                                                                          |
+| `network-monitor` | Tunnel status probe and rootless reconnect for v2RayTun and Happ (deep links or the client's network-extension profile), autonomous watcher                      |
 | `observatory`     | Lightweight session inspector: pi session status, registered tools, recorded lifecycle events                                                                    |
 | `path-security`   | Tiered security classification for tool calls; soft-warn by default, opt-in hard-block of dangerous bash/write operations                                        |
 | `rate-limiter`    | Per-provider RPM/TPM limits with built-in defaults and a fallback chain                                                                                          |
@@ -61,13 +61,14 @@ Alternatively, load the bundle entry directly:
 
 Then toggle extensions and behavior from `~/.pi/agent/settings.json` under `braid.contrib.*`:
 
-| Setting                                               | Default             | Effect                                                                                               |
-| ----------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| `braid.contrib.browserAdvanced: true`                 | `false`             | Enables the 7 advanced browser tools and the `/browser-tabs` command; core browser tools always load |
-| `braid.contrib.pathSecurity: { block: true }`         | `false` (soft-warn) | Hard-blocks dangerous bash/write operations instead of warning                                       |
-| `braid.contrib.observatory: { record: true }`         | `false`             | Writes session lifecycle events to `<braidDir>/observatory/sessions/*.jsonl`                         |
-| `braid.contrib.rate-limiter: { rpm, tpm, providers }` | built-in defaults   | Per-provider RPM/TPM ceilings and max-wait                                                           |
-| `braid.contrib.<name>: false`                         | `true`              | Disables an entire extension                                                                         |
+| Setting                                                          | Default             | Effect                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `braid.contrib.browserAdvanced: true`                            | `false`             | Enables the 7 advanced browser tools and the `/browser-tabs` command; core browser tools always load                                                                                                                                                                  |
+| `braid.contrib.pathSecurity: { block: true }`                    | `false` (soft-warn) | Hard-blocks dangerous bash/write operations instead of warning                                                                                                                                                                                                        |
+| `braid.contrib.observatory: { record: true }`                    | `false`             | Writes session lifecycle events to `<braidDir>/observatory/sessions/*.jsonl`                                                                                                                                                                                          |
+| `braid.contrib.rate-limiter: { rpm, tpm, providers }`            | built-in defaults   | Per-provider RPM/TPM ceilings and max-wait                                                                                                                                                                                                                            |
+| `braid.contrib.networkMonitor: { client, outageThreshold, ... }` | built-in defaults   | Tunnel watch/reconnect. The watcher toggles only after `outageThreshold` consecutive failed probes (default 3); the toggle mechanism comes from the client adapter (deep links, or the NE profile via `scutil --nc stop\|start`); settings are re-read while running. |
+| `braid.contrib.<name>: false`                                    | `true`              | Disables an entire extension                                                                                                                                                                                                                                          |
 
 ## Trust and safety
 

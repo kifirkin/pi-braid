@@ -3,31 +3,42 @@
  * macOS clients (v2RayTun, Happ, Incy) + an autonomous watcher.
  *
  * The client-agnostic mechanism lives in tunnel.ts; the per-client facts
- * live in the adapter table (clients.ts). An adapter with any fact missing
- * (a client that is not installed and validated on this host) is refused by
- * `clientRefusal` - status and reconnect alike - instead of guessing.
+ * (probe facts and the toggle mechanism: deep links or an NE-profile command)
+ * live in the adapter table (clients.ts); the settings live in settings.ts.
+ * An adapter that cannot do one of the two jobs is refused for that job only
+ * (`probeRefusal` / `toggleRefusal`) instead of guessing: a client with no
+ * separate extension process is still probed, and a client whose toggle
+ * mechanism is unknown is still probed but never toggled.
  *
  * Four tools are registered: the general pair and the two v2RayTun-pinned
  * aliases kept for compatibility.
- *   - tunnel_status      - probe the selected client (NE profile, probe-URL
- *                          reachability, app, extension) and report up/down.
- *   - tunnel_reconnect   - toggle via the client's own deep links with
+ *   - tunnel_status      - probe the selected client (NE profile roster,
+ *                          probe-URL reachability, app, extension) and report
+ *                          up/down.
+ *   - tunnel_reconnect   - toggle via the client's mechanism with
  *                          verify-after, guarded by a session cooldown and
  *                          the autoReconnect setting.
  *   - v2raytun_status    - alias of tunnel_status pinned to client v2raytun.
  *   - v2raytun_reconnect - alias of tunnel_reconnect pinned to client v2raytun.
  *
  * Plus an autonomous watcher (autoWatch, default on): probes the selected
- * client on an interval with the same read-only probe ladder and, when it
- * observes an UP->DOWN transition with autoReconnect enabled, runs the same
- * deep-link reconnect flow - retried up to maxAttemptsPerOutage times spaced
- * by reconnectCooldownMs, each attempt verified with a fresh probe. The
- * watcher starts only for an operable client; otherwise it logs why not.
- * Persistent failure logs a warning and stands down (no hammering); recovery
- * resets the counters. The interval timer is unref'd and cleared on
- * session_shutdown.
+ * client on a cadence and only toggles after `outageThreshold` consecutive
+ * failed probes (default 3), at most maxAttemptsPerOutage attempts per outage
+ * spaced by reconnectCooldownMs, each attempt verified with a fresh probe.
+ * Below the threshold a lag is not an outage: the watcher logs the failed
+ * probe and does nothing. A provider abort (an aborted agent run) is fed in
+ * as a distress signal, and a signal at most opens the confirmation sequence
+ * - it never toggles. Persistent failure logs a warning and stands down (no
+ * hammering); a reachable probe resets the counters. The timer is unref'd and
+ * cleared on session_shutdown.
  *
- * Config lives in the user settings file under braid.contrib.networkMonitor
+ * Settings are live: every probe, toggle and watcher tick re-reads them, so
+ * `braid.contrib.networkMonitor` edits take effect without a process restart,
+ * in both directions (a monitor disabled here refuses and stands down on the
+ * next tick; re-enabling it resumes the watcher). A read that fails keeps the
+ * last good configuration instead of silently falling back to defaults.
+ *
+ * Config lives in pi's settings file under braid.contrib.networkMonitor
  * (Pi core philosophy: settings, not process.env):
  *
  *   braid.contrib.networkMonitor: false                      -> disabled
@@ -42,8 +53,9 @@
  *     pollIntervalMs: 2000,
  *     cooldownMs: 60000,                // min gap between reconnects per session
  *     autoReconnect: true,              // false -> reconnect tool refuses (unless force)
- *     autoWatch: true,                  // background watcher: probe on an interval, auto-heal
- *     probeIntervalMs: 90000,           // watcher probe cadence
+ *     autoWatch: true,                  // background watcher: probe on a cadence, auto-heal
+ *     probeIntervalMs: 90000,           // watcher probe cadence (spacing of the confirmation probes)
+ *     outageThreshold: 3,               // consecutive failed probes before any toggle
  *     maxAttemptsPerOutage: 3,          // watcher reconnect attempts per outage
  *     reconnectCooldownMs: 60000,       // pause between watcher reconnect attempts
  *     logFile: ""                       // optional append-only file for log lines
@@ -52,14 +64,11 @@
  * Reconnect cycles (tool and watcher alike) serialize on one cross-process
  * lockfile under ~/.pi/agent/ so two pi processes never double-toggle.
  *
- * Guardrails: probes and deep-link toggles only. No killall, no
- * system-extension toggle, no config file edits. Other VPN profiles are
- * never touched.
+ * Guardrails: probes, deep links, and the client's own NE-profile command
+ * only. No killall, no system-extension toggle, no config file edits. Other
+ * VPN profiles are never touched.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -67,211 +76,156 @@ import type {
 import { Type } from "typebox";
 import { createLogger, setLoggerContext } from "../logger.js";
 import { reconnectLockFile } from "../state-paths.js";
+import { readSettingsFileOutcome } from "pi-braid/lib";
 import {
   CLIENT_IDS,
   TUNNEL_CLIENTS,
-  clientRefusal,
   isClientId,
   missingFacts,
   operableClient,
+  probeClient,
+  probeRefusal,
+  toggleRefusal,
+  type Capability,
   type OperableClient,
+  type ProbeClient,
   type TunnelClientAdapter,
 } from "./clients.js";
 import { createLogFileSink } from "./log-file.js";
 import { getExtensionState } from "pi-braid/lib";
 import {
+  createLiveSettings,
+  type NetworkMonitorSettings,
+  type SettingsDocument,
+  type SettingsDocumentReader,
+} from "./settings.js";
+import {
   defaultExec,
   defaultSleep,
+  describeToggle,
   probeText,
   probeTunnel,
   reconnectTunnel,
   startTunnelWatcher,
+  type ExecFn,
   type ProbeOptions,
   type ReconnectOptions,
+  type ReconnectOutcome,
+  type SleepFn,
+  type TimerDeps,
   type WatcherHandle,
+  type WatchFrame,
+  type WatchPlan,
 } from "./tunnel.js";
 
 const log = createLogger("network-monitor");
 
-interface NetworkMonitorSettings {
-  enabled: boolean;
-  client: string;
-  profileName: string;
-  reachabilityUrl: string;
-  curlTimeoutSecs: number;
-  disconnectDelayMs: number;
-  connectTimeoutMs: number;
-  pollIntervalMs: number;
-  cooldownMs: number;
-  autoReconnect: boolean;
-  autoWatch: boolean;
-  probeIntervalMs: number;
-  maxAttemptsPerOutage: number;
-  reconnectCooldownMs: number;
-  logFile: string;
-}
-
-const DEFAULTS: Omit<NetworkMonitorSettings, "enabled"> = {
-  client: "v2raytun",
-  profileName: "",
-  reachabilityUrl: "https://api.telegram.org",
-  curlTimeoutSecs: 6,
-  disconnectDelayMs: 2000,
-  connectTimeoutMs: 30000,
-  pollIntervalMs: 2000,
-  cooldownMs: 60000,
-  autoReconnect: true,
-  autoWatch: true,
-  probeIntervalMs: 90_000,
-  maxAttemptsPerOutage: 3,
-  reconnectCooldownMs: 60_000,
-  logFile: "",
-};
-
-function num(v: unknown, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
-}
-
-function bool(v: unknown, fallback: boolean): boolean {
-  return typeof v === "boolean" ? v : fallback;
-}
-
-function str(v: unknown, fallback: string): string {
-  return typeof v === "string" && v.length > 0 ? v : fallback;
-}
-
-function readSettings(): NetworkMonitorSettings {
-  const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
-  let parsed: { braid?: { contrib?: { networkMonitor?: unknown } } } = {};
-  try {
-    if (fs.existsSync(settingsPath)) {
-      parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    }
-  } catch {
-    // unreadable settings - fall back to defaults
-  }
-  const nm = parsed.braid?.contrib?.networkMonitor;
-  if (nm === false) return { ...DEFAULTS, enabled: false };
-  if (nm === undefined || nm === true) return { ...DEFAULTS, enabled: true };
-  if (typeof nm === "object" && nm !== null) {
-    const o = nm as Record<string, unknown>;
-    return {
-      enabled: true,
-      client: str(o.client, DEFAULTS.client),
-      profileName: str(o.profileName, DEFAULTS.profileName),
-      reachabilityUrl: str(o.reachabilityUrl, DEFAULTS.reachabilityUrl),
-      curlTimeoutSecs: num(o.curlTimeoutSecs, DEFAULTS.curlTimeoutSecs),
-      disconnectDelayMs: num(o.disconnectDelayMs, DEFAULTS.disconnectDelayMs),
-      connectTimeoutMs: num(o.connectTimeoutMs, DEFAULTS.connectTimeoutMs),
-      pollIntervalMs: num(o.pollIntervalMs, DEFAULTS.pollIntervalMs),
-      cooldownMs: num(o.cooldownMs, DEFAULTS.cooldownMs),
-      autoReconnect: bool(o.autoReconnect, DEFAULTS.autoReconnect),
-      autoWatch: bool(o.autoWatch, DEFAULTS.autoWatch),
-      probeIntervalMs: num(o.probeIntervalMs, DEFAULTS.probeIntervalMs),
-      maxAttemptsPerOutage: num(
-        o.maxAttemptsPerOutage,
-        DEFAULTS.maxAttemptsPerOutage,
-      ),
-      reconnectCooldownMs: num(
-        o.reconnectCooldownMs,
-        DEFAULTS.reconnectCooldownMs,
-      ),
-      logFile: str(o.logFile, DEFAULTS.logFile),
-    };
-  }
-  return { ...DEFAULTS, enabled: true };
-}
-
-/** Probe options for one operable client; the settings profile name wins. */
-function probeOptions(
-  s: NetworkMonitorSettings,
-  c: OperableClient,
-): ProbeOptions {
-  return {
-    displayName: c.displayName,
-    bundleId: c.bundleId,
-    profileName: s.profileName || c.profileName,
-    appProcess: c.appProcess,
-    extensionProcess: c.extensionProcess,
-    reachabilityUrl: s.reachabilityUrl,
-    curlTimeoutSecs: s.curlTimeoutSecs,
-  };
+/** Injectable seams, so the wiring is exercised offline without a host tunnel. */
+export interface NetworkMonitorDeps {
+  exec?: ExecFn;
+  sleep?: SleepFn;
+  timers?: TimerDeps;
+  /** Settings document reader; defaults to pi's settings.json through core. */
+  readSettingsDocument?: SettingsDocumentReader;
 }
 
 /**
- * Cross-process lockfile serializing reconnect cycles from every pi process
- * on this machine (one file, one owner; see lock.ts). Resolved per call under
- * the braid root (`state-paths.ts`), so BRAID_HOME relocates it.
+ * The real settings reader: pi's settings.json, through core's outcome-typed
+ * read so `PI_CODING_AGENT_DIR` relocates it like every other braid setting.
+ * Missing means "no saved config" (defaults); unreadable or unparseable
+ * throws, and the live source keeps the last good configuration.
  */
-function reconnectOptions(
-  s: NetworkMonitorSettings,
-  c: OperableClient,
-): ReconnectOptions | null {
-  const lockFile = reconnectLockFile();
-  if (lockFile === null) {
-    if (!warnedNoLockPath) {
-      warnedNoLockPath = true;
-      log.warn(
-        "[network-monitor] reconnect lock path is underivable (BRAID_HOME unset and no absolute home); reconnect cycles refuse rather than toggle without the cross-process lock",
-      );
-    }
-    return null;
+function defaultReadSettingsDocument(): SettingsDocument | null {
+  const outcome = readSettingsFileOutcome();
+  if (outcome.state === "missing") return null;
+  if (outcome.state === "invalid") {
+    throw new Error(`${outcome.path}: ${outcome.error.message}`);
   }
-  return {
-    ...probeOptions(s, c),
-    disconnectLink: c.disconnectLink,
-    connectLink: c.connectLink,
-    disconnectDelayMs: s.disconnectDelayMs,
-    connectTimeoutMs: s.connectTimeoutMs,
-    pollIntervalMs: s.pollIntervalMs,
-    lockFile,
-  };
+  return outcome.settings as SettingsDocument;
 }
 
-/** Warned once per process: an outage loop must not repeat this line. */
-let warnedNoLockPath = false;
+const DISABLED_TEXT =
+  "Network monitor is disabled in settings " +
+  "(braid.contrib.networkMonitor: false). Nothing was probed and nothing was " +
+  "toggled. Set it back to true (or an object of tunables) and the monitor " +
+  "resumes without a restart.";
 
-// Reconnect cooldown (session-scoped, per client)
+/** Real timer surface for the watcher's self-rescheduling chain. */
+const realTimers: TimerDeps = {
+  setTimeout: (cb: () => void, ms: number) => setTimeout(cb, ms),
+  clearTimeout: (t: unknown) => clearTimeout(t as NodeJS.Timeout),
+};
 
-interface MonitorState {
-  lastReconnectAt: Record<string, number>;
-}
+export default function networkMonitorExtension(
+  pi: ExtensionAPI,
+  deps: NetworkMonitorDeps = {},
+): void {
+  const exec = deps.exec ?? defaultExec;
+  const sleep = deps.sleep ?? defaultSleep;
+  const timers = deps.timers ?? realTimers;
+  const execDeps = { exec, sleep };
+  const live = createLiveSettings(
+    deps.readSettingsDocument ?? defaultReadSettingsDocument,
+  );
 
-function createState(): MonitorState {
-  return { lastReconnectAt: {} };
-}
-
-export default function networkMonitorExtension(pi: ExtensionAPI): void {
-  const settings = readSettings();
-  if (!settings.enabled) {
-    log.info(
-      "[network-monitor] disabled via settings (braid.contrib.networkMonitor: false).",
-    );
-    return;
-  }
-
-  const fileSink = createLogFileSink(settings.logFile);
+  // Warned once per extension load: an outage loop must not repeat this line.
+  let warnedNoLockPath = false;
   let sessionCtx: ExtensionContext | null = null;
   let handle: WatcherHandle | null = null;
+  let lastSettingsError: string | null = null;
 
+  /** The log-file sink, rebuilt when the live `logFile` setting changes. */
+  let sinkPath: string | null = null;
+  let sink: ReturnType<typeof createLogFileSink> = null;
+  const emit = (level: "info" | "warn" | "debug", msg: string): void => {
+    const s = live.current();
+    if (s.logFile !== sinkPath) {
+      sinkPath = s.logFile;
+      sink = createLogFileSink(s.logFile);
+    }
+    sink?.append(level, msg);
+  };
   const info = (msg: string): void => {
     log.info(msg);
-    fileSink?.append("info", msg);
+    emit("info", msg);
   };
   const warn = (msg: string): void => {
     log.warn(msg);
-    fileSink?.append("warn", msg);
+    emit("warn", msg);
   };
   const debug = (msg: string): void => {
     log.debug(msg);
-    fileSink?.append("debug", msg);
+    emit("debug", msg);
+  };
+
+  /**
+   * The live settings, with read failures reported once per distinct error.
+   * `live.current()` already returns the last good configuration, so a broken
+   * settings file cannot silently re-enable or re-tune the monitor.
+   */
+  const settingsNow = (): NetworkMonitorSettings => {
+    const s = live.current();
+    const error = live.error();
+    if (error !== lastSettingsError) {
+      lastSettingsError = error;
+      if (error !== null) {
+        warn(
+          "[network-monitor] settings read failed - keeping the last good configuration: " +
+            error,
+        );
+      } else {
+        info("[network-monitor] settings read recovered");
+      }
+    }
+    return s;
   };
 
   /** The client an unqualified call acts on: the `client` parameter wins. */
   function pickAdapter(
     requested: string | undefined,
+    s: NetworkMonitorSettings,
   ): TunnelClientAdapter | string {
-    const id = requested ?? settings.client;
+    const id = requested ?? s.client;
     if (!isClientId(id)) {
       return (
         `Unknown client "${id}". Valid clients: ${CLIENT_IDS.join(", ")}. ` +
@@ -290,6 +244,7 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
   function refusalResult(
     text: string,
     adapter?: TunnelClientAdapter,
+    capability?: Capability,
   ): ToolResult {
     return {
       content: [{ type: "text" as const, text }],
@@ -298,7 +253,7 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
         ...(adapter
           ? {
               client: adapter.id,
-              missing_facts: missingFacts(adapter),
+              missing_facts: missingFacts(adapter, capability ?? "probe"),
               validation: adapter.validation,
             }
           : {}),
@@ -306,45 +261,138 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     };
   }
 
-  /**
-   * Resolve a request to an operable client, or return the refusal text.
-   * Every refusal - unknown id, missing facts - is answered before any probe
-   * runs: verification is not attempted on an unvalidated arm.
-   */
-  function resolveOrRefuse(
+  type Resolution<C> =
+    | { client: C }
+    | {
+        refusal: string;
+        adapter?: TunnelClientAdapter;
+        capability: Capability;
+      };
+
+  /** Resolve a request to a probe-capable client, or return the refusal text. */
+  function resolveProbe(
     requested: string | undefined,
-  ):
-    | { client: OperableClient }
-    | { refusal: string; adapter?: TunnelClientAdapter } {
-    const picked = pickAdapter(requested);
-    if (typeof picked === "string") return { refusal: picked };
-    const client = operableClient(picked);
+    s: NetworkMonitorSettings,
+  ): Resolution<ProbeClient> {
+    if (!s.enabled) return { refusal: DISABLED_TEXT, capability: "probe" };
+    const picked = pickAdapter(requested, s);
+    if (typeof picked === "string") {
+      return { refusal: picked, capability: "probe" };
+    }
+    const client = probeClient(picked);
     if (client === null) {
       return {
         refusal:
-          clientRefusal(picked) ?? `Client "${picked.id}" is not operable.`,
+          probeRefusal(picked) ??
+          `Client "${picked.id}" cannot be probed on this host.`,
         adapter: picked,
+        capability: "probe",
       };
     }
     return { client };
   }
 
+  /**
+   * Resolve a request to a client that can be probed and toggled. Every
+   * refusal - disabled, unknown id, missing facts - is answered before any
+   * probe runs: verification is not attempted on an unvalidated arm.
+   */
+  function resolveToggle(
+    requested: string | undefined,
+    s: NetworkMonitorSettings,
+  ): Resolution<OperableClient> {
+    if (!s.enabled) return { refusal: DISABLED_TEXT, capability: "toggle" };
+    const picked = pickAdapter(requested, s);
+    if (typeof picked === "string") {
+      return { refusal: picked, capability: "toggle" };
+    }
+    const client = operableClient(picked);
+    if (client === null) {
+      return {
+        refusal:
+          toggleRefusal(picked) ??
+          `Client "${picked.id}" cannot be toggled on this host.`,
+        adapter: picked,
+        capability: "toggle",
+      };
+    }
+    return { client };
+  }
+
+  /** Probe options for one client; the settings profile name wins. */
+  function probeOptions(
+    s: NetworkMonitorSettings,
+    c: ProbeClient,
+  ): ProbeOptions {
+    return {
+      displayName: c.displayName,
+      bundleId: c.bundleId,
+      profileName: s.profileName || c.profileName,
+      appProcess: c.appProcess,
+      extensionProcess: c.extensionProcess,
+      reachabilityUrl: s.reachabilityUrl,
+      curlTimeoutSecs: s.curlTimeoutSecs,
+    };
+  }
+
+  /**
+   * Cross-process lockfile serializing reconnect cycles from every pi process
+   * on this machine (one file, one owner; see lock.ts). Resolved per call
+   * under the braid root (`state-paths.ts`), so BRAID_HOME relocates it.
+   */
+  function reconnectOptions(
+    s: NetworkMonitorSettings,
+    c: OperableClient,
+  ): ReconnectOptions | null {
+    const lockFile = reconnectLockFile();
+    if (lockFile === null) {
+      if (!warnedNoLockPath) {
+        warnedNoLockPath = true;
+        warn(
+          "[network-monitor] reconnect lock path is underivable (BRAID_HOME unset and no absolute home); reconnect cycles refuse rather than toggle without the cross-process lock",
+        );
+      }
+      return null;
+    }
+    return {
+      ...probeOptions(s, c),
+      toggle: c.toggle,
+      disconnectDelayMs: s.disconnectDelayMs,
+      connectTimeoutMs: s.connectTimeoutMs,
+      pollIntervalMs: s.pollIntervalMs,
+      lockFile,
+    };
+  }
+
+  // Reconnect cooldown (session-scoped, per client)
+
+  interface MonitorState {
+    lastReconnectAt: Record<string, number>;
+  }
+
+  function createState(): MonitorState {
+    return { lastReconnectAt: {} };
+  }
+
   /** The status flow for one client id (shared by the tool and its alias). */
   async function statusForClient(requested: string): Promise<ToolResult> {
-    const resolved = resolveOrRefuse(requested);
+    const s = settingsNow();
+    const resolved = resolveProbe(requested, s);
     if ("refusal" in resolved) {
       info(`[network-monitor] status refused: ${resolved.refusal}`);
-      return refusalResult(resolved.refusal, resolved.adapter);
+      return refusalResult(
+        resolved.refusal,
+        resolved.adapter,
+        resolved.capability,
+      );
     }
-    const result = await probeTunnel(probeOptions(settings, resolved.client), {
-      exec: defaultExec,
-      sleep: defaultSleep,
-    });
-    info(`[network-monitor] status (${resolved.client.id}): ${result.detail}`);
+    const client = resolved.client;
+    const result = await probeTunnel(probeOptions(s, client), execDeps);
+    info(`[network-monitor] status (${client.id}): ${result.detail}`);
     return {
       content: [{ type: "text" as const, text: probeText(result) }],
       details: {
-        client: resolved.client.id,
+        client: client.id,
         profile_status: result.profileStatus,
         profile_name: result.profileName,
         profiles: result.profiles.map((p) => ({
@@ -371,14 +419,19 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     const dryRun = params?.dry_run === true;
     const force = params?.force === true;
 
-    const resolved = resolveOrRefuse(requested);
+    const s = settingsNow();
+    const resolved = resolveToggle(requested, s);
     if ("refusal" in resolved) {
       info(`[network-monitor] reconnect refused: ${resolved.refusal}`);
-      return refusalResult(resolved.refusal, resolved.adapter);
+      return refusalResult(
+        resolved.refusal,
+        resolved.adapter,
+        resolved.capability,
+      );
     }
     const client = resolved.client;
 
-    if (!settings.autoReconnect && !force) {
+    if (!s.autoReconnect && !force) {
       return {
         content: [
           {
@@ -396,8 +449,8 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     const state = getExtensionState(ctx, "network-monitor", createState);
     const lastReconnectAt = state.lastReconnectAt[client.id] ?? 0;
     const sinceLast = Date.now() - lastReconnectAt;
-    if (!force && lastReconnectAt > 0 && sinceLast < settings.cooldownMs) {
-      const remainingMs = settings.cooldownMs - sinceLast;
+    if (!force && lastReconnectAt > 0 && sinceLast < s.cooldownMs) {
+      const remainingMs = s.cooldownMs - sinceLast;
       return {
         content: [
           {
@@ -423,10 +476,9 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
             type: "text" as const,
             text:
               `Dry run: probe first (an up tunnel is never bounced). Otherwise: ` +
-              `open "${client.disconnectLink}", ` +
-              `wait ${settings.disconnectDelayMs}ms, ` +
-              `open "${client.connectLink}", then verify within ${settings.connectTimeoutMs}ms. ` +
-              "Nothing was toggled.",
+              `${describeToggle(client.toggle)}, then verify within ` +
+              `${s.connectTimeoutMs}ms (pause ${s.disconnectDelayMs}ms between ` +
+              "the two). Nothing was toggled.",
           },
         ],
         details: { dry_run: true, toggled: false, client: client.id },
@@ -434,9 +486,9 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     }
 
     info(
-      `[network-monitor] reconnect (${client.id}): disconnect -> connect (deep links)`,
+      `[network-monitor] reconnect (${client.id}): ${describeToggle(client.toggle)}`,
     );
-    const reconnectOpts = reconnectOptions(settings, client);
+    const reconnectOpts = reconnectOptions(s, client);
     if (reconnectOpts === null) {
       return {
         content: [
@@ -450,10 +502,7 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
         details: { ok: false, reason: "lock-path-underivable" },
       };
     }
-    const outcome = await reconnectTunnel(reconnectOpts, {
-      exec: defaultExec,
-      sleep: defaultSleep,
-    });
+    const outcome = await reconnectTunnel(reconnectOpts, execDeps);
     // Only a real toggle starts the session cooldown; a skip or a refused
     // lock toggled nothing.
     if (!outcome.skipped && !outcome.lockHeld) {
@@ -523,16 +572,101 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     setLoggerContext(null);
   });
 
+  /** The reconnect flow bound to one settings snapshot and client. */
+  function reconnectBound(
+    s: NetworkMonitorSettings,
+    client: OperableClient,
+  ): () => Promise<ReconnectOutcome> {
+    return async () => {
+      info(
+        `[network-monitor] watcher: reconnect flow starting (${client.id}, ${describeToggle(client.toggle)})`,
+      );
+      const reconnectOpts = reconnectOptions(s, client);
+      if (reconnectOpts === null) {
+        return {
+          ok: false,
+          attempts: 0,
+          final: null,
+          reason:
+            "reconnect lock path is underivable (BRAID_HOME unset and no absolute home)",
+        };
+      }
+      return reconnectTunnel(reconnectOpts, execDeps);
+    };
+  }
+
+  /**
+   * Plan one watcher step from a single settings snapshot: the stand-down
+   * reasons first, then the frame the probe and toggle are bound to.
+   */
+  const watchPlan = (): WatchPlan => {
+    const s = settingsNow();
+    const standDown = !s.enabled
+      ? "disabled in settings (braid.contrib.networkMonitor: false)"
+      : !s.autoWatch
+        ? "autoWatch is off in settings"
+        : null;
+    if (standDown !== null) {
+      return { standDown, probeIntervalMs: s.probeIntervalMs };
+    }
+    const picked = pickAdapter(undefined, s);
+    if (typeof picked === "string") {
+      return { standDown: picked, probeIntervalMs: s.probeIntervalMs };
+    }
+    const client = probeClient(picked);
+    if (client === null) {
+      return {
+        standDown:
+          probeRefusal(picked) ?? `Client "${picked.id}" cannot be probed.`,
+        probeIntervalMs: s.probeIntervalMs,
+      };
+    }
+    const frame: WatchFrame = {
+      probeIntervalMs: s.probeIntervalMs,
+      settings: {
+        autoReconnect: s.autoReconnect,
+        maxAttemptsPerOutage: s.maxAttemptsPerOutage,
+        reconnectCooldownMs: s.reconnectCooldownMs,
+        outageThreshold: s.outageThreshold,
+      },
+      probe: async () => {
+        const r = await probeTunnel(probeOptions(s, client), execDeps);
+        debug(`[network-monitor] watcher probe (${client.id}): ${r.detail}`);
+        return r;
+      },
+    };
+    // A probe-only client still watches: it can confirm an outage and report
+    // it, but it has no toggle mechanism to drive, so the frame carries the
+    // refusal instead of a reconnect flow.
+    const operable = operableClient(picked);
+    if (operable === null) {
+      frame.toggleRefusal =
+        toggleRefusal(picked) ??
+        `Client "${picked.id}" has no toggle mechanism on this host.`;
+    } else {
+      frame.reconnect = reconnectBound(s, operable);
+    }
+    return frame;
+  };
+
+  const initial = settingsNow();
   info(
-    `[network-monitor] loaded - client "${settings.client}", ` +
-      `profile "${settings.profileName || "(adapter default)"}", ` +
-      `autoReconnect=${settings.autoReconnect}, cooldown=${settings.cooldownMs}ms, ` +
-      `autoWatch=${settings.autoWatch}` +
-      (settings.autoWatch
-        ? ` (probe every ${settings.probeIntervalMs}ms, max ${settings.maxAttemptsPerOutage} attempts/outage)`
+    `[network-monitor] loaded - client "${initial.client}", ` +
+      `profile "${initial.profileName || "(adapter default)"}", ` +
+      `autoReconnect=${initial.autoReconnect}, cooldown=${initial.cooldownMs}ms, ` +
+      `autoWatch=${initial.autoWatch}` +
+      (initial.autoWatch
+        ? ` (probe every ${initial.probeIntervalMs}ms, toggle after ` +
+          `${initial.outageThreshold} consecutive failed probes, max ` +
+          `${initial.maxAttemptsPerOutage} attempts/outage)`
         : "") +
-      (settings.logFile ? `, logFile=${settings.logFile}` : ""),
+      (initial.logFile ? `, logFile=${initial.logFile}` : ""),
   );
+  if (!initial.enabled) {
+    warn(
+      "[network-monitor] disabled via settings (braid.contrib.networkMonitor: false) - loaded but inert; tools refuse and the watcher stands down until the setting changes.",
+    );
+  }
 
   const clientParam = Type.Optional(
     Type.String({
@@ -552,28 +686,31 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
       "The client adapter (v2RayTun, Happ, Incy) comes from the client parameter " +
       "or braid.contrib.networkMonitor.client. Checks the client's network-extension " +
       "profile roster via scutil (primary), reachability of the probe URL via curl, " +
-      "and liveness of the app and its system extension via pgrep. Read-only - never " +
-      "toggles anything. A client without validated facts is refused with the reason " +
-      "(nothing is probed). Use before and after a reconnect to confirm the tunnel " +
-      "came back.",
+      "and liveness of the app and, when it ships one, its system extension via " +
+      "pgrep. Read-only - never toggles anything. A client without validated probe " +
+      "facts is refused with the reason (nothing is probed). Use before and after a " +
+      "reconnect to confirm the tunnel came back.",
     parameters: Type.Object({ client: clientParam }),
     execute: async (_toolCallId: string, params: any): Promise<any> =>
-      statusForClient(params?.client ?? settings.client),
+      statusForClient(params?.client ?? settingsNow().client),
   });
 
   pi.registerTool({
     name: "tunnel_reconnect",
     exposure: "deferred",
     label: "Tunnel reconnect",
-    promptSnippet: "Reconnect the macOS tunnel client via its deep links",
+    promptSnippet: "Reconnect the macOS tunnel client via its own mechanism",
     description:
-      "Reconnect a macOS tunnel client via its own deep links, then verify it " +
-      "comes back. The toggle links come from the client adapter (v2RayTun, Happ, " +
-      "Incy), selected by the client parameter or braid.contrib.networkMonitor.client. " +
+      "Reconnect a macOS tunnel client through its own toggle mechanism (the " +
+      "app's deep links, or the client's network-extension profile via scutil) and " +
+      "then verify it comes back. The client adapter (v2RayTun, Happ, Incy) is " +
+      "selected by the client parameter or braid.contrib.networkMonitor.client. " +
       "No killall, no system-extension toggle, no config edits. Guarded by a session " +
       "cooldown and the autoReconnect setting; pass force: true to bypass both. " +
       "dry_run: true reports what would happen without toggling anything. A client " +
-      "without validated facts is refused with the reason (nothing is toggled).",
+      "without a validated toggle mechanism is refused with the reason (nothing is " +
+      "toggled). This is an explicit action: the autonomous watcher instead waits " +
+      "for several consecutive failed probes before it toggles.",
     parameters: Type.Object({
       client: clientParam,
       dry_run: Type.Optional(
@@ -596,7 +733,7 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
       _onUpdate: any,
       ctx: ExtensionContext,
     ): Promise<any> =>
-      reconnectForClient(params?.client ?? settings.client, params, ctx),
+      reconnectForClient(params?.client ?? settingsNow().client, params, ctx),
   });
 
   // Compatibility aliases: the shipped v2raytun_* names, pinned to their
@@ -651,70 +788,27 @@ export default function networkMonitorExtension(pi: ExtensionAPI): void {
     ): Promise<any> => reconnectForClient("v2raytun", params, ctx),
   });
 
-  // Autonomous watcher (autoWatch)
+  // Autonomous watcher (autoWatch). Started unconditionally: the planner
+  // stands it down while settings disable it, so re-enabling is live.
+  handle = startTunnelWatcher(
+    watchPlan,
+    {
+      sleep,
+      log: (msg: string) => info(`[network-monitor] ${msg}`),
+      debug: (msg: string) => debug(`[network-monitor] ${msg}`),
+      warn: (msg: string) => warn(`[network-monitor] ${msg}`),
+      notify: (msg: string) => {
+        sessionCtx?.ui.notify(`[network-monitor] ${msg}`, "warning");
+      },
+    },
+    timers,
+  );
 
-  if (settings.autoWatch) {
-    const picked = pickAdapter(undefined);
-    const operable = typeof picked === "string" ? null : operableClient(picked);
-    if (operable === null) {
-      warn(
-        `[network-monitor] watcher not started: ${
-          typeof picked === "string"
-            ? picked
-            : (clientRefusal(picked) ?? `client "${picked.id}" is not operable`)
-        }`,
-      );
-    } else {
-      handle = startTunnelWatcher(
-        {
-          autoWatch: true,
-          probeIntervalMs: settings.probeIntervalMs,
-          autoReconnect: settings.autoReconnect,
-          maxAttemptsPerOutage: settings.maxAttemptsPerOutage,
-          reconnectCooldownMs: settings.reconnectCooldownMs,
-        },
-        {
-          probe: async () => {
-            const r = await probeTunnel(probeOptions(settings, operable), {
-              exec: defaultExec,
-              sleep: defaultSleep,
-            });
-            debug(
-              `[network-monitor] watcher probe (${operable.id}): ${r.detail}`,
-            );
-            return r;
-          },
-          reconnect: () => {
-            info(
-              `[network-monitor] watcher: reconnect flow starting (${operable.id}, deep links)`,
-            );
-            const reconnectOpts = reconnectOptions(settings, operable);
-            if (reconnectOpts === null) {
-              return Promise.resolve({
-                ok: false,
-                attempts: 0,
-                final: null,
-                reason:
-                  "reconnect lock path is underivable (BRAID_HOME unset and no absolute home)",
-              });
-            }
-            return reconnectTunnel(reconnectOpts, {
-              exec: defaultExec,
-              sleep: defaultSleep,
-            });
-          },
-          sleep: defaultSleep,
-          log: (msg: string) => info(`[network-monitor] ${msg}`),
-          warn: (msg: string) => warn(`[network-monitor] ${msg}`),
-          notify: (msg: string) => {
-            sessionCtx?.ui.notify(`[network-monitor] ${msg}`, "warning");
-          },
-        },
-        {
-          setInterval: (cb: () => void, ms: number) => setInterval(cb, ms),
-          clearInterval: (t: unknown) => clearInterval(t as NodeJS.Timeout),
-        },
-      );
+  // A provider abort is a hint, not an outage: it only opens the
+  // confirmation sequence, and the probe cadence decides from there.
+  pi.on("agent_settled", (event) => {
+    if (event.aborted) {
+      handle?.signalDistress("agent run aborted (provider abort)");
     }
-  }
+  });
 }
