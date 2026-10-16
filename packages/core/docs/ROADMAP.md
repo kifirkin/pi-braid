@@ -51,9 +51,10 @@ provenance; they are no longer work.
 2. **Version-drift cleanup** - RESOLVED: the four workspace packages declare
    the pi peer as `"*"`; the root manifest pins the installed version
    (`package.json`, the `@earendil-works/*` deps).
-3. **Tag-scheme unification** - RESOLVED: two tag roles under one `v` prefix, recorded in
-   the root `CHANGELOG.md` - iteration tags `v0.40.0-main.N` (`package.json`
-   `0.40.0-main.N`), release tag `v0.40.0`.
+3. **Tag-scheme unification** - RESOLVED: two tag roles, one namespace per package, recorded in
+   the root `CHANGELOG.md` - core keeps the bare `v` (iteration tags `v0.40.0-main.N`,
+   `package.json` `0.40.0-main.N`; release tag `v0.40.0`), every sibling tags as
+   `<workspace>-v<version>` (`telegram-v0.1.4`).
 4. **CI private-data gate** - RESOLVED: `check-private-data.mjs` is a CI step
    and scans the whole tree by default (tracked plus untracked); the
    staged-file checks are a local pre-commit convenience.

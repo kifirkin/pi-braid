@@ -10,17 +10,26 @@ history" below). Milestones before the 2026-08-29 monorepo snapshot are
 summarized below without per-commit references. Deep narrative history is in
 [`packages/core/docs/HISTORY.md`](packages/core/docs/HISTORY.md).
 
-Two tag roles, one `v` prefix (adopted 2026-10-11):
+Two tag roles, one namespace per package. The namespaces are enforced by
+`packages/core/scripts/tag-prerelease.mjs` and `check-release.mjs`: core owns
+the bare `v`, every sibling owns `<workspace>-v*`, so a tag names its package
+and a tag on one line cannot block another.
 
 - **Core** — legacy `v0.1.1 … v0.39.0`, then the `0.40.0` line: iteration tags
   `v0.40.0-main.N` (package.json `0.40.0-main.N`), release tag `v0.40.0`
   (package.json `0.40.0`). Ordering: `v0.39.0 < v0.40.0-main.1 < v0.40.0`.
-- **Providers** — `1.0.x` line; iteration tags `v1.0.x-main.N`.
-- **Telegram** — `0.1.x` line; iteration tags `v0.1.x-main.N`.
-- **Skills** — `0.2.x` line; iteration tags `v0.2.x-main.N`.
-- **Contrib** — `0.1.x` line; iteration tags `v0.1.x-main.N`.
+- **Providers** — `1.0.x` line; iteration tags `providers-v1.0.x-main.N`,
+  release tag `providers-v1.0.x`.
+- **Telegram** — `0.1.x` line; iteration tags `telegram-v0.1.x-main.N`,
+  release tag `telegram-v0.1.x`.
+- **Skills** — `0.2.x` line; iteration tags `skills-v0.2.x-main.N`, release tag
+  `skills-v0.2.x`.
+- **Contrib** — `0.1.x` line; iteration tags `contrib-v0.1.x-main.N`, release
+  tag `contrib-v0.1.x`.
 
-Nothing is retagged retroactively.
+Nothing is retagged retroactively. The legacy core names (`v0.1.4`, `v0.2.0` …)
+stay core history and no longer occupy a sibling's release name: past a bare
+`v`, the tag path reads only the package's own namespace.
 
 ## Repository history
 

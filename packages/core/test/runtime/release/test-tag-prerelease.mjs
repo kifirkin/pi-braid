@@ -28,18 +28,21 @@ function sh(cmd, cwd) {
   }
 }
 
-/** A throwaway repo holding packages/core/package.json, committed once. */
-function fixtureRepo(manifest = MANIFEST) {
+/** A throwaway repo holding packages/<workspace>/package.json, committed once. */
+function fixtureRepo(manifest = MANIFEST, workspace = "core") {
   const dir = mkdtempSync(join(tmpdir(), "tag-prerelease-"));
   sh("git init -q -b main", dir);
   sh("git config user.email test@test.local", dir);
   sh("git config user.name test", dir);
-  mkdirSync(join(dir, "packages", "core"), { recursive: true });
-  writeFileSync(join(dir, "packages", "core", "package.json"), manifest);
+  mkdirSync(join(dir, "packages", workspace), { recursive: true });
+  writeFileSync(join(dir, "packages", workspace, "package.json"), manifest);
   sh("git add -A", dir);
   sh("git commit -qm init", dir);
   return dir;
 }
+
+/** A sibling package's manifest: its own version line and its own tag namespace. */
+const TELEGRAM_MANIFEST = JSON.stringify({ name: "pi-braid-telegram", version: "0.1.4" }, null, 2) + "\n";
 
 function runTag(repo, args = []) {
   const result = spawnSync("node", [SCRIPT, ...args], { cwd: repo, encoding: "utf8" });
@@ -166,4 +169,35 @@ test("refuses an unknown package name", () => {
   assert.equal(code, 1);
   assert.match(err, /unknown package "telegram"/);
   assert.deepEqual(tags(repo), []);
+});
+
+// ── the per-package tag namespaces ──────────────────────────────────────────
+
+test("a sibling package tags in its own namespace", () => {
+  const repo = fixtureRepo(TELEGRAM_MANIFEST, "telegram");
+
+  const { code, out } = runTag(repo, ["telegram"]);
+  assert.equal(code, 0, out);
+  assert.match(out, /created annotated tag telegram-v0\.1\.4-main\.0/);
+  assert.deepEqual(tags(repo), ["telegram-v0.1.4-main.0"]);
+  assert.equal(sh("git cat-file -t telegram-v0.1.4-main.0", repo), "tag", "the tag must be annotated");
+});
+
+test("a tag on core's line does not block a sibling's iteration tag", () => {
+  const repo = fixtureRepo(TELEGRAM_MANIFEST, "telegram");
+  sh("git tag -a v9.9.9 -m future", repo);
+
+  const { code, out } = runTag(repo, ["telegram"]);
+  assert.equal(code, 0, out);
+  assert.deepEqual(tags(repo).sort(), ["telegram-v0.1.4-main.0", "v9.9.9"]);
+});
+
+test("refuses a version below its own namespace's highest tag", () => {
+  const repo = fixtureRepo(TELEGRAM_MANIFEST, "telegram");
+  sh("git tag -a telegram-v0.1.5 -m future", repo);
+
+  const { code, err } = runTag(repo, ["telegram"]);
+  assert.equal(code, 1);
+  assert.match(err, /does not sort strictly above the highest existing tag telegram-v0\.1\.5/);
+  assert.deepEqual(tags(repo), ["telegram-v0.1.5"]);
 });
