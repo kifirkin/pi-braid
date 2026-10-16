@@ -60,6 +60,10 @@ export {
   parsePopulationStamp,
   readPopulationStamps,
   populationRefusalDetail,
+  productionWriteClassPath,
+  readProductionWriteClass,
+  readProductionWrites,
+  productionWriteRefusalDetail,
 } from "./workers.js";
 
 export type {
@@ -93,4 +97,8 @@ export type {
   PopulationRowRead,
   PopulationRead,
   PopulationCensus,
+  ProductionWriteRule,
+  ProductionWriteClass,
+  ProductionWriteRowRead,
+  ProductionWriteRead,
 } from "./workers.js";

@@ -800,8 +800,7 @@ export interface GateRowViolation {
 }
 
 /** One leading `VAR=value` assignment, quoted value or not. */
-const ENV_ASSIGNMENT_RE =
-  /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s]*)(?=\s|$)/;
+const ENV_ASSIGNMENT_RE = /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s]*)(?=\s|$)/;
 
 /**
  * Strip leading env assignments one at a time. A single-assignment regex
@@ -1019,6 +1018,215 @@ export function logCloseGateRefusal(record: CloseGateRefusalRecord): void {
   }
 }
 
+// ── Production writes (the close-side preflight read) ─────────────────────
+// A command that creates or mutates state visible outside the repo is a
+// production write, and a close that records one may not pass without a
+// preflight row: the credential's identity, the target registry or endpoint,
+// and a dry-run result, recorded as named pieces. The class is not this
+// module's knowledge; the seat that owns the vendor verbs publishes the table
+// as data (production-writes.json under the braid home's orchestrator
+// directory), and this reader is only the mechanism: member patterns decide
+// what is a write, piece patterns decide what the close recorded about it, and
+// the missing pieces are named from the data. A missing or unreadable data file
+// leaves the class empty and refuses nothing, deliberately: a false refusal is
+// the failure this read exists to avoid. Read-only verbs stay safe through the
+// member patterns themselves (the seat's whitelist pins them), and a field
+// carrying a write beside reads is still a write, because the members match the
+// write verbs only.
+
+/** One named pattern in the production-write table, as the seat publishes it. */
+export interface ProductionWriteRule {
+  id: string;
+  label: string;
+  pattern: string;
+  /** Seat-side metadata (its guard prints this default); unread here. */
+  registry?: string;
+}
+
+/** The seat-owned table: what is a write, and what a preflight records. */
+export interface ProductionWriteClass {
+  members: ProductionWriteRule[];
+  pieces: ProductionWriteRule[];
+}
+
+/** One write row and what the close recorded for it. */
+export interface ProductionWriteRowRead {
+  row: number;
+  cmd: string;
+  member: string;
+  /** Indices of the rows carrying at least one preflight piece. */
+  preflightRows: number[];
+  /** Piece ids no row in the close carries. */
+  missingPieces: string[];
+}
+
+export interface ProductionWriteRead {
+  rows: ProductionWriteRowRead[];
+  /** The write rows still missing at least one piece; the first one refuses. */
+  unsatisfied: ProductionWriteRowRead[];
+}
+
+/** Where the seat publishes the production-write class it owns. */
+export function productionWriteClassPath(): string {
+  return join(braidDir(), "orchestrator", "production-writes.json");
+}
+
+/** Warned once per process about an unreadable class file. */
+let _warnedProductionWriteClass = false;
+
+function warnProductionWriteClass(detail: string): void {
+  if (_warnedProductionWriteClass) return;
+  _warnedProductionWriteClass = true;
+  log.warn(
+    `production-write class not read (${detail}); closes are not refused for recorded writes`,
+  );
+}
+
+/**
+ * Read one array of rules out of the class table, keeping only entries a reader
+ * can use: a non-empty id, a non-empty pattern that compiles, and a label
+ * (falling back to the id). Junk entries are dropped rather than thrown: the
+ * file is seat-edited data, and an unusable one must fail open.
+ */
+function readRuleList(raw: unknown): ProductionWriteRule[] {
+  if (!Array.isArray(raw)) return [];
+  const rules: ProductionWriteRule[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { id, label, pattern, registry } = entry as {
+      id?: unknown;
+      label?: unknown;
+      pattern?: unknown;
+      registry?: unknown;
+    };
+    if (typeof id !== "string" || id.trim() === "") continue;
+    if (typeof pattern !== "string" || pattern === "") continue;
+    try {
+      new RegExp(pattern);
+    } catch {
+      continue;
+    }
+    rules.push({
+      id,
+      label: typeof label === "string" && label !== "" ? label : id,
+      pattern,
+      ...(typeof registry === "string" ? { registry } : {}),
+    });
+  }
+  return rules;
+}
+
+/**
+ * Load the class table the seat owns. Never throws: a braid home that cannot be
+ * resolved, a missing file, an unreadable file and a malformed one all yield an
+ * empty class, which refuses nothing.
+ */
+export function readProductionWriteClass(file?: string): ProductionWriteClass {
+  const empty: ProductionWriteClass = { members: [], pieces: [] };
+  let path: string;
+  try {
+    path = file ?? productionWriteClassPath();
+  } catch (error) {
+    warnProductionWriteClass(error instanceof Error ? error.message : String(error));
+    return empty;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code !== "ENOENT") {
+      warnProductionWriteClass(
+        `${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return empty;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    warnProductionWriteClass(`${path}: top level is not an object`);
+    return empty;
+  }
+  const table = parsed as { members?: unknown; preflight?: unknown };
+  const pieces = (table.preflight as { pieces?: unknown } | null | undefined)?.pieces;
+  return { members: readRuleList(table.members), pieces: readRuleList(pieces) };
+}
+
+/** Compile a rule list, dropping any pattern that does not compile. */
+function compileProductionWriteRules(
+  rules: ProductionWriteRule[],
+): Array<{ rule: ProductionWriteRule; re: RegExp }> {
+  const compiled: Array<{ rule: ProductionWriteRule; re: RegExp }> = [];
+  for (const rule of rules) {
+    try {
+      compiled.push({ rule, re: new RegExp(rule.pattern) });
+    } catch {
+      // readRuleList already dropped these; a caller-supplied table may not have.
+    }
+  }
+  return compiled;
+}
+
+/**
+ * Read a close's gate rows for production writes and their preflight evidence.
+ * A row is a write when any member pattern matches its cmd — a field carrying a
+ * write beside reads is still a write, because the members match the write
+ * verbs only. A piece is recorded when any row's cmd matches its pattern, so
+ * one composed preflight row and several separate ones both satisfy. Pure over
+ * the rows and the table.
+ */
+export function readProductionWrites(
+  rows: Array<{ cmd: string; exit: number; stamp?: string }> | undefined,
+  table: ProductionWriteClass = readProductionWriteClass(),
+): ProductionWriteRead {
+  if (!rows || rows.length === 0) return { rows: [], unsatisfied: [] };
+  const members = compileProductionWriteRules(table.members);
+  const pieces = compileProductionWriteRules(table.pieces);
+  if (members.length === 0) return { rows: [], unsatisfied: [] };
+
+  const cmdAt = (row: { cmd?: unknown } | undefined): string =>
+    typeof row?.cmd === "string" ? row.cmd : "";
+  const writes: ProductionWriteRowRead[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const cmd = cmdAt(rows[i]);
+    const member = members.find(({ re }) => re.test(cmd));
+    if (!member) continue;
+    const missing: string[] = [];
+    const preflightRows = new Set<number>();
+    for (const piece of pieces) {
+      let recorded = false;
+      for (let j = 0; j < rows.length; j++) {
+        if (piece.re.test(cmdAt(rows[j]))) {
+          recorded = true;
+          preflightRows.add(j);
+        }
+      }
+      if (!recorded) missing.push(piece.rule.id);
+    }
+    writes.push({
+      row: i,
+      cmd,
+      member: member.rule.id,
+      preflightRows: [...preflightRows].sort((a, b) => a - b),
+      missingPieces: missing,
+    });
+  }
+  return { rows: writes, unsatisfied: writes.filter((row) => row.missingPieces.length > 0) };
+}
+
+/**
+ * The refusal sentence for the first write row missing a piece: its index, the
+ * member, the missing piece ids and the command. Null when every write row is
+ * satisfied, so a caller cannot refuse on an empty read.
+ */
+export function productionWriteRefusalDetail(read: ProductionWriteRead): string | null {
+  const row = read.unsatisfied[0];
+  if (!row) return null;
+  return (
+    `gates[${row.row}] records a production write ("${row.member}") without a complete ` +
+    `preflight row: missing pieces: ${row.missingPieces.join(", ")}; cmd: ${row.cmd}`
+  );
+}
+
 // ── Population stamps (the merge-side census read) ────────────────────────
 // A gate whose subject is a population of files or rows may record what it
 // scanned, and at which revision, as an optional `stamp` on its evidence row:
@@ -1216,6 +1424,12 @@ export function populationRefusalDetail(read: PopulationRead): string | null {
  * release, "off" skips the read. No gate is re-run; replay stays the
  * sampler's sampled job.
  *
+ * Every row is also read against the seat's production-write class: a row the
+ * class marks as a write is refused unless the close records every named
+ * preflight piece (identity, registry, dry-run) somewhere in its rows. The
+ * class lives in the seat's data file; when it is absent the class is empty and
+ * nothing is refused.
+ *
  * Releases the worker's file locks: close is terminal, and a lock that
  * survives it blocks the next spawn on the same files. The release runs with
  * the entry's own project key so the lock table read is the same one
@@ -1257,6 +1471,16 @@ export function closeWorker(
         );
       }
     }
+  }
+
+  // A recorded production write must carry its preflight evidence. The class
+  // table is the seat's data, and an absent one reads as empty (fail-open), so
+  // this refuses only what the seat has declared a write without its pieces.
+  const productionRefusal = productionWriteRefusalDetail(
+    readProductionWrites(gates, readProductionWriteClass()),
+  );
+  if (productionRefusal) {
+    throw new Error(`closeWorker: ${productionRefusal} (worker ${workerId}, outcome ${parsed})`);
   }
 
   releaseLock(workerId, located.key);
