@@ -2,7 +2,7 @@
 /**
  * check-braid-schema.mjs — gate braid.* config drift: exit 0 clean, exit 1 on drift.
  *
- * Two arms:
+ * Three arms:
  *
  *   1. Artifact freshness — the committed packages/core/schema/braid.schema.json
  *      must be byte-identical to a fresh in-memory regeneration. A difference
@@ -24,13 +24,19 @@
  *      has nothing beside it stays green). A skipped arm is never printed as a
  *      pass.
  *
+ *   3. Source coverage: every `braid.*` literal in the source tree resolves
+ *      to a row. Arms 1 and 2 keep the artifact true to the rows and the rows
+ *      true to the reference; this arm keeps the rows true to the readers, the
+ *      hole they leave: a reader may read a key no row names while both arms
+ *      stay green. See the arm's own comment for the census scope.
+ *
  * Usage: node scripts/check-braid-schema.mjs [--doc <path>]
  */
 
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateSchema } from "./gen-braid-schema.mjs";
+import { braidRowPaths, generateSchema } from "./gen-braid-schema.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, "..", "..", "..");
@@ -260,6 +266,138 @@ export function docArm(docPath, schemaText, notesDir = DOC_NOTES_DIR) {
   };
 }
 
+// ── Arm 3: source coverage ──────────────────────────────────────────────────
+
+/**
+ * Arm 3: every `braid.*` literal in the source tree must resolve to a row.
+ *
+ * The census reads file text, comments included: a comment that names a key is
+ * a claim about the config surface, and a text scan also sees a read whose key
+ * sits in a template or a constant where a parse-tree walk might not. Scope is
+ * every non-test `.ts` file under `packages/`, not the `src/` subtrees alone:
+ * `packages/providers` has no `src/` directory, so a scan limited to src/
+ * never sees its readers. Test material is out of scope on purpose: schema
+ * fixtures construct synthetic keys (test/runtime/schema/fixtures/reader.ts
+ * reads a made-up `braid.ctx.cap`), and a fixture is an input, not a reader.
+ *
+ * Matching is by row path: a literal is covered when a row names it exactly
+ * (`braid.timers.maxWakeAttempts`) or names a child of it
+ * (`braid.context.toolResultSizeCap` covers both the block read and, via its
+ * own `.maxChars` row, the leaf). A literal naming a block whose children no
+ * row names is uncovered: the rows are the documented surface, so an
+ * undocumented child is the drift this arm exists to catch.
+ */
+const COVERAGE_SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "test",
+  "tests",
+  "__tests__",
+  "fixtures",
+]);
+const COVERAGE_SKIP_FILE_RE = /(^test\.ts$|\.test\.ts$|\.spec\.ts$|-test\.ts$|-tests\.ts$)/;
+
+/** One token per match: `braid.foo`, `braid?.foo?.bar`, `braid.contrib[ext]`. */
+const BRAID_LITERAL_RE = /\bbraid(?:\??\.(?:[A-Za-z0-9_<>-]+|\[[^\]\n]*\]))+/g;
+
+/**
+ * Literals the census leaves out, each with the reason it is not a settings
+ * read. Kept short on purpose: every entry is a hole the arm cannot see
+ * through, so an entry earns its place only by naming something plainly not
+ * the settings document. Dynamic segments are not listed here; they are
+ * recognized structurally (see hasDynamicSegment).
+ */
+const COVERAGE_EXCLUSIONS = [
+  {
+    match: /^braid\.version$/,
+    why: "a local package-metadata object named braid (prompt-builder/instance-composition.ts), not the settings document",
+  },
+];
+
+/**
+ * A placeholder (`<ext>`) or bracket (`[extensionName]`) segment is dynamic:
+ * its key is computed at runtime, so no static row can name it. The per-module
+ * `braid.contrib.<name>` toggle namespace is the standing case; the wildcard
+ * row `braid.contrib.<ext>.enabled` documents the family, not each member.
+ */
+function hasDynamicSegment(token) {
+  return token.includes("[") || token.includes("<");
+}
+
+/**
+ * Every `braid.*` literal under `packagesRoot`, keyed by normalized token
+ * (`braid?.foo?.bar` → `braid.foo.bar`), each carrying every file:line it was
+ * seen at (the first is the one a failure names).
+ */
+export function censusSourceLiterals(packagesRoot) {
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!COVERAGE_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) walk(abs);
+      } else if (
+        entry.name.endsWith(".ts") &&
+        !entry.name.endsWith(".d.ts") &&
+        !COVERAGE_SKIP_FILE_RE.test(entry.name)
+      ) {
+        files.push(abs);
+      }
+    }
+  };
+  walk(packagesRoot);
+
+  const hits = new Map();
+  for (const abs of files.sort()) {
+    const lines = readFileSync(abs, "utf8").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      for (const m of lines[i].matchAll(BRAID_LITERAL_RE)) {
+        const token = m[0].replace(/\?\.\[/g, "[").replace(/\?\./g, ".");
+        if (!hits.has(token)) hits.set(token, []);
+        hits.get(token).push({ file: relative(REPO_ROOT, abs), line: i + 1 });
+      }
+    }
+  }
+  return { files: files.length, hits };
+}
+
+/**
+ * Classify each literal against the row paths: covered, excluded, dynamic, or
+ * uncovered. An uncovered entry carries the first sighting's file:line so the
+ * failure names the reader to fix.
+ */
+export function checkLiteralCoverage(census, rowPaths) {
+  const uncovered = [];
+  let covered = 0;
+  let excluded = 0;
+  let dynamic = 0;
+  for (const token of [...census.hits.keys()].sort()) {
+    const first = census.hits.get(token)[0];
+    if (hasDynamicSegment(token)) {
+      dynamic++;
+      continue;
+    }
+    if (COVERAGE_EXCLUSIONS.some((e) => e.match.test(token))) {
+      excluded++;
+      continue;
+    }
+    if (rowPaths.some((p) => p === token || p.startsWith(`${token}.`))) {
+      covered++;
+      continue;
+    }
+    uncovered.push({ token, file: first.file, line: first.line });
+  }
+  return {
+    ok: uncovered.length === 0,
+    files: census.files,
+    total: census.hits.size,
+    covered,
+    excluded,
+    dynamic,
+    uncovered,
+  };
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 function main() {
@@ -281,6 +419,30 @@ function main() {
   if (!doc.ok) {
     exit = 1;
     for (const e of doc.errors) console.error(`  - ${e}`);
+  }
+
+  const coverage = checkLiteralCoverage(
+    censusSourceLiterals(join(REPO_ROOT, "packages")),
+    braidRowPaths(),
+  );
+  if (coverage.ok) {
+    console.log(
+      `✅ source coverage: ${coverage.total} braid.* literal(s) over ${coverage.files} source file(s); ` +
+        `${coverage.covered} covered, ${coverage.excluded} excluded, ${coverage.dynamic} dynamic`,
+    );
+  } else {
+    exit = 1;
+    console.error(
+      `❌ source coverage: ${coverage.uncovered.length} braid.* literal(s) have no schema row ` +
+        `(of ${coverage.total} in ${coverage.files} source file(s))`,
+    );
+    for (const u of coverage.uncovered) {
+      console.error(
+        `  - ${u.token} (${u.file}:${u.line}): add a row in gen-braid-schema.mjs ` +
+          "(READER_FILES + row), or a commented exclusion in check-braid-schema.mjs " +
+          "if it is not a settings read",
+      );
+    }
   }
 
   if (exit === 0) {

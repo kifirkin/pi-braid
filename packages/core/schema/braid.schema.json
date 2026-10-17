@@ -161,7 +161,7 @@
               "default": false,
               "description": "Opt in to the heavy browser tools (off by default).",
               "type": "boolean",
-              "x-source": "packages/contrib/browser/index.ts:76"
+              "x-source": "packages/contrib/browser/index.ts:77"
             },
             "networkMonitor": {
               "default": true,
@@ -424,6 +424,59 @@
               "type": "object",
               "x-source": "packages/providers/ring-lifecycle.ts:550"
             },
+            "outage": {
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "description": "Master switch; false makes the outage watcher an inert no-op.",
+                  "type": "boolean",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "failures": {
+                  "default": 3,
+                  "description": "Consecutive connectivity failures needed to open the breaker.",
+                  "type": "integer",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "notifyFloorMs": {
+                  "default": 60000,
+                  "description": "Per-route per-status floor for the machine-global notify record (ms).",
+                  "type": "number",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "probeIntervalMs": {
+                  "default": 60000,
+                  "description": "Probe cadence while open; also the half-open cooldown for real calls.",
+                  "type": "number",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "probeTimeoutMs": {
+                  "default": 3000,
+                  "description": "One probe attempt must answer within this budget (ms).",
+                  "type": "number",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "stallMs": {
+                  "default": 600000,
+                  "description": "A session failing for at least this long gets one stall line.",
+                  "type": "number",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                },
+                "windowMs": {
+                  "default": 300000,
+                  "description": "The failure streak must fit inside this window (ms), else it restarts.",
+                  "type": "number",
+                  "x-source": "packages/providers/outage-watch.ts:171"
+                }
+              },
+              "type": "object"
+            },
+            "probeFreshnessMs": {
+              "default": 900000,
+              "description": "How long a recorded route death or probe verdict stays in force; 0 or a negative value is the explicit off switch.",
+              "type": "number",
+              "x-source": "packages/providers/ring-lifecycle.ts:544"
+            },
             "routes": {
               "description": "Ordered provider route table; the only registration-order source when set.",
               "type": "array",
@@ -478,6 +531,34 @@
               "description": "Default cap for telegram_send plain text.",
               "type": "number",
               "x-source": "packages/telegram/src/lib/telegram-settings.ts:72"
+            },
+            "tts": {
+              "properties": {
+                "rate": {
+                  "default": "+20%",
+                  "description": "edge-tts rate, e.g. \"+20%\"; a value outside the sign+digits+% shape falls back to the default.",
+                  "type": "string",
+                  "x-source": "packages/telegram/src/lib/tts.ts:156"
+                },
+                "source": {
+                  "default": "edge-tts",
+                  "description": "Synthesis source: \"edge-tts\" (default), \"edge-tts+say\" (macOS say only after the edge attempts run out), \"say\" alone, or \"none\" (voice:true is refused, never downgraded to text).",
+                  "enum": [
+                    "edge-tts",
+                    "edge-tts+say",
+                    "say",
+                    "none"
+                  ],
+                  "type": "string",
+                  "x-source": "packages/telegram/src/lib/tts.ts:156"
+                },
+                "voices": {
+                  "description": "Per-language voice override (ru/en/he); an unset key keeps its built-in voice (ru-RU-DmitryNeural, en-US-GuyNeural, he-IL-AvriNeural).",
+                  "type": "object",
+                  "x-source": "packages/telegram/src/lib/tts.ts:156"
+                }
+              },
+              "type": "object"
             }
           },
           "type": "object"

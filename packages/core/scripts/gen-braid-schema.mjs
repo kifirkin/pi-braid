@@ -56,8 +56,10 @@ export const READER_FILES = [
   "packages/contrib/index.ts",
   "packages/providers/presend-guard.ts",
   "packages/providers/ring-lifecycle.ts",
+  "packages/providers/outage-watch.ts",
   "packages/telegram/src/lib/telegram-settings.ts",
   "packages/telegram/src/lib/pause-control.ts",
+  "packages/telegram/src/lib/tts.ts",
 ];
 
 const CORE = "packages/core";
@@ -80,8 +82,12 @@ const CONST_SOURCES = {
   OVER_CORRECTION_GATE_DEFAULTS: SETTINGS,
   CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS: SETTINGS,
   PRESGUARD_DEFAULT_ENABLED: "packages/providers/presend-guard.ts",
+  DEFAULT_PROBE_FRESHNESS_MS: "packages/providers/ring-lifecycle.ts",
+  DEFAULT_OUTAGE_CONFIG: "packages/providers/outage-watch.ts",
   DEFAULT_SEND_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
   DEFAULT_NOTIFY_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
+  DEFAULT_TTS_RATE: "packages/telegram/src/lib/tts.ts",
+  DEFAULT_VOICE_TTS: "packages/telegram/src/lib/tts.ts",
   DEFAULTS: "packages/contrib/network-monitor/settings.ts",
 };
 
@@ -242,6 +248,20 @@ const MECHANICAL_ROWS = [
     mech: { const: "DEFAULT_NOTIFY_MAX_CHARS", prop: null },
   },
   ...networkMonitorRows(),
+  ...outageRows(),
+  {
+    path: "braid.providers.probeFreshnessMs",
+    type: "number",
+    description:
+      "How long a recorded route death or probe verdict stays in force; 0 or a negative value is the explicit off switch.",
+    read: {
+      file: "packages/providers/ring-lifecycle.ts",
+      line: 544,
+      evidence: "resolveProbeFreshnessMs(providers?.probeFreshnessMs)",
+    },
+    mech: { const: "DEFAULT_PROBE_FRESHNESS_MS", prop: null },
+  },
+  ...voiceTtsRows(),
 ];
 
 function staleOffloadRows() {
@@ -317,6 +337,73 @@ function networkMonitorRows() {
     },
     mech: { const: "DEFAULTS", prop: leaf },
   }));
+}
+
+/**
+ * `braid.providers.outage`: the reader's settings names differ from the config
+ * object's field names (`failures` → `failureThreshold`, `windowMs` →
+ * `failureWindowMs`, `stallMs` → `stallThresholdMs`), so each row maps its
+ * path to the constant field that supplies its default.
+ */
+function outageRows() {
+  const prefix = "braid.providers.outage";
+  const fields = [
+    ["enabled", "boolean", "enabled", "Master switch; false makes the outage watcher an inert no-op."],
+    ["failures", "integer", "failureThreshold", "Consecutive connectivity failures needed to open the breaker."],
+    ["windowMs", "number", "failureWindowMs", "The failure streak must fit inside this window (ms), else it restarts."],
+    ["probeIntervalMs", "number", "probeIntervalMs", "Probe cadence while open; also the half-open cooldown for real calls."],
+    ["probeTimeoutMs", "number", "probeTimeoutMs", "One probe attempt must answer within this budget (ms)."],
+    ["stallMs", "number", "stallThresholdMs", "A session failing for at least this long gets one stall line."],
+    ["notifyFloorMs", "number", "notifyFloorMs", "Per-route per-status floor for the machine-global notify record (ms)."],
+  ];
+  return fields.map(([leaf, type, prop, description]) => ({
+    path: `${prefix}.${leaf}`,
+    type,
+    description,
+    read: {
+      file: "packages/providers/outage-watch.ts",
+      line: 171,
+      evidence: "?.braid?.providers?.outage",
+    },
+    mech: { const: "DEFAULT_OUTAGE_CONFIG", prop },
+  }));
+}
+
+/**
+ * `braid.telegram.tts`: `source` and `rate` are mechanical against the tts
+ * module's own constants. `voices` is an overlay: its default is a nested
+ * object the extractor does not flatten, so the three built-in voices are
+ * stated once in the description rather than restated per language row.
+ */
+function voiceTtsRows() {
+  const prefix = "braid.telegram.tts";
+  const read = { file: "packages/telegram/src/lib/tts.ts", line: 156, evidence: "parsed?.braid?.telegram?.tts" };
+  return [
+    {
+      path: `${prefix}.source`,
+      type: "string",
+      enum: ["edge-tts", "edge-tts+say", "say", "none"],
+      description:
+        'Synthesis source: "edge-tts" (default), "edge-tts+say" (macOS say only after the edge attempts run out), "say" alone, or "none" (voice:true is refused, never downgraded to text).',
+      read,
+      mech: { const: "DEFAULT_VOICE_TTS", prop: "source" },
+    },
+    {
+      path: `${prefix}.rate`,
+      type: "string",
+      description: 'edge-tts rate, e.g. "+20%"; a value outside the sign+digits+% shape falls back to the default.',
+      read,
+      mech: { const: "DEFAULT_TTS_RATE", prop: null },
+    },
+    {
+      path: `${prefix}.voices`,
+      type: "object",
+      default: null,
+      description:
+        "Per-language voice override (ru/en/he); an unset key keeps its built-in voice (ru-RU-DmitryNeural, en-US-GuyNeural, he-IL-AvriNeural).",
+      read,
+    },
+  ];
 }
 
 /**
@@ -443,7 +530,7 @@ const OVERLAY_ROWS = [
     description: "Opt in to the heavy browser tools (off by default).",
     read: {
       file: "packages/contrib/browser/index.ts",
-      line: 76,
+      line: 77,
       evidence: "parsed.braid?.contrib?.browserAdvanced === true",
     },
   },
@@ -559,6 +646,18 @@ const OVERLAY_ROWS = [
   },
 ];
 
+/**
+ * Every row path this derivation carries (mechanical then overlay, row order).
+ * The coverage arm in check-braid-schema.mjs reads this list rather than the
+ * rendered artifact: the row set is the claim under test, and the artifact is
+ * only its serialization (the freshness arm pins the two together).
+ */
+export function braidRowPaths(rows) {
+  const mechanical = rows?.mechanical ?? MECHANICAL_ROWS;
+  const overlay = rows?.overlay ?? OVERLAY_ROWS;
+  return [...mechanical, ...overlay].map((r) => r.path);
+}
+
 // ── Extraction ──────────────────────────────────────────────────────────────
 
 /** Evaluate a numeric literal expression (digits, separators, arithmetic). */
@@ -625,9 +724,12 @@ function stripComments(text) {
 
 /**
  * Extract a defaults constant from source text: a scalar `const NAME = <lit>;`
- * or a flat object literal `const NAME = { key: <lit>, ... }`. Values may be
- * numeric literal expressions (e.g. `20 * 60 * 1000`); nested objects are not
- * supported and fail loudly.
+ * or an object literal `const NAME = { key: <lit>, ... }`. Values may be
+ * numeric literal expressions (e.g. `20 * 60 * 1000`). Only the requested
+ * property is parsed, so a sibling that is an object literal or a reference to
+ * another constant does not block a property that is a flat literal; a
+ * requested property that is itself unresolved (nested object, bare
+ * identifier) still fails loudly.
  */
 export function extractConstDefault(text, constName, prop) {
   const decl = new RegExp(`(?:export\\s+)?const\\s+${constName}\\b[^=;{]*=\\s*`);
@@ -649,17 +751,17 @@ export function extractConstDefault(text, constName, prop) {
     }
     if (end < 0) throw new Error(`unbalanced object literal for ${constName}`);
     const body = rest.slice(1, end);
-    const entries = {};
+    const raw = {};
     for (const em of body.matchAll(/([A-Za-z_]\w*)\s*:\s*([\s\S]*?)(?=,\s*[A-Za-z_]\w*\s*:|,\s*$|$)/gm)) {
-      entries[em[1]] = parseLiteralToken(em[2]);
+      raw[em[1]] = em[2];
     }
     if (prop === null) {
       throw new Error(`constant ${constName} is an object literal; a property is required`);
     }
-    if (!(prop in entries)) {
+    if (!(prop in raw)) {
       throw new Error(`property ${prop} not found in constant ${constName}`);
     }
-    return entries[prop];
+    return parseLiteralToken(raw[prop]);
   }
   if (prop !== null) {
     throw new Error(`constant ${constName} is scalar; no property to select`);
