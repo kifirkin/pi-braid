@@ -31,6 +31,10 @@
  *      stay green. See the arm's own comment for the census scope.
  *
  * Usage: node scripts/check-braid-schema.mjs [--doc <path>] [--coverage-root <dir>]
+ *
+ * Exit 1 covers drift and a bad invocation: a `--coverage-root` with no value
+ * is a usage error, never a silent census of the checkout, so the same typo
+ * cannot pass as a clean run in one shape and fail in another.
  */
 
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -408,15 +412,27 @@ export function checkLiteralCoverage(census, rowPaths) {
 /**
  * The packages root the coverage census reads: `--coverage-root <dir>` names a
  * tree to scan (the suite drives a fixture through the CLI with it), and
- * without it the scan reads the checkout's own `packages/`.
+ * without the flag the scan reads the checkout's own `packages/`. A flag with
+ * no value is a usage error rather than a fallback to that default: the caller
+ * did not ask for the checkout, so censusing it silently answers a question
+ * nobody put.
  */
 function resolveCoverageRoot(argv = process.argv.slice(2)) {
   const i = argv.indexOf("--coverage-root");
-  if (i >= 0 && argv[i + 1]) return resolve(argv[i + 1]);
-  return join(REPO_ROOT, "packages");
+  if (i < 0) return join(REPO_ROOT, "packages");
+  const dir = argv[i + 1];
+  if (!dir) {
+    throw new Error(
+      "--coverage-root needs a directory (got no value); " +
+        "omit the flag to scan the checkout, or pass --coverage-root <dir>",
+    );
+  }
+  return resolve(dir);
 }
 
 function main() {
+  // argv first: a usage error reports itself alone, not after a partial run.
+  const coverageRoot = resolveCoverageRoot();
   const { text } = generateSchema();
   let exit = 0;
 
@@ -437,10 +453,7 @@ function main() {
     for (const e of doc.errors) console.error(`  - ${e}`);
   }
 
-  const coverage = checkLiteralCoverage(
-    censusSourceLiterals(resolveCoverageRoot()),
-    braidRowPaths(),
-  );
+  const coverage = checkLiteralCoverage(censusSourceLiterals(coverageRoot), braidRowPaths());
   if (coverage.ok) {
     console.log(
       `✅ source coverage: ${coverage.total} braid.* literal(s) over ${coverage.files} source file(s); ` +
