@@ -282,15 +282,19 @@ Check the output for:
 ### 5. Tag and publish
 
 After the manifest bumps, run `npm install` at the root so
-`package-lock.json` follows them: the workspace versions live in the lockfile,
-and the workflow's `npm ci` refuses a stale one.
+`package-lock.json` follows them: the workflow installs with `npm ci` from that
+lockfile, and `npm ci` refuses a lockfile whose resolved inventory no longer
+satisfies the manifests, not one that disagrees with a manifest's own version
+field. A version-only bump therefore passes whether or not the lockfile was
+refreshed: keeping the two in step is convention, not a gate.
 
 ```bash
 npm install                          # sync package-lock.json with the bumps
 git add -A
 git commit -m "chore: release vX.Y.Z"
 npm run ci:check                     # includes release:check; must pass at HEAD
-node packages/core/scripts/tag-prerelease.mjs <package>   # default: core
+git tag -a "v$(node -p "require('./packages/core/package.json').version")" -m "release"   # release tag: the workflow publishes this name
+node packages/core/scripts/tag-prerelease.mjs <package>   # iteration tag (v<version>-main.N): never publishes
 git push origin main --tags
 ```
 
@@ -298,12 +302,16 @@ Pushing the release tag (`v<core version>`) runs `.github/workflows/publish.yml`
 which publishes every package whose manifest version is not yet on the registry
 through npm trusted publishing (OIDC). No npm token is involved. Sibling tags
 (`<workspace>-v<version>`) do not trigger the workflow; to publish a single
-package, run the workflow manually (`workflow_dispatch`) <!-- doc-ref-exempt: GitHub Actions trigger name, not a repo identifier --> with `only=<package>`.
+package, dispatch the workflow from `main` with `only=<package>`, never from an
+iteration tag: a dispatch bypasses the job condition and can publish sibling
+packages.
 
-Let `tag-prerelease.mjs` name the tag: core keeps the bare `v<version>`, every
-sibling is `<workspace>-v<version>` (`telegram-v0.1.4`, `providers-v1.0.5`).
-The scheme and the per-line namespaces are recorded at the top of
-`CHANGELOG.md`.
+Two tag roles, both keeping core's bare `v<version>` and a sibling's workspace
+name (`telegram-v0.1.4`, `providers-v1.0.5`): the release tag above is the one
+the workflow publishes, and `tag-prerelease.mjs` creates the iteration tag
+(`v<version>-main.N` on `main`) that names the tree a package was packed from
+and never publishes. Both schemes and the per-line namespaces are recorded at
+the top of `CHANGELOG.md`.
 
 ### 6. Post-publish
 
