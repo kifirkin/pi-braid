@@ -46,6 +46,7 @@
  */
 
 import { strict as assert } from "node:assert";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -164,10 +165,38 @@ test("every recorded decorated row is refused by its named predicate and accepte
   }
 });
 
+/**
+ * The first non-empty stderr line the shell itself prints for a command it
+ * refuses to parse, read from the same shell the predicate runs. Bash says
+ * `syntax error near unexpected token`, dash says `Syntax error: "("
+ * unexpected`, and a translated shell says neither, so the expected string is
+ * derived here instead of spelled into the assertion: what is pinned is that
+ * (a) carries the shell's line, not one shell's wording of it.
+ */
+function shellParseErrorLine(cmd) {
+  try {
+    execFileSync("sh", ["-n", "-c", cmd], { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8" });
+    return null;
+  } catch (error) {
+    const stderr = typeof error.stderr === "string" ? error.stderr : "";
+    return (
+      stderr
+        .split("\n")
+        .map((candidate) => candidate.trim())
+        .find((candidate) => candidate.length > 0) ?? null
+    );
+  }
+}
+
 test("the parse predicate reports the shell's own line, and the resolve predicate names the token", () => {
   const parsed = findGateRowViolation(DECORATED_CLOSE_ROW.recorded, 0, "completed");
   assert.match(parsed.detail, /sh -n/, `(a) must name the instrument: ${parsed.detail}`);
-  assert.match(parsed.detail, /syntax error/, `(a) must carry the shell's line: ${parsed.detail}`);
+  const shellLine = shellParseErrorLine(DECORATED_CLOSE_ROW.recorded);
+  assert.ok(shellLine, "the fixture's decorated row must not parse under the shell the predicate runs");
+  assert.ok(
+    parsed.detail.includes(shellLine),
+    `(a) must carry the shell's line verbatim: ${shellLine} not in ${parsed.detail}`,
+  );
   const prose = findGateRowViolation(PROSE_ROW.recorded, 0, "completed");
   assert.match(prose.detail, /falsification:/, `(b) must name the token: ${prose.detail}`);
 });
