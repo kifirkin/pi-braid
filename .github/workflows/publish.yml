@@ -46,9 +46,13 @@ jobs:
         run: |
           npm --version
           node -e '
-            const v = require("node:child_process").execSync("npm --version").toString().trim().split(".").map(Number);
-            if (v[0] < 11 || (v[0] === 11 && v[1] < 5)) {
-              console.error("npm " + v.join(".") + " is below the 11.5.1 trusted-publishing floor");
+            const raw = require("node:child_process").execSync("npm --version").toString().trim();
+            const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(raw);
+            const v = m ? m.slice(1).map(Number) : [];
+            if (!m || v[0] < 11 || (v[0] === 11 && (v[1] < 5 || (v[1] === 5 && v[2] < 1)))) {
+              console.error(
+                "npm " + raw + " does not satisfy the trusted-publishing floor: a plain x.y.z at 11.5.1 or above is required",
+              );
               process.exit(1);
             }
           '
@@ -106,9 +110,25 @@ jobs:
             case "${version}" in
               *-*) echo "skip ${name}@${version}: prerelease version"; continue ;;
             esac
-            if npm view "${name}@${version}" version --registry="${REGISTRY}" >/dev/null 2>&1; then
+            read_status=0
+            read_log="$(npm view "${name}@${version}" version --registry="${REGISTRY}" 2>&1)" || read_status=$?
+
+            if [ "${read_status}" -eq 0 ]; then
               echo "skip ${name}@${version}: already on the registry"
               continue
+            fi
+
+            # Only a 404 from the registry means "absent". Any other failure of
+            # the read (network, auth, rate limit, proxy) must refuse: reading
+            # it as absence would turn a skip into a publish attempt.
+            read_absent=0
+            if [ "${read_status}" -eq 1 ]; then
+              case "${read_log}" in *E404*) read_absent=1 ;; esac
+            fi
+            if [ "${read_absent}" -ne 1 ]; then
+              echo "refusing: registry read for ${name}@${version} failed (exit ${read_status}):"
+              printf '%s\n' "${read_log}" | sed 's/^/  /'
+              exit 1
             fi
 
             echo "::group::dry run ${name}@${version}"
@@ -122,12 +142,25 @@ jobs:
 
             (cd "packages/${dir}" && npm publish --registry="${REGISTRY}")
 
-            {
-              echo "### Published ${name}@${version}"
-              echo ""
-              echo "- registry: ${REGISTRY}"
-              echo "- workflow: ${WORKFLOW_REF}"
-              echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-              echo "- ref: ${GITHUB_REF}"
-            } >>"${GITHUB_STEP_SUMMARY}"
+            # npm skips a `private: true` workspace with exit 0, so the summary
+            # is written from a second registry read, not from the publish's
+            # exit status.
+            if npm view "${name}@${version}" version --registry="${REGISTRY}" >/dev/null 2>&1; then
+              {
+                echo "### Published ${name}@${version}"
+                echo ""
+                echo "- registry: ${REGISTRY}"
+                echo "- workflow: ${WORKFLOW_REF}"
+                echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+                echo "- ref: ${GITHUB_REF}"
+              } >>"${GITHUB_STEP_SUMMARY}"
+            else
+              {
+                echo "### Not published ${name}@${version}"
+                echo ""
+                echo "- \`npm publish\` exited 0, but the registry does not serve ${name}@${version}"
+                echo "- npm skips a \`private: true\` workspace with exit 0; the publish log names the cause"
+                echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              } >>"${GITHUB_STEP_SUMMARY}"
+            fi
           done

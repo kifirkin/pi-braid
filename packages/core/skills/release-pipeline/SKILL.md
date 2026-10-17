@@ -160,8 +160,8 @@ Pre-requisites:
 
 - Release commit with the versions bumped and `package-lock.json` in sync
 - Release tag pushed (`v<version>` for core; a sibling's
-  `<workspace>-v<version>` tag does not trigger the workflow, so publish that
-  package with a manual run and `only=<package>`)
+  `<workspace>-v<version>` tag does not trigger the workflow, so dispatch the
+  workflow from `main` with `only=<package>`, never from an iteration tag)
 - Trusted publisher configured for the package on npmjs.com
 
 Local CLI publishing is not a fallback: `npm publish` needs 2FA, and this
