@@ -26,6 +26,8 @@
  *  14. coverage: dynamic segments and the commented exclusion list are skips,
  *      not failures
  *  15. coverage: the census walks package sources and skips test material
+ *  16. RED: CLI, an uncovered literal exits 1 and names its first sighting
+ *      (--coverage-root points the census at a fixture tree)
  */
 
 import { test } from "node:test";
@@ -362,6 +364,28 @@ test("coverage: the census walks package sources and skips test material", () =>
       "braid.ctx.cap",
     ]);
     assert.equal(census.files, 1, "the .test.ts file and test/ are not readers");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("RED: CLI names an uncovered literal and exits 1", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "braid-schema-coverage-cli-"));
+  try {
+    const packages = join(tmp, "packages");
+    const reader = join(packages, "core", "src", "reader.ts");
+    mkdirSync(join(packages, "core", "src"), { recursive: true });
+    writeFileSync(reader, "const planted = parsed.braid?.probe?.zzPlantedKey;\n");
+    const red = spawnSync("node", [GATE, "--coverage-root", packages], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(red.status, 1, "an uncovered literal must fail the gate");
+    assert.match(red.stderr, /❌ source coverage: 1 braid\.\* literal\(s\) have no schema row/);
+    assert.match(red.stderr, /braid\.probe\.zzPlantedKey \(.*reader\.ts:1\)/);
+
+    // The same fixture with a covered literal: the arm passes there, so the
+    // red run failed on the planted key and not on the fixture shape.
+    writeFileSync(reader, "const live = parsed.braid?.timers?.maxWakeAttempts;\n");
+    const green = spawnSync("node", [GATE, "--coverage-root", packages], { cwd: ROOT, encoding: "utf8" });
+    assert.match(green.stdout, /✅ source coverage: 1 braid\.\* literal\(s\) over 1 source file\(s\); 1 covered/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

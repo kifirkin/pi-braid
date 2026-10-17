@@ -19,15 +19,15 @@
  * that variable there is no package to record and the run is refused — the
  * script is a lifecycle step, not a standalone command.
  *
- * A record is kept only when the caller says so. publish-local.mjs writes the
- * record itself before it bumps the manifest for the pack, so the `dirty` it
- * recorded is the tree's honest state, and carries PROVENANCE_DEFER_ENV into
- * `npm pack`; a prepack that rewrote the record there would read the
- * temporary bump as a dirty tree. Without that marker the record is always
- * regenerated from a fresh git read — including when a record on disk names
- * this same pack, because a record a killed `postpack` left behind describes
- * a tree that no longer exists and must not become the shipped `dirty`. The
- * debug line names which of the two paths ran.
+ * A record is kept only when the caller says so. publish-local.mjs reads git
+ * before the version bump for the pack and writes the record from that read,
+ * so the `dirty` it recorded is the pre-bump state; it carries
+ * PROVENANCE_DEFER_ENV into `npm pack`, because a prepack that rewrote the
+ * record there would read the temporary bump as a dirty tree. Without that
+ * marker the record is always regenerated from a fresh git read — including
+ * when a record on disk names this same pack, because a record a killed
+ * `postpack` left behind describes a tree that no longer exists and must not
+ * become the shipped `dirty`. The debug line names which of the two paths ran.
  *
  * Usage: node packages/core/scripts/pack-provenance.mjs write|remove
  * Exit: 0 the record is in place (write) / gone (remove); 2 no package to act on.
