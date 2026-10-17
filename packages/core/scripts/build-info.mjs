@@ -32,11 +32,12 @@ export const BUILD_INFO_FILE = "build-info.json";
 /**
  * The env var a caller sets to tell the prepack step that it already wrote
  * the record for this pack and the writer must keep it. `publish-local.mjs`
- * is the only producer: it writes the record before it bumps the manifest,
- * and the bump would otherwise read as a dirty tree at prepack time. Presence
- * of the marker, not a field comparison, is what licenses the deferral — a
- * record someone left behind looks exactly like the caller's in name, version
- * and sha, while only the caller can set this.
+ * is the only producer: it reads git before the manifest bump (the bump would
+ * otherwise read as a dirty tree at prepack time) and writes the record from
+ * that read, so the recorded `dirty` keeps the pre-bump state. Presence of the
+ * marker, not a field comparison, is what licenses the deferral — a record
+ * someone left behind looks exactly like the caller's in name, version and
+ * sha, while only the caller can set this.
  */
 export const PROVENANCE_DEFER_ENV = "BRAID_PROVENANCE_DEFER";
 

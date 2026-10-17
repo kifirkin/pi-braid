@@ -46,6 +46,10 @@ function buildFixture({ name = "fixture-pack", version = "1.2.3", files, scripts
   if (scripts) manifest.scripts = scripts;
   writeFileSync(join(dir, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(dir, "README.md"), "# fixture\n");
+  // The record is never tracked. Ignoring it keeps `dirty` attributable to a
+  // caller's edit instead of to the pack's own leftover, which `git status`
+  // would otherwise report as an untracked entry.
+  writeFileSync(join(dir, ".gitignore"), `${BUILD_INFO_FILE}\n`);
   git(["-c", "init.defaultBranch=main", "init", "-q"], dir);
   git(["add", "-A"], dir);
   git(["-c", "user.email=fixture@example.com", "-c", "user.name=fixture", "commit", "-q", "-m", "fixture"], dir);

@@ -30,7 +30,7 @@
  *      hole they leave: a reader may read a key no row names while both arms
  *      stay green. See the arm's own comment for the census scope.
  *
- * Usage: node scripts/check-braid-schema.mjs [--doc <path>]
+ * Usage: node scripts/check-braid-schema.mjs [--doc <path>] [--coverage-root <dir>]
  */
 
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -272,9 +272,14 @@ export function docArm(docPath, schemaText, notesDir = DOC_NOTES_DIR) {
  * Arm 3: every `braid.*` literal in the source tree must resolve to a row.
  *
  * The census reads file text, comments included: a comment that names a key is
- * a claim about the config surface, and a text scan also sees a read whose key
- * sits in a template or a constant where a parse-tree walk might not. Scope is
- * every non-test `.ts` file under `packages/`, not the `src/` subtrees alone:
+ * a claim about the config surface, and a key written as one literal is seen
+ * wherever it sits, string or comment. What the scan cannot see: a key
+ * assembled from pieces (a template with its interpolation inside the path, a
+ * concatenation) yields no token at all; only `.ts` files are read, so a
+ * `.js`, `.mjs` or `.tsx` reader is invisible; and a bracket or angle
+ * placeholder is dynamic, counted and never compared against a row (see
+ * hasDynamicSegment). Scope is every non-test `.ts` file under `packages/`,
+ * not the `src/` subtrees alone:
  * `packages/providers` has no `src/` directory, so a scan limited to src/
  * never sees its readers. Test material is out of scope on purpose: schema
  * fixtures construct synthetic keys (test/runtime/schema/fixtures/reader.ts
@@ -400,6 +405,17 @@ export function checkLiteralCoverage(census, rowPaths) {
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The packages root the coverage census reads: `--coverage-root <dir>` names a
+ * tree to scan (the suite drives a fixture through the CLI with it), and
+ * without it the scan reads the checkout's own `packages/`.
+ */
+function resolveCoverageRoot(argv = process.argv.slice(2)) {
+  const i = argv.indexOf("--coverage-root");
+  if (i >= 0 && argv[i + 1]) return resolve(argv[i + 1]);
+  return join(REPO_ROOT, "packages");
+}
+
 function main() {
   const { text } = generateSchema();
   let exit = 0;
@@ -422,7 +438,7 @@ function main() {
   }
 
   const coverage = checkLiteralCoverage(
-    censusSourceLiterals(join(REPO_ROOT, "packages")),
+    censusSourceLiterals(resolveCoverageRoot()),
     braidRowPaths(),
   );
   if (coverage.ok) {

@@ -4,14 +4,17 @@
  *
  * Drives scripts/publish-local.mjs against sandbox destinations via the
  * LOCAL_PKG env var, so no fixture ever touches the live local-packages
- * tree. Three publishes:
+ * tree. Four publishes:
  *
  *   1. resolution fails (a fixture dependency targets a missing file:) —
  *      the previous install survives byte-identical, the destination
  *      manifest is untouched, the tarball stays for retry, exit non-zero;
  *   2. resolution passes but the install step fails (fixture install
  *      script exits non-zero) — the backup path restores the old install;
- *   3. clean fixture — the swap happens, the manifest pin moves, and no
+ *   3. the workspace-wired prepack runs inside a real publish: the shipped
+ *      record comes from publish-local's pre-bump git read, so the version
+ *      bump is not recorded as dirt;
+ *   4. clean fixture — the swap happens, the manifest pin moves, and no
  *      backup remains.
  */
 import { test } from "node:test";

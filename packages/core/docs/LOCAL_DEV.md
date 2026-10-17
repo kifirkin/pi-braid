@@ -145,10 +145,11 @@ sha and branch, dirty flag, pack time (`scripts/build-info.mjs` is the one
 generator). It is written by each workspace's `prepack` (`scripts/pack-provenance.mjs`),
 expanded into the `files` allowlist of every package, and removed by `postpack`,
 so an `npm publish` pays the same step a plain `npm pack` does and the checkout
-ends as it started. `publish-local` writes the record itself before it bumps the
-manifest for the pack, and carries the `BRAID_PROVENANCE_DEFER` marker into the
-pack; the prepack step keeps a record only under that marker, because the
-temporary bump would otherwise read as a dirty tree. A record a killed pack left
+ends as it started. `publish-local` reads git before the version bump and
+writes the record from that read, so the recorded `dirty` is the pre-bump
+state; it carries the `BRAID_PROVENANCE_DEFER` marker into the pack, and the
+prepack step keeps a record only under that marker, because the temporary bump
+would otherwise read as a dirty tree. A record a killed pack left
 behind is regenerated from a fresh read - a matching version and commit are not
 enough to defer to.
 
