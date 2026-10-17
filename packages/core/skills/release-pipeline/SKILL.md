@@ -1,21 +1,21 @@
 ---
 name: release-pipeline
-description: "Generic local npm release pipeline for braid packages. Covers: building, packing, installing to local registry, and verifying packages. Extensible for remote publication to npm."
+description: "Release pipeline for braid packages: local builds, packing, installs, and verification; remote npm publication through GitHub Actions OIDC."
 trigger: "releasing packages, npm publish, local package install, building packages, packing npm packages, package verification"
-validated: 2026-08-16
+validated: 2026-10-18
 verdict: IMPROVE
 ---
 
 # Release Pipeline
 
-Generic local npm release pipeline for braid packages. Extensible for remote publication.
+Local package release and install flow, with remote npm publication through GitHub Actions OIDC.
 
 ## Principles
 
 1. **Isolation** - workers operate on git worktrees, never the live repo
 2. **Hygiene** - worktrees and .tgz files are cleaned up after release
 3. **Traceability** - every release has a version, commit, and timestamp
-4. **Extensibility** - local release is the default; remote publication is a flag
+4. **Separation** - local package installs use this pipeline; npm publication runs in a separate GitHub Actions OIDC workflow
 
 ## Worktree Management
 
@@ -48,12 +48,9 @@ clean apart from a symlinked `node_modules` - and remove any resurrected path (`
 
 ### Step 1: Build
 
-```
-cd <package-dir>
-npm run build
-```
-
-Verify: `npm run typecheck` (or `npx tsc --noEmit`).
+From `<package-dir>`, run `npm run build` when the package defines a build
+script. Run `npm run typecheck` or `npx tsc --noEmit` when the package has a
+TypeScript check.
 
 ### Step 2: Pack
 
@@ -144,25 +141,27 @@ Rules the script enforces:
   `npm --prefix <global-prefix> install -g @earendil-works/pi-coding-agent@<version>`.
 - **Publish, do not repack.** `--apply` composes `publish-local.mjs` per braid
   package; it never packs inline.
-- **Verify is static.** `--verify` reads the installed tree, evaluates every
-  item (it does not short-circuit), and exits non-zero if any item failed; the
-  live-session checks are printed as a checklist for a real session rather than
-  automated. It is standalone: it refuses to combine with `--apply`/`--runtime`.
+- **Verify does not start a pi session.** `--verify` reads installed package
+  files and settings, evaluates every item, and exits non-zero if any item
+  fails. It resolves the current upstream version with `npm view`; live-session
+  checks remain a human checklist. It is standalone and refuses
+  `--apply`/`--runtime`.
 
 ## Remote Publication
 
-Remote publication is performed by `.github/workflows/publish.yml`, not by a
-local command: pushing a release tag (`v<core version>`) runs the workflow,
-which publishes every workspace package whose manifest version is not yet on
-the registry through npm trusted publishing (OIDC). No npm token is involved.
+Remote publication uses `.github/workflows/publish.yml`, separate from the
+local install path. A bare core release tag (`v<core version>`) runs the
+workflow. To publish one sibling package, dispatch it from `main` with
+`only=<package>`; sibling tags do not run this release workflow, and iteration
+tags are refused by its job condition. A release-tag run publishes each stable
+workspace version not already present on npm through trusted publishing (OIDC);
+the workflow uses no npm token.
 
-Pre-requisites:
+Preparation:
 
-- Release commit with the versions bumped and `package-lock.json` in sync
-- Release tag pushed (`v<version>` for core; a sibling's
-  `<workspace>-v<version>` tag does not trigger the workflow, so dispatch the
-  workflow from `main` with `only=<package>`, never from an iteration tag)
-- Trusted publisher configured for the package on npmjs.com
+- Commit the intended stable package versions. Refresh `package-lock.json` as
+  a release convention, as described in `CONTRIBUTING.md`.
+- Configure trusted publishing for the package on npmjs.com.
 
 Local CLI publishing is not a fallback: `npm publish` needs 2FA, and this
 account's passkey second factor leaves the CLI OTP prompt nothing to answer.
@@ -178,19 +177,24 @@ After release:
 
 ## Version Convention
 
-- Local releases use the same version as the source package.json
-- Bump version before remote publication only
-- Use `npm version` for semver bumps: `npm version patch`
-- Tag the commit in its package's namespace: core's tags are bare `v<version>`,
-  a sibling's carry the workspace name (`git tag telegram-v0.1.4`, then
-  `git push origin telegram-v0.1.4`)
+- `publish-local.mjs` normally derives `<base>-<branch>.<iteration>` from the
+  workspace version; if that version already carries a prerelease, it uses it
+  verbatim. The script restores the original manifest after packing.
+- Commit stable package versions before remote npm publication. Local snapshots
+  use the derived iteration version instead.
+- Use `npm version` for semver bumps in the target workspace.
+- A bare core release tag (`v<core version>`) runs the publish workflow. Publish
+  a sibling package by dispatching from `main` with `only=<package>`.
+  `tag-prerelease.mjs` creates package-scoped iteration tags; they do not
+  publish.
 
-## CWD Scoping
+## Timer and Artifact Locations
 
-Timers and release artifacts are scoped by CWD:
+Timer files are project-scoped at
+`<braid-home>/projects/<canonical-sanitized-cwd>/pending-timers.jsonl`; the
+default braid home is `~/.pi/agent/braid`, and `BRAID_HOME` can override it.
 
-- Timer files: `~/.pi/agent/braid/projects/<sanitized-cwd>/pending-timers.jsonl`
-- Release artifacts are in the package directory, not the pi config directory
-
-This ensures independent timer pools per project and prevents cross-project
-interference.
+`publish-local.mjs` creates a tarball in the workspace directory, copies it
+to `~/.pi/agent/local-packages` (or `LOCAL_PKG`), then removes the workspace
+copy. The installed package and retained tarball use the destination, not the
+project CWD.
