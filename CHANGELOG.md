@@ -79,11 +79,10 @@ below); its outcome decides whether this section is ever tagged.
 - **Docs** - `CONTRIBUTING.md` leads with `pi install npm:pi-braid` (one
   command, no clone, no build) before the contributor flow; cross-package links
   label their target by repository path; the README badge states the peer rule
-  instead of a stale minimum; the `TOOLS.md` catalog rewrites its enablement
+  instead of a stale minimum; the `TOOLS.md` document rewrites its enablement
   reference, adds a Command catalog of extension slash commands, and gains a
-  `network-monitor` row naming `braid.contrib.networkMonitor`; shipped comments
-  and prose drop internal pointer labels; `ROADMAP.md` records the per-package
-  tag namespaces and the `tunnel-control` verdict.
+  `network-monitor` row naming `braid.contrib.networkMonitor`; `ROADMAP.md`
+  records the per-package tag namespaces and the `tunnel-control` verdict.
 
 ### Telegram
 
