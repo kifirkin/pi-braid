@@ -43,6 +43,79 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.40.2 / Telegram — 0.1.5 / Providers — 1.0.6 / Contrib — 0.1.1 (2026-10-17: orchestrator close gates, npm-first docs, multi-client tunnels)
+
+The four packages whose shipped content moved since the 0.40.1 train.
+`pi-braid-skills` 0.2.2 went out separately in the same window (its own section
+below), as the single-package first test of the npm trusted-publishing path.
+
+### Core
+
+- **The release path is the publish workflow** - `CONTRIBUTING.md` step 5 and
+  the `release-pipeline` skill name the tag that releases: `npm install` at the
+  root after the manifest bumps, `npm run ci:check` before the tag, an annotated
+  `v<core version>` published by `.github/workflows/publish.yml` through npm
+  trusted publishing (OIDC, no token in any repository file), and the iteration
+  tags (`v<version>-main.N`, `<workspace>-v<version>`) that never publish.
+- **Orchestrator close gates** - a close's `files` row that carries a
+  population stamp is read against the tree at the revision the stamp names,
+  and a count below that revision's tracked-entry census refuses the merge
+  before any ref moves; a recorded production write is refused unless the same
+  close records every preflight piece its class names; every gate row is read
+  for well-formedness at close, in shadow mode by default under the new
+  `braid.orchestrator.closeGateWellFormedness` setting. The tool surface prints
+  the population comparison beside the outcome line.
+- **Provenance in the tarball** - `prepack`/`postpack` write `build-info.json`
+  (package name, packed version, commit sha and branch, dirty flag, pack time)
+  into every artifact and remove it afterwards, and each manifest's `files`
+  allowlist ships it. `packages/core/docs/LOCAL_DEV.md` states the reading rule: `sha` plus
+  `dirty == false` is what says a tarball is a clean checkout of a named
+  commit.
+- **Peer ranges state the pi floor** - the manifests carry `^1.2.0` for the
+  `@earendil-works/*` peers and `^1.1.38` for `typebox` instead of `*`, and the
+  update pipeline rewrites those ranges alongside the exact pins, so the floor
+  moves with the runtime instead of drifting behind it.
+- **Docs** - `CONTRIBUTING.md` leads with `pi install npm:pi-braid` (one
+  command, no clone, no build) before the contributor flow; cross-package links
+  label their target by repository path; the README badge states the peer rule
+  instead of a stale minimum; the `TOOLS.md` catalog covers every config key
+  the code reads; shipped comments and prose drop internal pointer labels;
+  `ROADMAP.md` records the per-package tag namespaces and the `tunnel-control`
+  verdict.
+
+### Telegram
+
+- **HTML parse mode auto-selects only on a tag Telegram parses** -
+  `hasHtmlTags` now requires a well-formed tag whose name is in Telegram's tag
+  set, so a body carrying `<n>` or `<b/>` goes out as plain text, where those
+  characters reach the reader literally, instead of selecting HTML and being
+  refused whole as an unsupported start tag.
+- **Docs and manifest** - the README leads with the `pi install` one-liner, and
+  the manifest carries the provenance pair and the peer ranges above.
+
+### Providers
+
+- **README and manifest only** - no source file changed in this release: the
+  delta is the README's `pi install npm:pi-braid-providers` one-liner and the
+  manifest's peer ranges and provenance pair.
+
+### Contrib
+
+- **`network-monitor` speaks two clients** - the v2RayTun-only probe becomes a
+  client-adapter split (`clients.ts`, `tunnel.ts`), so the watcher reconnects
+  v2RayTun over app deep links and Happ over its network-extension profile
+  (`scutil --nc stop|start`); `outageThreshold` (default three consecutive
+  failed probes) keeps one failed probe from toggling the tunnel, and the
+  `braid.contrib.networkMonitor` block is re-read while the extension runs.
+- **The per-module off switch holds on both loading paths** - the new shipped
+  `module-toggle.ts` reads `braid.contrib.<name>` inside each extension's own
+  factory, because pi loads the `pi.extensions` entries directly and never runs
+  the bundle; only a literal `false` disables, and an absent key or an
+  unreadable settings file reads as enabled.
+- **Docs and manifest** - the README's module table names the second client and
+  its settings table gains the `networkMonitor` row and the literal-`false`
+  rule; the manifest carries the provenance pair and the peer ranges above.
+
 ## Skills — 0.2.2 (2026-10-17: pack provenance and README repairs)
 
 - **Provenance in the tarball** — `prepack`/`postpack` write `build-info.json` (name, version, full and short commit sha, branch, dirty flag, pack time) into the pack and remove it after, and the manifest's `files` list ships it, so a packed `pi-braid-skills` names the commit it was packed from.
