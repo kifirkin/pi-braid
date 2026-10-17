@@ -13,6 +13,10 @@
  *     (which runs prepack, and does not run prepublishOnly's siblings for a
  *     plain pack) ships what `npm pack` ships.
  *
+ * A `prepack` body that keeps running commands after the writer call is
+ * refused: a later command can mutate the artifact after the record was
+ * computed.
+ *
  * The writer is also executed once, in a throwaway package directory, because
  * a manifest that names a script which writes nothing would pass a purely
  * lexical read. The probe proves the record takes the version of the manifest
@@ -89,11 +93,13 @@ function commandWords(body) {
 
 /**
  * The invocation of the shared writer inside a lifecycle script: the path it
- * is called with and the verb it is given. `null` when the body carries no
- * `node <path>.mjs <verb>` call at all — the caller reports that as a miss.
+ * is called with, the verb it is given, and how many commands the body runs
+ * after it. `null` when the body carries no `node <path>.mjs <verb>` call at
+ * all — the caller reports that as a miss.
  */
 function writerCall(body, pkgDir) {
-  for (const words of commandWords(body)) {
+  const segments = commandWords(body);
+  for (const [index, words] of segments.entries()) {
     const call = words.findIndex(
       (word, i) => word === "node" && typeof words[i + 1] === "string" && words[i + 1].endsWith(".mjs"),
     );
@@ -102,6 +108,7 @@ function writerCall(body, pkgDir) {
       script: resolve(pkgDir, words[call + 1]),
       verb: words[call + 2] ?? null,
       text: words.slice(call, call + 3).join(" "),
+      commandsAfter: segments.length - 1 - index,
     };
   }
   return null;
@@ -183,6 +190,9 @@ function packProbe({ writer, rel, manifest, proveRegeneration }) {
       ) + "\n",
     );
     writeFileSync(join(fixture, "README.md"), "# provenance pack probe\n");
+    // Never tracked: an ignored leftover cannot witness dirt, only the tracked
+    // README edit can.
+    writeFileSync(join(fixture, ".gitignore"), `${BUILD_INFO_FILE}\n`);
 
     const gitSteps = [
       ["-c", "init.defaultBranch=main", "init", "-q"],
@@ -275,6 +285,13 @@ for (const { dir, rel, manifest } of packages) {
     }
     if (!existsSync(call.script)) {
       fail(`${rel}: ${hook} calls ${call.text}, and ${relative(root, call.script)} does not exist`);
+      continue;
+    }
+    if (hook === "prepack" && call.commandsAfter > 0) {
+      fail(
+        `${rel}: ${hook} ("${body}") runs commands after the writer call ("${call.text}"); ` +
+          `a later command can mutate ${BUILD_INFO_FILE} after the record is computed`,
+      );
       continue;
     }
     if (!writers.has(rel)) writers.set(rel, call.script);
