@@ -29,7 +29,11 @@
  *  16. RED: CLI, an uncovered literal exits 1 and names its first sighting
  *      (--coverage-root points the census at a fixture tree)
  *  17. RED: CLI, a valueless --coverage-root is a usage error rather than a
- *      silent census of the default tree; a value naming no directory fails
+ *      silent census of the default tree, in both spellings and the
+ *      empty-string shape; both spellings also carry a real value
+ *  18. RED: CLI, a valueless --doc is a usage error rather than a quiet fall
+ *      back to the companion reference, in either spelling; a named path rides
+ *      through the = form
  */
 
 import { test } from "node:test";
@@ -255,6 +259,21 @@ test("RED: a missing reference is a counted skip, not a failure (exit 0)", () =>
       resolve(named),
       "an explicit --doc wins over the companion lookup",
     );
+    // A --doc with no usable value is a usage error, not a quiet fall back to
+    // the companion lookup; a named-but-absent reference still skips above.
+    assert.throws(() => resolveDocPath(["--doc"], tmp), /--doc needs a path/);
+    assert.throws(() => resolveDocPath(["--doc", ""], tmp), /--doc needs a path/);
+    assert.throws(() => resolveDocPath(["--doc="], tmp), /--doc needs a path/);
+    assert.throws(
+      () => resolveDocPath(["--doc", "--coverage-root", "x"], tmp),
+      /--doc needs a path/,
+      "the next flag is not a path",
+    );
+    assert.equal(
+      resolveDocPath([`--doc=${named}`], join(tmp, "absent-notes")),
+      resolve(named),
+      "the = spelling names the same path",
+    );
     const cli = execFileSync("node", [GATE, "--doc", join(tmp, "missing.md")], {
       cwd: ROOT,
       encoding: "utf8",
@@ -394,22 +413,99 @@ test("RED: CLI names an uncovered literal and exits 1", () => {
   }
 });
 
-test("RED: CLI refuses a valueless --coverage-root", () => {
+/** The spawn streams that carry a CLI outcome. */
+const streams = (run) => ({ status: run.status, stdout: run.stdout, stderr: run.stderr });
+
+test("RED: CLI refuses a valueless --coverage-root; both spellings carry a value", () => {
+  // A bad invocation exits 1, the same status drift produces: the gate keeps
+  // one non-zero code by seat decision, so there is no separate usage code.
   const valueless = spawnSync("node", [GATE, "--coverage-root"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(valueless.status, 1, "a valueless flag must not fall back to the default census");
+  assert.equal(valueless.stdout, "", "a usage error prints nothing, so no census runs");
   assert.match(valueless.stderr, /--coverage-root needs a directory/);
-  assert.doesNotMatch(valueless.stdout, /source coverage/, "no census runs");
 
-  // The control: a value that names no directory keeps failing through
-  // main()'s catch, so the usage error does not swallow the other bad shape.
+  // The empty string — a quoted unset shell variable — is the same shape.
+  const empty = spawnSync("node", [GATE, "--coverage-root", ""], { cwd: ROOT, encoding: "utf8" });
+  assert.deepEqual(streams(empty), streams(valueless), "the empty string is the valueless shape");
+
+  // A next token that is another flag is not a value: consuming it would
+  // census a directory nobody named.
+  const followedByFlag = spawnSync("node", [GATE, "--coverage-root", "--doc", "nope.md"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.deepEqual(streams(followedByFlag), streams(valueless), "another flag is not a directory");
+  assert.doesNotMatch(followedByFlag.stderr, /--doc/, "the message names the flag that needs a value");
+
+  // The `=` spelling is the same flag: the value comes from the `=` when
+  // present, and an empty one is the empty shape rather than a dropped flag.
+  const equalsEmpty = spawnSync("node", [GATE, "--coverage-root="], { cwd: ROOT, encoding: "utf8" });
+  assert.deepEqual(streams(equalsEmpty), streams(valueless), "--coverage-root= is the empty value");
+
   const tmp = mkdtempSync(join(tmpdir(), "braid-schema-coverage-absent-"));
   try {
-    const run = spawnSync("node", [GATE, "--coverage-root", join(tmp, "absent")], {
-      cwd: ROOT,
-      encoding: "utf8",
-    });
-    assert.equal(run.status, 1, "a value naming no directory stays fail-closed");
-    assert.match(run.stderr, /ENOENT/);
+    // The control: a value that names no directory keeps failing through
+    // main()'s catch, so the usage error does not swallow the other bad shape.
+    const absent = join(tmp, "absent");
+    const space = spawnSync("node", [GATE, "--coverage-root", absent], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(space.status, 1, "a value naming no directory stays fail-closed");
+    assert.match(space.stderr, /ENOENT/);
+    const equals = spawnSync("node", [GATE, `--coverage-root=${absent}`], { cwd: ROOT, encoding: "utf8" });
+    assert.deepEqual(streams(equals), streams(space), "the `=` spelling reaches the same path");
+
+    // The fixture shape the space form accepts, reached through the `=`: the
+    // value is honoured, so the fix cannot over-reach into refusing it.
+    const packages = join(tmp, "packages");
+    mkdirSync(join(packages, "core", "src"), { recursive: true });
+    writeFileSync(
+      join(packages, "core", "src", "reader.ts"),
+      "const live = parsed.braid?.timers?.maxWakeAttempts;\n",
+    );
+    const green = spawnSync("node", [GATE, `--coverage-root=${packages}`], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(green.status, 0, "a covered literal must leave the gate green");
+    assert.match(
+      green.stdout,
+      /✅ source coverage: 1 braid\.\* literal\(s\) over 1 source file\(s\); 1 covered/,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("RED: CLI refuses a valueless --doc; both spellings carry a path", () => {
+  const valueless = spawnSync("node", [GATE, "--doc"], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(valueless.status, 1, "a valueless --doc must not fall back to the companion lookup");
+  assert.equal(valueless.stdout, "", "a usage error prints nothing before it reports");
+  assert.match(valueless.stderr, /--doc needs a path/);
+
+  // The next flag is not a path either, so the gate reports the missing value
+  // instead of quietly comparing some reference the caller did not name.
+  const followedByFlag = spawnSync("node", [GATE, "--doc", "--coverage-root", "x"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  assert.deepEqual(
+    streams(followedByFlag),
+    streams(valueless),
+    "a following flag is the valueless shape",
+  );
+
+  // The `=` spelling is the same flag: an empty value is the empty shape, and
+  // a named path rides through it.
+  const equalsEmpty = spawnSync("node", [GATE, "--doc="], { cwd: ROOT, encoding: "utf8" });
+  assert.deepEqual(streams(equalsEmpty), streams(valueless), "--doc= is the empty value");
+
+  const tmp = mkdtempSync(join(tmpdir(), "braid-schema-doc-eq-"));
+  try {
+    const doc = join(tmp, "reference.md");
+    writeFileSync(doc, referenceOver(REFERENCE_KEYS));
+    const green = spawnSync("node", [GATE, `--doc=${doc}`], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(green.status, 0, "the `=` spelling must carry the path");
+    const n = REFERENCE_KEYS.length;
+    assert.match(
+      green.stdout,
+      new RegExp(`✅ doc: ${n} braid\\.\\* row\\(s\\), ${n} literal default\\(s\\) compared`),
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
