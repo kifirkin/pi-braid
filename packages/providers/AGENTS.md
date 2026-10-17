@@ -191,7 +191,7 @@ one out-of-loop watcher per extension load:
   transitions + half-open gate, blocked-text retry vocabulary, notify claim
   floor, stall lines, config resolution - all with injected clock, probe and
   sender).
-- Manual: load pi with this extension, list models (`/models`), confirm the new entry is registered.
+- Manual: load pi with this extension, switch the model (`/model`), confirm the new entry is registered.
 
 ## Migration status
 

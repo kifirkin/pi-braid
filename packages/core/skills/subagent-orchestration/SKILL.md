@@ -285,7 +285,7 @@ braid ships a context-manager: `context_navigate` (tag / checkout) and `context_
 
 Enforce a HARD context budget BEFORE degradation begins. Mistakes and loop-risk rise sharply at ~75–100k tokens, independent of window size.
 
-**Trigger (absolute, not %):** when `context_inspect` reports **>80k tokens** OR **>35% of the window** (whichever comes first):
+**Trigger (absolute, not %):** when `context_inspect` reports **>80k tokens** OR **>35% of the window** (whichever comes first). `context_inspect` ships deferred: if it is not in your active set, find it with `tool_search` first:
 
 1. `context_navigate action=tag name="pre-archive-<n>"` - mark your position
 2. `context_compress action=archive topic="<task>"` - archive everything before the tag

@@ -159,7 +159,7 @@ export const MANIFEST: ManifestEntry[] = [
     id: "session-recall",
     fn: sessionRecallFn,
     dependencies: ["three-memory-stores"],
-    desc: "Session recall tools (session_search, session_query)",
+    desc: "Session recall tool (session)",
     module: "memory",
   },
   {
@@ -259,7 +259,7 @@ export const MANIFEST: ManifestEntry[] = [
     fn: errorCaptureFn,
     disabledByDefault: true,
     dependencies: ["agent-environment"],
-    desc: "Error logging tools: error_list, error_get",
+    desc: "Error logging tool (error)",
   },
 ];
 

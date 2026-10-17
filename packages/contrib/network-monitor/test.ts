@@ -287,6 +287,34 @@ console.log(
   check("still up when the route answers", !r.down);
 }
 
+console.log(
+  "probe: an appex path pattern with no live process is dead, not skipped",
+);
+{
+  // Happ's extension leg: the appex bundle path is the pattern the probe
+  // hands to `pgrep -f`, and a host where that process is gone must report
+  // the leg dead rather than fall back to the not-applicable path.
+  const pattern = TUNNEL_CLIENTS.happ.extensionProcess ?? "";
+  const { deps, calls } = makeDeps({
+    ncStatus: "Connected",
+    curlCode: "302",
+    appExit: 0,
+    extExit: 1,
+  });
+  const r = await probeTunnel({ ...baseOpts, extensionProcess: pattern }, deps);
+  check(
+    "the appex pattern is the one probed",
+    pattern.length > 0 && calls.some((c) => c === `pgrep -f ${pattern}`),
+    calls.join(","),
+  );
+  check("extension liveness is false, not n/a", r.extensionAlive === false);
+  check(
+    "detail does not claim not applicable",
+    !r.detail.includes("extension: n/a"),
+    r.detail,
+  );
+}
+
 console.log("probe: disconnected -> down");
 {
   const { deps } = makeDeps({
@@ -458,11 +486,12 @@ console.log("adapters: capability-scoped, mechanism carried as data");
   );
 
   const h = TUNNEL_CLIENTS.happ;
+  check("happ can be probed", probeRefusal(h) === null);
   check(
-    "happ probes without a separate extension process",
-    probeRefusal(h) === null,
+    "happ extension leg probes the appex bundle path",
+    h.extensionProcess === "Happ.app/Contents/PlugIns/Tunnel.appex",
+    String(h.extensionProcess),
   );
-  check("happ has no extension process pattern", h.extensionProcess === null);
   check(
     "happ probe facts are the host-validated ones",
     h.bundleId === "su.ffg.happ" &&
