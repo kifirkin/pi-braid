@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-skills",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Standalone skill pack for pi — markdown-only, no runtime dependencies",
   "keywords": [
     "pi-package",
