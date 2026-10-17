@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-contrib",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone contrib extensions for pi — browser, codebase, diff, healthcheck, network-monitor, observatory, path-security, rate-limiter, repl, sleep, system-monitor, tool-config",
   "type": "module",
   "files": [
