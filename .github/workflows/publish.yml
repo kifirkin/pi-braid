@@ -1,0 +1,133 @@
+name: Publish
+
+# Publishes the workspace packages to npm with trusted publishing (OIDC).
+# No npm token is read: the registry exchanges this workflow's GitHub OIDC
+# identity for a short-lived publish credential (see CONTRIBUTING.md,
+# "Release process").
+#
+# Release tags name the core manifest version (v<core version>); iteration
+# tags (v<version>-main.N) never publish.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Publish only this package directory (core|skills|providers|telegram|contrib); empty means every package whose version is not yet on the registry"
+        type: string
+        default: ""
+      dry_run:
+        description: "Run npm publish --dry-run for each selected package and stop before any publish"
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    # Iteration tags carry a prerelease segment; they are not releases.
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Assert the npm CLI can exchange OIDC credentials
+        run: |
+          npm --version
+          node -e '
+            const v = require("node:child_process").execSync("npm --version").toString().trim().split(".").map(Number);
+            if (v[0] < 11 || (v[0] === 11 && v[1] < 5)) {
+              console.error("npm " + v.join(".") + " is below the 11.5.1 trusted-publishing floor");
+              process.exit(1);
+            }
+          '
+
+      # The memory session-recall tests assert the rg backend; the runner
+      # image does not ship ripgrep (same step as ci.yml).
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
+      - name: Install
+        run: npm ci
+
+      - name: Gates
+        run: npm run ci:check
+
+      - name: Publish
+        env:
+          ONLY: ${{ inputs.only }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          REGISTRY=https://registry.npmjs.org
+
+          echo "npm $(npm --version)  registry ${REGISTRY}"
+          echo "workflow ${WORKFLOW_REF}"
+          echo "run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          case "${ONLY}" in
+            "" | core | skills | providers | telegram | contrib) ;;
+            *) echo "refusing: unknown package '${ONLY}'"; exit 1 ;;
+          esac
+
+          # A release tag names the core manifest version; an iteration tag
+          # never reaches this step (the job condition refuses it).
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            core=$(node -p "require('./packages/core/package.json').version")
+            if [ "${GITHUB_REF_NAME}" != "v${core}" ]; then
+              echo "refusing: ${GITHUB_REF_NAME} does not name the core version v${core}"
+              exit 1
+            fi
+          fi
+
+          # The registry is the instrument: the read below decides whether a
+          # version exists, and a re-run is a no-op for versions already
+          # published.
+          for dir in core skills providers telegram contrib; do
+            if [ -n "${ONLY}" ] && [ "${ONLY}" != "${dir}" ]; then
+              continue
+            fi
+
+            name=$(node -p "require('./packages/${dir}/package.json').name")
+            version=$(node -p "require('./packages/${dir}/package.json').version")
+
+            case "${version}" in
+              *-*) echo "skip ${name}@${version}: prerelease version"; continue ;;
+            esac
+            if npm view "${name}@${version}" version --registry="${REGISTRY}" >/dev/null 2>&1; then
+              echo "skip ${name}@${version}: already on the registry"
+              continue
+            fi
+
+            echo "::group::dry run ${name}@${version}"
+            (cd "packages/${dir}" && npm publish --dry-run --registry="${REGISTRY}")
+            echo "::endgroup::"
+
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "dry-run input set; not publishing ${name}@${version}"
+              continue
+            fi
+
+            (cd "packages/${dir}" && npm publish --registry="${REGISTRY}")
+
+            {
+              echo "### Published ${name}@${version}"
+              echo ""
+              echo "- registry: ${REGISTRY}"
+              echo "- workflow: ${WORKFLOW_REF}"
+              echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "- ref: ${GITHUB_REF}"
+            } >>"${GITHUB_STEP_SUMMARY}"
+          done

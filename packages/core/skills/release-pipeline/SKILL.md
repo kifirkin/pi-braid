@@ -151,19 +151,21 @@ Rules the script enforces:
 
 ## Remote Publication
 
-To publish to npm (instead of local), override Step 3:
-
-```
-npm publish
-```
+Remote publication is performed by `.github/workflows/publish.yml`, not by a
+local command: pushing a release tag (`v<core version>`) runs the workflow,
+which publishes every workspace package whose manifest version is not yet on
+the registry through npm trusted publishing (OIDC). No npm token is involved.
 
 Pre-requisites:
 
-- `npm login` completed
-- Version bumped (`npm version patch|minor|major`)
-- CHANGELOG.md updated
-- Git tag created (core: `git tag v<version>`; a sibling package:
-  `git tag <workspace>-v<version>`, e.g. `telegram-v0.1.4`)
+- Release commit with the versions bumped and `package-lock.json` in sync
+- Release tag pushed (`v<version>` for core; a sibling's
+  `<workspace>-v<version>` tag does not trigger the workflow, so publish that
+  package with a manual run and `only=<package>`)
+- Trusted publisher configured for the package on npmjs.com
+
+Local CLI publishing is not a fallback: `npm publish` needs 2FA, and this
+account's passkey second factor leaves the CLI OTP prompt nothing to answer.
 
 ## Disk Hygiene
 
