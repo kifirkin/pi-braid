@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
 const SCRIPT = join(ROOT, "scripts", "publish-local.mjs");
+const WRITER = join(ROOT, "scripts", "pack-provenance.mjs");
 
 const FIXTURE_NAME = "publish-fixture";
 const OLD_VERSION = "0.9.0";
@@ -138,6 +139,45 @@ test("an install that fails after resolution is rolled back from the backup", ()
     assert.ok(
       existsSync(join(s.dest, `${FIXTURE_NAME}-1.1.0-detached.0.tgz`)),
       "the built tarball must remain in the destination for recovery",
+    );
+  } finally {
+    rmSync(s.dir, { recursive: true, force: true });
+  }
+});
+
+test("a publish packs the pre-bump record, not the version bump", () => {
+  const s = newSandbox();
+  try {
+    const fixture = newFixture(s.dir, {
+      name: FIXTURE_NAME,
+      version: "4.0.0",
+      files: ["build-info.json"],
+      // The workspace wiring, so the pack runs the shared writer for real.
+      scripts: {
+        prepack: `node '${WRITER}' write`,
+        postpack: `node '${WRITER}' remove`,
+      },
+    });
+    for (const args of [
+      ["-c", "init.defaultBranch=main", "init", "-q"],
+      ["add", "-A"],
+      ["-c", "user.email=fixture@example.com", "-c", "user.name=fixture", "commit", "-q", "-m", "fixture"],
+    ]) {
+      const step = spawnSync("git", args, { cwd: fixture, encoding: "utf8" });
+      assert.equal(step.status, 0, `git ${args.join(" ")} failed: ${step.stderr}`);
+    }
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).stdout.trim();
+
+    const res = runPublish(fixture, s.dest);
+    assert.equal(res.status, 0, `publish must succeed: ${res.stdout}\n${res.stderr}`);
+    const buildInfo = JSON.parse(readFileSync(join(s.installed, "build-info.json"), "utf8"));
+    assert.equal(buildInfo.name, FIXTURE_NAME, "provenance must name the packed package");
+    assert.equal(buildInfo.version, "4.0.0-main.0", "provenance must carry the derived version");
+    assert.equal(buildInfo.sha, head, "provenance must name the packed commit");
+    assert.equal(
+      buildInfo.dirty,
+      false,
+      "the temporary version bump must not be recorded as uncommitted changes",
     );
   } finally {
     rmSync(s.dir, { recursive: true, force: true });

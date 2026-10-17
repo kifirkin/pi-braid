@@ -18,6 +18,18 @@
  * lexical read. The probe proves the record takes the version of the manifest
  * it runs in and that `remove` takes it away again.
  *
+ * Reading the wiring is not the same as holding the artifact. npm's pack
+ * order is prepack -> prepare -> postpack, with the tarball built after
+ * `prepare`, so a hook between the two can take the record out of the
+ * tarball. Every packable manifest therefore also packs a fixture of itself —
+ * its `files` allowlist, its `prepare` body when it declares one, the shared
+ * writer as its prepack/postpack pair — through npm's own `npm pack`, and the
+ * tarball must carry the record. Nothing of the real package is built: the
+ * fixture is package.json, a README and the record. A second pack of the same
+ * fixture plants a record that already names the pack, edits the tree, and
+ * requires the shipped `dirty` to come from the fresh pack-time read. A
+ * leaked record is gitignored, so only an artifact can settle that.
+ *
  * Population: every `packages/<dir>/package.json` that is not `private` — the
  * root manifest is the private monorepo root and is never packed. The
  * workspace list is discovered, never hardcoded, so a new package is covered
@@ -32,7 +44,7 @@
  * Exit code: 0 = every packable package ships and generates the record, 1 = not.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +105,143 @@ function writerCall(body, pkgDir) {
     };
   }
   return null;
+}
+
+/** Single-quote a path for a POSIX shell command body. */
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Pack a fixture of one manifest through npm's own `npm pack` and return a
+ * problem string when the tarball does not carry a good record.
+ *
+ * The fixture holds that manifest's `files` allowlist, its `prepare` body
+ * when it declares one, and the shared writer as its prepack/postpack pair:
+ * a package is packed by the lifecycle it declares, so a hook this gate never
+ * read can still decide what the tarball holds. Nothing of the real package
+ * is built — the fixture is package.json, a README and the record — and the
+ * only commands it runs are the writer and that prepare body.
+ *
+ * The fixture is its own git work tree, so the record's sha and dirty are
+ * asserted against the tree npm packed. When `proveRegeneration` is set, a
+ * second pack writes a record that already names the pack and then edits the
+ * tree: the shipped `dirty` must come from the pack-time read, not from the
+ * record on disk, or a leftover from a killed postpack would make a dirty
+ * tree ship `dirty: false`. One fixture carries that arm; the writer is
+ * shared, and one pack per manifest already binds the allowlists and
+ * prepares.
+ *
+ * Bounds, both fail-closed: a `prepare` that needs the real package's files
+ * or scripts makes npm fail this pack, and npm configuration that suppresses
+ * lifecycle scripts (e.g. `ignore-scripts`) fails it the way it strips the
+ * record from a real pack.
+ */
+function packProbe({ writer, rel, manifest, proveRegeneration }) {
+  const name = "provenance-pack-probe";
+  const version = "0.0.0";
+  const tarballName = `${name}-${version}.tgz`;
+  const work = mkdtempSync(join(tmpdir(), "check-provenance-pack-"));
+  const fixture = join(work, "fixture");
+  const dest = join(work, "dest");
+
+  const outTail = (text) => (text ?? "").trim().split("\n").slice(-4).join(" | ");
+  const pack = () =>
+    spawnSync("npm", ["pack", "--pack-destination", dest], {
+      cwd: fixture,
+      env: { ...process.env, npm_config_cache: join(work, "npm-cache") },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+  const tarballRecord = () => {
+    const extracted = spawnSync("tar", ["-xzOf", join(dest, tarballName), `package/${BUILD_INFO_FILE}`], {
+      encoding: "utf8",
+    });
+    if (extracted.status !== 0) return null;
+    try {
+      return JSON.parse(extracted.stdout);
+    } catch {
+      return null;
+    }
+  };
+
+  mkdirSync(fixture);
+  mkdirSync(dest);
+  try {
+    const scripts = {
+      prepack: `node ${shellQuote(writer)} write`,
+      postpack: `node ${shellQuote(writer)} remove`,
+    };
+    const prepare = manifest.scripts?.prepare;
+    if (typeof prepare === "string" && prepare.trim() !== "") scripts.prepare = prepare;
+    writeFileSync(
+      join(fixture, "package.json"),
+      JSON.stringify(
+        { name, version, files: Array.isArray(manifest.files) ? manifest.files : [], scripts },
+        null,
+        2,
+      ) + "\n",
+    );
+    writeFileSync(join(fixture, "README.md"), "# provenance pack probe\n");
+
+    const gitSteps = [
+      ["-c", "init.defaultBranch=main", "init", "-q"],
+      ["add", "-A"],
+      ["-c", "user.email=probe@example.invalid", "-c", "user.name=probe", "commit", "-q", "-m", "probe"],
+    ];
+    for (const args of gitSteps) {
+      const step = spawnSync("git", args, { cwd: fixture, encoding: "utf8" });
+      if (step.status !== 0) {
+        return `${rel}: the pack probe's fixture could not be committed (git exited ${step.status}): ${outTail(step.stderr)}`;
+      }
+    }
+    const head = (spawnSync("git", ["rev-parse", "HEAD"], { cwd: fixture, encoding: "utf8" }).stdout ?? "").trim();
+    if (!head) return `${rel}: the pack probe's fixture has no commit to read`;
+
+    const packed = pack();
+    if (packed.status !== 0) {
+      return `${rel}: the pack probe (npm pack, fixture wired like this manifest) exited ${packed.status}: ${outTail(packed.stderr) || outTail(packed.stdout)}`;
+    }
+    const listing = spawnSync("tar", ["-tzf", join(dest, tarballName)], { encoding: "utf8" });
+    if (listing.status !== 0 || !listing.stdout.split("\n").includes(`package/${BUILD_INFO_FILE}`)) {
+      return (
+        `${rel}: the tarball a real pack produces carries no ${BUILD_INFO_FILE} — a hook npm runs between ` +
+        `prepack and the tarball (prepare), or configuration suppressing the scripts, took the record away`
+      );
+    }
+    const info = tarballRecord();
+    if (!info) return `${rel}: the pack probe could not read a valid ${BUILD_INFO_FILE} out of the tarball`;
+    if (info.name !== name || info.version !== version) {
+      return `${rel}: the packed record names ${info.name}@${info.version}, the packed fixture is ${name}@${version}`;
+    }
+    if (info.sha !== head) {
+      return `${rel}: the packed record carries sha ${info.sha}, the fixture's commit is ${head}`;
+    }
+    if (info.dirty !== false) {
+      return `${rel}: the pack probe's tree was clean and the record says dirty=${info.dirty}`;
+    }
+
+    // A record that already names this pack, plus one edit. The shipped record
+    // must be regenerated: deferring to the leftover would ship the dirty
+    // flag of a tree that no longer exists.
+    if (!proveRegeneration) return null;
+    writeFileSync(join(fixture, BUILD_INFO_FILE), JSON.stringify(info, null, 2) + "\n");
+    writeFileSync(join(fixture, "README.md"), "# provenance pack probe\nedited\n");
+    const repacked = pack();
+    if (repacked.status !== 0) {
+      return `${rel}: the pack probe's second pack exited ${repacked.status}: ${outTail(repacked.stderr) || outTail(repacked.stdout)}`;
+    }
+    const dirty = tarballRecord();
+    if (!dirty) {
+      return `${rel}: the second pack's tarball carries no ${BUILD_INFO_FILE} (a leftover record made the pack defer)`;
+    }
+    if (dirty.dirty !== true) {
+      return `${rel}: a leftover record made an edited tree ship dirty=${dirty.dirty}, not dirty=true`;
+    }
+    return null;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 const packages = packablePackages();
@@ -204,6 +353,18 @@ if (distinct.length === 1) {
   } finally {
     rmSync(probeDir, { recursive: true, force: true });
   }
+}
+
+// The artifact probe. The arms above read the wiring; this one holds what the
+// wiring produces. Each packable manifest is packed once through npm's own
+// lifecycle — its allowlist, its `prepare` body, the shared writer — and the
+// tarball must carry a record read from the tree that was packed.
+if (distinct.length === 1) {
+  const [writer] = distinct;
+  packages.forEach(({ rel, manifest }, index) => {
+    const problem = packProbe({ writer, rel, manifest, proveRegeneration: index === 0 });
+    if (problem) fail(problem);
+  });
 }
 
 if (problems.length > 0) {

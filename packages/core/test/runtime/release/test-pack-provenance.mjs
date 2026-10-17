@@ -3,16 +3,16 @@
  *
  * Two halves. The writer's own contract is driven in a throwaway git work tree
  * — a real repository, because the record's sha, branch and dirty flag come
- * from git: the version is the manifest's, a stale record is replaced, and a
- * record that already describes the pack is left alone (that is the path
- * publish-local.mjs relies on, since it writes the record before it bumps the
- * manifest and the pack would otherwise read the bump as a dirty tree).
+ * from git: the version is the manifest's, a record the caller's deferral
+ * marker licenses is left alone, and every other record — including one that
+ * matches the pack field for field — is regenerated from a fresh read.
  *
- * The end-to-end half drives one real `npm pack` of the markdown-only skills
- * workspace — the cheapest package whose pack exercises the wired
- * prepack/postpack pair — and reads the record back out of the tarball with
- * tar. It also checks the tree the pack ran in: the record is gone again and
- * the checkout is not left with it.
+ * The end-to-end half packs real fixtures through npm: a leftover record on
+ * an edited tree must not reach the tarball, and a pack carrying the caller's
+ * marker must keep the caller's record. It also drives one `npm pack` of the
+ * markdown-only skills workspace — the cheapest package whose pack exercises
+ * the wired prepack/postpack pair — and checks the tree that pack ran in: the
+ * record is gone again and the checkout is not left with it.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,6 +21,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PROVENANCE_DEFER_ENV, readGitProvenance, writeBuildInfo } from "../../../scripts/build-info.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // This file sits in packages/core/test/runtime/release/.
@@ -38,17 +39,26 @@ function git(args, cwd) {
 }
 
 /** A committed fixture package, so the writer has a work tree to read. */
-function buildFixture({ name = "fixture-pack", version = "1.2.3" } = {}) {
+function buildFixture({ name = "fixture-pack", version = "1.2.3", files, scripts } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "pack-provenance-test-"));
-  writeFileSync(
-    join(dir, "package.json"),
-    JSON.stringify({ name, version, license: "MIT" }, null, 2) + "\n",
-  );
+  const manifest = { name, version, license: "MIT" };
+  if (files) manifest.files = files;
+  if (scripts) manifest.scripts = scripts;
+  writeFileSync(join(dir, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(dir, "README.md"), "# fixture\n");
   git(["-c", "init.defaultBranch=main", "init", "-q"], dir);
   git(["add", "-A"], dir);
   git(["-c", "user.email=fixture@example.com", "-c", "user.name=fixture", "commit", "-q", "-m", "fixture"], dir);
   return { dir, name, version };
+}
+
+/** The prepack/postpack pair every workspace manifest wires, writer path quoted. */
+function wiredScripts() {
+  const quote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+  return {
+    prepack: `node ${quote(WRITER)} write`,
+    postpack: `node ${quote(WRITER)} remove`,
+  };
 }
 
 /** Run the writer the way npm runs a lifecycle script: the manifest it acts on is passed in. */
@@ -66,6 +76,26 @@ function record(dir) {
 
 function putRecord(dir, info) {
   writeFileSync(join(dir, BUILD_INFO_FILE), JSON.stringify(info, null, 2) + "\n");
+}
+
+/**
+ * Pack the fixture through npm and read the record back out of the one
+ * tarball it wrote. The caller removes the returned destination.
+ */
+function packFixture(dir, env = {}) {
+  const dest = mkdtempSync(join(tmpdir(), "pack-provenance-tarball-"));
+  const res = spawnSync("npm", ["pack", "--pack-destination", dest], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    timeout: 120_000,
+  });
+  assert.equal(res.status, 0, `npm pack must exit 0: ${res.stdout}\n${res.stderr}`);
+  const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+  const tarball = join(dest, `${manifest.name}-${manifest.version}.tgz`);
+  const extracted = spawnSync("tar", ["-xzOf", tarball, `package/${BUILD_INFO_FILE}`], { encoding: "utf8" });
+  assert.equal(extracted.status, 0, `tar must extract the record from ${tarball}: ${extracted.stderr}`);
+  return { dest, tarball, record: JSON.parse(extracted.stdout) };
 }
 
 test("write records the manifest it runs in, from git", () => {
@@ -105,19 +135,61 @@ test("write replaces a record that names another commit or another version", () 
   }
 });
 
-test("write keeps a record that already describes this pack", () => {
+test("write keeps a record the caller wrote when the deferral marker is set", () => {
   const fx = buildFixture();
   try {
     const head = git(["rev-parse", "HEAD"], fx.dir);
     const written = { name: fx.name, version: fx.version, sha: head, packedAt: "2000-01-01T00:00:00.000Z" };
     putRecord(fx.dir, written);
-    const res = write(fx.dir, ["write"]);
+    const res = write(fx.dir, ["write"], { [PROVENANCE_DEFER_ENV]: "1" });
     assert.equal(res.status, 0, `write must exit 0: ${res.stderr}`);
     assert.deepEqual(
       record(fx.dir),
       written,
-      "a record written before the pack (the publish-local path) must not be rewritten",
+      "the record publish-local wrote before its manifest bump must survive the prepack",
     );
+  } finally {
+    rmSync(fx.dir, { recursive: true, force: true });
+  }
+});
+
+test("write regenerates a matching record when no caller set the deferral marker", () => {
+  const fx = buildFixture();
+  try {
+    const head = git(["rev-parse", "HEAD"], fx.dir);
+    // The state a killed postpack leaves: a record naming this pack, written
+    // while the tree was clean. The tree is edited afterwards — the ordinary
+    // rebuild case — and the record may not outlive the tree it describes.
+    const leftover = {
+      name: fx.name,
+      version: fx.version,
+      sha: head,
+      dirty: false,
+      packedAt: "2000-01-01T00:00:00.000Z",
+    };
+    putRecord(fx.dir, leftover);
+    writeFileSync(join(fx.dir, "README.md"), "# fixture\nedited\n");
+    const res = write(fx.dir, ["write"]);
+    assert.equal(res.status, 0, `write must exit 0: ${res.stderr}`);
+    const info = record(fx.dir);
+    assert.equal(info.dirty, true, "a leftover record must not make an edited tree ship dirty:false");
+    assert.notEqual(info.packedAt, leftover.packedAt, "the record must be regenerated, not kept");
+    assert.equal(info.sha, head, "the regenerated record must name the packed commit");
+  } finally {
+    rmSync(fx.dir, { recursive: true, force: true });
+  }
+});
+
+test("write regenerates when the marker has no record of this pack to keep", () => {
+  const fx = buildFixture();
+  try {
+    const head = git(["rev-parse", "HEAD"], fx.dir);
+    assert.equal(write(fx.dir, ["write"], { [PROVENANCE_DEFER_ENV]: "1" }).status, 0);
+    assert.equal(record(fx.dir).sha, head, "a marker with no record on disk must still pack a record");
+
+    putRecord(fx.dir, { name: fx.name, version: fx.version, sha: "0".repeat(40) });
+    assert.equal(write(fx.dir, ["write"], { [PROVENANCE_DEFER_ENV]: "1" }).status, 0);
+    assert.equal(record(fx.dir).sha, head, "the marker must not keep a record of another commit");
   } finally {
     rmSync(fx.dir, { recursive: true, force: true });
   }
@@ -169,6 +241,66 @@ test("write refuses a run with no package to act on", () => {
     assert.ok(!existsSync(join(fx.dir, BUILD_INFO_FILE)), "a refused run must write nothing");
   } finally {
     rmSync(fx.dir, { recursive: true, force: true });
+  }
+});
+
+test("a leftover record does not reach the tarball a real pack of an edited tree produces", () => {
+  const fx = buildFixture({ files: [BUILD_INFO_FILE], scripts: wiredScripts() });
+  let dest;
+  try {
+    const head = git(["rev-parse", "HEAD"], fx.dir);
+    // A killed postpack's leftover: the record is written the way prepack
+    // writes it, and the pack it belonged to never removed it.
+    assert.equal(write(fx.dir, ["write"]).status, 0);
+    const leftover = record(fx.dir);
+    assert.equal(leftover.dirty, false, "the fixture must start clean");
+    writeFileSync(join(fx.dir, "README.md"), "# fixture\nedited\n");
+
+    const packed = packFixture(fx.dir);
+    dest = packed.dest;
+    assert.equal(packed.record.sha, head, "the shipped record must name the packed commit");
+    assert.equal(packed.record.dirty, true, "the tarball must not carry the leftover's dirty:false");
+    assert.notEqual(
+      packed.record.packedAt,
+      leftover.packedAt,
+      "the shipped record must have been written at pack time",
+    );
+  } finally {
+    rmSync(fx.dir, { recursive: true, force: true });
+    if (dest) rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("a pack carrying the caller's deferral marker keeps the caller's record", () => {
+  const fx = buildFixture({ files: [BUILD_INFO_FILE], scripts: wiredScripts() });
+  let dest;
+  try {
+    const head = git(["rev-parse", "HEAD"], fx.dir);
+    const bumpedVersion = `${fx.version}-main.0`;
+    // publish-local's order: read the tree, then bump the manifest for the
+    // pack. The bump would read as dirty at prepack time, so the record is
+    // written first, with the version being packed, and the marker is what
+    // keeps it.
+    const caller = writeBuildInfo(fx.dir, {
+      name: fx.name,
+      version: bumpedVersion,
+      git: readGitProvenance(fx.dir),
+    });
+    const manifest = JSON.parse(readFileSync(join(fx.dir, "package.json"), "utf8"));
+    writeFileSync(
+      join(fx.dir, "package.json"),
+      JSON.stringify({ ...manifest, version: bumpedVersion }, null, 2) + "\n",
+    );
+
+    const packed = packFixture(fx.dir, { [PROVENANCE_DEFER_ENV]: "1" });
+    dest = packed.dest;
+    assert.deepEqual(packed.record, caller, "the caller's record must be the shipped one, unbumped");
+    assert.equal(packed.record.dirty, false, "the deliberate version bump must not ship as dirt");
+    assert.equal(packed.record.version, bumpedVersion, "the shipped record must carry the packed version");
+    assert.equal(packed.record.sha, head, "the shipped record must name the commit that was packed");
+  } finally {
+    rmSync(fx.dir, { recursive: true, force: true });
+    if (dest) rmSync(dest, { recursive: true, force: true });
   }
 });
 

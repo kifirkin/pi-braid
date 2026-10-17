@@ -146,8 +146,11 @@ generator). It is written by each workspace's `prepack` (`scripts/pack-provenanc
 expanded into the `files` allowlist of every package, and removed by `postpack`,
 so an `npm publish` pays the same step a plain `npm pack` does and the checkout
 ends as it started. `publish-local` writes the record itself before it bumps the
-manifest for the pack; the prepack step then leaves that record in place, since
-it already names the version being packed and the commit it was read from.
+manifest for the pack, and carries the `BRAID_PROVENANCE_DEFER` marker into the
+pack; the prepack step keeps a record only under that marker, because the
+temporary bump would otherwise read as a dirty tree. A record a killed pack left
+behind is regenerated from a fresh read - a matching version and commit are not
+enough to defer to.
 
 Read the record to tell two builds of the same version apart, and to check what
 a stranger installed: `sha` plus `dirty == false` is the pair that means the
