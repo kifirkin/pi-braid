@@ -43,6 +43,12 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Skills — 0.2.2 (2026-10-17: pack provenance and README repairs)
+
+- **Provenance in the tarball** — `prepack`/`postpack` write `build-info.json` (name, version, full and short commit sha, branch, dirty flag, pack time) into the pack and remove it after, and the manifest's `files` list ships it, so a packed `pi-braid-skills` names the commit it was packed from.
+- **Cross-package README paths** — the prose that says where sibling skills live labels them by their repository path (`packages/core/skills/…`), the form the link rows and the other READMEs already use, instead of the checkout-relative `../core/skills/…`.
+- **`v2raytun-reconnect` becomes `tunnel-control`** — the skill gains its second and third clients (Happ, Incy; the v2RayTun arm is validated, the other two refuse until validated), and the README row carries the new name, the three-client description and the `KEEP` verdict.
+
 ## Core — 0.40.1 / Providers — 1.0.5 / Skills — 0.2.1 (2026-10-15: gallery metadata repairs)
 
 - **Core README badge** — the pi-coding-agent minimum states `1.2.0` (the current pi line), not the stale `0.85`.
