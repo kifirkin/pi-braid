@@ -28,6 +28,8 @@
  *  15. coverage: the census walks package sources and skips test material
  *  16. RED: CLI, an uncovered literal exits 1 and names its first sighting
  *      (--coverage-root points the census at a fixture tree)
+ *  17. RED: CLI, a valueless --coverage-root is a usage error rather than a
+ *      silent census of the default tree; a value naming no directory fails
  */
 
 import { test } from "node:test";
@@ -385,7 +387,29 @@ test("RED: CLI names an uncovered literal and exits 1", () => {
     // red run failed on the planted key and not on the fixture shape.
     writeFileSync(reader, "const live = parsed.braid?.timers?.maxWakeAttempts;\n");
     const green = spawnSync("node", [GATE, "--coverage-root", packages], { cwd: ROOT, encoding: "utf8" });
+    assert.equal(green.status, 0, "a covered literal must leave the gate green");
     assert.match(green.stdout, /✅ source coverage: 1 braid\.\* literal\(s\) over 1 source file\(s\); 1 covered/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("RED: CLI refuses a valueless --coverage-root", () => {
+  const valueless = spawnSync("node", [GATE, "--coverage-root"], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(valueless.status, 1, "a valueless flag must not fall back to the default census");
+  assert.match(valueless.stderr, /--coverage-root needs a directory/);
+  assert.doesNotMatch(valueless.stdout, /source coverage/, "no census runs");
+
+  // The control: a value that names no directory keeps failing through
+  // main()'s catch, so the usage error does not swallow the other bad shape.
+  const tmp = mkdtempSync(join(tmpdir(), "braid-schema-coverage-absent-"));
+  try {
+    const run = spawnSync("node", [GATE, "--coverage-root", join(tmp, "absent")], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 1, "a value naming no directory stays fail-closed");
+    assert.match(run.stderr, /ENOENT/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
