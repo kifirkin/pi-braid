@@ -40,9 +40,12 @@
  * by existing.
  *
  * Bounds: the command bodies are read with a small shell-splitting tokenizer
- * (boundaries `&&`, `||`, `;`, newline; whitespace-separated words). A manifest
- * that spells its prepack some other way fails this check rather than passing
- * unread — the failure names what could not be read.
+ * (boundaries `&&`, `||`, `;`, newline, and a single `|` or `&`, so `|&` splits
+ * as both; whitespace-separated words, no quoting or redirection parsing). A
+ * command joined to the writer call by any of those operators is a later
+ * segment and is refused. A manifest that spells its prepack some other way
+ * fails this check rather than passing unread — the failure names what could
+ * not be read.
  *
  * Usage: node packages/core/scripts/check-provenance.mjs
  * Exit code: 0 = every packable package ships and generates the record, 1 = not.
@@ -86,7 +89,7 @@ function packablePackages() {
 /** The words a script body runs, one list per shell command in the body. */
 function commandWords(body) {
   return body
-    .split(/&&|\|\||;|\n/)
+    .split(/&&|\|\||[;&|]|\n/)
     .map((segment) => segment.trim().split(/\s+/).filter(Boolean))
     .filter((words) => words.length > 0);
 }
@@ -237,6 +240,19 @@ function packProbe({ writer, rel, manifest, proveRegeneration }) {
     if (!proveRegeneration) return null;
     writeFileSync(join(fixture, BUILD_INFO_FILE), JSON.stringify(info, null, 2) + "\n");
     writeFileSync(join(fixture, "README.md"), "# provenance pack probe\nedited\n");
+    // The witness must be the tracked edit alone. The leftover record is
+    // ignored, so it cannot vouch for the tree; if the ignore ever goes, the
+    // record itself would make this state read dirty and the arm would stop
+    // witnessing the tracked edit at all.
+    const witness = spawnSync("git", ["status", "--porcelain"], { cwd: fixture, encoding: "utf8" });
+    const entries = (witness.stdout ?? "").split("\n").filter((line) => line !== "");
+    if (witness.status !== 0 || entries.length !== 1 || entries[0] !== " M README.md") {
+      return (
+        `${rel}: the pack probe's fixture witnesses [${entries.join(" | ")}] before its second pack ` +
+        `(git exited ${witness.status}); the leftover ${BUILD_INFO_FILE} must be ignored so the tracked ` +
+        `README edit is the only witness for a dirty tree`
+      );
+    }
     const repacked = pack();
     if (repacked.status !== 0) {
       return `${rel}: the pack probe's second pack exited ${repacked.status}: ${outTail(repacked.stderr) || outTail(repacked.stdout)}`;
