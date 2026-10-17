@@ -21,12 +21,17 @@
  *  10. CLI: a reference built from the artifact compares clean (exit 0)
  *  11. RED: CLI, a reference default that disagrees with the artifact (exit 1)
  *  12. the shipped default path is green with nothing beside the checkout
+ *  13. coverage: a literal resolves by exact row or by a child row; an
+ *      uncovered literal fails carrying its first file:line
+ *  14. coverage: dynamic segments and the commented exclusion list are skips,
+ *      not failures
+ *  15. coverage: the census walks package sources and skips test material
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +46,9 @@ const { generateSchema, extractConstDefault, resolveRowDefault } = await import(
   "../../../scripts/gen-braid-schema.mjs"
 );
 const { checkFreshness, checkDoc, docArm, parseDocRows, resolveDocPath } = await import(
+  "../../../scripts/check-braid-schema.mjs"
+);
+const { censusSourceLiterals, checkLiteralCoverage } = await import(
   "../../../scripts/check-braid-schema.mjs"
 );
 
@@ -293,6 +301,70 @@ test("gate: the shipped default path is green with nothing beside the checkout",
   // so a machine without a reference cannot pass silently.
   assert.match(out, /✅ doc: \d+ braid\.\* row\(s\),|doc check skipped: /);
   assert.match(out, /✅ braid schema check passed/);
+});
+
+test("coverage: a literal resolves by exact row or by a child row", () => {
+  const rows = ["braid.ctx.cap.enabled", "braid.ctx.cap.maxChars", "braid.ctx.ghost"];
+  const census = {
+    files: 2,
+    hits: new Map([
+      // A block read: a child row is what proves the block exists.
+      ["braid.ctx.cap", [{ file: "reader.ts", line: 14 }]],
+      ["braid.ctx.cap.maxChars", [{ file: "reader.ts", line: 15 }]],
+      ["braid.ctx.ghost", [{ file: "reader.ts", line: 16 }]],
+      ["braid.ctx.cap.notARow", [{ file: "other.ts", line: 3 }]],
+    ]),
+  };
+  const result = checkLiteralCoverage(census, rows);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.uncovered.map((u) => `${u.token}@${u.file}:${u.line}`),
+    ["braid.ctx.cap.notARow@other.ts:3"],
+    "a leaf no row names is the drift, and the failure names where it is read",
+  );
+  assert.equal(result.covered, 3);
+
+  const clean = checkLiteralCoverage(census, [...rows, "braid.ctx.cap.notARow"]);
+  assert.equal(clean.ok, true, JSON.stringify(clean.uncovered));
+});
+
+test("coverage: dynamic segments and the exclusion list are skips, not failures", () => {
+  const census = {
+    files: 1,
+    hits: new Map([
+      ["braid.contrib[extensionName]", [{ file: "a.ts", line: 1 }]],
+      ["braid.contrib.<name>", [{ file: "a.ts", line: 2 }]],
+      ["braid.version", [{ file: "b.ts", line: 3 }]],
+      ["braid.ctx.cap", [{ file: "a.ts", line: 4 }]],
+    ]),
+  };
+  const result = checkLiteralCoverage(census, ["braid.ctx.cap.enabled"]);
+  assert.equal(result.ok, true, JSON.stringify(result.uncovered));
+  assert.equal(result.dynamic, 2);
+  assert.equal(result.excluded, 1);
+  assert.equal(result.covered, 1);
+});
+
+test("coverage: the census walks package sources and skips test material", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "braid-schema-coverage-"));
+  try {
+    mkdirSync(join(tmp, "core", "src", "nested"), { recursive: true });
+    mkdirSync(join(tmp, "core", "test"), { recursive: true });
+    writeFileSync(
+      join(tmp, "core", "src", "nested", "reader.ts"),
+      "const a = parsed.braid?.ctx?.cap;\nconst b = parsed.braid?.contrib?.[extensionName];\n",
+    );
+    writeFileSync(join(tmp, "core", "src", "reader.test.ts"), "braid.ctx.ghost\n");
+    writeFileSync(join(tmp, "core", "test", "fixture.ts"), "braid.ctx.ghost\n");
+    const census = censusSourceLiterals(tmp);
+    assert.deepEqual([...census.hits.keys()].sort(), [
+      "braid.contrib[extensionName]",
+      "braid.ctx.cap",
+    ]);
+    assert.equal(census.files, 1, "the .test.ts file and test/ are not readers");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("generator: the committed artifact is byte-stable", () => {

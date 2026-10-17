@@ -34,9 +34,10 @@ fails until the other catches up.
 
 ## Enablement reference
 
-Braid extension loading is resolved by `src/loader/loader.ts` (`resolveEnabledExtensions`, loader.ts:193-263)
-with priority: runtime subagent API → `~/.pi/agent/settings.json` `braid.modules` → `BRAID_MODULES`
-env var → manifest defaults (`src/extensions/manifest.ts`). Always-on extensions (`alwaysOn: true`)
+Braid extension loading is resolved by `src/loader/loader.ts` (`resolveEnabledExtensions`, loader.ts:327)
+with priority: runtime overrides (`/modules-*`) → `braid.modules` from two sources, the later
+winning per id (`~/.pi/agent/settings.json`, then braid's own module-overrides store where those
+toggles persist) → `BRAID_MODULES` env var → manifest defaults (`src/extensions/manifest.ts`). Always-on extensions (`alwaysOn: true`)
 can never be disabled; opt-in extensions (`disabledByDefault: true`) only load when explicitly enabled.
 Standalone packages (contrib, npm) load through pi's own package extension mechanism and keep their own
 enablement (see appendix).
@@ -81,6 +82,25 @@ enablement (see appendix).
 
 <!-- TOOLS-CATALOG-END -->
 
+## Command catalog
+
+Extension commands the tool catalog does not cover: slash commands registered by
+the core and contrib extensions and named in no other document. A command with
+a home beside its extension is not repeated here - `/watchdog-status` lives in
+the watchdog `AGENTS.md`, the `/modules-*` family in `SETUP.md`.
+
+| Command               | Registered by                   | What it does                                                              |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| `/analytics`          | analytics (heartbeat module)    | Show tool analytics for the current session.                              |
+| `/analytics:all`      | analytics (heartbeat module)    | Show tool analytics across all historical sessions.                       |
+| `/analytics:ab`       | analytics (heartbeat module)    | Show A/B experiment results across variants.                              |
+| `/context-stats`      | context-manager (memory module) | Show context pruning statistics.                                          |
+| `/rate-cancel`        | rate-limiter (contrib)          | Cancel the rate limiter wait and reset its state.                         |
+| `/tool-status`        | tool-config (contrib)           | Show current tool configuration.                                          |
+| `/browser-start`      | browser (contrib)               | Spawn Chrome with remote debugging; `--profile` syncs cookies and logins. |
+| `/browser-connect`    | browser (contrib)               | Connect to Chrome at :9222 (auto-starts if not running).                  |
+| `/browser-disconnect` | browser (contrib)               | Disconnect from the browser session.                                      |
+
 ## Appendix: standalone packages surfaced into the braid prompt
 
 The braid prompt surfaces every tool the loaded packages and pi-core provide via
@@ -123,6 +143,7 @@ Tool families it registers:
 - **repl** - execute JavaScript code with context (RLM mode for chunk/search/map/reduce).
 - **sleep** - block agent execution for a duration (do not use bash `sleep`).
 - **system-monitor** - CPU/memory/disk/top-process metrics for performance troubleshooting.
+- **network-monitor** - `tunnel_status` / `tunnel_reconnect` (plus the pinned `v2raytun_status` / `v2raytun_reconnect` aliases): probe a macOS tunnel client (`v2raytun`, `happ`, `incy`) and reconnect it through its own toggle mechanism. Off with `braid.contrib.networkMonitor: false`, tunable with an object.
 - **path-security / rate-limiter / tool-config** - guard/plumbing extensions; no LLM-facing tools.
 
 ### pi-web-access (npm package)

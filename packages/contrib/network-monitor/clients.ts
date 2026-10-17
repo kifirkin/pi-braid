@@ -90,12 +90,13 @@ export const TUNNEL_CLIENTS: Record<ClientId, TunnelClientAdapter> = {
     bundleId: "su.ffg.happ",
     profileName: "Happ",
     appProcess: "Happ",
-    // The app drives its tunnel through the NE profile; no separate
-    // system-extension process is visible on this host, so the extension leg
-    // of the probe is reported as not applicable (the vendor ships no
+    // The tunnel runs in the app's own system extension. Its executable is
+    // generically named `Tunnel`, so the appex bundle path is the narrowest
+    // fact that identifies it under `pgrep -f` (the probe leg), matching the
+    // live process and nothing else on this host. The vendor ships no
     // connect deep link either: `happ://disconnect` exists, `happ://connect`
-    // does not, which is why the toggle is the NE profile rather than a link).
-    extensionProcess: null,
+    // does not, which is why the toggle is the NE profile rather than a link.
+    extensionProcess: "Happ.app/Contents/PlugIns/Tunnel.appex",
     toggle: { kind: "ne-profile", profile: "Happ" },
     validation:
       're-derived on this host: scutil --nc list (VPN su.ffg.happ, profile "Happ"), pgrep -x Happ, app-binary route strings (happ://disconnect present, no happ://connect); the NE-profile toggle is documented by scutil, not exercised here',

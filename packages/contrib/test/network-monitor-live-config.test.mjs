@@ -26,6 +26,7 @@ import { formatLogBuffer, clearLogBuffer } from "../logger.js";
 
 const V2RAYTUN_BUNDLE = "com.databridges.privacy.v2RayTun";
 const HAPP_BUNDLE = "su.ffg.happ";
+const HAPP_APPEX = "Happ.app/Contents/PlugIns/Tunnel.appex";
 
 /** Both clients' NE profiles, as `scutil --nc list` prints them. */
 const NC_LIST = [
@@ -165,12 +166,16 @@ test("a settings edit takes effect on the next tick, without a restart", async (
   );
   assert.equal(
     env.count("pgrep -f"),
-    0,
-    "Happ has no separate extension process to check",
+    1,
+    "Happ's system extension is checked through its appex bundle path",
+  );
+  assert.ok(
+    env.calls.includes(`pgrep -f ${HAPP_APPEX}`),
+    "the extension leg uses the shipped path fact",
   );
   const status = await env.tools.get("tunnel_status").execute("t", {});
   assert.equal(status.details.client, "happ");
-  assert.equal(status.details.extension_alive, null);
+  assert.equal(status.details.extension_alive, true);
   assert.match(status.content[0].text, /^Happ: UP/);
 });
 
