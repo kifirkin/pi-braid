@@ -120,7 +120,12 @@ jobs:
 
             # Only a 404 from the registry means "absent". Any other failure of
             # the read (network, auth, rate limit, proxy) must refuse: reading
-            # it as absence would turn a skip into a publish attempt.
+            # it as absence would turn a skip into a publish attempt. The test
+            # is the conjunction exit 1 AND `E404` in the output, and both edges
+            # bind: a read exiting non-1 that carries E404 refuses (stricter
+            # than "a 404 means absent"), and a non-404 failure whose text
+            # carries E404 reads as absent, where npm's overwrite guard is the
+            # backstop.
             read_absent=0
             if [ "${read_status}" -eq 1 ]; then
               case "${read_log}" in *E404*) read_absent=1 ;; esac
@@ -156,10 +161,13 @@ jobs:
               } >>"${GITHUB_STEP_SUMMARY}"
             else
               {
-                echo "### Not published ${name}@${version}"
+                echo "### Not confirmed published ${name}@${version}"
                 echo ""
-                echo "- \`npm publish\` exited 0, but the registry does not serve ${name}@${version}"
-                echo "- npm skips a \`private: true\` workspace with exit 0; the publish log names the cause"
+                echo "- \`npm publish\` exited 0; a registry read-back immediately after did not return ${name}@${version}"
+                echo "- possible causes:"
+                echo "  - a \`private: true\` workspace: npm skips it with exit 0, and the log names it"
+                echo "  - read-after-write lag: the publish landed and the registry had not yet served it"
+                echo "  - a failed read-back (network, auth, rate limit), which says nothing about the registry"
                 echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
               } >>"${GITHUB_STEP_SUMMARY}"
             fi
