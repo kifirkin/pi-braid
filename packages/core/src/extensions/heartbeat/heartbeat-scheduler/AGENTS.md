@@ -73,9 +73,12 @@ per-source caps are enforced in `injection-tracker.ts`.
 
 - **Process-global**: state is per-session (via `getExtensionState(ctx, key, factory)`).
   The poller does not run when no session is active (gated by `SessionPhase`).
-- **Opt-in**: enable via `BRAID_MODULES=+heartbeat`. Off by default in
-  core (timer) to avoid surprising users; on by default in
-  `all,-heartbeat-scheduler` config.
+- **Default-on**: the manifest entry carries no `disabledByDefault`, so the
+  scheduler loads like every other default extension. Turn it off per
+  extension (`braid.modules["heartbeat-scheduler"]: false`, or
+  `/modules-disable heartbeat-scheduler`) or by its module group
+  (`/modules-disable heartbeat`, which also covers `analytics`); the
+  in-process toggle changes the current session's set without a restart.
 - **First-tick timing**: the first heartbeat fires 5 turns after
   session_start, not on session_start itself. This avoids racing
   with the user's first message.
