@@ -1,9 +1,9 @@
 /**
  * test-pack-provenance.mjs — the pack-time record, held by fixtures.
  *
- * Two halves. The writer's own contract is driven in a throwaway git work tree
- * — a real repository, because the record's sha, branch and dirty flag come
- * from git: the version is the manifest's, a record the caller's deferral
+ * Three parts. The writer's own contract is driven in a throwaway git work
+ * tree — a real repository, because the record's sha, branch and dirty flag
+ * come from git: the version is the manifest's, a record the caller's deferral
  * marker licenses is left alone, and every other record — including one that
  * matches the pack field for field — is regenerated from a fresh read.
  *
@@ -13,13 +13,18 @@
  * markdown-only skills workspace — the cheapest package whose pack exercises
  * the wired prepack/postpack pair — and checks the tree that pack ran in: the
  * record is gone again and the checkout is not left with it.
+ *
+ * The gate's own lexical arm is driven over fabricated manifests in a scratch
+ * tree: a prepack that keeps running commands after the writer call, joined by
+ * a pipe or a background operator, must be refused, and the shapes the real
+ * manifests spell — the writer call last, an `&&`-joined prefix — stay green.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROVENANCE_DEFER_ENV, readGitProvenance, writeBuildInfo } from "../../../scripts/build-info.mjs";
 
@@ -28,6 +33,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CORE = join(HERE, "../../..");
 const ROOT = join(CORE, "..", "..");
 const WRITER = join(CORE, "scripts", "pack-provenance.mjs");
+const GATE = join(CORE, "scripts", "check-provenance.mjs");
+const GENERATOR = join(CORE, "scripts", "build-info.mjs");
 const SKILLS = join(ROOT, "packages", "skills");
 
 const BUILD_INFO_FILE = "build-info.json";
@@ -80,6 +87,37 @@ function record(dir) {
 
 function putRecord(dir, info) {
   writeFileSync(join(dir, BUILD_INFO_FILE), JSON.stringify(info, null, 2) + "\n");
+}
+
+/**
+ * A scratch tree the provenance gate runs in: copies of the committed gate,
+ * its writer and the generator, plus one fabricated manifest per `dir ->
+ * prepack` entry. The gate resolves the packages it checks from its own
+ * location, so the copy is what makes the fabricated manifests its population.
+ */
+function provenanceScratch(manifests) {
+  const scratch = mkdtempSync(join(tmpdir(), "provenance-gate-test-"));
+  const scripts = join(scratch, "packages", "core", "scripts");
+  mkdirSync(scripts, { recursive: true });
+  for (const file of [GATE, WRITER, GENERATOR]) copyFileSync(file, join(scripts, basename(file)));
+  for (const [dir, prepack] of Object.entries(manifests)) {
+    const pkg = join(scratch, "packages", dir);
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(
+      join(pkg, "package.json"),
+      JSON.stringify(
+        {
+          name: `probe-${dir}`,
+          version: "0.0.0",
+          files: [BUILD_INFO_FILE],
+          scripts: { prepack, postpack: "node ../core/scripts/pack-provenance.mjs remove" },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+  return { scratch, gate: join(scripts, basename(GATE)) };
 }
 
 /**
@@ -344,5 +382,46 @@ test("a real pack ships the record and leaves the tree as it found it", () => {
     );
   } finally {
     rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("a command piped or backgrounded after the writer call is refused", () => {
+  const shapes = [
+    ["zz-probe-pipe", "node ../core/scripts/pack-provenance.mjs write | cat"],
+    ["zz-probe-amp", "node ../core/scripts/pack-provenance.mjs write & echo trailing"],
+    ["zz-probe-pipe-amp", "node ../core/scripts/pack-provenance.mjs write |& cat"],
+  ];
+  const { scratch, gate } = provenanceScratch(Object.fromEntries(shapes));
+  try {
+    const run = spawnSync(process.execPath, [gate], { encoding: "utf8", timeout: 300_000 });
+    assert.equal(run.status, 1, `the gate must refuse these bodies:\n${run.stdout}\n${run.stderr}`);
+    assert.match(run.stderr, /check-provenance: 3 problem\(s\)/);
+    const problems = run.stderr.split("\n").filter((line) => line.startsWith("  - "));
+    assert.equal(problems.length, 3, run.stderr);
+    for (const [dir, body] of shapes) {
+      const rel = `packages/${dir}/package.json`;
+      const line = problems.find((problem) => problem.includes(rel));
+      assert.ok(line, `no refusal names ${rel}:\n${run.stderr}`);
+      assert.match(line, /runs commands after the writer call/);
+      assert.ok(line.includes(body), `the refusal must quote the body it refused: ${line}`);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("a fabricated manifest whose writer call is last stays green", () => {
+  const shapes = {
+    "zz-probe-bare": "node ../core/scripts/pack-provenance.mjs write",
+    "zz-probe-and": "npm run build && node ../core/scripts/pack-provenance.mjs write",
+    "zz-probe-before": "echo preparing & node ../core/scripts/pack-provenance.mjs write",
+  };
+  const { scratch, gate } = provenanceScratch(shapes);
+  try {
+    const run = spawnSync(process.execPath, [gate], { encoding: "utf8", timeout: 300_000 });
+    assert.equal(run.status, 0, `the gate must not refuse these bodies:\n${run.stdout}\n${run.stderr}`);
+    assert.match(run.stdout, /check-provenance: 3 packable package\(s\) ship build-info\.json/);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 });
