@@ -46,8 +46,9 @@ reader-facing record; the tag scheme above applies unchanged.
 ## Core — 0.40.2 / Telegram — 0.1.5 / Providers — 1.0.6 / Contrib — 0.1.1 (2026-10-17: orchestrator close gates, npm-first docs, multi-client tunnels)
 
 The four packages whose shipped content moved since the 0.40.1 train.
-`pi-braid-skills` 0.2.2 went out separately in the same window (its own section
-below), as the single-package first test of the npm trusted-publishing path.
+`pi-braid-skills` 0.2.2 is the first single-package release of the npm
+trusted-publishing path, sequenced separately from this train (its own section
+below); its outcome decides whether this section is ever tagged.
 
 ### Core
 
@@ -78,10 +79,11 @@ below), as the single-package first test of the npm trusted-publishing path.
 - **Docs** - `CONTRIBUTING.md` leads with `pi install npm:pi-braid` (one
   command, no clone, no build) before the contributor flow; cross-package links
   label their target by repository path; the README badge states the peer rule
-  instead of a stale minimum; the `TOOLS.md` catalog covers every config key
-  the code reads; shipped comments and prose drop internal pointer labels;
-  `ROADMAP.md` records the per-package tag namespaces and the `tunnel-control`
-  verdict.
+  instead of a stale minimum; the `TOOLS.md` catalog rewrites its enablement
+  reference, adds a Command catalog of extension slash commands, and gains a
+  `network-monitor` row naming `braid.contrib.networkMonitor`; shipped comments
+  and prose drop internal pointer labels; `ROADMAP.md` records the per-package
+  tag namespaces and the `tunnel-control` verdict.
 
 ### Telegram
 
@@ -97,7 +99,9 @@ below), as the single-package first test of the npm trusted-publishing path.
 
 - **README and manifest only** - no source file changed in this release: the
   delta is the README's `pi install npm:pi-braid-providers` one-liner and the
-  manifest's peer ranges and provenance pair.
+  manifest's version, peer ranges (`*` to `^1.2.0`), provenance pair and
+  `build-info.json` entry. The release spends a version number on prose and
+  manifest metadata rather than on source.
 
 ### Contrib
 
