@@ -19,20 +19,27 @@
  * that variable there is no package to record and the run is refused — the
  * script is a lifecycle step, not a standalone command.
  *
- * An existing record that already describes this pack is kept, not rewritten.
- * publish-local.mjs writes the record itself before it bumps the manifest for
- * the pack, so the `dirty` it recorded is the tree's honest state; rewriting
- * at prepack time would read the temporary bump as a dirty tree. A record
- * naming another commit, another version or another package is stale and is
- * replaced. Outside a git work tree there is no sha to compare against, so
- * nothing is deferred to and the record is always written.
+ * A record is kept only when the caller says so. publish-local.mjs writes the
+ * record itself before it bumps the manifest for the pack, so the `dirty` it
+ * recorded is the tree's honest state, and carries PROVENANCE_DEFER_ENV into
+ * `npm pack`; a prepack that rewrote the record there would read the
+ * temporary bump as a dirty tree. Without that marker the record is always
+ * regenerated from a fresh git read — including when a record on disk names
+ * this same pack, because a record a killed `postpack` left behind describes
+ * a tree that no longer exists and must not become the shipped `dirty`. The
+ * debug line names which of the two paths ran.
  *
  * Usage: node packages/core/scripts/pack-provenance.mjs write|remove
  * Exit: 0 the record is in place (write) / gone (remove); 2 no package to act on.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { BUILD_INFO_FILE, readGitProvenance, writeBuildInfo } from "./build-info.mjs";
+import {
+  BUILD_INFO_FILE,
+  PROVENANCE_DEFER_ENV,
+  readGitProvenance,
+  writeBuildInfo,
+} from "./build-info.mjs";
 
 // Diagnostics go to stderr: `npm pack --json` owns stdout, and a lifecycle
 // script that prints there corrupts its output.
@@ -73,8 +80,13 @@ if (typeof name !== "string" || typeof version !== "string") {
 }
 
 const git = readGitProvenance(pkgDir);
+const deferRequested = process.env[PROVENANCE_DEFER_ENV] === "1";
 
-/** Does the record on disk already describe this very pack? */
+/**
+ * Does the record on disk describe this very pack? Only ever asked when the
+ * caller requested the deferral; it guards against keeping a record the
+ * caller did not write for this pack (another commit, version or package).
+ */
 function describesThisPack() {
   if (!git.sha) return false;
   let existing;
@@ -86,9 +98,17 @@ function describesThisPack() {
   return existing?.name === name && existing?.version === version && existing?.sha === git.sha;
 }
 
-if (describesThisPack()) {
-  say(`${name}@${version} ${git.shaShort}: existing record kept`);
+if (deferRequested && describesThisPack()) {
+  say(`${name}@${version} ${git.shaShort}: record written by the caller kept (${PROVENANCE_DEFER_ENV})`);
   process.exit(0);
+}
+
+if (fs.existsSync(infoPath)) {
+  say(
+    deferRequested
+      ? `${name}@${version}: the record present does not describe this pack, rewritten`
+      : `${name}@${version}: record present without the caller's deferral marker, rewritten from a fresh git read`,
+  );
 }
 
 const info = writeBuildInfo(pkgDir, { name, version, git });

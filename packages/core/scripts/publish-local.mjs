@@ -49,7 +49,10 @@
  * Provenance: before packing, the script writes <package>/build-info.json
  * (package name, version, full + short commit sha, branch, dirty flag, pack
  * timestamp) so a build can be audited even when its version string (and so
- * its tarball name) is reused across commits. Ask whether an installed copy
+ * its tarball name) is reused across commits. The temporary version bump that
+ * follows would read as a dirty tree at prepack time, so the pack carries the
+ * deferral marker (`PROVENANCE_DEFER_ENV`) and the prepack step keeps the
+ * record written here instead of rewriting it. Ask whether an installed copy
  * comes from the current tip (run from the repo root; swap the package name
  * for a non-core workspace):
  *
@@ -61,7 +64,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { homedir } from "node:os";
-import { BUILD_INFO_FILE, readGitProvenance, writeBuildInfo } from "./build-info.mjs";
+import { BUILD_INFO_FILE, PROVENANCE_DEFER_ENV, readGitProvenance, writeBuildInfo } from "./build-info.mjs";
 import { deriveVersionFor } from "./lib/version-derivation.mjs";
 
 const KNOWN = ["core", "telegram", "providers", "skills", "contrib"];
@@ -223,7 +226,15 @@ try {
     execSync("npm run build", { cwd: pkgDir, stdio: "inherit" });
   }
   writeBuildInfo(pkgDir, { name: pkg.name, version: ver, git: gitProvenance });
-  execSync("npm pack", { cwd: pkgDir, stdio: "inherit" });
+  // The marker is what lets the prepack step (pack-provenance.mjs) keep the
+  // record written just above: without it the prepack would read the temporary
+  // version bump as a dirty tree and rewrite the record as dirty. It is set on
+  // this pack alone, the pack this script wrote the record for.
+  execSync("npm pack", {
+    cwd: pkgDir,
+    stdio: "inherit",
+    env: { ...process.env, [PROVENANCE_DEFER_ENV]: "1" },
+  });
   fs.mkdirSync(dest, { recursive: true });
   fs.copyFileSync(path.join(pkgDir, tgzName), path.join(dest, tgzName));
   installAtomic(dest, tgzName, pkg.name);
