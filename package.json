@@ -1,6 +1,6 @@
 {
   "name": "pi-braid",
-  "version": "0.40.1",
+  "version": "0.40.2",
   "private": true,
   "description": "Metacognitive extension suite for pi-coding-agent: enforcement, memory, reasoning, self-improvement, and structured cognitive signals.",
   "workspaces": [
