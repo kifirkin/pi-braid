@@ -32,9 +32,12 @@
  *
  * Usage: node scripts/check-braid-schema.mjs [--doc <path>] [--coverage-root <dir>]
  *
- * Exit 1 covers drift and a bad invocation: a `--coverage-root` with no value
- * is a usage error, never a silent census of the checkout, so the same typo
- * cannot pass as a clean run in one shape and fail in another.
+ * Exit 1 covers drift and a bad invocation alike — the gate keeps one non-zero
+ * status, with no separate usage code. A missing, empty, or next-flag value for
+ * either spelling of `--coverage-root` or `--doc` is a usage error: never a
+ * silent census of the checkout, never a quiet fall back to the companion
+ * reference, so the same typo cannot pass as a clean run in one shape and fail
+ * in another.
  */
 
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -83,15 +86,37 @@ export function checkFreshness(committedText, regeneratedText) {
 // ── Doc resolution ──────────────────────────────────────────────────────────
 
 /**
- * Resolve the config reference: --doc <path> argument wins; else the
- * lexicographically newest BRAID-CONFIG-REFERENCE-*.md in the companion
- * braid-docs/notes/ directory (the notesDir parameter, so a caller can point
- * the arm at another tree); else null — no reference was offered, so the arm
- * reports a counted skip instead of a comparison.
+ * Resolve the config reference: --doc <path> (or the --doc=<path> spelling)
+ * wins; else the lexicographically newest BRAID-CONFIG-REFERENCE-*.md in the
+ * companion braid-docs/notes/ directory (the notesDir parameter, so a caller
+ * can point the arm at another tree); else null — no reference was offered, so
+ * the arm reports a counted skip instead of a comparison. The first occurrence
+ * of either spelling wins. A --doc with no usable value — missing, empty, or
+ * followed by another flag — is a usage error rather than a fall back to the
+ * companion lookup: the caller asked for a different reference, so comparing
+ * the companion silently answers a question nobody put.
  */
 export function resolveDocPath(argv = process.argv.slice(2), notesDir = DOC_NOTES_DIR) {
-  const i = argv.indexOf("--doc");
-  if (i >= 0 && argv[i + 1]) return resolve(argv[i + 1]);
+  const FLAG = "--doc";
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    let path;
+    if (arg === FLAG) {
+      const next = argv[i + 1];
+      path = next && !next.startsWith("--") ? next : null;
+    } else if (arg.startsWith(`${FLAG}=`)) {
+      path = arg.slice(FLAG.length + 1);
+    } else {
+      continue;
+    }
+    if (!path) {
+      throw new Error(
+        "--doc needs a path (got no value); " +
+          "omit the flag to use the companion reference, or pass --doc <path>",
+      );
+    }
+    return resolve(path);
+  }
   if (!existsSync(notesDir)) return null;
   const candidates = readdirSync(notesDir).filter((f) => DOC_NAME_RE.test(f)).sort();
   if (candidates.length === 0) return null;
@@ -410,29 +435,45 @@ export function checkLiteralCoverage(census, rowPaths) {
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 /**
- * The packages root the coverage census reads: `--coverage-root <dir>` names a
- * tree to scan (the suite drives a fixture through the CLI with it), and
- * without the flag the scan reads the checkout's own `packages/`. A flag with
- * no value is a usage error rather than a fallback to that default: the caller
- * did not ask for the checkout, so censusing it silently answers a question
- * nobody put.
+ * The packages root the coverage census reads: `--coverage-root <dir>` (or the
+ * `--coverage-root=<dir>` spelling) names a tree to scan (the suite drives a
+ * fixture through the CLI with it), and without the flag the scan reads the
+ * checkout's own `packages/`. The first occurrence of either spelling wins. A
+ * flag with no usable value — missing, empty, or followed by another flag — is
+ * a usage error rather than a fallback to that default: the caller did not ask
+ * for the checkout, so censusing it silently answers a question nobody put.
+ * A next token is the value only when it is not itself a flag, so
+ * `--coverage-root --doc <path>` reports the missing directory instead of
+ * censusing a path nobody named.
  */
 function resolveCoverageRoot(argv = process.argv.slice(2)) {
-  const i = argv.indexOf("--coverage-root");
-  if (i < 0) return join(REPO_ROOT, "packages");
-  const dir = argv[i + 1];
-  if (!dir) {
-    throw new Error(
-      "--coverage-root needs a directory (got no value); " +
-        "omit the flag to scan the checkout, or pass --coverage-root <dir>",
-    );
+  const FLAG = "--coverage-root";
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    let dir;
+    if (arg === FLAG) {
+      const next = argv[i + 1];
+      dir = next && !next.startsWith("--") ? next : null;
+    } else if (arg.startsWith(`${FLAG}=`)) {
+      dir = arg.slice(FLAG.length + 1);
+    } else {
+      continue;
+    }
+    if (!dir) {
+      throw new Error(
+        "--coverage-root needs a directory (got no value); " +
+          "omit the flag to scan the checkout, or pass --coverage-root <dir>",
+      );
+    }
+    return resolve(dir);
   }
-  return resolve(dir);
+  return join(REPO_ROOT, "packages");
 }
 
 function main() {
   // argv first: a usage error reports itself alone, not after a partial run.
   const coverageRoot = resolveCoverageRoot();
+  const docPath = resolveDocPath();
   const { text } = generateSchema();
   let exit = 0;
 
@@ -444,7 +485,7 @@ function main() {
     for (const e of freshness.errors) console.error(`❌ ${e}`);
   }
 
-  const doc = docArm(resolveDocPath(), text);
+  const doc = docArm(docPath, text);
   // A skipped arm gets its own marker: a comparison that never ran must not
   // wear the same checkmark as one that did.
   console.log(doc.ok ? `${doc.advisory ? "⏭" : "✅"} ${doc.output}` : `❌ ${doc.output}`);
