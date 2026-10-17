@@ -281,13 +281,24 @@ Check the output for:
 
 ### 5. Tag and publish
 
+After the manifest bumps, run `npm install` at the root so
+`package-lock.json` follows them: the workspace versions live in the lockfile,
+and the workflow's `npm ci` refuses a stale one.
+
 ```bash
+npm install                          # sync package-lock.json with the bumps
 git add -A
 git commit -m "chore: release vX.Y.Z"
+npm run ci:check                     # includes release:check; must pass at HEAD
 node packages/core/scripts/tag-prerelease.mjs <package>   # default: core
 git push origin main --tags
-npm publish
 ```
+
+Pushing the release tag (`v<core version>`) runs `.github/workflows/publish.yml`,
+which publishes every package whose manifest version is not yet on the registry
+through npm trusted publishing (OIDC). No npm token is involved. Sibling tags
+(`<workspace>-v<version>`) do not trigger the workflow; to publish a single
+package, run the workflow manually (`workflow_dispatch`) <!-- doc-ref-exempt: GitHub Actions trigger name, not a repo identifier --> with `only=<package>`.
 
 Let `tag-prerelease.mjs` name the tag: core keeps the bare `v<version>`, every
 sibling is `<workspace>-v<version>` (`telegram-v0.1.4`, `providers-v1.0.5`).
