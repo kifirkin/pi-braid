@@ -205,13 +205,13 @@ external consumer imports the package, never the other way round.
 
 `formatRingHealth(routes, freshness)` and `summarizeRouteHealth(routes, freshness)`
 turn a report into the `ring_health` tool's text and its `details` payload.
-Both take the death window the caller resolved
-(`braid.providers.probeFreshnessMs`, the same value the router's death gate is
-built with) and mark a recorded death `(expired)` when that gate would no
-longer act on it: an age at or past the window, a death with no recorded time,
-or any death while the window is switched off. The age rule is the gate's own
-predicate (`deathInForce` in `virtual-router.ts`), so the surface and the
-router cannot disagree about which deaths act.
+
+- `braid.providers.probeFreshnessMs` (default `900000` ms, 15 minutes) controls
+  how long a recorded unavailable probe or shape-death result can steer routing.
+  `0` or less disables probe steering. The ring-health renderers receive the
+  same resolved window and mark a death `(expired)` when the router's
+  `deathInForce` predicate would no longer act on it, its timestamp is absent,
+  or the window is off.
 
 ## Disabling the provider
 
