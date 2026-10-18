@@ -3,18 +3,20 @@
  * ctx.compact() while a sibling tool in the same parallel batch is still
  * executing, and must NOT fire at tool/batch end while the agent run is still
  * live (which surfaced a spurious "This operation was aborted"error in the
- * TUI and tore the finishing turn). The compaction is scheduled at
- * agent_settled via tool_execution_start/tool_execution_end/agent_settled
- * events — the compaction fires at a safe boundary: agent_settled (when the
- * run fully settles and
- * the session is idle (ctx.compact()'s abort is then a clean no-op).
+ * TUI and tore the finishing turn). The compaction is scheduled at a safe
+ * boundary from tool_execution_start/tool_execution_end/turn_end/
+ * agent_settled events: the active tool call ids decide when a batch is done,
+ * and the compaction fires at the first turn_end whose toolResults account for
+ * every active id, or at agent_settled when the run fully settles and the
+ * session is idle (ctx.compact()'s abort is then a clean no-op).
  *
  * Old behavior (regression guarded here): execute() armed a raw setTimeout(0)
  * macrotask, which landed while the slow sibling was still in-flight — the
  * aborting compact dropped the sibling's result. Batch-settle v1 fired at the
- * first tool_execution_end where inFlight hit 0, which aborted the still-live
- * run (spurious abort error). This test fails on both of those and passes on
- * the agent_settled-only scheduler.
+ * first tool_execution_end where the in-flight count hit 0, which aborted the
+ * still-live run (spurious abort error). This test fails on both of those and
+ * passes on the id-tracked scheduler (see
+ * test-compress-drain-boundaries.mjs for the missed-end identity case).
  *
  * Run: node test/runtime/memory/test-compress-batch-settle.mjs
  */

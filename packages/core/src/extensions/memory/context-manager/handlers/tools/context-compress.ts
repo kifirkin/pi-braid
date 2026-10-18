@@ -75,13 +75,20 @@ function captureUsage(ctx: any): { percent: number; tokens: number; contextWindo
 // no-op) or turn_end inside a live run (the turn's messages and tool results
 // are already persisted; the abort lands between turns, where a queued steer
 // is appended before the loop polls the abort signal and its turn runs on the
-// post-compaction resume). Firing on the first tool_execution_end where
-// inFlight reaches 0 aborts a still-live run (the agent is streaming its
-// response to the context_compress result), surfacing a spurious "This
-// operation was aborted" error in the TUI and tearing the finishing turn.
-// agent_settled alone never drains a run kept alive by continuous steers —
-// the armed compaction stalls behind live work while usage keeps climbing,
-// hence the turn_end boundary.
+// post-compaction resume). Firing while a tool call is still active aborts a
+// still-live run (the agent is streaming its response to the context_compress
+// result), surfacing a spurious "This operation was aborted" error in the TUI
+// and tearing the finishing turn. agent_settled alone never drains a run kept
+// alive by continuous steers, so the armed compaction stalls behind live work
+// while usage keeps climbing, hence the turn_end boundary.
+//
+// Active work is tracked by TOOL CALL ID, never by a count: tool_execution_start
+// registers an id, tool_execution_end deletes its own, and a turn boundary
+// deletes every id the turn's persisted toolResults account for. A count can
+// only be decremented by the exact end event that was missed, so one lost end
+// left it positive and every later boundary returned before the armed
+// compaction could drain; an id-set repaired from the boundary's own result
+// identity cannot drift that way.
 
 interface PendingCompaction {
   /** Which action armed this entry. */
@@ -95,10 +102,24 @@ interface PendingCompaction {
 }
 
 interface BatchSettleState {
-  /** In-flight tool executions for the current batch (per session). */
-  inFlight: number;
+  /** Call ids of tool executions active for the current batch (per session). */
+  activeToolCallIds: Set<string>;
   /** Pending compactions armed by context_compress actions, drained at settle. */
   pending: PendingCompaction[];
+}
+
+/**
+ * Sentinel for a tool_execution_start whose event carries no usable call id.
+ * No persisted tool result can carry this id, so the entry keeps every
+ * boundary conservative and is released only by the AGENT_SETTLED backstop:
+ * an unidentifiable start is protected exactly as the old count protected it.
+ */
+const UNIDENTIFIED_TOOL_CALL_ID = "\u0000unidentified-tool-call";
+
+/** The non-empty call id an event names, or undefined when it names none. */
+function toolCallIdOf(event: any): string | undefined {
+  const id = event?.toolCallId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
 /**
@@ -114,9 +135,23 @@ const PENDING_COMPACT_QUEUE_MAX = 8;
 
 function getBatchSettleState(ctx: any): BatchSettleState {
   return getExtensionState(ctx, "context-manager/batch-settle", () => ({
-    inFlight: 0,
+    activeToolCallIds: new Set<string>(),
     pending: [],
   }));
+}
+
+/**
+ * Release the call ids a turn's persisted tool results account for. A result
+ * with no usable id is ignored: an unmatched active id stays protective, so a
+ * malformed event can only delay a drain to a later boundary or the settle
+ * backstop, never release a sibling that is still executing.
+ */
+function releaseSettledToolCallIds(st: BatchSettleState, toolResults: unknown): void {
+  if (!Array.isArray(toolResults)) return;
+  for (const result of toolResults) {
+    const id = toolCallIdOf(result);
+    if (id) st.activeToolCallIds.delete(id);
+  }
 }
 
 /**
@@ -208,7 +243,7 @@ function coalesceIntoSlide(ctx: any, queue: PendingCompaction[]): { trigger: () 
 }
 
 function firePendingCompactionsIfSettled(ctx: any, st: BatchSettleState): void {
-  if (st.pending.length === 0 || st.inFlight > 0) return;
+  if (st.pending.length === 0 || st.activeToolCallIds.size > 0) return;
   const queue = st.pending;
   st.pending = [];
   let trigger = queue[0].trigger;
@@ -547,24 +582,27 @@ export const contextCompressSchema = Type.Object({
 });
 
 export function registerContextCompress(pi: ExtensionAPI): void {
-  // Batch-settle scheduling: track in-flight tool executions per session and
-  // fire the deferred compaction ONLY at agent_settled — the moment the whole
-  // agent run settles (session idle/promptable). Never mid-batch (would drop
-  // a parallel sibling's result) and never at tool_execution_end (the run is
-  // still live there — an aborting compact would surface a spurious
-  // "This operation was aborted" error and tear the finishing turn).
-  onEvent(pi, TOOL_EXECUTION_START, (_event: any, ctx: any) => {
+  // Batch-settle scheduling: track the ACTIVE tool calls of every running
+  // batch by call id and fire the deferred compaction only at a safe boundary
+  // (turn_end or agent_settled). Never mid-batch (would drop a parallel
+  // sibling's result) and never at tool_execution_end (the run is still live
+  // there — an aborting compact would surface a spurious "This operation was
+  // aborted" error and tear the finishing turn).
+  onEvent(pi, TOOL_EXECUTION_START, (event: any, ctx: any) => {
     try {
-      getBatchSettleState(ctx).inFlight++;
+      const st = getBatchSettleState(ctx);
+      st.activeToolCallIds.add(toolCallIdOf(event) ?? UNIDENTIFIED_TOOL_CALL_ID);
     } catch {
       // Settle tracking is unavailable — the pending compact then only fires
       // via AGENT_SETTLED below, which is the conservative path.
     }
   });
-  onEvent(pi, TOOL_EXECUTION_END, (_event: any, ctx: any) => {
+  onEvent(pi, TOOL_EXECUTION_END, (event: any, ctx: any) => {
     try {
-      const st = getBatchSettleState(ctx);
-      if (st.inFlight > 0) st.inFlight--;
+      const id = toolCallIdOf(event);
+      // Only this call's id is released: a sibling's id survives its own end
+      // event, so the batch stays active until that sibling releases too.
+      if (id) getBatchSettleState(ctx).activeToolCallIds.delete(id);
       // NOTE: do NOT fire here. The run is still active (the agent is
       // processing this tool's result and streaming its next response); an
       // aborting compact now would surface a spurious "This operation was
@@ -575,19 +613,24 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       // AGENT_SETTLED handler remains the conservative trigger.
     }
   });
-  onEvent(pi, TURN_END, (_event: any, ctx: any) => {
+  onEvent(pi, TURN_END, (event: any, ctx: any) => {
     // Between-turns boundary: the turn's assistant message and tool results
     // are already persisted when turn_end fires, so the abort inside
-    // ctx.compact() cannot tear a live turn or drop a sibling result. A run
-    // kept alive by continuous steers never reaches agent_settled — this
-    // boundary keeps an armed compaction from stalling behind live work. A
-    // steer queued at this moment survives: the loop appends it before the
-    // aborted response stream, and its turn runs on the post-compaction
-    // resume. inFlight is NOT reset here (only agent_settled owns that
-    // backstop); a missed tool_execution_end keeps the boundary conservative.
+    // ctx.compact() cannot tear a live turn or drop a sibling result. The
+    // persisted results carry the toolCallIds of the calls they answer, which
+    // releases a call whose tool_execution_end never arrived; an active id
+    // with NO result in this event is kept (it may still be executing, and a
+    // count could not tell which sibling completed). A run kept alive by
+    // continuous steers never reaches agent_settled — this boundary keeps an
+    // armed compaction from stalling behind live work. A steer queued at this
+    // moment survives: the loop appends it before the aborted response stream,
+    // and its turn runs on the post-compaction resume. Ids are never blanket-
+    // reset here (only agent_settled owns that backstop, which is what keeps a
+    // missed end event from parking the queue forever).
     try {
       const st = getBatchSettleState(ctx);
-      if (st.pending.length === 0 || st.inFlight > 0) return;
+      releaseSettledToolCallIds(st, event?.toolResults);
+      if (st.pending.length === 0 || st.activeToolCallIds.size > 0) return;
       if (isCompactionActive(ctx)) return;
       firePendingCompactionsIfSettled(ctx, st);
     } catch {
@@ -599,13 +642,14 @@ export function registerContextCompress(pi: ExtensionAPI): void {
     // Backstop boundary: the run has fully settled, so ctx.compact()'s
     // abort() is a clean no-op — no spurious abort error, no torn turn, and
     // the post-compaction resume wake lands when the session is
-    // idle/promptable. The whole pending queue drains here (coalesced);
-    // inFlight is reset so parked compactions always fire even if a
-    // sibling's end event never arrived. Turn boundaries drain first when a
-    // run stays alive; this handler catches everything they cannot reach.
+    // idle/promptable. The whole pending queue drains here (coalesced); the
+    // active set is cleared so parked compactions always fire even when a
+    // start never saw its end and no turn boundary ever accounted for it.
+    // Turn boundaries drain first when a run stays alive; this handler catches
+    // everything they cannot reach.
     try {
       const st = getBatchSettleState(ctx);
-      st.inFlight = 0;
+      st.activeToolCallIds.clear();
       firePendingCompactionsIfSettled(ctx, st);
     } catch {
       // A failed settle trigger must not tear down the AGENT_SETTLED event
