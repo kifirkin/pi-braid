@@ -16,7 +16,8 @@
  *      tool_execution_end was missed but whose result is persisted in the
  *      boundary event's toolResults releases the batch there, while an id
  *      absent from those results (and a malformed result entry) keeps it
- *      parked.
+ *      parked. An unidentifiable start carries a symbol marker, so no
+ *      persisted call id can release it early.
  *   3. Settle path preserved: agent_settled still drains (backstop), and a
  *      queue already drained at turn_end does not double-fire at settle.
  *   4. No drain while a compaction cycle is already active.
@@ -344,6 +345,40 @@ await test("a start event with no call id keeps every boundary parked until sett
     ctx.compactCalls.length,
     0,
     "an unidentifiable start must not be released by a boundary that cannot name it",
+  );
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "the settle backstop clears it and drains");
+});
+
+await test("a persisted result cannot release an unidentifiable start", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld();
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  await pi._emit({ type: "tool_execution_start", toolCallId: "cc", toolName: "context_compress" }, ctx);
+  await pi._emit({ type: "tool_execution_start", toolName: "unknown_tool" }, ctx);
+  await tool.execute("cc", { action: "slide", keep: 4 }, undefined, undefined, ctx);
+  await pi._emit(
+    { type: "tool_execution_end", toolCallId: "cc", toolName: "context_compress", result: {} },
+    ctx,
+  );
+
+  // The unidentifiable start's completion cannot be proven from a boundary.
+  // A marker that is a legal call id string would be released by a result
+  // that names it, and the drain would fire while that call may still be
+  // live. This result names the exact text a string marker would use.
+  const collidingId = String.fromCharCode(0) + "unidentified-tool-call";
+  await emitTurnEnd(pi, ctx, 0, [
+    { role: "toolResult", toolCallId: collidingId, toolName: "unknown_tool", content: [] },
+  ]);
+  assert.equal(
+    ctx.compactCalls.length,
+    0,
+    "no persisted call id may release an unidentifiable start",
   );
   await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);

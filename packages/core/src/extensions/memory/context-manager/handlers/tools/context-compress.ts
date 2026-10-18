@@ -102,19 +102,22 @@ interface PendingCompaction {
 }
 
 interface BatchSettleState {
-  /** Call ids of tool executions active for the current batch (per session). */
-  activeToolCallIds: Set<string>;
+  /** Active tool calls of the current batch (per session): call ids and the
+   *  unidentifiable-start marker below, which no call id can equal. */
+  activeToolCallIds: Set<string | symbol>;
   /** Pending compactions armed by context_compress actions, drained at settle. */
   pending: PendingCompaction[];
 }
 
 /**
- * Sentinel for a tool_execution_start whose event carries no usable call id.
- * No persisted tool result can carry this id, so the entry keeps every
- * boundary conservative and is released only by the AGENT_SETTLED backstop:
- * an unidentifiable start is protected exactly as the old count protected it.
+ * Marker for a tool_execution_start whose event carries no usable call id.
+ * A SYMBOL, never a string: every string is a possible call id and a marker
+ * that is one can be deleted by a persisted result that happens to name it,
+ * which drained the batch at a boundary the unidentifiable start had not
+ * reached. A symbol cannot equal any persisted id, so the marker keeps every
+ * boundary conservative and is released only by the AGENT_SETTLED backstop.
  */
-const UNIDENTIFIED_TOOL_CALL_ID = "\u0000unidentified-tool-call";
+const UNIDENTIFIED_TOOL_CALL = Symbol("unidentified-tool-call-start");
 
 /** The non-empty call id an event names, or undefined when it names none. */
 function toolCallIdOf(event: any): string | undefined {
@@ -135,7 +138,7 @@ const PENDING_COMPACT_QUEUE_MAX = 8;
 
 function getBatchSettleState(ctx: any): BatchSettleState {
   return getExtensionState(ctx, "context-manager/batch-settle", () => ({
-    activeToolCallIds: new Set<string>(),
+    activeToolCallIds: new Set<string | symbol>(),
     pending: [],
   }));
 }
@@ -591,7 +594,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
   onEvent(pi, TOOL_EXECUTION_START, (event: any, ctx: any) => {
     try {
       const st = getBatchSettleState(ctx);
-      st.activeToolCallIds.add(toolCallIdOf(event) ?? UNIDENTIFIED_TOOL_CALL_ID);
+      st.activeToolCallIds.add(toolCallIdOf(event) ?? UNIDENTIFIED_TOOL_CALL);
     } catch {
       // Settle tracking is unavailable — the pending compact then only fires
       // via AGENT_SETTLED below, which is the conservative path.
