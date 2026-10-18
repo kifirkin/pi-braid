@@ -15,6 +15,10 @@
  * that code (firstKeptEntryId never lands after the declared span) and passes
  * once rangeMode is honored.
  *
+ * Blank-value handling: a client that fills every schema key and sends "" for
+ * the unused optional selectors must read those blanks as absent; the archive
+ * then follows the selectors it was actually given.
+ *
  * Run: node test/runtime/memory/test-compress-archive-range.mjs
  */
 
@@ -254,6 +258,81 @@ await test("rangeMode does not leak into a later normal compaction", async () =>
     "e4",
     "a later (non-range) compaction must not inherit the consumed range boundary",
   );
+});
+
+await test("blank optional selectors fall through to keepRecentTurns", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  // Some clients emit every schema property and send "" for unused string
+  // selectors. A blank selector must mean "absent", not a tag lookup.
+  const result = await tool.execute(
+    "ac-blank-1",
+    {
+      action: "archive",
+      startTag: "",
+      endTag: "",
+      beforeTag: "",
+      range: "",
+      keepRecentTurns: 1,
+      topic: "blank selectors",
+      summary: "Owner: keep the last turn. Braid: the rest archived.",
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.equal(
+    result.details?.honorRange,
+    true,
+    `blank selectors must not reject the call: ${result.content?.[0]?.text}`,
+  );
+  const rangeMode = getCmState(ctx).rangeMode;
+  assert.ok(rangeMode?.active, "rangeMode persisted for the keepRecentTurns span");
+  assert.equal(rangeMode.endIndex, 9, "keepRecentTurns=1 keeps the last user turn (cut at e10)");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
+});
+
+await test("blank optional selectors fall through to an explicit numeric span", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  const result = await tool.execute(
+    "ac-blank-2",
+    {
+      action: "archive",
+      startIndex: 2,
+      endIndex: 7,
+      startTag: "",
+      endTag: "",
+      beforeTag: "",
+      range: "",
+      topic: "numeric span",
+      summary: "Owner: entries 2..7. Braid: recorded.",
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.equal(
+    result.details?.honorRange,
+    true,
+    `blank selectors must not reject the call: ${result.content?.[0]?.text}`,
+  );
+  const rangeMode = getCmState(ctx).rangeMode;
+  assert.ok(rangeMode?.active, "rangeMode persisted");
+  assert.equal(rangeMode.endIndex, 7, "the explicit numeric span is honored");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
 });
 
 rmSync(FIXTURE_HOME, { recursive: true, force: true });
