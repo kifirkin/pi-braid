@@ -19,6 +19,16 @@
  * at consumption (the armer may have read the branch before the batch's later
  * results landed).
  *
+ * A supplied index can land on a non-message entry (`label` from
+ * `context_navigate action=tag`, `custom`/`custom_message`, a model or
+ * thinking-level change, a context edit, a compaction): those entries carry no
+ * provider message, so the kept slice's opening message is the first `message`
+ * entry at or after the index. The leading-result check resolves that entry
+ * before judging the slice; judging the index itself let a tag placed between
+ * an assistant's tool call and its result pass, and the kept slice then opened
+ * with a bare tool result ("No tool call found for function call output with
+ * call_id ..." from Responses-style endpoints).
+ *
  * The readers take raw session entries (`readonly unknown[]`) because that is
  * what a live branch is at the boundaries; the shape is narrowed here rather
  * than asserted at every call site.
@@ -84,10 +94,24 @@ function toolCallIdsOf(entry: BoundaryEntry | undefined): string[] {
 }
 
 /**
+ * Index of the first message entry at or after `fromIndex`; non-message
+ * session entries carry no provider message and are stepped over. Equals
+ * `entries.length` when no message remains.
+ */
+function firstMessageIndex(entries: readonly unknown[], fromIndex: number): number {
+  let i = fromIndex;
+  while (i < entries.length && entryOf(entries[i])?.type !== "message") i++;
+  return i;
+}
+
+/**
  * The structurally invalid shape of a kept slice [candidateIndex..end]:
- * either it begins with a tool result (its call fell outside the slice), or it
- * contains an assistant whose tool_calls are not fully answered inside it.
- * Returns null for a valid slice. Exported for tests and audit surfaces.
+ * either its first message is a tool result (its call fell outside the slice),
+ * or it contains an assistant whose tool_calls are not fully answered inside
+ * it. Non-message entries between the candidate and the first message are
+ * stepped over: they are not provider messages, so they neither open the
+ * slice nor hide a bare result behind them. Returns null for a valid slice.
+ * Exported for tests and audit surfaces.
  */
 export function findBoundaryViolation(
   entries: readonly unknown[],
@@ -95,16 +119,23 @@ export function findBoundaryViolation(
 ): {
   kind: "leading-tool-result" | "unanswered-tool-calls";
   entryId?: string;
+  /** Index of the offending tool-result entry (leading-tool-result). */
+  resultIndex?: number;
   /** Index of the offending assistant entry (unanswered-tool-calls). */
   assistantIndex?: number;
 } | null {
   if (!Array.isArray(entries) || candidateIndex < 0 || candidateIndex >= entries.length) {
     return null;
   }
-  if (isToolResultEntry(entryOf(entries[candidateIndex]))) {
-    return { kind: "leading-tool-result", entryId: entryOf(entries[candidateIndex])?.id };
+  const firstMessage = firstMessageIndex(entries, candidateIndex);
+  if (isToolResultEntry(entryOf(entries[firstMessage]))) {
+    return {
+      kind: "leading-tool-result",
+      entryId: entryOf(entries[firstMessage])?.id,
+      resultIndex: firstMessage,
+    };
   }
-  for (let i = candidateIndex; i < entries.length; i++) {
+  for (let i = firstMessage; i < entries.length; i++) {
     for (const id of toolCallIdsOf(entryOf(entries[i]))) {
       let answered = false;
       for (let j = i + 1; j < entries.length; j++) {
@@ -160,8 +191,10 @@ function firstNonToolResultIndex(entries: readonly unknown[], fromIndex: number)
 /**
  * Snap a candidate first-kept index so the kept slice [result..end] cannot
  * split a tool batch:
- *   - a candidate landing mid-batch snaps FORWARD to the first entry after
- *     the batch's last tool result (parallel calls are one batch of N results);
+ *   - a candidate landing mid-batch - including on a non-message entry whose
+ *     first following message is mid-batch - snaps FORWARD to the first entry
+ *     after the batch's last tool result (parallel calls are one batch of N
+ *     results);
  *   - when that would keep less than `MIN_KEPT_ENTRIES`, it snaps BACKWARD to
  *     the batch's assistant message instead, keeping the whole batch live;
  *   - a leading result whose call is no longer in the branch (summarized away)
@@ -182,12 +215,13 @@ export function snapBoundaryOutsideToolBatch(
     if (!violation) return index;
 
     if (violation.kind === "leading-tool-result") {
-      const owner = findOwningAssistant(entries, index);
+      const resultIndex = violation.resultIndex ?? index;
+      const owner = findOwningAssistant(entries, resultIndex);
       if (owner < 0) {
         // The call is outside the branch: the only valid repair is dropping
         // the orphaned results.
-        const after = firstNonToolResultIndex(entries, index);
-        if (after > index && entries.length - after >= MIN_KEPT_ENTRIES) {
+        const after = firstNonToolResultIndex(entries, resultIndex);
+        if (after > resultIndex && entries.length - after >= MIN_KEPT_ENTRIES) {
           index = after;
           continue;
         }
