@@ -38,6 +38,14 @@ usage; hygiene acts re-arm at most once every three turns.
 Owner: [`src/lib/detection/context-thresholds.ts`](../src/lib/detection/context-thresholds.ts)
 (single home; consumers import, never restate).
 
+### Usage-driven slide compaction
+
+| Setting                            | Default                                              | Effect                                                                                                                                                                                                                | Read cadence                                        |
+| ---------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `braid.context.contextAutoCompact` | `{ enabled: true, armPercent: 60, confirmTicks: 2 }` | When live usage stays at or above `armPercent` for `confirmTicks` consecutive heartbeat observations, queues one deterministic slide for the next turn boundary. Set `enabled: false` to turn off this automatic arm. | Re-read at use time, on each heartbeat observation. |
+
+Owner: [`src/lib/config/braid-settings.ts`](../src/lib/config/braid-settings.ts); auto-arm runs in [`src/extensions/memory/context-manager/handlers/tools/context-compress.ts`](../src/extensions/memory/context-manager/handlers/tools/context-compress.ts).
+
 ## The compaction reserve
 
 pi-core fires native threshold compaction when `contextTokens > contextWindow −
@@ -58,11 +66,11 @@ from [`src/extensions/core/polyfill/index.ts`](../src/extensions/core/polyfill/i
 
 ## Caps and offload
 
-| Setting                                 | Default          | Effect                                                                                                    |
-| --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
-| `braid.context.toolResultSizeCap`       | ON, 262144 chars | capture-time cap: an oversized tool result is flushed to disk and replaced by a stub naming the file      |
-| `braid.context.staleToolResultOffload`  | OFF              | age/size offload of stale large results (minChars 4000, stalenessTurns 40, keepRecentTurns 20, 65536/run) |
-| `braid.context.contextEmergencyOffload` | ON               | on a context-window (413) error: offload the largest results, retry once (minChars 262144, 1048576/run)   |
+| Setting                                                                                               | Default                             | Effect                                                                                                                                     | Read cadence                                                       |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `braid.context.toolResultSizeCap` (`enabled`; `maxChars`: `braid.context.toolResultSizeCap.maxChars`) | `enabled: true`, `maxChars: 262144` | Set `enabled: false` to turn off this cap. Results above `maxChars` are flushed losslessly to disk and replaced by a stub naming the file. | Re-read at use time on each tool result and offload recovery call. |
+| `braid.context.staleToolResultOffload`                                                                | OFF                                 | Age/size offload of stale large results (`minChars` 4000, `stalenessTurns` 40, `keepRecentTurns` 20, 65536/run).                           | Re-read at use time.                                               |
+| `braid.context.contextEmergencyOffload`                                                               | ON                                  | On a context-window (413) error: offload the largest results, then retry once (`minChars` 262144, 1048576/run).                            | Re-read at use time.                                               |
 
 Offloaded payloads land at `<braid home>/offload/<sessionId>/<toolName>-<toolCallId>.txt`
 (`offloadDir()` / `getOffloadFilePath` in

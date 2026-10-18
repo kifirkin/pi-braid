@@ -57,6 +57,12 @@ Or register the workspace in `~/.pi/agent/settings.json`:
 }
 ```
 
+## Pre-send payload guard
+
+| Setting                              | Default | Effect                                                                                                                                                                                                                                   | Read cadence                                    |
+| ------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `braid.context.presendGuard.enabled` | `true`  | When enabled, if an estimated request exceeds 90% of a known model context window, oversized strings that can be flushed are written losslessly to disk and replaced by stubs. `false` skips the guard; unknown windows are not guessed. | Re-read at use time for every provider request. |
+
 ## What this does not do
 
 - It does not ship a provider catalog. The `agent-zero` model list and gateway URL are read from a

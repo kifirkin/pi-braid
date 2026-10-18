@@ -57,6 +57,7 @@
     "check:instruction-strings": "node scripts/check-instruction-strings.mjs",
     "check:doc-index": "node scripts/check-doc-index.mjs",
     "check:schema": "node scripts/check-braid-schema.mjs",
+    "check:settings-docs": "node scripts/check-settings-doc-coverage.mjs",
     "ci:check": "npm run check:docs && npm run check:doc-drift && npm run check:instruction-strings && npm run check:doc-index && npm run check:deps && npm run check:labels && npx tsc --noEmit && npm test",
     "release:local": "node scripts/publish-local.mjs",
     "publish:local": "node scripts/publish-local.mjs",
