@@ -67,3 +67,9 @@ allow sub-state modules to be tested in isolation.
   for the agent's natural flow.
 
 See individual handler files in `handlers/` for the per-source policy.
+
+## Over-correction gate setting
+
+| Setting                                     | Default | Effect                                                                                                                                                                                   | Read cadence                                   |
+| ------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `braid.enforcement.overCorrectionGate.mode` | `"off"` | `off` leaves the gate inert; `shadow` logs and whispers without blocking; `on` blocks destructive `bash` and `write` calls while a recent accusation or hot acceptance signal is active. | Re-read at use time on each checked tool call. |

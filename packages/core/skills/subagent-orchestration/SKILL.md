@@ -235,6 +235,10 @@ the delta: the gate certified fewer files than the commit carries, which is what
 `git add` looks like. Re-run the gate on the staged tree and re-issue the close. A close with no
 stamped `files` row prints `no recorded population` and merges.
 
+| Setting                                      | Default  | Effect                                                                                                                                       | Read cadence                                       |
+| -------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `braid.orchestrator.closeGateWellFormedness` | `shadow` | `shadow` logs invalid `{cmd, exit}` rows and allows close; `enforce` refuses an invalid row; `off` skips validation. Commands are not rerun. | Re-read at use time on every `close-worker` close. |
+
 ### Claim verifiers and the instrument-capability warn
 
 Each claim's `verified_by` is read against a small registry of instrument shapes: search and <!-- doc-ref-exempt: seat-side result-block field; the parser lives in the orchestrator seat, not this repo -->

@@ -200,6 +200,13 @@ untouched either way. Observer call sites are guarded: alerting never breaks
 retry arming or outcome resolution. Fixture:
 `test/runtime/self/test-watchdog-wake-delivery.mjs`.
 
+### Wake guard settings
+
+| Setting                                   | Default                  | Effect                                                                                                                                                                      | Read cadence                                               |
+| ----------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `braid.session.terminalBreaker.threshold` | `3` (enabled by default) | After this many terminal-class LLM errors, a timer wake is delivered as a non-waking steer until a clean turn resets the gate. Set `enabled: false` to disable the breaker. | Re-read at use time, once per fire checked by the breaker. |
+| `braid.timers.wakeAlert.mode`             | `"on"`                   | Enables the watchdog wake-delivery alert feed. `"off"` disables alerting only; timer delivery and retries continue unchanged.                                               | Re-read at use time for each alert check.                  |
+
 The post-compaction stack overflow was caused by `triggerTurn: true` firing **mid-tool-execution**. The fix is the **busy guard** (below). The compaction-resume timer was removed in 2026-07-11 because pi-core's agent loop automatically continues after **auto**-compaction (`_runAutoCompaction()` continues on `willRetry`/overflow or queued messages); the 3-minute fallback timer was firing as spurious noise on that path. That does NOT cover the manual `ctx.compact()` path (agent-initiated `context_compress` tool): manual compaction aborts the loop and never resumes it - the resume there is the enforcement `session_compact` re-orientation whisper with `triggerTurn: true` (see `enforcement/handlers/register-session-compact.ts`), which was verified and fixed 2026-08-02.
 
 ## Tag conventions
