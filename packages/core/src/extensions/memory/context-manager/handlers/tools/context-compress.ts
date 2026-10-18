@@ -841,36 +841,50 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         const sessionLength = analyzeSession(ctx).branchLength;
 
         // Resolve range via priority: startTag/endTag > beforeTag > range > keepRecentTurns > startIndex/endIndex > auto
-        let startIndex: number | undefined = params.startIndex;
-        let endIndex: number | undefined = params.endIndex;
+        // Optional selectors can arrive as blank strings: some clients emit
+        // every schema property and send "" for the ones they do not use. A
+        // blank value means "absent": a tag lookup or a percent parse on ""
+        // would otherwise reject a call that named nothing. Numeric optionals
+        // are read the same way, so a stray "" cannot steer the range either.
+        const optionalString = (v: unknown): string | undefined =>
+          typeof v === "string" && v.trim().length > 0 ? v : undefined;
+        const optionalNumber = (v: unknown): number | undefined =>
+          typeof v === "number" && Number.isFinite(v) ? v : undefined;
+        const startTag = optionalString(params.startTag);
+        const endTag = optionalString(params.endTag);
+        const beforeTag = optionalString(params.beforeTag);
+        const range = optionalString(params.range);
+        const keepRecentTurns = optionalNumber(params.keepRecentTurns);
+        let startIndex: number | undefined = optionalNumber(params.startIndex);
+        let endIndex: number | undefined = optionalNumber(params.endIndex);
 
         // Priority 1: Tag-based range
-        if (params.startTag !== undefined) {
-          const idx = resolveTagToIndex(ctx, params.startTag);
+        if (startTag !== undefined) {
+          const idx = resolveTagToIndex(ctx, startTag);
           if (idx < 0) {
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: `Tag '${params.startTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                  text: `Tag '${startTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
                 },
               ],
-              details: { action, error: `tag not found: ${params.startTag}` },
+              details: { action, error: `tag not found: ${startTag}` },
             };
           }
           startIndex = idx;
 
-          if (params.endTag !== undefined) {
-            const idxEnd = resolveTagToIndex(ctx, params.endTag);
+          if (endTag !== undefined) {
+            const idxEnd = resolveTagToIndex(ctx, endTag);
             if (idxEnd < 0) {
               return {
                 content: [
                   {
                     type: "text" as const,
-                    text: `Tag '${params.endTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                    text: `Tag '${endTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
                   },
                 ],
-                details: { action, error: `tag not found: ${params.endTag}` },
+                details: { action, error: `tag not found: ${endTag}` },
               };
             }
             endIndex = idxEnd;
@@ -878,17 +892,17 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         // Priority 1b: beforeTag convenience (archive everything before this tag)
-        if (startIndex === undefined && params.beforeTag !== undefined) {
-          const idx = resolveTagToIndex(ctx, params.beforeTag);
+        if (startIndex === undefined && beforeTag !== undefined) {
+          const idx = resolveTagToIndex(ctx, beforeTag);
           if (idx < 0) {
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: `Tag '${params.beforeTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
+                  text: `Tag '${beforeTag}' not found in session branch. Use context_navigate action=log to see available tags.`,
                 },
               ],
-              details: { action, error: `tag not found: ${params.beforeTag}` },
+              details: { action, error: `tag not found: ${beforeTag}` },
             };
           }
           startIndex = 0;
@@ -896,17 +910,17 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         // Priority 2: Percentage-based range
-        if (params.range !== undefined && (startIndex === undefined || endIndex === undefined)) {
-          const match = String(params.range).match(/^(\d+)%$/);
+        if (range !== undefined && (startIndex === undefined || endIndex === undefined)) {
+          const match = range.match(/^(\d+)%$/);
           if (!match) {
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: `Invalid range format: '${params.range}'. Use 'N%' e.g. '80%'.`,
+                  text: `Invalid range format: '${range}'. Use 'N%' e.g. '80%'.`,
                 },
               ],
-              details: { action, error: `invalid range: ${params.range}` },
+              details: { action, error: `invalid range: ${range}` },
             };
           }
           const pct = parseInt(match[1], 10);
@@ -927,11 +941,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         // Priority 3: Keep-recent-turns
-        if (
-          (startIndex === undefined || endIndex === undefined) &&
-          params.keepRecentTurns !== undefined
-        ) {
-          const keep = params.keepRecentTurns;
+        if ((startIndex === undefined || endIndex === undefined) && keepRecentTurns !== undefined) {
+          const keep = keepRecentTurns;
           if (keep <= 0) {
             return {
               content: [
