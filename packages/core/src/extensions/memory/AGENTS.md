@@ -47,13 +47,21 @@ The `cancelTimersByTag` helper from `extensions/scheduling/timer/index.ts` is th
 ## Parallel-tool-call constraint
 
 `context_compress` returns its result immediately and defers the actual
-`ctx.compact()` to the agent-run settle point (batch-settle scheduler:
-armed on the compress tool's action, fired after `agent_settled` once the
-batch's tool-result messages have landed - see
-`context-manager/handlers/tools/context-compress.ts`). This removes the old
+`ctx.compact()` to the next safe boundary (batch-settle scheduler in
+`context-manager/handlers/tools/context-compress.ts`): the first `turn_end`
+whose persisted `toolResults` account for every active tool call, or
+`agent_settled`, whichever comes first. Active calls are tracked by
+`toolCallId`, registered at `tool_execution_start` and released by its own
+`tool_execution_end` or by a boundary event whose `toolResults` carry that
+id; `agent_settled` clears whatever is left. The earlier in-flight COUNT was
+decremented only by the exact end event it waited for, so one missed
+`tool_execution_end` left it positive and every later boundary returned
+before the armed compaction could drain; identity cannot drift that way, and
+an id with no result stays protective. This removes the old
 mid-batch abort race: a still-executing parallel sibling's tool result is
 delivered BEFORE the aborting compact fires and is no longer discarded
-(pinned by `test/runtime/memory/test-compress-batch-settle.mjs`). The
+(pinned by `test/runtime/memory/test-compress-batch-settle.mjs` and
+`test/runtime/memory/test-compress-drain-boundaries.mjs`). The
 degraded path (batch-settle bookkeeping unavailable) uses a bounded
 `DEGRADED_DEFERRAL_MS` (150ms) deferral - never a raw `setTimeout(0)`.
 

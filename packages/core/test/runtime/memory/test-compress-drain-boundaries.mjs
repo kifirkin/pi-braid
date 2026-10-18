@@ -11,7 +11,12 @@
  *      run alive, agent_settled never fires — the compaction must land at the
  *      FIRST turn boundary and never re-fire on later boundaries.
  *   2. Never mid-batch: turn_end with a sibling still in-flight must not drain
- *      (the tool-batch safety contract extends to the new boundary).
+ *      (the tool-batch safety contract extends to the new boundary). The
+ *      batch's completion is read from tool-call IDENTITY: a sibling whose
+ *      tool_execution_end was missed but whose result is persisted in the
+ *      boundary event's toolResults releases the batch there, while an id
+ *      absent from those results (and a malformed result entry) keeps it
+ *      parked.
  *   3. Settle path preserved: agent_settled still drains (backstop), and a
  *      queue already drained at turn_end does not double-fire at settle.
  *   4. No drain while a compaction cycle is already active.
@@ -146,7 +151,7 @@ function makeFakePi() {
   };
 }
 
-/** One tool execution inside a live batch: arm while inFlight > 0. */
+/** Run one tool call inside a live batch (tool call id active): pendings stay parked until settle. */
 async function runInBatch(pi, tool, ctx, toolCallId, params) {
   await pi._emit({ type: "tool_execution_start", toolCallId, toolName: "context_compress" }, ctx);
   const result = await tool.execute(toolCallId, params, undefined, undefined, ctx);
@@ -157,13 +162,13 @@ async function runInBatch(pi, tool, ctx, toolCallId, params) {
   return result;
 }
 
-async function emitTurnEnd(pi, ctx, turnIndex) {
+async function emitTurnEnd(pi, ctx, turnIndex, toolResults = []) {
   await pi._emit(
     {
       type: "turn_end",
       turnIndex,
       message: { role: "assistant", stopReason: "stop" },
-      toolResults: [],
+      toolResults,
     },
     ctx,
   );
@@ -241,6 +246,108 @@ await test("turn_end with a sibling tool still in-flight does not drain", async 
   );
   await emitTurnEnd(pi, ctx, 1);
   assert.equal(ctx.compactCalls.length, 1, "drains once the batch has fully landed");
+});
+
+await test("a persisted result releases its call id at turn_end when the end event is missed", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld();
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  await pi._emit({ type: "tool_execution_start", toolCallId: "cc", toolName: "context_compress" }, ctx);
+  await pi._emit({ type: "tool_execution_start", toolCallId: "sib", toolName: "slow_tool" }, ctx);
+  await tool.execute("cc", { action: "slide", keep: 4 }, undefined, undefined, ctx);
+  await pi._emit(
+    { type: "tool_execution_end", toolCallId: "cc", toolName: "context_compress", result: {} },
+    ctx,
+  );
+
+  // The sibling's tool result IS persisted, its tool_execution_end is NOT:
+  // the boundary event carries the same toolCallId. A count decremented only
+  // by the end event stays positive here and parks the armed compaction until
+  // agent_settled, which a run kept alive by steers never reaches.
+  await emitTurnEnd(pi, ctx, 0, [
+    { role: "toolResult", toolCallId: "sib", toolName: "slow_tool", content: [] },
+  ]);
+  assert.equal(
+    ctx.compactCalls.length,
+    1,
+    "the persisted sibling result must release the batch at the turn boundary (missed tool_execution_end)",
+  );
+
+  // The backstop still runs, but the queue is already empty: no second fire.
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "settle after the boundary drain must not double-fire");
+});
+
+await test("results that name no active call id keep the batch parked", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld();
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  await pi._emit({ type: "tool_execution_start", toolCallId: "cc", toolName: "context_compress" }, ctx);
+  await pi._emit({ type: "tool_execution_start", toolCallId: "sib", toolName: "slow_tool" }, ctx);
+  await tool.execute("cc", { action: "slide", keep: 4 }, undefined, undefined, ctx);
+  await pi._emit(
+    { type: "tool_execution_end", toolCallId: "cc", toolName: "context_compress", result: {} },
+    ctx,
+  );
+
+  // A foreign result and a malformed entry (no toolCallId) name nothing the
+  // batch is waiting on: the active sibling must stay protective.
+  await emitTurnEnd(pi, ctx, 0, [
+    { role: "toolResult", toolCallId: "other", toolName: "other_tool", content: [] },
+    { role: "toolResult", toolName: "slow_tool", content: [] },
+  ]);
+  assert.equal(
+    ctx.compactCalls.length,
+    0,
+    "a result that names no active call id must not release the batch",
+  );
+
+  // The sibling's own identity finally arrives: that boundary drains.
+  await emitTurnEnd(pi, ctx, 1, [
+    { role: "toolResult", toolCallId: "sib", toolName: "slow_tool", content: [] },
+  ]);
+  assert.equal(ctx.compactCalls.length, 1, "drains once the awaited identity lands");
+});
+
+await test("a start event with no call id keeps every boundary parked until settle", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld();
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  await pi._emit({ type: "tool_execution_start", toolCallId: "cc", toolName: "context_compress" }, ctx);
+  // pi-core always names a call id (pi-agent-core emits `toolCallId: toolCall.id`
+  // on start, end, and the persisted result). An emitter that does not leaves
+  // the call unidentifiable: its completion can never be proven from a
+  // boundary's toolResults, so the boundary stays conservative and the settle
+  // backstop owns the release.
+  await pi._emit({ type: "tool_execution_start", toolName: "unknown_tool" }, ctx);
+  await tool.execute("cc", { action: "slide", keep: 4 }, undefined, undefined, ctx);
+  await pi._emit(
+    { type: "tool_execution_end", toolCallId: "cc", toolName: "context_compress", result: {} },
+    ctx,
+  );
+
+  await emitTurnEnd(pi, ctx, 0);
+  assert.equal(
+    ctx.compactCalls.length,
+    0,
+    "an unidentifiable start must not be released by a boundary that cannot name it",
+  );
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "the settle backstop clears it and drains");
 });
 
 // ── 3. Settle path preserved ────────────────────────────────────────────────
