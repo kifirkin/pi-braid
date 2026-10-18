@@ -25,3 +25,4 @@ The Session watchdog is purely a **passive observer** (it doesn't act).
 - Module is opt-in (`disabledByDefault: true`).
 - Module id: `watchdog` (kebab-case).
 - Not LLM-callable. The agent cannot trigger it - only the user can, via the `watchdog-status` command.
+- `broker.watchdog` is read when the extension factory loads. Restart the agent after changing it.

@@ -55,8 +55,8 @@ function readObservatorySettings(): {
   record: boolean; // should we write events to disk
   maxEvents: number; // cap
 } {
-  // Read settings.json once; observ is the only extension that does this
-  // (other extensions rely on index.ts registry passing settings in).
+  // Snapshot settings at extension load. Five contrib modules read local config:
+  // browser, network-monitor, observatory, path-security, and rate-limiter.
   const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
   let parsed: ContribSettings = {};
   try {

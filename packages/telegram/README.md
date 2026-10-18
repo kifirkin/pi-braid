@@ -102,6 +102,17 @@ Or register the workspace in `~/.pi/agent/settings.json`:
 - A bot token from @BotFather; optionally `BRAID_TG_CHAT_ID` / `BRAID_TG_ALLOWED_USERS` for the
   allow-list.
 
+## Settings cadence
+
+Settings live in `~/.pi/agent/settings.json`. `braid.telegram.pauseStateFile`
+is captured as the callback write target when the extension loads. `getPauseState()`
+resolves its read path per call, so restart after changing the setting to keep
+reads and writes aligned. `braid.telegram.tts` is loaded into the voice hook at
+extension load; restart after changing its source, rate, or voices.
+The send and notification caps (`braid.telegram.sendMaxChars` and
+`braid.telegram.notifyMaxChars`) are re-read per operation and change without
+a restart.
+
 ## Environment variables
 
 | Var                                | Purpose                                                                | Required                                                        |
