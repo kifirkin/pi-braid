@@ -408,6 +408,59 @@ await test("session_before_compact re-snaps a raw mid-batch slide cut (foreign a
   );
 });
 
+await test("session_before_compact re-snaps a stored slide boundary that landed on a tag", async () => {
+  const world = makeWorld({ branchLength: 40, batchAt: 10, batchSize: 1 });
+  // The tag entry sits between the batch's call and its result: the shape
+  // context_navigate action=tag leaves behind, where the label is a child of
+  // the assistant message carrying the call. A stored boundary on the tag is
+  // a boundary on whatever message follows it.
+  world.branch.splice(
+    11,
+    0,
+    { id: "tag", parentId: world.branch[10].id, type: "label", label: "checkpoint" },
+    { id: "note", parentId: "tag", type: "custom", customType: "braid-note", data: {} },
+  );
+  const ctx = makeFakeCtx(world.sm);
+  const pi = makeFakePi(world.sm);
+  registerBeforeCompactHandler(pi);
+
+  getCmState(ctx).slideMode = {
+    active: true,
+    cutEntryId: "tag",
+    keepCount: 28,
+    droppedCount: 11,
+    timestamp: Date.now(),
+  };
+
+  const prep = {
+    firstKeptEntryId: world.branch[35].id,
+    messagesToSummarize: [],
+    turnPrefixMessages: [],
+    isSplitTurn: false,
+    tokensBefore: 1234,
+  };
+  const outcome = await pi._emit(
+    {
+      type: "session_before_compact",
+      preparation: prep,
+      customInstructions: "SLIDE_MODE:true",
+      reason: "manual",
+    },
+    ctx,
+  );
+  assert.ok(outcome?.compaction, "handler returns the extension compaction object");
+  assert.notEqual(
+    outcome.compaction.firstKeptEntryId,
+    "tag",
+    "the tag is not consumed as the compaction anchor",
+  );
+  const boundaryIndex = world.branch.findIndex(
+    (e) => e.id === outcome.compaction.firstKeptEntryId,
+  );
+  assert.equal(boundaryIndex, 14, "the anchor re-snaps past the batch's result");
+  assertValidSlice(world.branch, boundaryIndex, "session_before_compact through a tag");
+});
+
 // ── The helper, on hand-built branches ────────────────────────────────────────
 
 /** prefix text entries, one assistant with `batchSize` calls, N results, suffix. */
@@ -517,6 +570,156 @@ await test("helper: converted toolCalls shape is read too", () => {
   const snapped = snapBoundaryOutsideToolBatch(branch, 2 + 1);
   assert.equal(snapped, 2 + 2 + 1);
   assertValidSlice(branch, snapped, "helper toolCalls shape");
+});
+
+await test("helper: a tag between a tool call and its result does not hide the split", () => {
+  // The live shape: the tag is a CHILD of the assistant message that carries
+  // the tool call, so the branch reads
+  // assistant(call) -> label -> custom -> toolResult -> assistant(next).
+  const branch = [
+    {
+      id: "owner",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_A", name: "context_navigate", arguments: {} }],
+      },
+    },
+    { id: "tag", type: "label", label: "checkpoint" },
+    { id: "note", type: "custom", customType: "braid-note", data: {} },
+    { id: "rA", type: "message", message: { role: "toolResult", toolCallId: "call_A", content: [] } },
+    {
+      id: "next",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_B", name: "read", arguments: {} }],
+      },
+    },
+    { id: "rB", type: "message", message: { role: "toolResult", toolCallId: "call_B", content: [] } },
+  ];
+  const violation = findBoundaryViolation(branch, 1);
+  assert.equal(violation?.kind, "leading-tool-result", "the tag's first message is judged, not the tag");
+  assert.equal(violation?.resultIndex, 3, "the violation carries the tool result's index");
+  const snapped = snapBoundaryOutsideToolBatch(branch, 1);
+  assert.notEqual(snapped, 1, "the tag is not a valid boundary: its first message is a bare result");
+  assert.equal(snapped, 4, "forward past the batch's last result");
+  assert.equal(branch[snapped].type, "message", "the kept slice opens on a message entry");
+  assert.equal(findBoundaryViolation(branch, snapped), null, "no violation remains at the snapped index");
+  assertValidSlice(branch, snapped, "incident shape");
+});
+
+await test("helper: an arm-time boundary on a tag moves forward once the result lands", () => {
+  const atArm = [
+    {
+      id: "owner",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_A", name: "read", arguments: {} }],
+      },
+    },
+    { id: "tag", type: "label", label: "checkpoint" },
+  ];
+  assert.equal(
+    snapBoundaryOutsideToolBatch(atArm, 1),
+    1,
+    "with no result recorded yet the tag is a valid boundary and stays put",
+  );
+
+  const grown = [
+    atArm[0],
+    atArm[1],
+    { id: "note", type: "custom", customType: "braid-note", data: {} },
+    { id: "rA", type: "message", message: { role: "toolResult", toolCallId: "call_A", content: [] } },
+    {
+      id: "next",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_B", name: "read", arguments: {} }],
+      },
+    },
+    { id: "rB", type: "message", message: { role: "toolResult", toolCallId: "call_B", content: [] } },
+  ];
+  const snapped = snapBoundaryOutsideToolBatch(grown, 1);
+  assert.ok(snapped > 1, `the stored boundary moves forward on the grown branch (got ${snapped})`);
+  assert.equal(snapped, 4, "forward past the batch's last result");
+  assert.equal(findBoundaryViolation(grown, snapped), null);
+  assertValidSlice(grown, snapped, "grown branch");
+});
+
+await test("helper: a tag between two results of one parallel batch snaps past the batch", () => {
+  const branch = [
+    { id: "p0", type: "message", message: { role: "user", content: [] } },
+    {
+      id: "owner",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "call_0" },
+          { type: "toolCall", id: "call_1" },
+        ],
+      },
+    },
+    { id: "r0", type: "message", message: { role: "toolResult", toolCallId: "call_0", content: [] } },
+    { id: "tag", type: "label", label: "checkpoint" },
+    { id: "r1", type: "message", message: { role: "toolResult", toolCallId: "call_1", content: [] } },
+    { id: "s0", type: "message", message: { role: "assistant", content: [] } },
+  ];
+  const snapped = snapBoundaryOutsideToolBatch(branch, 3);
+  assert.equal(snapped, 5, "the whole parallel batch is dropped, not half of it");
+  assertValidSlice(branch, snapped, "tag inside a parallel batch");
+});
+
+await test("helper: a tag whose next message is a valid opener stays put", () => {
+  const branch = [
+    {
+      id: "owner",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_A", name: "read", arguments: {} }],
+      },
+    },
+    { id: "rA", type: "message", message: { role: "toolResult", toolCallId: "call_A", content: [] } },
+    { id: "tag", type: "label", label: "checkpoint" },
+    { id: "note", type: "custom", customType: "braid-note", data: {} },
+    {
+      id: "next",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_B", name: "read", arguments: {} }],
+      },
+    },
+    { id: "rB", type: "message", message: { role: "toolResult", toolCallId: "call_B", content: [] } },
+  ];
+  assert.equal(
+    snapBoundaryOutsideToolBatch(branch, 2),
+    2,
+    "the slice's first message is a valid opener, so the tag is kept",
+  );
+  assertValidSlice(branch, 2, "tag before a valid opener");
+});
+
+await test("helper: an empty branch and single-entry branches pass through", () => {
+  assert.equal(snapBoundaryOutsideToolBatch([], 0), 0, "empty branch is a no-op");
+  assert.equal(snapBoundaryOutsideToolBatch([], 7), 7, "even an out-of-range candidate passes through");
+  assert.equal(
+    snapBoundaryOutsideToolBatch([{ id: "tag", type: "label", label: "checkpoint" }], 0),
+    0,
+    "a lone non-message entry is a valid boundary",
+  );
+  assert.equal(
+    snapBoundaryOutsideToolBatch(
+      [{ id: "r", type: "message", message: { role: "toolResult", toolCallId: "gone", content: [] } }],
+      0,
+    ),
+    0,
+    "an orphan result with nothing after it stays put",
+  );
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
