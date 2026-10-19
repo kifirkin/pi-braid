@@ -83,6 +83,23 @@ const DEFAULT_CRITERIA: Record<VerificationTarget, string[]> = {
   ],
 };
 
+/** A blank string is "not provided": clients that emit every schema key send "" for the unused ones. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
+/**
+ * Drop blank criteria entries before use. A list left empty names nothing
+ * usable, so the target's defaults stand in: the LLM tier must never receive
+ * an empty rubric.
+ */
+function resolveCriteria(provided: unknown, target: VerificationTarget): string[] {
+  const cleaned = Array.isArray(provided)
+    ? provided.filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+    : [];
+  return cleaned.length > 0 ? cleaned : DEFAULT_CRITERIA[target];
+}
+
 /** Auto-detect the most recent code/reasoning/plan from session messages. */
 function autoDetectTarget(
   ctx: ExtensionContext,
@@ -325,16 +342,31 @@ export function createVerifyTool(): ToolDefinition<any, any, any> {
       const startMs = Date.now();
       const target = p.target ?? "result";
       const depth = p.depth ?? "standard";
-      const criteria = p.criteria ?? DEFAULT_CRITERIA[target];
-      const confidenceThreshold = p.confidenceThreshold ?? 0.5;
+      const criteria = resolveCriteria(p.criteria, target);
+      // A blank selector arrives as 0, and a value outside (0,1] can never
+      // gate a 0-1 confidence: both are "not provided", and the documented
+      // default is 0.5. The default is documented, so this substitutes -
+      // it never refuses the call.
+      const rawThreshold = p.confidenceThreshold;
+      const confidenceThreshold =
+        typeof rawThreshold === "number" &&
+        Number.isFinite(rawThreshold) &&
+        rawThreshold > 0 &&
+        rawThreshold <= 1
+          ? rawThreshold
+          : 0.5;
 
-      const text = p.targetText ?? autoDetectTarget(ctx)?.text;
+      // A blank targetText is "not provided" too: the documented path
+      // auto-detects from recent context. Only when that finds nothing does
+      // the tool refuse, and the refusal names auto-detection as what ran.
+      const providedText = optionalString(p.targetText);
+      const text = providedText ?? autoDetectTarget(ctx)?.text;
       if (!text) {
         return {
           content: [
             {
               type: "text",
-              text: "[verify] Could not auto-detect target text from recent context. Provide targetText explicitly.",
+              text: "[verify] Auto-detection ran over recent context and found no target text. Provide targetText explicitly.",
             },
           ],
           details: { passed: false, reason: "no-text" },
@@ -431,6 +463,8 @@ export function createVerifyTool(): ToolDefinition<any, any, any> {
           suggestions: result.suggestions,
           target: result.target,
           checksRun: result.checksRun,
+          confidenceThreshold,
+          criteria,
           verificationMs: result.verificationMs,
           blockedFinalize: !passed,
         },

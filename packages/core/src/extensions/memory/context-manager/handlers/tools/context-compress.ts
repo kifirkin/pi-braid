@@ -68,6 +68,26 @@ function captureUsage(ctx: any): { percent: number; tokens: number; contextWindo
   }
 }
 
+// Blank optional selectors.
+//
+// Some clients emit every schema property and send "" for the ones they do
+// not use. A blank string is "absent": a tag lookup or a percent parse on ""
+// would otherwise reject a call that named nothing. Blank NUMERIC selectors
+// are harder - the framework validates arguments before any handler runs and
+// converts "" to 0 - so a numeric optional cannot tell a blank from a typed
+// 0; the archive range guard reads the {0,0} index pair as the blank
+// signature instead.
+
+/** The non-blank string a selector names, or undefined when it names none. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
+/** The finite number a selector names, or undefined when it names none. */
+function optionalNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
 // Batch-settle compaction scheduler.
 // Contract: the tool returns its result FIRST (execute() resolves before a
 // compaction is armed), but ctx.compact() — which aborts the turn — fires only
@@ -841,22 +861,49 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         const sessionLength = analyzeSession(ctx).branchLength;
 
         // Resolve range via priority: startTag/endTag > beforeTag > range > keepRecentTurns > startIndex/endIndex > auto
-        // Optional selectors can arrive as blank strings: some clients emit
-        // every schema property and send "" for the ones they do not use. A
-        // blank value means "absent": a tag lookup or a percent parse on ""
-        // would otherwise reject a call that named nothing. Numeric optionals
-        // are read the same way, so a stray "" cannot steer the range either.
-        const optionalString = (v: unknown): string | undefined =>
-          typeof v === "string" && v.trim().length > 0 ? v : undefined;
-        const optionalNumber = (v: unknown): number | undefined =>
-          typeof v === "number" && Number.isFinite(v) ? v : undefined;
         const startTag = optionalString(params.startTag);
         const endTag = optionalString(params.endTag);
         const beforeTag = optionalString(params.beforeTag);
         const range = optionalString(params.range);
         const keepRecentTurns = optionalNumber(params.keepRecentTurns);
-        let startIndex: number | undefined = optionalNumber(params.startIndex);
-        let endIndex: number | undefined = optionalNumber(params.endIndex);
+        const rawStartIndex = optionalNumber(params.startIndex);
+        const rawEndIndex = optionalNumber(params.endIndex);
+        let startIndex: number | undefined = rawStartIndex;
+        let endIndex: number | undefined = rawEndIndex;
+
+        const hasStringSelector =
+          startTag !== undefined ||
+          endTag !== undefined ||
+          beforeTag !== undefined ||
+          range !== undefined;
+        // 0 turns is never a usable instruction (priority 3 refuses it), so a
+        // 0 here is a blank conversion too.
+        const keepRecentTurnsNamed = keepRecentTurns !== undefined && keepRecentTurns > 0;
+
+        // The blank numeric signature: a blank-filled call arrives as
+        // {startIndex: 0, endIndex: 0}, a pair that selects nothing a caller
+        // could have meant (a real 0 start bound travels with a non-zero
+        // end). Refuse before any state write when nothing else names a
+        // span; otherwise read the pair as absent and let the named selector
+        // decide.
+        if (rawStartIndex === 0 && rawEndIndex === 0) {
+          if (!hasStringSelector && !keepRecentTurnsNamed) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    "context_compress archive: startIndex/endIndex both resolved to 0 and no " +
+                    "tag/range/keepRecentTurns was given; blank numeric selectors cannot select " +
+                    "a span. Name startTag/endTag/beforeTag/range/keepRecentTurns instead.",
+                },
+              ],
+              details: { action, error: "blank numeric selectors named no span" },
+            };
+          }
+          startIndex = undefined;
+          endIndex = undefined;
+        }
 
         // Priority 1: Tag-based range
         if (startTag !== undefined) {
@@ -889,6 +936,26 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             }
             endIndex = idxEnd;
           }
+        }
+
+        // A start tag names where the archive begins, not where it ends:
+        // without a usable end bound the resolution below would either
+        // auto-clobber the resolved start index (endIndex absent) or die on
+        // the generic invalid-range sentence (endIndex 0 from a blank).
+        if (
+          startTag !== undefined &&
+          endTag === undefined &&
+          (endIndex === undefined || endIndex <= 0)
+        ) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "startTag requires endTag or endIndex; use beforeTag to archive everything before a tag.",
+              },
+            ],
+            details: { action, error: "startTag without endTag or endIndex" },
+          };
         }
 
         // Priority 1b: beforeTag convenience (archive everything before this tag)
@@ -985,6 +1052,23 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         if (startIndex < 0 || endIndex < startIndex) {
+          // endIndex 0 under a positive startIndex is the blank-selector
+          // signature, not a number the caller typed: name the hypothesis.
+          // Genuinely invalid numbers keep the generic sentence.
+          if (endIndex === 0 && startIndex > 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text:
+                    `Invalid range: endIndex is 0 while startIndex is ${startIndex} - a blank ` +
+                    `endIndex selector ("") is converted to 0 by argument validation; send a ` +
+                    `real endIndex or name the span with beforeTag/range.`,
+                },
+              ],
+              details: { action, error: "endIndex 0 (blank selector) below startIndex" },
+            };
+          }
           return {
             content: [
               {
@@ -1168,7 +1252,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           };
         }
 
-        const tagName = params.tagName ?? "before-cleanup";
+        const tagName = optionalString(params.tagName) ?? "before-cleanup";
         const usageBefore = captureUsage(ctx);
 
         try {

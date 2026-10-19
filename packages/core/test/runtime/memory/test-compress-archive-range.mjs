@@ -63,9 +63,10 @@ function test(name, fn) {
     });
 }
 
-const { registerContextCompress } = await import(
+const { registerContextCompress, contextCompressSchema } = await import(
   join(ROOT, "dist/extensions/memory/context-manager/handlers/tools/context-compress.js")
 );
+const { validateToolArguments } = await import("@earendil-works/pi-ai/utils/validation");
 const { registerBeforeCompactHandler } = await import(
   join(ROOT, "dist/extensions/memory/context-manager/handlers/compaction.js")
 );
@@ -156,6 +157,18 @@ function makeFakeCtx({ percent = 45, branchLength = 12 } = {}) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Drive arguments through the framework's own validation/conversion, exactly
+ * as pi-core does before a handler runs: "" becomes 0 for Type.Number and
+ * strings reach the handler unchanged.
+ */
+function frameworkArgs(args) {
+  return validateToolArguments(
+    { name: "context_compress", parameters: contextCompressSchema },
+    { name: "context_compress", arguments: args },
+  );
+}
 
 console.log("=== context_compress archive range-mode ===\n");
 
@@ -333,6 +346,162 @@ await test("blank optional selectors fall through to an explicit numeric span", 
   assert.equal(rangeMode.endIndex, 7, "the explicit numeric span is honored");
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
+});
+
+await test("blank numeric selectors plus a real keepRecentTurns use the turn span", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  // The whole-schema blank fill, except keepRecentTurns names a real span:
+  // the blank index pair must read as absent, not as a [0,0] declaration.
+  const args = frameworkArgs({
+    action: "archive",
+    startIndex: "",
+    endIndex: "",
+    startTag: "",
+    endTag: "",
+    beforeTag: "",
+    range: "",
+    keepRecentTurns: 2,
+    topic: "keep two turns",
+    summary: "Owner: keep the last two turns. Braid: the rest archived.",
+  });
+  assert.equal(args.keepRecentTurns, 2);
+
+  const result = await tool.execute("ac-blank-keep", args, undefined, undefined, ctx);
+
+  assert.equal(
+    result.details?.honorRange,
+    true,
+    `the named selector must not be refused: ${result.content?.[0]?.text}`,
+  );
+  const rangeMode = getCmState(ctx).rangeMode;
+  assert.equal(rangeMode.endIndex, 7, "keepRecentTurns=2 cuts before the second-to-last user turn");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
+});
+
+await test("all-blank numeric selectors are refused (framework conversion)", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  // The shape a client that fills every schema property delivers. The
+  // framework converts the blank numerics to 0, so the handler cannot tell
+  // them from typed zeros - the pair is the blank signature.
+  const args = frameworkArgs({
+    action: "archive",
+    startIndex: "",
+    endIndex: "",
+    startTag: "",
+    endTag: "",
+    beforeTag: "",
+    range: "",
+    keepRecentTurns: "",
+    topic: "nothing named",
+    summary: "Owner: nothing named. Braid: nothing archived.",
+  });
+  assert.equal(args.startIndex, 0, "the framework converts a blank startIndex to 0");
+  assert.equal(args.endIndex, 0, "the framework converts a blank endIndex to 0");
+
+  const result = await tool.execute("ac-blank-refused", args, undefined, undefined, ctx);
+
+  assert.match(
+    result.content?.[0]?.text ?? "",
+    /blank numeric selectors cannot select a span/,
+    "the refusal names the blank-selector cause",
+  );
+  assert.equal(result.details?.honorRange, undefined, "no range is declared");
+  assert.equal(getCmState(ctx).rangeMode, null, "nothing is persisted");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 0, "no compaction is armed");
+});
+
+await test("startTag without endTag is refused instead of auto-clobbered", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  ctx.sessionManager.getLabel = (id) => (id === "e5" ? "mark" : undefined);
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  const result = await tool.execute(
+    "ac-tag-no-end",
+    {
+      action: "archive",
+      startTag: "mark",
+      topic: "tag anchor",
+      summary: "Owner: start at the mark. Braid: no end named.",
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.match(
+    result.content?.[0]?.text ?? "",
+    /startTag requires endTag or endIndex/,
+    "the missing combination is named",
+  );
+  assert.equal(getCmState(ctx).rangeMode, null, "nothing is persisted");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 0, "no compaction is armed");
+});
+
+await test("startTag with a blank endIndex is refused, not 'Invalid range'", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  ctx.sessionManager.getLabel = (id) => (id === "e5" ? "mark" : undefined);
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  const args = frameworkArgs({
+    action: "archive",
+    startTag: "mark",
+    endIndex: "",
+    topic: "tag and blank end",
+    summary: "Owner: start at the mark. Braid: end was blank.",
+  });
+  const result = await tool.execute("ac-tag-blank-end", args, undefined, undefined, ctx);
+
+  assert.match(
+    result.content?.[0]?.text ?? "",
+    /startTag requires endTag or endIndex/,
+    "the missing end bound is named instead of a generic invalid-range sentence",
+  );
+  assert.equal(getCmState(ctx).rangeMode, null, "nothing is persisted");
+});
+
+await test("blank endIndex below a real startIndex names the blank hypothesis", async () => {
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ percent: 45, branchLength: 12 });
+  pi.appendEntry = (kind, data) => ctx.sessionManager.appendCustomEntry(kind, data);
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+
+  const args = frameworkArgs({
+    action: "archive",
+    startIndex: 5,
+    endIndex: "",
+    topic: "blank end",
+    summary: "Owner: start at 5. Braid: the end was blank.",
+  });
+  const result = await tool.execute("ac-blank-end", args, undefined, undefined, ctx);
+
+  const text = result.content?.[0]?.text ?? "";
+  assert.match(text, /blank endIndex selector/, "the blank-selector hypothesis is named");
+  assert.doesNotMatch(
+    text,
+    /endIndex must be >= startIndex/,
+    "the generic invalid-range sentence is not used for the blank conversion",
+  );
+  assert.equal(getCmState(ctx).rangeMode, null, "nothing is persisted");
 });
 
 rmSync(FIXTURE_HOME, { recursive: true, force: true });
