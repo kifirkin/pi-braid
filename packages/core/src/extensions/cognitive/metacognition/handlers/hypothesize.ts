@@ -50,6 +50,18 @@ export function emptyResponseRetryOptions(lastError: string): LlmCallOptions | n
   return { temperature: 0.3, maxTokens: 4000, reasoning: "off" };
 }
 
+/**
+ * The hypothesis count a call asks for. Argument validation converts a blank
+ * string to 0 for `Type.Optional(Type.Number())` and the converted value passes,
+ * so a handler cannot tell a blank from a typed 0; a prompt asking the model for
+ * zero hypotheses is never a usable request, so a non-positive or non-finite
+ * value is read as absent and the documented default (3) applies. Exported pure
+ * for the fixture, like emptyResponseRetryOptions above.
+ */
+export function resolveMaxHypotheses(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 3;
+}
+
 const FORMAT_OPTIONS = ["ranked", "tree", "list"] as const;
 
 const hypothesizeSchema = Type.Object({
@@ -133,7 +145,8 @@ export function createHypothesizeTool(): ToolDefinition<any, any, any> {
       _onUpdate: unknown,
       ctx: ExtensionContext | undefined,
     ) => {
-      const { problem, evidence, maxHypotheses = 3, format = "ranked", verificationPlan } = params;
+      const { problem, evidence, format = "ranked", verificationPlan } = params;
+      const maxHypotheses = resolveMaxHypotheses(params.maxHypotheses);
 
       if (!ctx?.model) {
         throw new Error(

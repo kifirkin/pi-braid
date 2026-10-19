@@ -20,6 +20,10 @@
  * compacts. Fails pre-fix: no navigation line exists at all.
  * (e) context_inspect detail=quick has NO navigation line (the quick surface
  * stays byte-identical here).
+ * (f) a blank `limit` on context_navigate(action=log) (converted to 0 by
+ * argument validation) is read as absent: the documented 50-entry window
+ * applies instead of `slice(-0)` dumping the whole visible history; a real
+ * limit still caps.
  *
  * Run: node test/runtime/memory/test-navigation-adoption-counters.mjs
  */
@@ -467,6 +471,43 @@ await test("(e) detail=quick has NO navigation line", async () => {
     `detail=quick must not contain the Navigation Adoption header, got:\n${text}`,
   );
   resetNavigationBlock(ctx);
+});
+
+// ── blank limit on action=log means the documented 50-entry window ─────────
+// The framework converts a blank `limit` to 0 before the handler runs and
+// slice(-0) is slice(0), so a blank limit dumped the whole visible history.
+
+const { validateToolArguments } = await import("@earendil-works/pi-ai/utils/validation");
+
+function validatedNavArgs(raw) {
+  return validateToolArguments(
+    { name: "context_navigate", parameters: navTool.parameters },
+    { name: "context_navigate", arguments: raw },
+  );
+}
+
+function logEntryLines(result) {
+  return result.content[0].text.split("\n").filter((l) => /^[|*] [0-9a-f]{8}/.test(l)).length;
+}
+
+await test("(f) log with a blank limit renders the documented 50 entries", async () => {
+  const ctx = makeFakeCtx({ branchLength: 60, percent: 20 });
+  const args = validatedNavArgs({ action: "log", verbose: true, limit: "" });
+  assert.equal(args.limit, 0, "the framework converts the blank limit to 0 (tested path)");
+  const res = await navTool.execute("l1", args, null, null, ctx);
+  assert.equal(logEntryLines(res), 50, "a blank limit must not dump the whole history");
+});
+
+await test("(f) log control: a real limit still caps the entries", async () => {
+  const ctx = makeFakeCtx({ branchLength: 60, percent: 20 });
+  const res = await navTool.execute(
+    "l2",
+    validatedNavArgs({ action: "log", verbose: true, limit: 5 }),
+    null,
+    null,
+    ctx,
+  );
+  assert.equal(logEntryLines(res), 5);
 });
 
 // Sanity: recordNavigationAction is lazily safe and idempotent in shape.

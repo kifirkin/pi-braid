@@ -30,7 +30,7 @@ const inspectSchema = Type.Object({
   truncate: Type.Optional(
     Type.Number({
       description:
-        "Max characters (0 = no limit, default 5000); applied after tool/skill exclusion.",
+        "Max characters before truncation (default 5000); applied after tool/skill exclusion. A blank or non-positive value applies the default.",
       default: 5000,
     }),
   ),
@@ -122,7 +122,14 @@ export function createPromptInspectTool() {
     ): Promise<any> => {
       const showTools = params.includeTools ?? true;
       const showSkills = params.includeSkills ?? true;
-      const maxLen = params.truncate ?? 5000;
+      // Argument validation converts a blank truncate to 0, and the
+      // description used to define 0 as "no limit" - so a blank flipped the
+      // tool into dumping the whole assembled prompt. A deliberate 0 is
+      // indistinguishable from a blank after conversion, so the documented
+      // default wins and the old no-limit mode is no longer reachable through
+      // this selector (use `match` to read the full prompt).
+      const maxLen =
+        typeof params.truncate === "number" && params.truncate > 0 ? params.truncate : 5000;
 
       if (!ctx) {
         return {
@@ -202,7 +209,7 @@ export function createPromptInspectTool() {
         }
       } else {
         // Apply truncation only when no match filter is active
-        if (maxLen > 0 && body.length > maxLen) {
+        if (body.length > maxLen) {
           didTruncate = true;
           body =
             body.slice(0, maxLen - 80) +

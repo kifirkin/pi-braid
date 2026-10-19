@@ -22,6 +22,13 @@
  * the call-site options (a full behavioral drive of hypothesize.execute
  * would need a complete ExtensionContext + modelRegistry stub, out of
  * scope for this contract).
+ *
+ * Extended: `maxHypotheses` is a blank-selector read. Argument validation
+ * converts a blank ("") to 0 before the handler runs, and the prompt then
+ * asked the model for zero hypotheses. The read now goes through the pure
+ * resolver `resolveMaxHypotheses` (exported for the same reason
+ * `emptyResponseRetryOptions` is), so the conversion and the default are
+ * both pinned without a model call.
  */
 
 import { test } from "node:test";
@@ -33,9 +40,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
 
-const { emptyResponseRetryOptions } = await import(
+const { emptyResponseRetryOptions, resolveMaxHypotheses, createHypothesizeTool } = await import(
   join(ROOT, "dist", "extensions", "cognitive", "metacognition", "handlers", "hypothesize.js")
 );
+const { validateToolArguments } = await import("@earendil-works/pi-ai/utils/validation");
 
 test("emptyResponseRetryOptions: empty-class error returns retry options with reasoning off", () => {
   const opts = emptyResponseRetryOptions("Empty response from model");
@@ -78,4 +86,34 @@ test("hypothesize.ts: primary tryModelChain call site passes maxTokens 4000 + re
     /emptyResponseRetryOptions[\s\S]*?reasoning: "off"/.test(src),
     "retry helper must request reasoning off",
   );
+});
+
+test("hypothesize: a blank maxHypotheses becomes 0 and resolves to the documented 3", () => {
+  const tool = createHypothesizeTool();
+  const args = validateToolArguments(
+    { name: tool.name, parameters: tool.parameters },
+    {
+      name: tool.name,
+      arguments: { problem: "a problem", evidence: "an error line", maxHypotheses: "" },
+    },
+  );
+  assert.equal(args.maxHypotheses, 0, "the framework converts the blank count to 0 (tested path)");
+  assert.equal(resolveMaxHypotheses(args.maxHypotheses), 3, "the documented default applies");
+});
+
+test("hypothesize: the resolver keeps the documented default and a real count", () => {
+  assert.equal(resolveMaxHypotheses(undefined), 3);
+  assert.equal(resolveMaxHypotheses(0), 3);
+  assert.equal(resolveMaxHypotheses(-2), 3);
+  assert.equal(resolveMaxHypotheses(Number.NaN), 3);
+  assert.equal(resolveMaxHypotheses("5"), 3, "a string is not a count");
+  assert.equal(resolveMaxHypotheses(7), 7, "a real count passes through");
+});
+
+test("hypothesize: the handler reads params.maxHypotheses through the resolver", () => {
+  const dist = readFileSync(
+    join(ROOT, "dist", "extensions", "cognitive", "metacognition", "handlers", "hypothesize.js"),
+    "utf-8",
+  );
+  assert.match(dist, /resolveMaxHypotheses\(params\.maxHypotheses\)/);
 });

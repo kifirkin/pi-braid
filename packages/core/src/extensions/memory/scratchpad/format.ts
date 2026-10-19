@@ -29,8 +29,14 @@ export function formatScratchpad(
     if (filter?.sinceTurn !== undefined) {
       out = out.filter((it) => (it.turn ?? 0) >= (filter.sinceTurn ?? 0));
     }
-    if (filter?.untilTurn !== undefined) {
-      out = out.filter((it) => (it.turn ?? 0) <= (filter.untilTurn ?? 0));
+    // A blank untilTurn arrives as 0 (argument validation converts "" before
+    // the handler runs) and `(it.turn ?? 0) <= 0` would drop every item that
+    // has a turn, answering a filter-less read with an almost-empty pad. Turn 0
+    // is never a real upper bound, so a non-positive bound is no filter - the
+    // same gate the limit branch below applies to its blank.
+    const untilTurn = filter?.untilTurn;
+    if (untilTurn !== undefined && untilTurn > 0) {
+      out = out.filter((it) => (it.turn ?? 0) <= untilTurn);
     }
     if (filter?.limit !== undefined && filter.limit > 0 && out.length > filter.limit) {
       out = out.slice(-filter.limit);

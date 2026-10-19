@@ -100,6 +100,22 @@ export function createMemoryStoreTool(
       recordMemoryToolCall(ctx, "memory_store");
       await initPromise;
       try {
+        // A blank string is not content. The store gate rejects short text as
+        // "Duplicate or low-utility content" for most types but exempts
+        // error/goal, so a blank landed as a real memory and every other type
+        // was refused under a misnamed cause. Refuse by name before the store
+        // call instead.
+        if (typeof params.content !== "string" || params.content.trim().length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "memory_store requires non-empty 'content' (got a blank string). Nothing was stored.",
+              },
+            ],
+            details: { stored: false },
+          };
+        }
         const related: Array<{
           id: string;
           type: "related" | "fixes" | "supersedes" | "example";

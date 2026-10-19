@@ -60,7 +60,10 @@ export const contextNavigateSchema = Type.Object({
 
 function formatLog(ctx: any, sm: any, params: any): string | { error: true; text: string } {
   const verbose = params.verbose ?? false;
-  const limit = params.limit ?? 50;
+  // Argument validation converts a blank limit to 0, and slice(-0) is
+  // slice(0): a blank limit would dump the whole visible history. A
+  // non-positive bound is read as absent and the documented default applies.
+  const limit = typeof params.limit === "number" && params.limit > 0 ? params.limit : 50;
   const branch = sm.getBranch();
   const currentLeafId = sm.getLeafId();
 

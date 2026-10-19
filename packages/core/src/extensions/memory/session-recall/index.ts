@@ -124,10 +124,21 @@ const sessionSchema = Type.Object({
   until: Type.Optional(
     Type.String({ description: "Only include sessions until this date (YYYY-MM-DD). Optional." }),
   ),
-  limit: Type.Optional(
-    Type.Number({ description: "Max sessions in output (default: 10). Use 0 for all." }),
-  ),
+  limit: Type.Optional(Type.Number({ description: "Max sessions in output (default: 10)" })),
 });
+
+/**
+ * Read an optional session limit. Argument validation converts a blank string
+ * to 0 for `Type.Optional(Type.Number())` and the converted value passes, so
+ * the handler cannot tell a blank from a typed 0. 0 used to select the
+ * documented "all sessions" mode, which a blank then triggered silently; a
+ * deliberate 0 is indistinguishable from a blank after conversion, so the
+ * documented default is the safe reading and the unbounded mode is no longer
+ * reachable through this selector.
+ */
+function positiveLimit(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
 
 // Extension
 
@@ -478,9 +489,10 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
             // Total matches
             const totalMatches = filtered.reduce((sum, m) => sum + m.count, 0);
 
-            // Top N sessions
-            const limit = params.limit ?? 10;
-            const topSessions = limit > 0 ? filtered.slice(0, limit) : filtered;
+            // Top N sessions. A blank limit is read as absent (see positiveLimit),
+            // never as the old unbounded mode.
+            const limit = positiveLimit(params.limit) ?? 10;
+            const topSessions = filtered.slice(0, limit);
 
             const lines: string[] = [
               `## Batch: "${params.pattern}"`,
@@ -720,7 +732,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               since: params.since,
               until: params.until,
               project: params.project === "all" ? null : (params.project ?? null),
-              maxFiles: params.limit && params.limit > 0 ? params.limit : undefined,
+              maxFiles: positiveLimit(params.limit),
             });
             return {
               content: [{ type: "text" as const, text: formatContextAggregate(aggregate) }],
@@ -793,7 +805,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               byMonth[month].size += s.size;
             }
 
-            const limit = params.limit ?? 10;
+            const limit = positiveLimit(params.limit) ?? 10;
             const topSessions = [...sessionStats].sort((a, b) => b.size - a.size).slice(0, limit);
 
             function formatSize(bytes: number): string {
