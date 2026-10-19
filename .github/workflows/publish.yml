@@ -36,6 +36,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A tag event is fetched as +<sha>:refs/tags/<name>, which materializes a
+      # LIGHTWEIGHT local tag; release:check (inside the gates below) requires
+      # the annotated tag object, so a tag run would refuse itself. Re-fetch the
+      # tag ref itself and assert the object before the chain runs.
+      - name: Materialize the annotated release tag
+        if: github.ref_type == 'tag'
+        run: |
+          git fetch --force --no-recurse-submodules origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = tag
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(objecttype) %(objectname) %(taggername)'
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
