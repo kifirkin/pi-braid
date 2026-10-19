@@ -4,9 +4,10 @@
  * Discovers pi extension PACKAGES (package.json with a `pi` field)
  * from the settings `packages` field — never a walk over cwd/siblings.
  * Sources in pi-core precedence: project (<cwd>/.pi/settings.json)
- * then user (~/.pi/agent/settings.json); project scope wins for the
- * same identity. Entries: absolute local path, `npm:` (via `npm root
- * -g`), or `git:` (best-effort skip), tagged project / user-global.
+ * then user (<agentDir>/settings.json); project scope wins for the
+ * same identity. Entries: absolute local path, `npm:` (pi's managed
+ * install tree first, then the global npm root), or `git:`
+ * (best-effort skip), tagged project / user-global.
  * Best-effort: unreadable or missing packages are silently skipped —
  * no "failed to resolve" noise in the prompt.
  */
@@ -137,8 +138,9 @@ function basename(p: string): string {
  * source is unsupported or cannot be located on disk.
  *
  * Supported shapes:
- *   - `npm:<spec>` (e.g. `npm:pi-web-access`) -- looks in the global
- *     npm root (`npm root -g`), under each scoped directory.
+ *   - `npm:<spec>` (e.g. `npm:pi-web-access`) -- looks in pi's
+ *     managed install tree, then the global npm root, under each
+ *     scoped directory.
  *   - absolute local path (starts with `/`) -- used as-is.
  *   - relative local path -- resolved relative to `cwd`.
  */
@@ -150,7 +152,7 @@ function resolveEntryToPackage(
   const trimmed = source.trim();
   if (!trimmed) return null;
 
-  // npm:<spec> -- find in global node_modules.
+  // npm:<spec> -- find in the managed install tree, then global node_modules.
   if (trimmed.startsWith("npm:")) {
     const spec = trimmed.slice("npm:".length).trim();
     const at = spec.lastIndexOf("@");
@@ -195,34 +197,73 @@ function expandHome(p: string): string {
 }
 
 /**
- * Locate a globally-installed npm package by name. Walks the
- * scope directories under the global npm root (`npm root -g`).
- * Optional `version` filters to a directory whose `package.json`
- * version matches; if absent, the first matching directory wins.
+ * Resolve pi's agent directory. `PI_CODING_AGENT_DIR` relocates the whole
+ * agent home when set and non-empty; otherwise the default is `~/.pi/agent`.
+ * Both the user-global settings file and the managed npm install tree live
+ * under this one directory, so they are resolved from this one function.
+ */
+function resolveAgentDir(): string {
+  const override = process.env.PI_CODING_AGENT_DIR?.trim();
+  if (override) return expandHome(override);
+  return join(process.env.HOME ?? "~", ".pi", "agent");
+}
+
+/**
+ * Locate an installed npm package by name, searching pi's managed install
+ * tree before the global npm root. Managed first because that is where pi
+ * installs a settings-declared `npm:` entry (`<agentDir>/npm/node_modules`)
+ * and it consults a legacy global install only when the managed copy is
+ * absent -- so the managed copy is the one pi actually loads. The global
+ * root stays as that same fallback, for packages installed by hand.
  *
- * Returns the absolute directory path, or null if not found.
+ * Optional `version` filters to a directory whose `package.json` version
+ * matches; if absent, the first matching directory wins. Returns the
+ * absolute directory path, or null if not found in any root.
  */
 function findNpmPackageDir(name: string, version: string | undefined): string | null {
-  const globalRoot = getGlobalNpmRoot();
-  if (!globalRoot) return null;
-  if (!existsSync(globalRoot)) return null;
+  for (const root of getNpmSearchRoots()) {
+    const dir = findPackageInNpmRoot(root, name, version);
+    if (dir) return dir;
+  }
+  return null;
+}
 
-  // Scoped package: @scope/name -> look under globalRoot/@scope/name.
+/** The npm roots searched for an `npm:` entry, in precedence order. */
+function getNpmSearchRoots(): string[] {
+  const roots = [join(resolveAgentDir(), "npm", "node_modules")];
+  const globalRoot = getGlobalNpmRoot();
+  if (globalRoot) roots.push(globalRoot);
+  return roots;
+}
+
+/**
+ * Find the package directory for `name` inside one npm root.
+ *
+ * Scoped package: @scope/name -> look directly under `<root>/@scope/name`.
+ * Unscoped: scan the root's own directories for a package.json whose `name`
+ * matches -- npm installs both flat and nested layouts. A directory with no
+ * readable package.json is skipped, never fatal.
+ */
+function findPackageInNpmRoot(
+  root: string,
+  name: string,
+  version: string | undefined,
+): string | null {
+  if (!existsSync(root)) return null;
+
   if (name.startsWith("@")) {
-    const dir = join(globalRoot, name);
+    const dir = join(root, name);
     return packageDirMatches(dir, version) ? dir : null;
   }
 
-  // Unscoped: scan globalRoot itself for a directory whose
-  // package.json `name` matches. npm installs both flat and nested layouts.
   let entries: string[];
   try {
-    entries = readdirSync(globalRoot);
+    entries = readdirSync(root);
   } catch {
     return null;
   }
   for (const entry of entries) {
-    const dir = join(globalRoot, entry);
+    const dir = join(root, entry);
     let isDir: boolean;
     try {
       isDir = statSync(dir).isDirectory();
@@ -259,10 +300,11 @@ function packageDirMatches(dir: string, expectedVersion?: string, expectedName?:
 
 /**
  * Resolve the global npm root via `npm root -g`. Returns null if
- * the command fails or produces no output. Cached after first
- * successful call so the (slow) `npm root -g` invocation runs at
- * most once per process -- the value never changes inside one
- * pi session.
+ * the command fails or produces no output. This is the fallback root
+ * only -- pi's managed install tree is searched first (see
+ * `findNpmPackageDir`). Cached after first successful call so the
+ * (slow) `npm root -g` invocation runs at most once per process --
+ * the value never changes inside one pi session.
  *
  * Implemented as an IIFE-wrapped closure so the cache `let`
  * stays function-scoped (the project's no-module-level-let
@@ -297,8 +339,8 @@ const getGlobalNpmRoot = ((): (() => string | null) => {
  *
  * Settings-file paths:
  *   - project: `<cwd>/.pi/settings.json`
- *   - user-global: read from `PI_CODING_AGENT_DIR` env override,
- *     falling back to `~/.pi/agent/settings.json`.
+ *   - user-global: `<agentDir>/settings.json`, where the agent dir is
+ *     `PI_CODING_AGENT_DIR` when set, else `~/.pi/agent`.
  */
 export function discoverTopLevelExtensions(
   cwd: string = process.cwd(),
@@ -308,10 +350,7 @@ export function discoverTopLevelExtensions(
   },
 ): TopLevelExtension[] {
   const projectPath = options?.projectSettingsPath ?? join(cwd, ".pi", "settings.json");
-  const userPath =
-    options?.userSettingsPath ??
-    process.env.PI_CODING_AGENT_DIR ??
-    join(process.env.HOME ?? "~", ".pi", "agent", "settings.json");
+  const userPath = options?.userSettingsPath ?? join(resolveAgentDir(), "settings.json");
 
   const seen = new Set<string>();
   const out: ResolvedPackage[] = [];
