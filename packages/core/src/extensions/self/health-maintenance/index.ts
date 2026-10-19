@@ -11,6 +11,7 @@ import {
   resetMetrics,
   saveMetrics,
   updateConfig,
+  type DegradationConfig,
 } from "../../../lib/detection/degradation-detector.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getLogBuffer, clearLogBuffer, setConsoleLogLevel } from "../../../lib/core/logger.js";
@@ -44,25 +45,47 @@ const EVOLVE_ACTIONS = [
 const healthMaintenanceSchema = Type.Object({
   action: StringEnum([...EVOLVE_ACTIONS], { description: "Action to perform" }),
   checkpoint: Type.Optional(Type.String({ description: "Checkpoint hash for rollback" })),
+  // Numeric bounds where 0 is meaningless: a blank selector is converted to
+  // 0 by argument validation, and 0 outside a field's band turns the blank
+  // into a refusal before any handler runs. errorRateMax stays unbounded here
+  // because its legal band is (0,1] and a schema minimum cannot express it;
+  // the handler guard owns that one.
   config: Type.Optional(
     Type.Object({
       healthcheckMinScore: Type.Optional(
-        Type.Number({ description: "Minimum healthcheck score (0-100)" }),
+        Type.Number({
+          minimum: 1,
+          maximum: 100,
+          description: "Minimum healthcheck score (1-100)",
+        }),
       ),
-      errorRateMax: Type.Optional(Type.Number({ description: "Maximum error rate (0-1)" })),
+      errorRateMax: Type.Optional(Type.Number({ description: "Maximum error rate (0-1]" })),
       toolSuccessMin: Type.Optional(
-        Type.Number({ description: "Minimum tool success rate (0-100)" }),
+        Type.Number({
+          minimum: 1,
+          maximum: 100,
+          description: "Minimum tool success rate (1-100)",
+        }),
       ),
       maxConsecutiveErrors: Type.Optional(
-        Type.Number({ description: "Max consecutive errors before degradation" }),
+        Type.Number({
+          minimum: 1,
+          description: "Max consecutive errors before degradation (>= 1)",
+        }),
       ),
     }),
   ),
   benchmark: Type.Optional(
     Type.Object({
-      passRate: Type.Optional(Type.Number({ description: "Benchmark pass rate (0-100)" })),
-      totalCases: Type.Optional(Type.Number({ description: "Total number of test cases" })),
-      passedCases: Type.Optional(Type.Number({ description: "Number of cases that passed" })),
+      passRate: Type.Optional(
+        Type.Number({ minimum: 1, maximum: 100, description: "Benchmark pass rate (1-100)" }),
+      ),
+      totalCases: Type.Optional(
+        Type.Number({ minimum: 1, description: "Number of cases in the benchmark run (>= 1)" }),
+      ),
+      passedCases: Type.Optional(
+        Type.Number({ minimum: 0, description: "Number of cases that passed (>= 0)" }),
+      ),
       failedCases: Type.Optional(
         Type.Array(Type.String(), { description: "Names of failed cases" }),
       ),
@@ -72,6 +95,89 @@ const healthMaintenanceSchema = Type.Object({
     Type.Boolean({ default: false, description: "Force action without confirmation" }),
   ),
 });
+
+// ── Numeric config guard ────────────────────────────────────────────────────
+//
+// The framework validates tool arguments before the handler runs and converts
+// "" to 0 for Type.Number, so a client that sends "" for an unused threshold
+// delivers a real 0. 0 is outside every legal band below (a minimum of 1, or
+// the open lower bound of errorRateMax), which is what makes the conversion
+// detectable: the call named nothing usable, so the whole patch is refused
+// rather than rewriting degradation thresholds (errorRateMax: 0 would degrade
+// on the first error; healthcheckMinScore: 0 would disable the score floor).
+// The merge itself stays permissive - this is the untrusted-input boundary.
+
+interface FieldBand {
+  min: number;
+  max: number | null;
+  /** True when the minimum itself is illegal (errorRateMax's (0,1] band). */
+  minExclusive?: boolean;
+}
+
+const CONFIG_FIELD_BANDS: Record<keyof DegradationConfig, FieldBand> = {
+  healthcheckMinScore: { min: 1, max: 100 },
+  errorRateMax: { min: 0, max: 1, minExclusive: true },
+  toolSuccessMin: { min: 1, max: 100 },
+  maxConsecutiveErrors: { min: 1, max: null },
+  checkIntervalMs: { min: 1, max: null },
+};
+
+function bandText(band: FieldBand): string {
+  if (band.max === null) return band.minExclusive ? `> ${band.min}` : `>= ${band.min}`;
+  if (band.minExclusive) return `(${band.min}, ${band.max}]`;
+  return `${band.min}-${band.max}`;
+}
+
+/** The refusal sentence for `value` under `band`, or null when it is inside it. */
+function bandRefusal(field: string, value: unknown, band: FieldBand): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return `${field} must be a finite number; got ${JSON.stringify(value)}.`;
+  }
+  const below = band.minExclusive ? value <= band.min : value < band.min;
+  const above = band.max !== null && value > band.max;
+  if (below || above) {
+    return `${field} must be ${bandText(band)}; got ${value}. A blank selector arrives as 0 and is refused.`;
+  }
+  return null;
+}
+
+/**
+ * Validate a config patch: provided fields must be finite numbers inside their
+ * documented band. Absent/null fields are not provided. Returns the accepted
+ * subset (so unknown keys never reach the merge), or the error naming the
+ * first offending field.
+ */
+function validateConfigPatch(
+  config: Record<string, unknown>,
+): { values: Partial<DegradationConfig> } | { error: string } {
+  const values: Partial<DegradationConfig> = {};
+  for (const key of Object.keys(CONFIG_FIELD_BANDS) as (keyof DegradationConfig)[]) {
+    const raw = config[key];
+    if (raw === undefined || raw === null) continue;
+    const refusal = bandRefusal(String(key), raw, CONFIG_FIELD_BANDS[key]);
+    if (refusal) return { error: refusal };
+    values[key] = raw as number;
+  }
+  return { values };
+}
+
+/** The benchmark's numeric rule: same bands, same refusal class as config. */
+function validateBenchmark(benchmark: Record<string, unknown>): string | null {
+  const passRate = bandRefusal("benchmark.passRate", benchmark.passRate, { min: 1, max: 100 });
+  if (passRate) return passRate;
+  if (benchmark.totalCases !== undefined && benchmark.totalCases !== null) {
+    const total = bandRefusal("benchmark.totalCases", benchmark.totalCases, { min: 1, max: null });
+    if (total) return total;
+  }
+  if (benchmark.passedCases !== undefined && benchmark.passedCases !== null) {
+    const passed = bandRefusal("benchmark.passedCases", benchmark.passedCases, {
+      min: 0,
+      max: null,
+    });
+    if (passed) return passed;
+  }
+  return null;
+}
 
 export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   startMetricsPersistence();
@@ -270,8 +376,27 @@ async function executeRollback(): Promise<HealthMaintenanceResult> {
   };
 }
 
-function executeConfig(newConfig?: any): HealthMaintenanceResult {
-  if (newConfig) updateConfig(newConfig);
+function executeConfig(newConfig?: unknown): HealthMaintenanceResult {
+  if (newConfig !== undefined && newConfig !== null) {
+    if (typeof newConfig !== "object" || Array.isArray(newConfig)) {
+      return {
+        action: "config",
+        success: false,
+        error: "config must be an object of numeric thresholds.",
+      };
+    }
+    const verdict = validateConfigPatch(newConfig as Record<string, unknown>);
+    if ("error" in verdict) {
+      // Atomic: nothing is merged when any provided field is refused. The
+      // merge below stays where it was (the process-global config the tool has
+      // always written and reports, and the one carried into new sessions).
+      return { action: "config", success: false, error: verdict.error };
+    }
+    if (Object.keys(verdict.values).length === 0) {
+      return { action: "config", success: false, error: "no config values provided" };
+    }
+    updateConfig(verdict.values);
+  }
   return { action: "config", success: true, data: { config: getConfig() } };
 }
 
@@ -280,7 +405,7 @@ function executeReset(): HealthMaintenanceResult {
   return { action: "reset", success: true, data: { note: "Metrics reset to defaults." } };
 }
 
-function executeBenchmark(params?: any): HealthMaintenanceResult {
+function executeBenchmark(params?: Record<string, unknown>): HealthMaintenanceResult {
   const BENCHMARK_HISTORY: BenchmarkResult[] = [];
   const MAX_BENCHMARK_HISTORY = 20;
 
@@ -291,12 +416,16 @@ function executeBenchmark(params?: any): HealthMaintenanceResult {
       data: { history: BENCHMARK_HISTORY.slice(-5), totalRuns: BENCHMARK_HISTORY.length },
     };
   }
+  const refusal = validateBenchmark(params);
+  if (refusal) {
+    return { action: "benchmark", success: false, error: refusal };
+  }
   const result: BenchmarkResult = {
     timestamp: Date.now(),
-    passRate: params.passRate,
-    totalCases: params.totalCases ?? 0,
-    passedCases: params.passedCases ?? 0,
-    failedCases: params.failedCases ?? [],
+    passRate: params.passRate as number,
+    totalCases: (params.totalCases as number | undefined) ?? 0,
+    passedCases: (params.passedCases as number | undefined) ?? 0,
+    failedCases: (params.failedCases as string[] | undefined) ?? [],
   };
   BENCHMARK_HISTORY.push(result);
   if (BENCHMARK_HISTORY.length > MAX_BENCHMARK_HISTORY) BENCHMARK_HISTORY.shift();
