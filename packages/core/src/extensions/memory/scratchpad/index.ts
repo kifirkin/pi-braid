@@ -48,6 +48,16 @@ interface ScratchpadCache {
   pad: TaskScratchpad | null;
 }
 
+/**
+ * A blank string is "not provided". A client that emits every schema key sends
+ * "" for the keys it does not use, and `??` alone keeps that "" as a real value
+ * (a blank id would then be looked up literally instead of falling back to the
+ * text). Whitespace-only counts as blank: the handlers refuse such text anyway.
+ */
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
 function getCache(ctx?: ExtensionContext): ScratchpadCache {
   if (!ctx) return { pad: null };
   return getExtensionState(ctx, "scratchpad-cache", () => ({ pad: null }));
@@ -169,8 +179,8 @@ async function scratchpadExecute(
   ctx: ExtensionContext,
 ): Promise<AgentToolResult<unknown>> {
   const action = params.action as string;
-  const text = (params.text as string) ?? "";
-  const idOrText = (params.id as string | undefined) ?? text;
+  const text = nonBlank(params.text) ?? "";
+  const idOrText = nonBlank(params.id) ?? text;
 
   const pad = await getOrCreateScratchpad(ctx);
 

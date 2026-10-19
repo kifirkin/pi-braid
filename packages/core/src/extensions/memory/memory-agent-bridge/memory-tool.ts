@@ -39,6 +39,17 @@ import { flushEpisodeAppends } from "../three-memory-stores/episodes-disk.js";
 
 const log = createLogger("memory-agent-bridge/memory-tool");
 
+/**
+ * Read an optional limit selector. The framework's argument validation
+ * converts a blank string to 0 for `Type.Optional(Type.Number())` and the
+ * converted value passes validation, so the handler cannot tell a blank from a
+ * typed 0. 0 is never a usable limit (`slice(0, 0)`) so a non-positive or
+ * non-finite value is read as absent and the documented default applies.
+ */
+function positiveLimit(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 // Recency filtering helpers
 
 /** Parse a since/until value into a Unix timestamp (ms), or undefined if invalid. */
@@ -270,6 +281,8 @@ export function createMemoryTool(
       // The action may be undefined if the caller sent a malformed request;
       // record as "memory:unknown" in that case so it's still counted.
       recordMemoryToolCall(ctx, `memory:${params?.action ?? "unknown"}`);
+      // One read at the boundary; every limit-consuming branch below uses it.
+      const limit = positiveLimit(params?.limit);
       try {
         switch (params?.action) {
           // recall_*
@@ -295,7 +308,7 @@ export function createMemoryTool(
             }
             const results = await memory.recall(params.query, {
               type,
-              limit: params.limit,
+              limit,
               tags: params.tags,
               currentProject,
               projectScope: params.projectScope as "current" | "all" | undefined,
@@ -357,7 +370,7 @@ export function createMemoryTool(
                   const episodes = retrieveByRUMS(
                     threeMem,
                     params.query!,
-                    params.limit ?? 3,
+                    limit ?? 3,
                     threeMem.currentSessionId,
                     effectiveScope === "current" ? projectId : undefined,
                     effectiveScope,
@@ -401,7 +414,7 @@ export function createMemoryTool(
             const lines: string[] = [];
             if (annotatedResults.length > 0) {
               lines.push(`Found ${annotatedResults.length} semantic memories:`);
-              for (const r of annotatedResults.slice(0, params.limit ?? 5)) {
+              for (const r of annotatedResults.slice(0, limit ?? 5)) {
                 lines.push(
                   `  [${r.memory.type}] ${r.memory.content.slice(0, 300)}... (${r.relevanceReason}, id: ${r.memory.id})`,
                 );
@@ -434,7 +447,7 @@ export function createMemoryTool(
               details: {
                 count: annotatedResults.length + episodeResults.length,
                 relevanceReasons: annotatedResults
-                  .slice(0, params.limit ?? 5)
+                  .slice(0, limit ?? 5)
                   .map(
                     (r: {
                       memory: { id: string };
@@ -450,10 +463,10 @@ export function createMemoryTool(
             };
           }
           case "recall_list": {
-            const limit = params.limit ?? 20;
+            const listLimit = limit ?? 20;
             const currentProject =
               ctx && typeof ctx.cwd === "string" ? deriveProjectIdFromCwd(ctx.cwd) : undefined;
-            const allMemories = memory.getAll(limit);
+            const allMemories = memory.getAll(listLimit);
             // Filter to current-project entries (or legacy entries without a projectId).
             const memories = currentProject
               ? allMemories.filter(
@@ -483,7 +496,7 @@ export function createMemoryTool(
                     (a: { timestamp: number }, b: { timestamp: number }) =>
                       b.timestamp - a.timestamp,
                   )
-                  .slice(0, Math.min(limit, 5));
+                  .slice(0, Math.min(listLimit, 5));
                 if (recent.length > 0) {
                   if (lines.length > 0) lines.push("");
                   lines.push(`Recent episodes (${threeMem.episodes.length} total):`);
@@ -584,11 +597,11 @@ export function createMemoryTool(
             }
             const state = getThreeMem(ctx);
             if (!state) return textResult("No episodes stored yet.");
-            const limit = params.limit ?? 3;
+            const episodeLimit = limit ?? 3;
             const episodes = retrieveEpisodes(
               state,
               params.query,
-              limit,
+              episodeLimit,
               deriveProjectId(ctx?.cwd ?? ""),
             );
             if (episodes.length === 0)

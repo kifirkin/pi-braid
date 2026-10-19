@@ -10,7 +10,11 @@
  *   (c) with no session manager it falls back to the agent directory
  *       resolved through pi (PI_CODING_AGENT_DIR honored);
  *   (d) the `session` search action reads a relocated session tree through
- *       the ctx it was given.
+ *       the ctx it was given;
+ *   (e) a blank `limit` (converted to 0 by argument validation) is read as
+ *       absent: `batch` and `stats` answer with the documented 10 sessions
+ *       instead of switching to the old unbounded/"all" mode; a real limit
+ *       still caps both.
  *
  * Run: node test/runtime/memory/test-session-recall-session-dir.mjs
  */
@@ -145,6 +149,97 @@ await test("the search action reads the relocated session tree", async () => {
     text.includes("2026-10-05T00-00-00-000Z_pin-session.jsonl"),
     `relocated session must be found, got:\n${text}`,
   );
+});
+
+// ── blank limit means the documented default, not the old "all" mode ────────
+// A client that emits every schema key sends "" for `limit`, and argument
+// validation converts it to 0 before the handler runs. 0 was the documented
+// "all sessions" mode, so a blank-limit batch listed every matching session
+// (flooding context) while a blank-limit stats rendered "Top 0 sessions".
+
+const { validateToolArguments } = await import("@earendil-works/pi-ai/utils/validation");
+
+const LIMIT_TOKEN = `blank-limit-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+const limitTree = join(TMP, "limit-tree");
+mkdirSync(limitTree, { recursive: true });
+const SESSION_FILES = 12;
+for (let i = 0; i < SESSION_FILES; i++) {
+  const day = String((i % 9) + 1).padStart(2, "0");
+  writeFileSync(
+    join(limitTree, `2026-10-${day}T00-00-00-000Z_limit-${i}.jsonl`),
+    JSON.stringify({
+      type: "message",
+      id: `m${i}`,
+      timestamp: `2026-10-${day}T00:00:01.000Z`,
+      message: { role: "user", content: [{ type: "text", text: `fixture ${LIMIT_TOKEN}` }] },
+    }) + "\n",
+    "utf-8",
+  );
+}
+
+const limitPi = fakePi();
+sessionRecallExtension(limitPi);
+const limitTool = limitPi.tools.get("session");
+const limitCtx = {
+  cwd: "/private/tmp/limit-workspace",
+  sessionManager: { getSessionDir: () => limitTree },
+};
+
+function validatedSessionArgs(raw) {
+  return validateToolArguments(
+    { name: "session", parameters: limitTool.parameters },
+    { name: "session", arguments: raw },
+  );
+}
+
+await test("batch with a blank limit lists the documented 10 sessions", async () => {
+  const args = validatedSessionArgs({
+    action: "batch",
+    pattern: LIMIT_TOKEN,
+    project: "all",
+    limit: "",
+  });
+  assert.equal(args.limit, 0, "the framework converts the blank limit to 0 (tested path)");
+  const result = await limitTool.execute("call-2", args, undefined, undefined, limitCtx);
+  assert.equal(result.details.sessionCount, SESSION_FILES);
+  assert.equal(result.details.appliedFilters.limit, 10);
+  assert.equal(
+    result.details.topSessions.length,
+    10,
+    "a blank limit must not switch to the unbounded mode",
+  );
+});
+
+await test("batch control: a real limit still caps the listing", async () => {
+  const result = await limitTool.execute(
+    "call-3",
+    validatedSessionArgs({ action: "batch", pattern: LIMIT_TOKEN, project: "all", limit: 2 }),
+    undefined,
+    undefined,
+    limitCtx,
+  );
+  assert.equal(result.details.appliedFilters.limit, 2);
+  assert.equal(result.details.topSessions.length, 2);
+});
+
+await test("stats with a blank limit renders the documented 10 sessions", async () => {
+  const args = validatedSessionArgs({ action: "stats", project: "all", limit: "" });
+  assert.equal(args.limit, 0, "the framework converts the blank limit to 0 (tested path)");
+  const result = await limitTool.execute("call-4", args, undefined, undefined, limitCtx);
+  assert.equal(result.details.sessionCount, SESSION_FILES);
+  assert.equal(result.details.appliedFilters.limit, 10);
+  assert.equal(result.details.topSessions.length, 10);
+});
+
+await test("stats control: a real limit still caps the top list", async () => {
+  const result = await limitTool.execute(
+    "call-5",
+    validatedSessionArgs({ action: "stats", project: "all", limit: 3 }),
+    undefined,
+    undefined,
+    limitCtx,
+  );
+  assert.equal(result.details.topSessions.length, 3);
 });
 
 rmSync(TMP, { recursive: true, force: true });

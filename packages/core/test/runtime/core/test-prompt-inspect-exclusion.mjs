@@ -29,6 +29,10 @@
  * 4. On a byte-level replica of the braid-composed prompt both exclusions
  * together remove every tool/skill line and keep the surrounding prose.
  * 5. Absent sections degrade to 0-removed / count 0 (absent, never wrong).
+ * 6. A blank `truncate` (converted to 0 by argument validation) applies the
+ *    documented 5000-char default. The description used to define 0 as "no
+ *    limit", so a blank flipped the tool into dumping the whole assembled
+ *    prompt; a real truncate still applies.
  *
  * Run: node test/runtime/core/test-prompt-inspect-exclusion.mjs
  * (built first: npm run build)
@@ -41,9 +45,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
 
-const { excludeToolsBlock, excludeSkillsBlock } = await import(
+const { excludeToolsBlock, excludeSkillsBlock, createPromptInspectTool } = await import(
   join(ROOT, "dist", "extensions", "core", "prompt-builder", "inspect.js")
 );
+const { validateToolArguments } = await import("@earendil-works/pi-ai/utils/validation");
 
 let passed = 0;
 let failed = 0;
@@ -147,6 +152,41 @@ await test("absent sections degrade to 0 removed (absent, never wrong)", () => {
   });
   const outSkills = excludeSkillsBlock("No resources line here.");
   assert.deepEqual(outSkills, { text: "No resources line here.", linesRemoved: 0, skillCount: 0 });
+});
+
+// ── truncate: a blank value applies the documented default ─────────────────
+
+const LONG_PROMPT = "You are Braid.\n" + "line of prompt text\n".repeat(600);
+
+function inspectCtx() {
+  return { getSystemPrompt: () => LONG_PROMPT };
+}
+
+function validatedInspectArgs(raw) {
+  const tool = createPromptInspectTool();
+  return {
+    tool,
+    args: validateToolArguments(
+      { name: "prompt_inspect", parameters: tool.parameters },
+      { name: "prompt_inspect", arguments: raw },
+    ),
+  };
+}
+
+await test("prompt_inspect with a blank truncate truncates at the documented 5000", async () => {
+  const { tool, args } = validatedInspectArgs({ truncate: "" });
+  assert.equal(args.truncate, 0, "the framework converts the blank truncate to 0 (tested path)");
+  const res = await tool.execute("i1", args, undefined, undefined, inspectCtx());
+  assert.equal(res.details.truncated, true, "a blank truncate must not dump the whole prompt");
+  assert.match(res.content[0].text, /truncated at 5000 chars/);
+  assert.ok(res.content[0].text.length < LONG_PROMPT.length);
+});
+
+await test("prompt_inspect control: a real truncate still applies", async () => {
+  const { tool, args } = validatedInspectArgs({ truncate: 300 });
+  const res = await tool.execute("i2", args, undefined, undefined, inspectCtx());
+  assert.equal(res.details.truncated, true);
+  assert.match(res.content[0].text, /truncated at 300 chars/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
