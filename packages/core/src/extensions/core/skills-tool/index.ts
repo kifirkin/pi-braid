@@ -10,7 +10,12 @@
  * The cache lives in this module and is reset each session.
  *
  * One action:
- *   list — paginated catalog (name, filePath, description, source)
+ *   list — paginated catalog (name, filePath, description, source, reach)
+ *
+ * Each row carries the price of the read it names (see reach.ts): lines,
+ * bytes, chars, a token estimate, and the file's headings with line numbers.
+ * Picking a skill is picking a read, and a price is what makes that pick
+ * rational.
  *
  * Skills discovery (list_skills tool) plus the scoring-based auto-inject
  * whisper supersede an LLM top-N recommender: a second relevance engine
@@ -31,6 +36,7 @@ import {
   resolveDiscoveryMode,
 } from "./auto-inject.js";
 import { readSkillTriggers } from "./skill-triggers.js";
+import { clampSectionsMax, DEFAULT_SECTIONS_MAX, readSkillReach } from "./reach.js";
 import { getMonthlyAdoptionRollup } from "./session-records.js";
 
 const log = createLogger("skills-tool");
@@ -101,10 +107,11 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
     name: "list_skills",
     label: "List Skills",
     description:
-      "Discover skills on demand: paginated catalog (name, filePath, description, source); `read` a SKILL.md to load it.",
+      "Discover skills on demand: paginated catalog (name, filePath, description, source) plus each skill's reach (lines, bytes, chars, estTokens, section headings with line numbers), so the price of a read is visible before the read; `read` a SKILL.md to load it.",
     parameters: Type.Object({
       action: Type.Literal("list", {
-        description: "list = paginated catalog (name, filePath, description, source)",
+        description:
+          "list = paginated catalog with per-skill reach (lines, bytes, chars, estTokens, sections)",
       }),
       page: Type.Optional(
         Type.Number({
@@ -121,10 +128,20 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
           description: "Entries per page for list",
         }),
       ),
+      sectionsMax: Type.Optional(
+        Type.Number({
+          minimum: 0,
+          maximum: 50,
+          default: DEFAULT_SECTIONS_MAX,
+          description:
+            "Headings reported per skill; 0 omits the section list and keeps sectionCount",
+        }),
+      ),
     }),
     execute: async (_id, params, _signal, _onUpdate, _ctx) => {
       const page = (params.page as number) ?? 1;
       const pageSize = (params.pageSize as number) ?? 10;
+      const sectionsMax = clampSectionsMax(params.sectionsMax);
       const start = (page - 1) * pageSize;
       // Explicit-invocation-only skills stay out of the catalog; the cache
       // itself stays unfiltered for the read-detector that counts explicit
@@ -139,6 +156,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
         filePath: s.filePath,
         description: (s.description ?? "").slice(0, 280),
         source: formatSource(s),
+        ...readSkillReach(s.filePath, sectionsMax),
       }));
 
       return {
