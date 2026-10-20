@@ -43,6 +43,52 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.40.3 / Contrib — 0.1.2 (2026-10-20: blank tool inputs, npm: entry resolution)
+
+Two packages moved since the 0.40.2 train. Skills, providers and telegram are
+unchanged, and the publish workflow skips them as already on the registry.
+
+### Core
+
+- **npm-pinned extensions are discovered again** - `discoverTopLevelExtensions`
+  resolved `npm:` specs only inside the managed install tree of the pi runtime,
+  so a workspace whose extensions are pinned by `npm:` name (the supported
+  install path) resolved nothing and braid reported no top-level extensions at
+  all. The managed root is now searched ahead of the global root and the global
+  root is kept as the fallback; a live probe went from 0 discovered to 9 against
+  real settings.
+- **Blank tool inputs are read as absent, and blank required inputs are refused
+  by name** - a client that emits every schema key sends `""` for the unused
+  ones. In eight tools that blank was consumed as a value: a blank `limit` and a
+  blank `minAge` converted to `0` and disabled the cap they were meant to apply,
+  a blank `tag` was stored and rendered as an empty group, a blank `claimId`
+  became the tracking key for the rest of the session, a blank `summary` recorded
+  an unfindable task as done, a blank `output` answered "no topic drift" for a
+  check that never ran, blank `explore_paths` hypotheses produced an empty report
+  instead of a usable error. Optional selectors now fall back to their documented
+  defaults and required ones are refused with the parameter named.
+- **Schema pointers and source contracts stop binding to line numbers** - the
+  schema generator resolved each row's evidence on one exact line, so any edit
+  above that line failed the build for a key that had not changed; three rows had
+  already drifted and `release:check` was blocked behind them. The named line is
+  tried first and the file is searched after it, the evidence must still live in
+  the named file, and the published `x-source` names the line it was found on.
+  The browser screenshot contract asserted a constant that had moved into the
+  shared resolver, and its replacement form was satisfied by the import line
+  alone; it now asserts the delegation, the resolver's fallback expression and
+  the shipped default.
+- **Ecosystem crawlers can find the package** - the root manifest carries the
+  `pi-coding-agent` keyword the sibling packages already carried, which is what
+  the `pi-package` directory source indexes on.
+
+### Contrib
+
+- **Blank tool inputs across the contrib modules** - the browser tools, the
+  codebase and diff tools and the healthcheck tool read a blank selector as a
+  value, so an empty `query`, an empty path or an empty quality reached the
+  implementation; each now resolves through one shared input reader that treats
+  a blank field as absent. JPEG capture quality continues to default to 75.
+
 ## Core — 0.40.2 / Telegram — 0.1.5 / Providers — 1.0.6 / Contrib — 0.1.1 (2026-10-17: orchestrator close gates, npm-first docs, multi-client tunnels)
 
 The four packages whose shipped content moved since the 0.40.1 train.
