@@ -34,6 +34,7 @@ import { Type } from "typebox";
 
 import { createLogger } from "../logger.js";
 import { readToggleVerdict } from "../module-toggle.js";
+import { resolveMaxCalls, resolveTimeoutMs } from "./tool-inputs.js";
 
 const log = createLogger("repl");
 
@@ -539,8 +540,10 @@ function createReplTool() {
             ? "rlm"
             : "simple"
           : (params.mode ?? "simple");
-      const maxCalls = params.max_calls ?? 10;
-      const timeout = params.timeout_ms ?? 30000;
+      // Blank keys arrive as 0 (see tool-inputs.ts), so the resolvers own the
+      // default and the handler never reads a limit off `??`.
+      const maxCalls = resolveMaxCalls(params.max_calls);
+      const timeout = resolveTimeoutMs(params.timeout_ms);
       if (mode === "rlm") {
         replState.rlmDepth = 0;
         replState.rlmMaxCalls = maxCalls;

@@ -36,6 +36,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.js";
 import { observatorySessionsDir } from "../state-paths.js";
+import { resolveEventLimit } from "./tool-inputs.js";
 import { registerSessionStartHandler, SessionPhase } from "pi-braid/lib";
 
 const log = createLogger("observatory");
@@ -345,11 +346,9 @@ export default function observatoryExtension(pi: ExtensionAPI): void {
             details: {},
           };
         }
-        const requested = Math.min(
-          (params.limit as number | undefined) ?? 20,
-          200,
-        );
-        const events = tailEvents(requested);
+        // A blank limit arrives as 0 (see tool-inputs.ts), which asked the
+        // tail for no events and reported an empty log.
+        const events = tailEvents(resolveEventLimit(params.limit));
         if (events.length === 0) {
           return {
             content: [

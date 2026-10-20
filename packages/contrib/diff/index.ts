@@ -265,15 +265,21 @@ export default function diffExtension(pi: ExtensionAPI) {
       context: Type.Optional(
         Type.Number({ default: 3, description: "Context lines (default: 3)" }),
       ),
+      // A closed union, so an unknown format is refused at validation instead
+      // of silently rendering as unified. An absent key still defaults below.
       format: Type.Optional(
-        Type.String({
-          default: "unified",
-          description: "Output format: unified, summary, stat",
-        }),
+        Type.Union(
+          [
+            Type.Literal("unified"),
+            Type.Literal("summary"),
+            Type.Literal("stat"),
+          ],
+          { description: "Output format: unified (default), summary, stat" },
+        ),
       ),
     }),
     execute: async (_toolCallId: string, params: any): Promise<any> => {
-      const format = params.format || "unified";
+      const format = params.format ?? "unified";
 
       // Git diff mode
       if (params.gitRefA) {
