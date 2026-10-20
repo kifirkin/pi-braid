@@ -29,11 +29,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CONTRIB_BROWSER = join(HERE, "..", "..", "..", "..", "contrib", "browser");
 const INDEX_TS = join(CONTRIB_BROWSER, "index.ts");
 const CAPTURE_PLAN_TS = join(CONTRIB_BROWSER, "capture-plan.ts");
+const TOOL_INPUTS_TS = join(CONTRIB_BROWSER, "tool-inputs.ts");
 
 assert.ok(existsSync(INDEX_TS), `index.ts not found at ${INDEX_TS}`);
 assert.ok(existsSync(CAPTURE_PLAN_TS), `capture-plan.ts not found`);
+assert.ok(existsSync(TOOL_INPUTS_TS), `tool-inputs.ts not found`);
 
 const indexSource = readFileSync(INDEX_TS, "utf-8");
+const capturePlanSource = readFileSync(CAPTURE_PLAN_TS, "utf-8");
+const toolInputsSource = readFileSync(TOOL_INPUTS_TS, "utf-8");
 
 // ── (a) Revert-proof source assertions ──────────────────────────────────
 
@@ -60,9 +64,21 @@ describe("browser_screenshot source contract", () => {
       indexSource.includes('input.format === "png" ? "png" : "jpeg"'),
       "format default must be jpeg (param may override to png)",
     );
+    // The default lives in the shared resolver, not in index.ts: a source-text
+    // grep for the constant here bound the contract to a file layout and broke
+    // when the input handling moved out. Assert the delegation, the resolver's
+    // use of the constant, and the shipped number.
     assert.ok(
-      indexSource.includes("DEFAULT_JPEG_QUALITY"),
-      "quality default must come from DEFAULT_JPEG_QUALITY",
+      indexSource.includes("resolveJpegQuality"),
+      "index.ts must take the quality default from the shared resolver",
+    );
+    assert.ok(
+      /positiveNumber\(value\)\s*\?\?\s*DEFAULT_JPEG_QUALITY/.test(toolInputsSource),
+      "the resolver must fall back to DEFAULT_JPEG_QUALITY, not a literal",
+    );
+    assert.ok(
+      /export const DEFAULT_JPEG_QUALITY = 75/.test(capturePlanSource),
+      "the shipped JPEG quality default is 75",
     );
   });
 

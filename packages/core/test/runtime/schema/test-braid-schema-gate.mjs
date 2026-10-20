@@ -179,6 +179,30 @@ test("RED: overlay row whose source line lacks the evidence text fails", () => {
   assert.throws(() => resolveRowDefault(notAReader, texts), /not a reader/);
 });
 
+test("a pointer whose line drifted still resolves, and reports the line it found", () => {
+  // The pointer is a hint: an edit above the evidence must not fail the build
+  // for a key that did not change. Line 1 of the fixture reader never carries
+  // the evidence, so a resolution proves the search leg rather than the fast path.
+  const texts = new Map([[READ_FILE, fixtureText]]);
+  const drifted = {
+    path: "braid.ctx.cap.enabled",
+    type: "boolean",
+    default: false,
+    description: "gate",
+    read: { file: READ_FILE, line: 1, evidence: "parsed.braid?.ctx?.cap" },
+  };
+  const value = resolveRowDefault(drifted, texts);
+  assert.equal(value, false, "the drifted pointer still yields the row default");
+  assert.ok(
+    Number.isInteger(drifted.__sourceLine) && drifted.__sourceLine > 1,
+    `the resolved line is reported for x-source, got ${drifted.__sourceLine}`,
+  );
+  assert.ok(
+    fixtureText.split("\n")[drifted.__sourceLine - 1].includes("parsed.braid?.ctx?.cap"),
+    "the reported line is the one carrying the evidence",
+  );
+});
+
 test("RED: stale or missing artifact fails the freshness arm", () => {
   const fresh = fixtureSchema().text;
   assert.equal(checkFreshness(fresh, fresh).ok, true);
