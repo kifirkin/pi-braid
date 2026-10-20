@@ -43,6 +43,17 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.40.4 (2026-10-20: package discovery metadata)
+
+### Core
+
+- **The published manifest carries the discovery keyword** - `pi-coding-agent` is
+  what npm-driven package directories index on. It had been added to the repo root
+  manifest, which is private and never publishes, so the shipped `pi-braid` package
+  carried `pi-package` but not this one while all four sibling packages carried
+  both. The keyword now lives in `packages/core/package.json`, which is the manifest
+  the registry actually receives. No code, no behavior, no API change.
+
 ## Core — 0.40.3 / Contrib — 0.1.2 (2026-10-20: blank tool inputs, npm: entry resolution)
 
 Two packages moved since the 0.40.2 train. Skills, providers and telegram are
