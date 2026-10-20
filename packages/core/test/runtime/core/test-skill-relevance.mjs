@@ -245,7 +245,7 @@ test("real corpus: the tie that the alphabet used to decide", () => {
   // Alphabetical order picked braid-reference; the rarer match is the skill the
   // prompt is actually about.
   const prompt =
-    "You are a verify worker. You review a merged wave read-only, at the merge revision, " +
+    "You are a verify worker. You review a merged change read-only, at the merge revision, " +
     "in a detached worktree. You change nothing: no edits, no commits, no branch switches " +
     "beyond the checkout.";
   const keywords = extractKeywords(prompt);
@@ -302,7 +302,7 @@ const CASES = [
   {
     label: "verify-worker",
     prompt:
-      "You are a verify worker. You review a merged wave read-only, at the merge revision, in a detached worktree. You change nothing: no edits, no commits, no branch switches beyond the checkout.",
+      "You are a verify worker. You review a merged change read-only, at the merge revision, in a detached worktree. You change nothing: no edits, no commits, no branch switches beyond the checkout.",
     expected: ["subagent-verification", "placement-discipline"],
   },
   {
@@ -387,7 +387,7 @@ const CASES = [
   {
     label: "doc-identifier-audit",
     prompt:
-      "the `<!-- doc-ref-exempt: ... -->` annotations are the right shape for the hatch, but the audit that briefed this wave measured 24 doc identifiers that exist nowhere and said 10 of them are real defects (a doc naming something that should exist or that was renamed).",
+      "the `<!-- doc-ref-exempt: ... -->` annotations are the right shape for the hatch, but the audit that briefed this work measured 24 doc identifiers that exist nowhere and said 10 of them are real defects (a doc naming something that should exist or that was renamed).",
     expected: ["misdirection-audit"],
   },
   { label: "status-chatter", prompt: "whats the latest state here?", expected: [] },
