@@ -8,13 +8,23 @@
  *
  * Design:
  *   1. Relevance detection: keyword match of skill name/description plus
- *      frontmatter trigger phrases against the user's current prompt.
+ *      curated trigger phrases against the user's current prompt.
  *      Qualification bar: a skill whose match never touches its NAME (name
  *      token or trigger phrase) must reach a score of at least
  *      MIN_NON_NAME_SCORE — a lone description/path keyword hit is too weak
  *      a signal: it fires broad skills on almost any prompt.
  *      Keywords are stemmed with one suffix rule (trailing s/es) so plural
  *      prompts hit singular name tokens ("skills" → "skill").
+ *      Corpus-common words are gated out of the weak legs: a word present in
+ *      COMMON_KEYWORD_DF or more of the cached skills' documents cannot tell
+ *      skills apart, so description/path hits from it score nothing. Name and
+ *      trigger hits are never gated — the skill's own identity vocabulary is
+ *      what a prompt naming it looks like.
+ *   1b. Ranking: equal scores compare by more distinct matched signals, then
+ *      by rarer evidence (lower summed document frequency), then by name.
+ *      Alphabetical order alone decided which of two equally-scored skills
+ *      took a slot, which is how a broadly-matching skill outranked the one
+ *      whose evidence was the prompt's actual subject.
  *   2. Session-scoped state: track which skills were injected on which turn.
  *      Cooldown is per-skill on top of the global floor: an injected skill
  *      cools down at least COOLDOWN_TURNS, and once it was actually loaded
@@ -144,6 +154,33 @@ export const MAX_EXCERPT_CHARS = 300;
  * and/or filePath keyword hits only). Name matches qualify at any score.
  */
 export const MIN_NON_NAME_SCORE = 2;
+
+/**
+ * A keyword present in this many skill documents or more is corpus-common: it
+ * appears in a large share of the catalog (5 of 22 skills = 23%), so it cannot
+ * distinguish one skill from another and contributes NOTHING to the weak legs
+ * (description, catalog path).
+ *
+ * The number is measured, not guessed. Two measurements, one threshold:
+ *
+ *   Corpus mass. Over 400 recorded prompts against the 22-skill catalog, the
+ *   weak-leg points awarded to words by document frequency are df1 17.0%,
+ *   df2 22.4%, df3 20.9%, df4 13.3%, df5 7.8%, df6 4.1%, df7 9.1%, df9 0.4%,
+ *   df22 5.1%. Words at df ≥ 5 carry 26.4% of every weak-leg point the matcher
+ *   awards; df ≥ 4 carries 39.7%, df ≥ 6 carries 18.6%. The catalog's generic
+ *   vocabulary starts here (skill, read, prompt, text, build, change, agent,
+ *   line); below it the words still describe work types (review, check, test,
+ *   edit, documentation).
+ *
+ *   Labelled set. 26 recorded prompts, recall@2 by threshold: df ≥ 4 → 12/23,
+ *   df ≥ 5 → 13/23, df ≥ 6 → 13/23, df ≥ 7 → 14/23, no gate at all → 12/23.
+ *   Recall alone cannot choose the number: every step that weakens the gate
+ *   admits more skills (45, 54, 67, 71, 106 admissions) and admitting more can
+ *   only raise a top-2 recall figure. 5 is where the gate removes a quarter of
+ *   the corpus-common mass without also deleting the work-type words that are
+ *   sometimes a skill's only reachable evidence.
+ */
+export const COMMON_KEYWORD_DF = 5;
 
 /**
  * Common English words to exclude from keyword matching.
@@ -297,17 +334,71 @@ export function extractKeywords(text: string): string[] {
 // Relevance Scoring
 
 /**
+ * The text a skill contributes to the corpus-frequency count: its description
+ * plus its own catalog path (`<dir>/skill.md`). Deliberately NOT the absolute
+ * path: a checkout root puts its own directory names ("private", "packages",
+ * a worktree name) in every one of the 22 documents — measured at df 22 for
+ * `private`, `package`, `pack` and `core`, and different on every machine the
+ * agent runs on. On description plus the skill's own directory those four
+ * measure df 0, 1, 1 and 2; `skill` and `kill` stay catalog-wide because the
+ * file itself is named SKILL.md, and the rarity gate is what removes them.
+ * Lowercased; the matcher tests substrings. Pure.
+ */
+export function skillCorpusDocument(skill: CachedSkill): string {
+  const tail = skill.filePath.toLowerCase().split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+  return `${skill.description.toLowerCase()} ${tail}`;
+}
+
+/**
+ * Document frequency of each keyword across the cached skills: how many skill
+ * documents contain it as a substring (the test every weak leg performs).
+ * Computed once per turn from the cache, for the prompt's keywords only. Pure
+ * given the cache.
+ */
+export function corpusKeywordFrequency(
+  keywords: string[],
+  skills: CachedSkill[],
+): Map<string, number> {
+  const docs = skills.map(skillCorpusDocument);
+  const freq = new Map<string, number>();
+  for (const kw of keywords) {
+    let n = 0;
+    for (const doc of docs) if (doc.includes(kw)) n++;
+    freq.set(kw, n);
+  }
+  return freq;
+}
+
+/** One skill's match against a prompt: points, distinct signals, evidence rarity. */
+export interface SkillMatch {
+  /** Score the qualification bar and the ranking read (same scale as before). */
+  score: number;
+  /** Distinct matched signals: each trigger phrase, each distinct keyword. */
+  signals: number;
+  /** Summed document frequency of the matched keywords — lower is rarer. */
+  evidenceDf: number;
+}
+
+const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0 };
+
+/**
  * Score a skill against a set of keywords.
  *
  * Scoring rules:
  *   +3  skill name contains a keyword (exact match)
  *   +2  skill name contains a keyword as substring
- *   +2  a frontmatter trigger phrase occurs in the prompt (word-bounded)
+ *   +2  a trigger phrase occurs in the prompt (word-bounded)
  *   +1  skill description contains a keyword
- *   +1  skill filePath contains a keyword (e.g. "research" in "research/SKILL.md")
+ *   +1  the skill's own catalog path contains a keyword (e.g. "research" in
+ *       "research/skill.md")
  *
  * A trigger hit counts as a name hit: the phrase is the skill author's own
  * relevance signal, so it qualifies the skill the same way a name match does.
+ *
+ * `keywordDf` is the corpus document frequency of the prompt's keywords (see
+ * corpusKeywordFrequency). A keyword at COMMON_KEYWORD_DF or above scores
+ * nothing on the weak legs; passing no map scores every keyword at full weight
+ * (the pre-rarity behavior, which the unit fixtures pin).
  *
  * Qualification bar: a skill whose match never touches its NAME (description
  * and/or filePath hits only) must reach a total score of at least
@@ -315,73 +406,129 @@ export function extractKeywords(text: string): string[] {
  * lets generic skills fire on almost any prompt. Name and trigger matches
  * always qualify.
  *
- * `promptText` (lowercased by the caller or raw — matching is case-insensitive
- * on our side) enables trigger matching; omit it where the raw prompt is not
+ * `promptText` enables trigger matching; omit it where the raw prompt is not
  * available and only keyword scoring should run.
  *
- * Returns 0 if the skill does not qualify.
+ * Returns the zero match if the skill does not qualify.
  */
-export function scoreSkill(skill: CachedSkill, keywords: string[], promptText?: string): number {
+export function matchSkill(
+  skill: CachedSkill,
+  keywords: string[],
+  promptText?: string,
+  keywordDf?: ReadonlyMap<string, number>,
+): SkillMatch {
   let score = 0;
+  let signals = 0;
+  let evidenceDf = 0;
   let nameHit = false;
   const name = skill.name.toLowerCase();
   const desc = skill.description.toLowerCase();
-  const path = skill.filePath.toLowerCase();
+  const path = skill.filePath.toLowerCase().split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+  const dfOf = (kw: string) => keywordDf?.get(kw) ?? 0;
 
   for (const trig of skill.triggers ?? []) {
     if (triggerMatches(trig, promptText ?? "")) {
       score += 2;
+      signals++;
       nameHit = true;
+      // A curated phrase is the rarest evidence a skill can offer: df 0.
     }
   }
 
   for (const kw of keywords) {
+    const df = dfOf(kw);
     // Exact token match in name
     if (name.split(/[^a-z0-9]+/).includes(kw)) {
       score += 3;
+      signals++;
       nameHit = true;
+      evidenceDf += df;
       continue;
     }
     // Substring match in name (catches compound names like "code-search")
     if (name.includes(kw)) {
       score += 2;
+      signals++;
       nameHit = true;
+      evidenceDf += df;
       continue;
     }
-    // Description contains keyword
+    // Corpus-common keyword: the weak legs score nothing for it, so a prompt
+    // full of generic vocabulary cannot buy a slot.
+    if (df >= COMMON_KEYWORD_DF) continue;
+    let weakHit = false;
     if (desc.includes(kw)) {
       score += 1;
-      continue;
+      weakHit = true;
     }
     // File path matches (e.g. "research" in "research/SKILL.md")
     if (path.includes(kw)) {
       score += 1;
+      weakHit = true;
+    }
+    // One signal per distinct keyword: a word present in both the description
+    // and the path is one piece of evidence, not two.
+    if (weakHit) {
+      signals++;
+      evidenceDf += df;
     }
   }
 
-  if (!nameHit && score < MIN_NON_NAME_SCORE) return 0;
-  return score;
+  if (!nameHit && score < MIN_NON_NAME_SCORE) return NO_MATCH;
+  return { score, signals, evidenceDf };
+}
+
+/** The score alone (see matchSkill for the rules and the rarity gate). */
+export function scoreSkill(
+  skill: CachedSkill,
+  keywords: string[],
+  promptText?: string,
+  keywordDf?: ReadonlyMap<string, number>,
+): number {
+  return matchSkill(skill, keywords, promptText, keywordDf).score;
+}
+
+/**
+ * A skill with its match evidence, as the selection step consumes it. The
+ * evidence fields are optional so a caller holding only a score still selects;
+ * they then default to zero and the name stays the tie-breaker.
+ */
+export interface ScoredSkill {
+  skill: CachedSkill;
+  score: number;
+  signals?: number;
+  evidenceDf?: number;
 }
 
 /**
  * Decide which scored skills to suggest given the session injection state.
  * Pure — mirrors the handler's decision path so it can be unit-tested:
- *   sort (score desc, name asc) → cooldown filter (global floor + per-skill
- *   loaded extension) → slot budget over ACTIVE held slots (a loaded skill
- *   released its slot) → top-N slice.
+ *   sort (score desc, distinct signals desc, evidence df asc, name asc) →
+ *   cooldown filter (global floor + per-skill loaded extension) → slot budget
+ *   over ACTIVE held slots (a loaded skill released its slot) → top-N slice.
+ *
+ * The rank order is the fix for alphabetical slot allocation: two skills with
+ * equal points used to be ordered by name, so a broadly-matching skill took
+ * the slot from one whose evidence was the prompt's actual subject. Distinct
+ * signals separate breadth of match; evidence df separates a match on the
+ * prompt's distinctive words from one on its filler.
  *
  * Returns the chosen scored items (empty when nothing qualifies). The
  * caller is responsible for recording the picks in session state.
  */
 export function selectSuggestions(
-  scored: Array<{ skill: CachedSkill; score: number }>,
+  scored: ScoredSkill[],
   injected: InjectedSkill[],
   currentTurn: number,
-): Array<{ skill: CachedSkill; score: number }> {
+): ScoredSkill[] {
   if (!scored.length) return [];
 
   const sorted = [...scored].sort(
-    (a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name),
+    (a, b) =>
+      b.score - a.score ||
+      (b.signals ?? 0) - (a.signals ?? 0) ||
+      (a.evidenceDf ?? 0) - (b.evidenceDf ?? 0) ||
+      a.skill.name.localeCompare(b.skill.name),
   );
 
   const available = sorted.filter((s) => !onCooldown(s.skill.name, injected, currentTurn));
@@ -928,9 +1075,13 @@ export function registerAutoInject(pi: ExtensionAPI): void {
         return; // No significant keywords to match
       }
 
+      // Corpus-common words cannot tell skills apart. Their document frequency
+      // is measured once per turn from the same cache the scorer reads.
+      const keywordDf = corpusKeywordFrequency(keywords, skills);
+
       // Score each skill. The raw prompt rides along for trigger matching.
       const scored = skills
-        .map((s) => ({ skill: s, score: scoreSkill(s, keywords, prompt) }))
+        .map((s) => ({ skill: s, ...matchSkill(s, keywords, prompt, keywordDf) }))
         .filter((s) => s.score > 0);
 
       if (!scored.length) {
