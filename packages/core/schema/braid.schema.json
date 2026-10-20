@@ -161,7 +161,7 @@
               "default": false,
               "description": "Opt in to the heavy browser tools (off by default).",
               "type": "boolean",
-              "x-source": "packages/contrib/browser/index.ts:77"
+              "x-source": "packages/contrib/browser/index.ts:83"
             },
             "networkMonitor": {
               "default": true,
@@ -271,14 +271,14 @@
                   "default": false,
                   "description": "Persist observatory events to disk (opt-in).",
                   "type": "boolean",
-                  "x-source": "packages/contrib/observatory/index.ts:72"
+                  "x-source": "packages/contrib/observatory/index.ts:73"
                 }
               },
               "type": [
                 "boolean",
                 "object"
               ],
-              "x-source": "packages/contrib/observatory/index.ts:69"
+              "x-source": "packages/contrib/observatory/index.ts:70"
             },
             "pathSecurity": {
               "default": true,

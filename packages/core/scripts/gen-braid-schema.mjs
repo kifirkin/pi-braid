@@ -771,19 +771,41 @@ export function extractConstDefault(text, constName, prop) {
   return parseLiteralToken(rest.slice(0, semi));
 }
 
+/**
+ * The line in `src` carrying the row's evidence, or null when the file does not
+ * carry it at all.
+ *
+ * `read.line` is a hint, not the binding. Pinning the check to that exact line
+ * means any edit above the evidence breaks the build for a key that did not
+ * change; that has now happened twice, once with a release blocked on it. The
+ * evidence must still live in the named file, so a reader that stops reading the
+ * key is still refused. Only the position stops being load-bearing. The named
+ * line is tried first, so a correct pointer costs nothing and keeps its meaning.
+ */
+function resolveEvidenceLine(row, src) {
+  const lines = src.split("\n");
+  const named = lines[row.read.line - 1];
+  if (named !== undefined && named.includes(row.read.evidence)) return row.read.line;
+  const found = lines.findIndex((l) => l.includes(row.read.evidence));
+  return found === -1 ? null : found + 1;
+}
+
 /** Validate one row against the reader texts: existence + (mech) extraction. */
 export function resolveRowDefault(row, texts, constSources = CONST_SOURCES) {
   const src = texts.get(row.read.file);
   if (src === undefined) {
     throw new Error(`row source file is not a reader: ${row.read.file} (${row.path})`);
   }
-  const line = src.split("\n")[row.read.line - 1];
-  if (line === undefined || !line.includes(row.read.evidence)) {
+  const resolvedLine = resolveEvidenceLine(row, src);
+  if (resolvedLine === null) {
     throw new Error(
-      `existence check failed for ${row.path}: ${row.read.file}:${row.read.line} ` +
-        `does not contain ${JSON.stringify(row.read.evidence)}`,
+      `existence check failed for ${row.path}: ${row.read.file} does not contain ` +
+        `${JSON.stringify(row.read.evidence)} (pointer line ${row.read.line})`,
     );
   }
+  // leafNode reads this back, so the published x-source names the line the
+  // evidence was actually found on rather than the pointer it was written with.
+  row.__sourceLine = resolvedLine;
   if (row.mech) {
     const constFile = constSources[row.mech.const];
     if (!constFile) throw new Error(`unmapped defaults constant: ${row.mech.const}`);
@@ -801,7 +823,7 @@ function leafNode(row, value) {
   const node = { type: row.type, description: row.description };
   if (value !== null) node.default = value;
   if (row.enum) node.enum = row.enum;
-  node["x-source"] = `${row.read.file}:${row.read.line}`;
+  node["x-source"] = `${row.read.file}:${row.__sourceLine ?? row.read.line}`;
   return node;
 }
 
