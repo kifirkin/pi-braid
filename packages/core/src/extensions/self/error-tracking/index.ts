@@ -100,6 +100,11 @@ async function captureError(
   return entry;
 }
 
+/** A numeric selector read as absent when it names no positive count. */
+function positiveNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 const errorSchema = Type.Object({
   action: Type.Union(
     [Type.Literal("list"), Type.Literal("get"), Type.Literal("clear"), Type.Literal("stats")],
@@ -161,7 +166,10 @@ export default function errorCaptureExtension(pi: ExtensionAPI): void {
       switch (params.action) {
         case "list": {
           const entries = await loadErrors();
-          const limit = params.limit ?? 10;
+          // The framework converts "" to 0 before the handler (no `minimum`
+          // on the schema), and slice(-0) is slice(0): a blank limit returned
+          // every captured error, the opposite of the documented cap.
+          const limit = positiveNumber(params.limit) ?? 10;
           const source = params.source;
           const unhandledOnly = params.unhandledOnly ?? false;
 

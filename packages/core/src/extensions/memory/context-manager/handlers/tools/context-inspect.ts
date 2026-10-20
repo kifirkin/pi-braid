@@ -21,6 +21,11 @@ import { formatTokensK } from "../../../../../lib/detection/context-usage.js";
 import { readExtensionState } from "../../../../../lib/state/extension-state.js";
 import { formatPendingCompactionsLine, readPendingCompactions } from "./context-compress.js";
 
+/** A numeric selector read as absent when it names no positive count. */
+function positiveNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
 export const contextInspectSchema = Type.Object({
   detail: Type.Optional(
     Type.String({
@@ -285,7 +290,9 @@ export function registerContextInspect(pi: ExtensionAPI): void {
 
       // PRUNE: Only prune candidates (like context_prune dry-run)
       if (detail === "prune") {
-        const minAge = params.minAge ?? 5;
+        // "" converts to 0 before the handler, and `age >= 0` admits every
+        // candidate: the age filter disabled itself instead of applying 5.
+        const minAge = positiveNumber(params.minAge) ?? 5;
         let candidates = audit.candidates.filter((c: any) => c.age >= minAge);
         if (params.toolFilter?.length) {
           candidates = candidates.filter(

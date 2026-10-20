@@ -63,6 +63,11 @@ import {
 import { formatLocalTime } from "../../../lib/utils/local-time.js";
 import { describeFireTiming } from "./fire-timing.js";
 
+/** A blank string is "not provided": a client that emits every schema key sends "" for the unused ones. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
 type PersistedTimer = {
   id: string;
   sessionId: string;
@@ -880,7 +885,11 @@ function createTimerTool(sessionState: {
       }
       switch (params?.action) {
         case "set": {
-          const { delay_seconds, reason, tag, interval_seconds, count, wake } = params;
+          const { delay_seconds, reason, interval_seconds, count, wake } = params;
+          // A blank tag is no tag: stored as "" it reads as [] in the list
+          // rendering instead of (untagged), and cancelTimersByTag("") would
+          // match every blank-tagged timer in the session.
+          const tag = optionalString(params.tag);
           if (tag && !/^[a-zA-Z0-9_-]+$/.test(tag)) {
             throw new Error(`Invalid tag "${tag}" - use alphanumeric + dash/underscore`);
           }
