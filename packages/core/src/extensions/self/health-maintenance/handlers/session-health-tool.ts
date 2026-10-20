@@ -28,6 +28,11 @@ import {
   type SessionHealthState,
 } from "../../../enforcement/session-health.js";
 
+/** A blank string is "not provided": a client that emits every schema key sends "" for the unused ones. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
 const sessionHealthSchema = Type.Object({
   action: Type.Union([Type.Literal("get"), Type.Literal("diagnose"), Type.Literal("recover")], {
     description: "Action: get, diagnose (with history), or recover (force reset)",
@@ -143,7 +148,10 @@ export function registerSessionHealthTool(pi: ExtensionAPI): void {
             details,
           };
         }
-        setSessionHealthMode(ctx, "healthy", params.reason);
+        // A blank reason is no reason: stored (and echoed) as "" it reads as
+        // an audit note the operator never wrote.
+        const reason = optionalString(params.reason);
+        setSessionHealthMode(ctx, "healthy", reason);
         const after = getSessionHealth(ctx);
         const details: SessionHealthToolDetails = {
           mode: after.mode,
@@ -155,7 +163,7 @@ export function registerSessionHealthTool(pi: ExtensionAPI): void {
           content: [
             {
               type: "text" as const,
-              text: `Session health reset to ${after.mode}.\n\nThe next LLM call will either succeed (staying healthy) or fail (re-entering the appropriate mode).${params.reason ? `\n\nReason: ${params.reason}` : ""}`,
+              text: `Session health reset to ${after.mode}.\n\nThe next LLM call will either succeed (staying healthy) or fail (re-entering the appropriate mode).${reason ? `\n\nReason: ${reason}` : ""}`,
             },
           ],
           details,
