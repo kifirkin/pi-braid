@@ -50,14 +50,18 @@ import type {
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.js";
 import { readToggleVerdict } from "../module-toggle.js";
+import {
+  DEFAULT_MAX_DEPTH,
+  MAX_MAX_DEPTH,
+  resolveFind,
+  resolveMaxDepth,
+} from "./tool-inputs.js";
 
 const log = createLogger("codebase");
 
 // Limits
 
 const MAX_FILES_WALK = 5000; // hard cap to prevent runaway on huge repos
-const DEFAULT_MAX_DEPTH = 3;
-const MAX_MAX_DEPTH = 10;
 
 // Constants
 
@@ -832,10 +836,9 @@ export default function codebaseExtension(pi: ExtensionAPI): void {
       }
 
       if (action === "tree") {
-        const maxDepth = Math.min(
-          (params.maxDepth as number | undefined) ?? DEFAULT_MAX_DEPTH,
-          MAX_MAX_DEPTH,
-        );
+        // A blank depth arrives as 0 (see tool-inputs.ts), which walked no
+        // further than the root entry.
+        const maxDepth = resolveMaxDepth(params.maxDepth);
         const patterns = (params.exclude as string[] | undefined) ?? [];
         const showStats = (params.showStats as boolean | undefined) ?? true;
         const compact = (params.compact as boolean | undefined) ?? false;
@@ -901,7 +904,9 @@ export default function codebaseExtension(pi: ExtensionAPI): void {
         }
 
         // graph
-        const find = (params.find as string | undefined) ?? "all";
+        // A blank filter selects no section (see tool-inputs.ts), which left
+        // a header-only graph.
+        const find = resolveFind(params.find);
         return {
           content: [
             {

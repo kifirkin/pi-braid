@@ -92,6 +92,7 @@ import {
   type TunnelClientAdapter,
 } from "./clients.js";
 import { createLogFileSink } from "./log-file.js";
+import { resolveClientParam } from "./tool-inputs.js";
 import { getExtensionState } from "pi-braid/lib";
 import {
   createLiveSettings,
@@ -220,12 +221,15 @@ export default function networkMonitorExtension(
     return s;
   };
 
-  /** The client an unqualified call acts on: the `client` parameter wins. */
+  /**
+   * The client an unqualified call acts on: the `client` parameter wins, and a
+   * blank parameter counts as unqualified (see tool-inputs.ts).
+   */
   function pickAdapter(
     requested: string | undefined,
     s: NetworkMonitorSettings,
   ): TunnelClientAdapter | string {
-    const id = requested ?? s.client;
+    const id = resolveClientParam(requested) ?? s.client;
     if (!isClientId(id)) {
       return (
         `Unknown client "${id}". Valid clients: ${CLIENT_IDS.join(", ")}. ` +

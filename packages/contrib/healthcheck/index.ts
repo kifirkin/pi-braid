@@ -21,6 +21,7 @@ import { testAgentTools } from "./checks/tools.js";
 import { testBuiltinTools } from "./checks/builtin.js";
 import { testExtensionSystem } from "./checks/extensions.js";
 import { generateReport, formatReport } from "./checks/report.js";
+import { resolveCategories } from "./tool-inputs.js";
 
 const log = createLogger("healthcheck");
 
@@ -76,7 +77,9 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       _toolCallId,
       params,
     ): Promise<AgentToolResult<HealthReport>> => {
-      const requestedCats = params.categories;
+      // A blank element names no category (see tool-inputs.ts); filtering it
+      // out here keeps `shouldRun` from answering false for every probe.
+      const requestedCats = resolveCategories(params.categories);
       const shouldRun = (cat: string) =>
         !requestedCats || requestedCats.includes(cat.toLowerCase());
 
