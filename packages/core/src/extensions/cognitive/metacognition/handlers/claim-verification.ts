@@ -27,6 +27,11 @@ import { consolidatedClaimCritique } from "../../../../lib/ai/consolidated-claim
 
 const log = createLogger("metacognition:claim-verification");
 
+/** A blank string is "not provided": a client that emits every schema key sends "" for the unused ones. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
 function truncate(text: string, maxLen: number): string {
   return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
 }
@@ -166,7 +171,9 @@ export function createVerifyClaimTool(): ToolDefinition<any, any, any> {
         if (!p.claim || !Array.isArray(p.context)) {
           throw new Error("verify_claim requires 'claim' (string) and 'context' (string array)");
         }
-        const claimId = p.claimId ?? `claim-${Date.now()}`;
+        // A blank claimId is no id: it would become the tracking key of every
+        // such call for the rest of the session.
+        const claimId = optionalString(p.claimId) ?? `claim-${Date.now()}`;
         const issues: Record<string, unknown>[] = [];
 
         // PRIMARY PATH: consolidated single-LLM-call

@@ -528,6 +528,27 @@ finalize(completed=true, summary="Fixed the bug", tasksRemaining=["write tests"]
         };
       }
 
+      // A blank summary names nothing. The `=== undefined` check above lets it
+      // through, and the summary lands in the memory episode, the session label
+      // and the deliverables manifest -- an unfindable task recorded as done.
+      if (typeof params.summary !== "string" || params.summary.trim().length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `**FINALIZE REQUIRES A SUMMARY**
+
+finalize was called with summary ${JSON.stringify(params.summary ?? null)}, which names nothing to record.
+Provide the summary text: what was accomplished, or what is still open with completed: false.
+
+Example:
+finalize(completed=true, summary="Fixed the parser offset clamp", tasksRemaining=["add fixture"])`,
+            },
+          ],
+          details: { finalized: false, blocked: true, error: "missing_summary" },
+        };
+      }
+
       // Pre-flight check: verify must have passed
       if (_ctx && !params.completed) {
         const lastVerification = getLastVerification(_ctx);

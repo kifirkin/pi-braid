@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import * as path from "node:path";
 import * as url from "node:url";
 import { Type } from "typebox";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { addEvidence } from "../../../lib/store/evidence-pool.js";
 
 const execFileAsync = promisify(execFile);
@@ -136,7 +136,10 @@ async function readFileHead(path: string, lines = 30): Promise<string> {
   }
 }
 
-export function createExplorePathsTool() {
+// The two result shapes (a named refusal and a report) carry different
+// details, so the tool declares its own type rather than letting the first
+// return statement narrow every other branch.
+export function createExplorePathsTool(): ToolDefinition<any, any, any> {
   return {
     name: "explore_paths",
     label: "Explore Paths",
@@ -178,11 +181,42 @@ export function createExplorePathsTool() {
         hypothesis_3?: string;
         searchRoot?: string;
       };
+
+      // A blank hypothesis names nothing to search. Both are schema-legal
+      // (`Type.String()` accepts ""), and the report that followed came back
+      // with "No useful keywords found" -- read as "no evidence", not as an
+      // unusable call.
+      const requiredHypotheses: Array<[string, unknown]> = [
+        ["hypothesis_1", hypothesis_1],
+        ["hypothesis_2", hypothesis_2],
+      ];
+      const blankRequired = requiredHypotheses
+        .filter(([, value]) => typeof value !== "string" || value.trim().length === 0)
+        .map(([name]) => name);
+      if (blankRequired.length > 0) {
+        const named = blankRequired.map((name) => `'${name}'`).join(" and ");
+        return {
+          details: { error: "missing_hypothesis", blank: blankRequired },
+          content: [
+            {
+              type: "text" as const,
+              text: `explore_paths requires a non-empty ${named}: name a file and a reason, e.g. "The bug might be in src/parser.ts because the offset is never clamped".`,
+            },
+          ],
+        };
+      }
+
       const searchDir = resolveSearchRoot(searchRoot, ctx?.cwd);
 
       const results: string[] = [];
       const hypotheses = [hypothesis_1, hypothesis_2];
-      if (hypothesis_3) hypotheses.push(hypothesis_3);
+      // An optional third hypothesis is absent when blank; a blank one used to
+      // become a report section with an empty title and an empty search.
+      const third =
+        typeof hypothesis_3 === "string" && hypothesis_3.trim().length > 0
+          ? hypothesis_3
+          : undefined;
+      if (third) hypotheses.push(third);
 
       const explorations = hypotheses.map(async (hyp, i) => {
         const localResults: string[] = [];

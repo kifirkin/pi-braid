@@ -29,6 +29,11 @@ import { BRAID_INJECTED, BRAID_SOURCE } from "../../../lib/constants/injection-d
 
 const log = createLogger("topic-drift");
 
+/** A blank string is "not provided": a client that emits every schema key sends "" for the unused ones. */
+function optionalString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
 interface DriftState {
   /** The original request text (used by critics directly - no token extraction needed). */
   originalRequest: string;
@@ -348,7 +353,20 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
           switch (params?.action) {
             case "check": {
               const state = getExtensionState(ctx, "topic-drift", createDriftState);
-              const output = params.output ?? "";
+              const output = optionalString(params.output);
+              if (output === undefined) {
+                // "" would be measured as an empty response and answered
+                // "No topic drift" -- a pass for a check that never ran.
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: `topic_drift action=check requires a non-empty 'output': the response text to test against the anchored request.`,
+                    },
+                  ],
+                  details: { error: "missing_output", action: "check" },
+                };
+              }
               let drifted = false;
               let similarity = 1.0;
               let missingAnchors: string[] = [];
@@ -397,7 +415,7 @@ export default function topicDriftExtension(pi: ExtensionAPI) {
             }
             case "reset": {
               const state = getExtensionState(ctx, "topic-drift", createDriftState);
-              const request = params.newRequest ?? state.originalRequest;
+              const request = optionalString(params.newRequest) ?? state.originalRequest;
               resetAnchors(state, request);
               return {
                 content: [
