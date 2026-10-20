@@ -35,10 +35,16 @@ import {
 import { extractReadableContent } from "./readability.js";
 import {
   computeCapturePlan,
-  DEFAULT_JPEG_QUALITY,
   MAX_SCREENSHOT_DIM,
   type ViewportMetrics,
 } from "./capture-plan.js";
+import {
+  resolveJpegQuality,
+  resolveNavigateSettleMs,
+  resolveSnapshotDepth,
+  resolveSnapshotIndent,
+  resolveTabsWaitTimeoutMs,
+} from "./tool-inputs.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -420,7 +426,9 @@ const snapshotParams = Type.Object({
     }),
   ),
   depth: Type.Optional(
-    Type.Number({ description: "Max DOM depth (default: unlimited)" }),
+    Type.Number({
+      description: "Max DOM depth (default: unlimited; 0 is read as unlimited)",
+    }),
   ),
 });
 
@@ -431,11 +439,15 @@ const evalParams = Type.Object({
 
 const screenshotParams = Type.Object({
   timeout: baseTimeoutParam,
+  // A closed union, so an unknown format is refused at validation instead of
+  // silently becoming jpeg. An absent key still falls back to jpeg below.
   format: Type.Optional(
-    Type.String({ description: "Image format: jpeg (default) or png" }),
+    Type.Union([Type.Literal("jpeg"), Type.Literal("png")], {
+      description: "Image format: jpeg (default) or png",
+    }),
   ),
   quality: Type.Optional(
-    Type.Number({ description: "JPEG quality 0-100 (default: 75)" }),
+    Type.Number({ description: "JPEG quality 1-100 (default: 75)" }),
   ),
 });
 
@@ -547,7 +559,7 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
     tab.url = input.url;
     // Wait briefly for initial page load, then return control to agent
     await new Promise((r) =>
-      setTimeout(r, Math.min(input.timeout ?? 2000, 2000)),
+      setTimeout(r, resolveNavigateSettleMs(input.timeout)),
     );
     const navInfo = navResult as Record<string, unknown>;
     return {
@@ -576,13 +588,17 @@ async function browserNavigate(input: Static<typeof navigateParams>) {
 async function browserSnapshot(input: Static<typeof snapshotParams>) {
   const tab = await ensureTab();
   const client = tab.client;
+  // Resolved once: a blank depth arrives as 0 (see tool-inputs.ts), and CDP
+  // documents -1 for the whole subtree or an integer larger than 0, so a 0
+  // there asks Chrome to retrieve no children at all.
+  const domDepth = resolveSnapshotDepth(input.depth);
 
   await client.send("DOM.getDocument", {
-    depth: input.depth ?? -1,
+    depth: domDepth,
     pierce: true,
   });
   const tree = (await client.send("DOM.getFlattenedDocument", {
-    depth: input.depth ?? -1,
+    depth: domDepth,
     pierce: true,
   })) as {
     nodes: Array<{
@@ -627,11 +643,12 @@ async function browserSnapshot(input: Static<typeof snapshotParams>) {
     return parts.length > 0 ? ` [${parts.join(", ")}]` : "";
   }
 
+  const indentCap = resolveSnapshotIndent(input.depth);
   let prevDepth = 0;
   for (const node of tree.nodes) {
     const depth = Math.min(
       node.childNodeCount > 0 ? prevDepth + 1 : prevDepth,
-      input.depth ?? 10,
+      indentCap,
     );
     if (node.nodeName === "#document") continue;
     if (node.nodeName === "#text") {
@@ -825,11 +842,10 @@ async function browserScreenshot(input: Static<typeof screenshotParams>) {
 
   // Bounded, DPR-neutralized capture. Defaults target the ~100-300KB
   // size class: jpeg quality 75, deviceScaleFactor 1, long edge ≤ 1440px.
+  // Validation admits only the two literals, so this fallback covers the
+  // absent key alone.
   const format = input.format === "png" ? "png" : "jpeg";
-  const quality =
-    typeof input.quality === "number"
-      ? Math.min(100, Math.max(0, Math.round(input.quality)))
-      : DEFAULT_JPEG_QUALITY;
+  const quality = resolveJpegQuality(input.quality);
 
   const metrics = await readViewportMetrics(client);
 
@@ -1097,7 +1113,7 @@ function registerCoreTools(pi: ExtensionAPI): void {
       "saved to disk — the tool result contains only a text summary plus the saved file path " +
       "(details.filePath), never the image data. " +
       "Read the image by passing that path to the describe_image tool (params.image_path). " +
-      "Params may override format (jpeg/png) and quality (0-100).",
+      "Params may override format (jpeg/png) and quality (1-100).",
     parameters: screenshotParams,
     async execute(_id, params): Promise<BrowserToolResult> {
       return browserScreenshot(params);
@@ -1359,7 +1375,7 @@ function registerAdvancedTools(pi: ExtensionAPI): void {
           details: {},
         };
       }
-      const timeoutMs = params.timeout ?? 30000;
+      const timeoutMs = resolveTabsWaitTimeoutMs(params.timeout);
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         if (params.url_pattern && tab.url.includes(params.url_pattern)) {
