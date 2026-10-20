@@ -48,7 +48,11 @@ import {
 import { loadVeniceCatalog } from "./venice-catalog.js";
 import type { ChatModelConfig } from "./venice-catalog.js";
 import { keyRingAuth, withKeyRingAuth } from "./ring-provider";
-import { shrinkDoomedPayload, isPresendGuardEnabled } from "./presend-guard";
+import {
+  buildContextWindowIndex,
+  readPresendPolicy,
+  shrinkDoomedPayload,
+} from "./presend-guard";
 import { probeRoute } from "./probe.js";
 import {
   formatRingHealth,
@@ -850,25 +854,29 @@ export default async function (pi: ExtensionAPI) {
   }
 
   // Model-id → catalog context window for the pre-send guard.
-  // Built once at factory load from the catalog this package owns (venice-catalog.ts).
-  const presendContextWindows = new Map<string, number>();
-  for (const m of veniceCatalog?.models ?? []) {
-    if (typeof m.contextWindow === "number" && m.contextWindow > 0) {
-      presendContextWindows.set(m.id, m.contextWindow);
-    }
-  }
+  // Built once at factory load from the catalog this package owns
+  // (venice-catalog.ts): exact ids, plus the normalized spelling a route may
+  // use for the same model. A dot-form request id (the route sends
+  // `deepseek-v4.1-flash`, the catalog spells `deepseek-v4-1-flash`) would
+  // otherwise resolve to no window and the guard would silently no-op.
+  const presendWindows = buildContextWindowIndex(veniceCatalog?.models ?? []);
 
   pi.on("before_provider_request", async (event: any) => {
     // Ring-lifecycle first (WAF/key shaping), then the pre-send guard on
-    // the (possibly reshaped) payload. The guard no-ops unless the payload is
-    // DOOMED for a KNOWN model; its returned payload (when present) replaces
-    // the outgoing body per pi-core's emitBeforeProviderRequest semantics.
+    // the (possibly reshaped) payload. The token arm no-ops unless the payload
+    // is DOOMED for a KNOWN model; the byte arm no-ops unless the owner
+    // declared a cap (a request above the report threshold still writes one
+    // line). Its returned payload (when present) replaces the outgoing body
+    // per pi-core's emitBeforeProviderRequest semantics.
     const shaped = handleBeforeProviderRequest(event.payload);
     const outgoing = shaped ?? event.payload;
     try {
-      if (!isPresendGuardEnabled()) return shaped;
+      const policy = readPresendPolicy();
+      if (!policy.enabled) return shaped;
       const guard = shrinkDoomedPayload(outgoing, {
-        resolveContextWindow: (modelId) => presendContextWindows.get(modelId),
+        resolveContextWindow: (modelId) => presendWindows.resolve(modelId),
+        maxRequestBytes: policy.maxRequestBytes,
+        reportBytesAbove: policy.reportBytesAbove,
       });
       return guard?.payload ?? shaped;
     } catch {
