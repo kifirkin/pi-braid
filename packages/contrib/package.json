@@ -31,7 +31,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/contrib-toggles.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs",
+    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/contrib-toggles.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs && node test/browser-tool-inputs.test.mjs",
     "prepack": "node ../core/scripts/pack-provenance.mjs write",
     "postpack": "node ../core/scripts/pack-provenance.mjs remove"
   },
