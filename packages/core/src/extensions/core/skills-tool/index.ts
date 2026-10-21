@@ -12,10 +12,10 @@
  * One action:
  *   list — paginated catalog (name, filePath, description, source, reach)
  *
- * Each row carries the price of the read it names (see reach.ts): lines,
- * bytes, chars, a token estimate, and the file's headings with line numbers.
- * Picking a skill is picking a read, and a price is what makes that pick
- * rational.
+ * Each row carries the price of the read it names (see reach.ts): reachable,
+ * lines, bytes, chars, a token estimate, the file's heading count, and as many
+ * of its headings as the caller asked for. Picking a skill is picking a read,
+ * and a price is what makes that pick rational.
  *
  * Skills discovery (list_skills tool) plus the scoring-based auto-inject
  * whisper supersede an LLM top-N recommender: a second relevance engine
@@ -36,7 +36,12 @@ import {
   resolveDiscoveryMode,
 } from "./auto-inject.js";
 import { readSkillTriggers } from "./skill-triggers.js";
-import { clampSectionsMax, DEFAULT_SECTIONS_MAX, readSkillReach } from "./reach.js";
+import {
+  clampSectionsMax,
+  DEFAULT_SECTIONS_MAX,
+  SECTIONS_MAX_LIMIT,
+  readSkillReach,
+} from "./reach.js";
 import { getMonthlyAdoptionRollup } from "./session-records.js";
 
 const log = createLogger("skills-tool");
@@ -107,11 +112,11 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
     name: "list_skills",
     label: "List Skills",
     description:
-      "Discover skills on demand: paginated catalog (name, filePath, description, source) plus each skill's reach (lines, bytes, chars, estTokens, section headings with line numbers), so the price of a read is visible before the read; `read` a SKILL.md to load it.",
+      "Discover skills on demand: paginated catalog (name, filePath, description, source) plus each skill's reach (reachable, lines, bytes, chars, estTokens, sectionCount, section headings with line numbers), so the price of a read is visible before the read; `read` a SKILL.md to load it.",
     parameters: Type.Object({
       action: Type.Literal("list", {
         description:
-          "list = paginated catalog with per-skill reach (lines, bytes, chars, estTokens, sections)",
+          "list = paginated catalog with per-skill reach (reachable, lines, bytes, chars, estTokens, sectionCount, sections)",
       }),
       page: Type.Optional(
         Type.Number({
@@ -131,7 +136,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       sectionsMax: Type.Optional(
         Type.Number({
           minimum: 0,
-          maximum: 50,
+          maximum: SECTIONS_MAX_LIMIT,
           default: DEFAULT_SECTIONS_MAX,
           description:
             "Headings reported per skill; 0 omits the section list and keeps sectionCount",

@@ -96,7 +96,7 @@ export const TOOL_GUIDELINES: Record<string, string> = {
 
   // ── skills-tool (default-enabled) ──
   list_skills:
-    "when: entering a domain that may have a skill; when-not: after the skill is loaded; args: page/pageSize+sectionsMax; caveat: reach (lines, bytes, estTokens, sections) prices the read — read the WHOLE SKILL.md before acting in the domain",
+    "when: entering a domain that may have a skill; when-not: after the skill is loaded; args: page/pageSize+sectionsMax; caveat: reach (reachable, lines, bytes, chars, estTokens, sectionCount, sections) prices the read — read the WHOLE SKILL.md before acting in the domain",
   skill_stats:
     "when: measure skill adoption — suggested vs loaded counters; args: none; caveat: session + all-time counters (durable, skills-usage.json)",
 
