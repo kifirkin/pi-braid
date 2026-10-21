@@ -335,10 +335,11 @@ async function assemblePrompt({ toolNames, projectDocs = [], toolGuidelines = {}
         .join("\n\n"),
     ),
 
-    // 9. instance — static placeholder (live line is version/cwd/session).
+    // 9. instance — static placeholder (the live line carries process-stable
+    //    identity: build, install root, model, PID, session, resource counts).
     simpleSection(
       "instance",
-      "Agent: Braid vTEST (over pi-core vTEST) | Cwd: /virtual/cwd | Session: structural-test",
+      "Agent: Braid vTEST (over pi-core vTEST) | Root: /virtual/braid | Model: test/model | PID: 1 | Session: structural-test | Resources: 0 skills, 0 memories",
     ),
   ];
 
@@ -552,7 +553,15 @@ describe("prompt-builder (structural de-dup regression guard)", () => {
       "skills-loading must carry the task-start catalog trigger (round-2 deeper dive)",
     );
     assert.ok(output.includes("Available tools:"), "tools section header must be present");
-    assert.ok(!output.includes("Resources:"), "resources pointer line must stay gone");
+    // The standalone resources section stays deleted. The only resource
+    // counts ride the compact instance line, which answers a different
+    // question (did the stores load at all).
+    const resourceLines = output.split("\n").filter((l) => l.includes("Resources:"));
+    assert.equal(resourceLines.length, 1, "only the instance line may carry resource counts");
+    assert.ok(
+      resourceLines[0].startsWith("Agent: Braid vTEST"),
+      "resource counts must ride the compact instance line, not their own section",
+    );
     assert.ok(
       output.includes("Other custom tools may exist depending on the project."),
       "tools section tail must be present",

@@ -3,9 +3,9 @@
  *
  * Extracts the Instance section (Agent version, pi-core version, paths,
  * OS, session stats, extensions, other instances) from the system prompt
- * into a read-on-demand tool. The prompt keeps only a compact one-line
- * orientation (version | cwd | session) at the bottom; the full Instance
- * block lives here.
+ * into a read-on-demand tool. The prompt keeps only the compact one-line
+ * orientation (build + install root, model, PID, session, resource counts)
+ * at the bottom; the full Instance block lives here.
  *
  * This saves ~60-100+ tokens per prompt turn while keeping the data
  * available when the agent actually needs it.
