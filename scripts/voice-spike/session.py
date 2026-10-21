@@ -132,6 +132,20 @@ def verdict(record: dict, meta: dict, tolerance_s: float = 0.4) -> dict:
     device_in = (record.get("device") or {}).get("input") or {}
     if device_in.get("exit") != 0 or not device_in.get("name"):
         reasons.append("input device not recorded")
+    before = record.get("device") or {}
+    after = record.get("device_after") or {}
+    for direction in ("input", "output"):
+        first = (before.get(direction) or {}).get("name")
+        last = (after.get(direction) or {}).get("name")
+        if first and last and first != last:
+            reasons.append(f"{direction} device changed during the turn")
+    before_levels = before.get("levels") or {}
+    after_levels = after.get("levels") or {}
+    for key in ("input_volume", "output_volume"):
+        first = before_levels.get(key)
+        last = after_levels.get(key)
+        if first is not None and last is not None and first != last:
+            reasons.append(f"{key} changed during the turn: {first} -> {last}")
     record["validity"] = {
         "ok": not reasons,
         "reasons": reasons,
