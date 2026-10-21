@@ -107,6 +107,38 @@ curl -sL --max-time 10 'https://<instance>/search?q=query&format=json'
 
 **Do not rely on this.** The JSON API is disabled on most public instances. Use Method A (DuckDuckGo HTML) instead.
 
+### Method E: Reading an X Post (oEmbed, No Auth)
+
+A direct fetch of an X status URL is refused (403), and the page renders its
+text with JavaScript. The embed endpoint serves the same post as JSON, with
+no login and no key:
+
+```bash
+curl -s "https://publish.x.com/oembed?url=https%3A%2F%2Fx.com%2F<account>%2Fstatus%2F<id>&omit_script=true"
+```
+
+- `publish.x.com` is the live host. `publish.twitter.com` answers 301 to it,
+  so a client that does not follow redirects gets an empty body (`curl -L`
+  there).
+- The `url` parameter is the status URL percent-encoded (`%3A` for `:`, `%2F`
+  for `/`). Unencoded, the link's own `?` and `&` read as oEmbed parameters
+  instead of as part of the link.
+- The response is application/json: the author name and handle, and an HTML
+  blockquote holding the post text and its date. That text is HTML-escaped
+  (`&mdash;` before the author name), so decode entities before quoting.
+
+**What it does not give.** Text only - no media, no reply thread, no quoted
+post body. A post X will not render fails instead of degrading: deleted,
+protected, and age-gated posts answer with an error page and a 4xx rather
+than JSON (deleted verified at 404), so check the status and content type
+before parsing. A bare account URL has no status id to embed - it returns a
+timeline anchor link with no post text, so an account's page still needs
+another route.
+
+Verified against public posts of two different accounts. Public nitter
+instances are not a fallback any more: X's cease-and-desist letters took them
+down, and `nitter.net` now serves only an offline notice.
+
 ---
 
 ## Fact Verification

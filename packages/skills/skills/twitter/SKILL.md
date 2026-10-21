@@ -8,6 +8,8 @@ verdict: DEPRECATE
 ---
 
 > **DEPRECATED (2026-08-16)** - platform-specific flavor with a single recorded use (vibe-hacking-a0). No successor skill exists; the browser-automation techniques below remain valid reference for any X workflow.
+>
+> Reading a public post needs no browser and no login - the `research` skill carries the oEmbed method (publish.x.com/oembed), which returns the post text as JSON.
 
 # Twitter Interaction Skill
 
