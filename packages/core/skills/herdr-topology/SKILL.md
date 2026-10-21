@@ -52,7 +52,12 @@ columns or short rows.
 
 Keep the user's focus where it is unless they asked to switch context. Do
 not close workspaces, tabs, panes, or sessions you did not create unless
-the user explicitly asks.
+the user explicitly asks. The one exception is the pane of the agent you
+replaced: a process cannot close the pane it runs in, so during a
+mastership transfer the incoming seat owns that close and runs
+`herdr_pane close <pane>` on the outgoing seat's pane. The exception covers
+that pane and nothing else - worker panes you did not spawn, tabs, and
+workspaces still wait for the user's word.
 
 ## Panes: raw terminal control
 

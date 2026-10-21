@@ -323,7 +323,7 @@ herdr action=send pane=<successor> text="[agent:orchestrator→successor] Read /
 
 Best for a successor that will orchestrate subagents. TUI pi persists, accepts signaling, can spawn its own workers.
 
-3. Transfer mastership: the current session closes when the successor completes. The successor can close the predecessor's pane via `herdr action=stop pane=<predecessor-pane>`.
+3. Transfer mastership: the current session closes when the successor completes. The successor closes the predecessor's pane with `herdr_pane close <predecessor-pane>` - the predecessor cannot close the pane it runs in, so the incoming seat owns that one close and the transfer ends there.
 4. The successor starts clean (no bloat) and reads the handoff.
 
 This is a **pipeline, not a loop**: each session is a fresh stage. Never compact above 70% - cascade instead.
@@ -410,7 +410,7 @@ At regular intervals (every few turns, or when spawning new work), check for sta
 2. **Inspect each pane** - For each pane that looks complete (long idle, exited to shell prompt, error message), read its visible content:
    `herdr action=read pane=<id> source=visible`
 3. **Close completed panes** - If a worker signaled completion and was approved, or crashed and was not restarted:
-   `herdr action=stop pane=<id>`
+   `herdr_pane close <pane>`
 4. **Close error-state panes** - If a pane shows a provider error or retry loop with no recovery path, close it rather than leaving it spinning.
 
 ### Lock cleanup
