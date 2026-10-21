@@ -8,7 +8,8 @@
  *
  * This handler runs in SessionPhase.Background (fire-and-forget, non-blocking)
  * so it doesn't delay agent startup. It checks for:
- *   1. Scratchpad latest.json for this project
+ *   1. Scratchpad checkpoint log for this project (`events.jsonl`, last
+ *      checkpoint)
  *   2. Episodes file with content
  *   3. Semantic memory file with content
  *   4. Prior session .jsonl files (session-recall)
@@ -43,7 +44,6 @@ import {
   type DiscoverySignalType,
 } from "../../../lib/state/global-state.js";
 import {
-  scratchpadDir,
   episodesFilePath,
   semanticMemoryFilePath,
   AGENT,
@@ -51,6 +51,7 @@ import {
   tagsSlugFromCwd,
 } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
+import { readResumeScratchpadState } from "../resume-state.js";
 
 const log = createLogger("enforcement:session-start-discoverability");
 
@@ -91,30 +92,23 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         delete (enforcementSignals as Record<string, EnforcementSignalEntry>)[key];
       }
 
-      // 1. Scratchpad. The store root is resolved on every call, never a
-      // module-load constant: a pinned run must read the tree the writers
-      // wrote to, and a refused root (no absolute braid home) degrades.
+      // 1. Scratchpad. Read through the store's own loader (the checkpoint
+      // log), never a hand-built snapshot path: the snapshot file this
+      // branch used to open has not been written for years, so the signal
+      // was armed against a file that never existed. The store root is
+      // resolved on every call, never a module-load constant, so a pinned
+      // run reads the tree the writers wrote to.
       try {
         const slug = projectSlugFromCwd(cwd);
-        const scratchpadFile = path.join(scratchpadDir(), slug, "latest.json");
-        if (existsSync(scratchpadFile)) {
-          const stat = statSync(scratchpadFile);
-          if (stat.size > 10) {
-            const content = readFileSync(scratchpadFile, "utf-8");
-            const parsed = JSON.parse(content);
-            const hasGoal = parsed.goal && parsed.goal.length > 0;
-            const openPlans = Array.isArray(parsed.plans)
-              ? parsed.plans.filter((p: any) => !p.done).length
-              : 0;
-            if (hasGoal || openPlans > 0) {
-              signals.push({
-                type: "scratchpad_prior",
-                text:
-                  `Prior scratchpad data exists for this project (${openPlans} open plan items). ` +
-                  `Use \`scratchpad action=continue\` to resume -- it returns goal + open plan + recent context in one call.`,
-              });
-            }
-          }
+        const prior = await readResumeScratchpadState(slug);
+        const openPlans = prior.openPlanCount;
+        if (prior.goal || openPlans > 0) {
+          signals.push({
+            type: "scratchpad_prior",
+            text:
+              `Prior scratchpad data exists for this project (${openPlans} open plan items). ` +
+              `Use \`scratchpad action=continue\` to resume -- it returns goal + open plan + recent context in one call.`,
+          });
         }
       } catch (err) {
         log.debug(`scratchpad discoverability check failed: ${err}`);

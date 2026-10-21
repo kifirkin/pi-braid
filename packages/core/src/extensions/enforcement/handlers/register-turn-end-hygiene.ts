@@ -33,7 +33,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { createLogger } from "../../../lib/core/logger.js";
@@ -41,9 +41,10 @@ import { registerTurnEndHandler } from "../../../lib/events/turn-end-coordinator
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { fileMutationQueue } from "../../../lib/utils/file-mutation-queue.js";
-import { braidDir, scratchpadDir } from "../../../lib/config/braid-paths.js";
+import { braidDir } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 import { flushPendingScratchpadWrites } from "../../memory/scratchpad/utils.js";
+import { readResumeScratchpadState } from "../resume-state.js";
 import { isCompactionActive, getCmState } from "../../memory/context-manager/handlers/shared.js";
 import { snapBoundaryOutsideToolBatch } from "../../memory/context-manager/handlers/tool-batch-boundary.js";
 import {
@@ -70,13 +71,16 @@ const log = createLogger("enforcement:turn-end-hygiene");
 
 // Pre-save safety: flush scratchpad + write resume.json
 
-function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
+async function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): Promise<void> {
   try {
     // 1. Flush file mutation queue + scratchpad debounced queue
     // Pre-compaction flush is best-effort: a failed flush loses only the
-    // newest queued writes; blocking compaction would lose far more.
+    // newest queued writes; blocking compaction would lose far more. The
+    // scratchpad flush is awaited because the resume read below reads the
+    // checkpoint log that flush appends to - unawaited, the pre-save could
+    // record the previous turn's pad, or none at all.
     fileMutationQueue.flushAll().catch(() => {});
-    flushPendingScratchpadWrites().catch(() => {});
+    await flushPendingScratchpadWrites().catch(() => {});
   } catch {
     // flush APIs themselves failed — compaction must still proceed
   }
@@ -89,31 +93,15 @@ function saveStateBeforeCompact(cwd: string, ctx: ExtensionContext): void {
     // No reader consumes either key; the fields both writers carry are the
     // ones the reader reads back.
     const slug = projectSlugFromCwd(cwd);
-    let goal: string | null = null;
-    let openPlans: Array<{ id: string; text: string }> = [];
-    let recentDecisions: Array<{ id: string; text: string }> = [];
-    // Prior state is a READ: the scratchpad root is resolved on every call, so
-    // a pinned run reads the tree the scratchpad writer wrote to, and a
-    // segment rename in the accessor moves this reader with the writer. A
-    // refused root (no absolute braid home) or a corrupt section degrades to
-    // no prior-state section instead of failing the resume write below.
-    try {
-      const scratchpadFile = path.join(scratchpadDir(), slug, "latest.json");
-      if (existsSync(scratchpadFile)) {
-        const content = readFileSync(scratchpadFile, "utf-8");
-        const parsed = JSON.parse(content);
-        goal = parsed.goal ?? null;
-        openPlans = (Array.isArray(parsed.plans) ? parsed.plans : [])
-          .filter((p: any) => !p.done)
-          .slice(0, 10)
-          .map((p: any) => ({ id: p.id ?? "", text: p.text ?? "" }));
-        recentDecisions = (Array.isArray(parsed.decisions) ? parsed.decisions : [])
-          .slice(-5)
-          .map((d: any) => ({ id: d.id ?? "", text: d.text ?? d.content ?? "" }));
-      }
-    } catch (err) {
-      log.debug(`scratchpad prior-state read failed: ${err}`);
-    }
+    // Prior state is a READ through the scratchpad store's own loader (the
+    // checkpoint log, not a hand-built path), so a schema or storage change
+    // in the store moves this reader with it. A refused root (no absolute
+    // braid home) or a corrupt section degrades to an empty prior-state
+    // section instead of failing the resume write below.
+    const resumeState = await readResumeScratchpadState(slug);
+    const goal = resumeState.goal;
+    const openPlans = resumeState.openPlans;
+    const recentDecisions = resumeState.recentDecisions;
 
     let uncommittedFiles: string[] = [];
     try {
@@ -188,7 +176,11 @@ function compactionEnabledPerCheck(ctx: ExtensionContext): boolean {
   }
 }
 
-function checkContextUsage(pi: ExtensionAPI, ctx: ExtensionContext, event: any): void {
+async function checkContextUsage(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  event: any,
+): Promise<void> {
   const state = getState(ctx);
   if (!state?.enforcementActive) return;
 
@@ -288,8 +280,10 @@ function checkContextUsage(pi: ExtensionAPI, ctx: ExtensionContext, event: any):
           : "percent";
       state.contextNudgeSent = true;
 
-      // Pre-save safety net before compaction
-      saveStateBeforeCompact((ctx as { cwd?: string }).cwd ?? "", ctx);
+      // Pre-save safety net before compaction. Awaited: the act arms right
+      // after, and the write must land before the compaction it protects
+      // against. ctx.compact itself is deferred to a macrotask below.
+      await saveStateBeforeCompact((ctx as { cwd?: string }).cwd ?? "", ctx);
 
       const kind = armHygieneAct(ctx, trigger, plan);
       if (!kind) {
@@ -440,7 +434,7 @@ function armHygieneAct(
 export function registerTurnEndHygiene(pi: ExtensionAPI): void {
   registerTurnEndHandler("turn-end-hygiene", 5, async (event, ctx) => {
     try {
-      checkContextUsage(pi, ctx, event);
+      await checkContextUsage(pi, ctx, event);
     } catch (err) {
       log.error("turn-end-hygiene error:", err);
     }
