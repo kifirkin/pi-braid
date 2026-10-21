@@ -8,10 +8,10 @@ Two changes against `turn-v1.py`, measured apart so each can be priced:
   handed to the device" timestamp. `--tts say` is the v1 control: `say -o` per
   clause, then `afplay`, with the player child first observed alive as the
   first-audio proxy.
-- `--end adaptive` asks `aqrec` for its floor-relative stop: the room floor is
-  measured in the first 160 ms of the session, the stop gate sits 8 dB over it,
-  and it may only fire after 300 ms of speech and 500 ms of quiet.
-  `--end window` is the fixed capture window v1 used.
+- `--end vad` asks `aqrec` for the silero v5.1.2 endpoint: a 512-sample frame
+  at or above 0.5 is speech, and the capture stops after 300 ms of frames
+  below it, with the fixed window as the cap. `--end adaptive` is the v2
+  energy rule; `--end window` is the fixed capture window v1 used.
 
 Capture, conversion, transcription and the four timestamps are the v1 code, so
 a difference is the lever and not the instrument.
@@ -48,7 +48,12 @@ AVSPEAK = os.path.join(HOME, "avspeak")
 SECONDS = float(os.environ.get("VOICE_SPIKE_SECONDS_V2", "3.2"))
 PREROLL = 0.25
 HANGOVER_MS = int(os.environ.get("VOICE_SPIKE_HANGOVER_MS", "500"))
-ARMS = {"say-window", "say-adaptive", "resident-window", "resident-adaptive"}
+VAD_MODEL = os.environ.get(
+    "VOICE_SPIKE_VAD_MODEL",
+    os.path.join(HOME, "whisper.cpp", "models", "ggml-silero-v5.1.2.bin"))
+VAD_HANGOVER_MS = int(os.environ.get("VOICE_SPIKE_VAD_HANGOVER_MS", "300"))
+ARMS = {"say-window", "say-adaptive", "resident-window", "resident-adaptive",
+        "resident-vad"}
 
 
 class Resident:
@@ -146,15 +151,20 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
     raw = os.path.join(OUT, f"cap-v2-{arm}-{index}.pcm")
     wav = os.path.join(OUT, f"cap-v2-{arm}-{index}.wav")
 
-    end_arg = [f"adaptive:{HANGOVER_MS}"] if end_kind == "adaptive" else []
+    end_arg = []
+    if end_kind == "adaptive":
+        end_arg = [f"adaptive:{HANGOVER_MS}"]
+    elif end_kind == "vad":
+        if not os.path.exists(VAD_MODEL):
+            raise SystemExit(f"no VAD model at {VAD_MODEL}; run fetch-vad-model.sh")
+        end_arg = [f"vad:{VAD_MODEL}:{VAD_HANGOVER_MS}"]
     t_capture_spawn = time.monotonic()
+    t_spawn_unix = time.time()
     capture = subprocess.Popen(
         [AQ, str(SECONDS), raw] + end_arg,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     time.sleep(PREROLL)
     player = subprocess.Popen(["afplay", stimulus_path])
-    player.wait()
-    t_player_exit = time.monotonic()
     _, capture_stderr = capture.communicate()
     t_capture_done = time.monotonic()
 
@@ -180,9 +190,12 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
     endpoint = v0.acoustic_end(wav)
 
     buffer_s = 0.02
-    t_audio_t0 = t_capture_spawn + aq.get("first_buffer_s", 0.0) - buffer_s
-    t_speech_end = (t_audio_t0 + endpoint["end_s"]
-                    if endpoint["end_s"] is not None else t_player_exit)
+    # The recorder stamps its own start on the wall clock; the parent's spawn
+    # time is not the child's start when the machine is loaded. Without this
+    # offset a slow child start shifts the whole capture and reads as latency.
+    child_start_s = aq.get("t0_unix", t_spawn_unix) - t_spawn_unix
+    t_audio_t0 = (t_capture_spawn + child_start_s
+                  + aq.get("first_buffer_s", 0.0) - buffer_s)
 
     if tts_kind == "say":
         parts = v1.clauses(answer)
@@ -201,6 +214,17 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
             k: v for k, v in rec.items() if k not in ("submit", "done")},
             "submit_ms": round((rec["submit"] - t_first_token) * 1000.0, 1)}
 
+    # The stimulus player's exit is a diagnostic, not a gate. afplay's audio
+    # ends at the stimulus's last sample, but the process lingers for 0.6-1.0 s;
+    # waiting for it before reading the capture charges the recorder for the
+    # player's tail and hides an early stop. Reap it here, after every clock
+    # the latency is made of.
+    player.wait()
+    t_player_exit = time.monotonic()
+    t_speech_end = (t_audio_t0 + endpoint["end_s"]
+                    if endpoint["end_s"] is not None else t_player_exit)
+    environment_after = session.snapshot()
+
     def ms(a, b):
         return round((b - a) * 1000.0, 1)
 
@@ -212,6 +236,7 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
         "stimulus_duration_s": meta["duration_s"],
         "marker_s": meta["marker_s"],
         "device": environment,
+        "device_after": environment_after,
         "reply": answer,
         "clauses": parts,
         "capture": {
@@ -220,13 +245,16 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
             "peak_dbfs": level["peak_dbfs"],
             "silent": level["silent"],
             "aqrec_first_buffer_s": round(aq.get("first_buffer_s", 0.0), 3),
+            "aqrec_child_start_s": round(child_start_s, 3),
             "window_s": SECONDS,
             "preroll_s": PREROLL,
         },
         "endpointing": {
-            "enabled": end_kind == "adaptive",
-            "end_ms": HANGOVER_MS if end_kind == "adaptive" else 0,
-            "mode": "adaptive-floor" if end_kind == "adaptive" else "window",
+            "enabled": end_kind in ("adaptive", "vad"),
+            "end_ms": (HANGOVER_MS if end_kind == "adaptive"
+                       else VAD_HANGOVER_MS if end_kind == "vad" else 0),
+            "mode": ("adaptive-floor" if end_kind == "adaptive"
+                     else "silero-vad" if end_kind == "vad" else "window"),
             "floor_db": aq.get("floor_db"),
             "peak_db": aq.get("peak_db"),
             "gate_db": aq.get("gate_db"),
@@ -235,13 +263,33 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
             "speech_frames": aq.get("speech_frames"),
             "quiet_frames": aq.get("quiet_frames"),
             "stop_s": aq.get("stop_s"),
-            "end_reason": aq.get("end_reason"),
+            "end_reason": ("window" if end_kind == "window"
+                           else aq.get("end_reason")),
+            "vad_model": aq.get("vad_model"),
+            "vad_threshold": aq.get("vad_threshold"),
+            "vad_hangover_ms": aq.get("vad_hangover_ms"),
+            "vad_init": aq.get("vad_init"),
+            "vad_init_ms": aq.get("vad_init_ms"),
+            "vad_frames": aq.get("vad_frames"),
+            "vad_speech_frames": aq.get("vad_speech_frames"),
+            "vad_probs_per_call": aq.get("vad_probs_per_call"),
+            "vad_max_p": aq.get("vad_max_p"),
+            "vad_last_p": aq.get("vad_last_p"),
+            "vad_last_speech_end_s": aq.get("vad_last_speech_end_s"),
+            "vad_stop_audio_s": aq.get("vad_stop_audio_s"),
+            "vad_failed": aq.get("vad_failed"),
         },
         "clipping": {
             "capture_s": level["duration_s"],
             "stimulus_s": meta["duration_s"],
             "expected_min_s": round(meta["duration_s"] - 0.1, 3),
             "clipped": bool(level["duration_s"] < meta["duration_s"] - 0.1),
+            "capture_end_minus_marker_ms": (
+                round((level["duration_s"] - endpoint["end_s"]) * 1000.0, 1)
+                if endpoint["end_s"] is not None else None),
+            "clipped_at_marker": bool(
+                endpoint["end_s"] is not None
+                and level["duration_s"] < endpoint["end_s"] - 0.1),
             "speech_end_s": endpoint["end_s"],
             "ends_before_stimulus_ms": (round((meta["duration_s"] - endpoint["end_s"]) * 1000.0, 1)
                                         if endpoint["end_s"] is not None else None),
@@ -263,8 +311,9 @@ def turn(index: int, arm: str, port: int, resident: Resident | None) -> dict:
                                if endpoint["end_s"] is not None else None),
             "recorder_exit_lag_ms": round(
                 (t_capture_done - (t_audio_t0 + level["duration_s"])) * 1000.0, 1),
-            "at_capture_edge": bool(endpoint["end_s"] is not None and
-                                    endpoint["end_s"] > level["duration_s"] - 0.05),
+            "at_capture_edge": bool(
+                endpoint["end_s"] is not None and endpoint.get("frames")
+                and round(endpoint["end_s"] / 0.02) >= endpoint["frames"]),
         },
         "stages_ms": {
             "speech_end_to_transcript": ms(t_speech_end, t_transcript),
