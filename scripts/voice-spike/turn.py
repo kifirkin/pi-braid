@@ -26,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import measured  # noqa: E402
 import rms  # noqa: E402
+import session  # noqa: E402
 
 HOME = os.environ.get("VOICE_SPIKE_HOME", os.path.join(HERE, ".work"))
 SRC = os.path.join(HOME, "whisper.cpp")
@@ -130,17 +131,18 @@ def acoustic_end(path: str, freq: float = 1000.0, win_s: float = 0.02,
             while j < len(levels) and levels[j] > threshold:
                 j += 1
             if j - i >= min_run:
-                runs.append(j)
+                runs.append((i, j))
             i = j
         else:
             i += 1
 
-    post = levels[runs[-1]:] if runs else levels
+    post = levels[runs[-1][1]:] if runs else levels
     median_level = statistics.median(levels) if levels else -120.0
     return {
         "method": f"last run of >={min_run} windows of {int(win_s * 1000)}ms "
                   f"with 1 kHz within {abs(margin_db):.0f} dB of its peak",
-        "end_s": round(runs[-1] * win_s, 3) if runs else None,
+        "end_s": round(runs[-1][1] * win_s, 3) if runs else None,
+        "start_s": round(runs[-1][0] * win_s, 3) if runs else None,
         "threshold_db": round(threshold, 1),
         "peak_tone_db": round(peak, 1),
         "post_end_tone_max_db": round(max(post), 1) if post else None,
@@ -154,6 +156,11 @@ def turn(index: int) -> dict:
     stimulus_path = os.path.join(OUT, "stimulus.wav")
     if not os.path.exists(stimulus_path):
         build_stimulus(STIMULUS, stimulus_path)
+
+    # Recorded, not asserted: the device pair and gain the audio went through,
+    # and the stimulus file itself. A latency without these is not comparable.
+    environment = session.snapshot()
+    meta = session.stimulus_meta(stimulus_path)
 
     raw = os.path.join(OUT, f"turn-{index}.pcm")
     wav = os.path.join(OUT, f"turn-{index}.wav")
@@ -223,7 +230,12 @@ def turn(index: int) -> dict:
 
     return {
         "run": index,
+        "config": "v0",
         "stimulus": STIMULUS,
+        "stimulus_sha256": meta["sha256"],
+        "stimulus_duration_s": meta["duration_s"],
+        "marker_s": meta["marker_s"],
+        "device": environment,
         "reply": answer,
         "capture": {
             "audio_s": level["duration_s"],
@@ -309,12 +321,10 @@ if __name__ == "__main__":
         sys.exit(0)
     index = int(sys.argv[sys.argv.index("--index") + 1]) if "--index" in sys.argv else 1
     result = turn(index)
+    meta = session.stimulus_meta(os.path.join(OUT, "stimulus.wav"))
+    session.verdict(result, meta)
     path = os.path.join(OUT, f"turn-{index}.json")
     with open(path, "w") as f:
         json.dump(result, f, indent=2)
     print(json.dumps(result, indent=2))
-    sys.exit(0 if (not result["capture"]["silent"]
-                  and result["stt"]["transcript"]
-                  and result["speech_end"]["end_s"] is not None
-                  and result["speech_end"]["tonal_snr_db"] >= 10
-                  and not result["speech_end"]["at_capture_edge"]) else 1)
+    sys.exit(0 if result["validity"]["ok"] else 1)

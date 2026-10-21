@@ -17,22 +17,61 @@ neither is installable.
 | `run-turn.sh` | three full turns, the four timestamps each, then medians |
 | `rms.py` | WAV level; digital silence is a failure, not a success |
 | `measured.py` | wall time and peak RSS for one child process |
-| `aqrec.m` | the capture layer (see below) |
+| `aqrec.m` | the capture layer (see below), with optional silence endpointing |
+| `audio-device.m` | reads and sets the system default input/output device, with transport and sample rate |
+| `session.py` | per-turn device/level snapshot, the marker correction, and whether a turn may be pooled |
+| `turn-v1.py` | one v1 turn: resident `whisper-server`, sentence-chunked overlapping TTS |
+| `run-batch.sh` | a batch across configurations, pinning and restoring gain and device pair |
 
-Build and artifacts stay outside git under `VOICE_SPIKE_HOME` (default
-`.work/`, ignored):
+Build and artifacts stay outside git under the build home (default `.work/`, ignored), which the
+scripts read from an exported environment variable; export it once and every command below picks it
+up.
+<!-- doc-ref-exempt: environment variable read by the shell scripts here, not an identifier in a source module -->
 
 ```
-VOICE_SPIKE_HOME=/tmp/voice-spike-build scripts/voice-spike/build.sh
-VOICE_SPIKE_HOME=/tmp/voice-spike-build scripts/voice-spike/fetch-model.sh
+scripts/voice-spike/build.sh
+scripts/voice-spike/fetch-model.sh
 ```
 
 Then set the input gain and run a turn:
 
 ```
 osascript -e 'set volume input volume 80'
-VOICE_SPIKE_HOME=/tmp/voice-spike-build scripts/voice-spike/run-turn.sh 3
+scripts/voice-spike/run-turn.sh 3
 ```
+
+## Measuring a batch
+
+`run-batch.sh` reads the input and output volume and the default device pair,
+pins them for the run, and puts all four back on every exit path. Pin the
+devices yourself when the machine may pick a different pair: a Bluetooth
+speaker becoming default turns the microphone into its 8 kHz headset mic, and
+nothing in a recording fails when that happens. The device pair, the gains and
+the endpoint hangover come from the environment, and the build home as above:
+
+```
+VOICE_SPIKE_DEVICE_IN=BuiltInMicrophoneDevice \
+VOICE_SPIKE_DEVICE_OUT=BuiltInSpeakerDevice \
+VOICE_SPIKE_OUTPUT_GAIN=35 \
+scripts/voice-spike/run-batch.sh 12 "v0 v1 v1b"
+```
+
+The build home, the device pair and both gains are the four facts a measurement
+is not comparable without; the batch prints what it found and what it restored
+for each of them.
+
+`v0` is `turn.py` untouched, one `whisper-cli` per utterance. `v1` is one
+resident `whisper-server` plus the reply split into sentences, the first played
+while the rest synthesises. `v1b` adds capture-side silence endpointing and
+wraps the PCM into a RIFF header in-process instead of forking `ffmpeg`.
+
+Each turn records `device`, `validity.ok` and `validity.reasons`, and only ok
+turns enter a percentile: a capture that recorded digital silence, a transcript
+that is `[MUSIC PLAYING]`, and a marker found at 0.4 s of a 3 s capture are
+all exits 0 in a harness that only looks for a non-empty string. Every latency
+is reported twice, once from the 1 kHz marker and once corrected by the
+marker's own span, because the marker is appended after the phrase and the
+detected end is therefore not the last speech energy.
 
 ## Two traps this code is built around
 

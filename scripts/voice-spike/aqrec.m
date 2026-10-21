@@ -6,12 +6,22 @@
 // The device is whatever the HAL reports as default. Selecting a microphone is
 // configuration, not a mechanism, and does not belong in this file.
 //
-// usage: aqrec SECONDS OUT.pcm     (16 kHz, mono, signed 16-bit LE)
+// usage: aqrec SECONDS OUT.pcm [END_MS]   (16 kHz, mono, signed 16-bit LE)
 // exit:  0 buffers arrived, 4 silence-shaped (no buffers)
+//
+// END_MS > 0 stops the recording END_MS of silence after speech instead of
+// waiting out the whole window. The gate sits 25 dB below the loudest frame
+// heard so far, and a stop requires 400 ms of frames above it first, so a
+// transient cannot clip a phrase and an endpointing that never fires leaves the
+// fixed window in place. The stop condition is reported (stop_s, gate_db,
+// end_reason) so a turn can show what it did rather than be trusted to have
+// endpointed correctly.
 #import <AudioToolbox/AudioToolbox.h>
 #import <Foundation/Foundation.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -21,10 +31,41 @@ static long gNeed;
 static double gT0;
 static int gFirstBuffer;
 
+static volatile int gStop;          // callback asks main to stop
+static int gQuietMs;                // trailing silence accumulated
+static int gQuietFrames;
+static int gSpeechFrames;
+static int gEndMs;                  // 0 disables endpointing
+static double gGateDb = -90.0;      // peak-relative, so it only ever fails safe
+static double gNoiseDb = 0.0;
+static double gPeakDb = -120.0;
+static int gArmed;                  // enough speech seen to allow a stop
+static int gCalibN;
+static int gCalibDone;
+
+// A stop needs 400 ms of frames above the gate first. A click or a door can be
+// loud for 20 ms; only sustained speech arms the hangover, so a spurious
+// transient costs a stop rather than a clipped phrase.
+#define ARM_FRAMES 20
+#define GATE_BELOW_PEAK_DB 25.0
+static double gCalib[8];            // first 160 ms, pre-playback room tone
+
 static double now_s(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+static int cmp_double(const void *a, const void *b) {
+  double x = *(const double *)a, y = *(const double *)b;
+  return (x > y) - (x < y);
+}
+
+static double frame_db(const short *s, int n) {
+  double energy = 0.0;
+  for (int i = 0; i < n; i++) energy += (double)s[i] * (double)s[i];
+  double rms = sqrt(energy / (n ? n : 1)) / 32768.0;
+  return rms > 0.0 ? 20.0 * log10(rms) : -120.0;
 }
 
 static void on_buffer(void *ud, AudioQueueRef q, AudioQueueBufferRef buf,
@@ -37,19 +78,65 @@ static void on_buffer(void *ud, AudioQueueRef q, AudioQueueBufferRef buf,
   }
   fwrite(buf->mAudioData, 1, buf->mAudioDataByteSize, gOut);
   gBytes += buf->mAudioDataByteSize;
+
+  if (gEndMs > 0 && !gStop) {
+    // Buffers are 640 bytes = 20 ms at 16 kHz, so the quiet run is a count.
+    int samples = (int)(buf->mAudioDataByteSize / 2);
+    double db = frame_db((const short *)buf->mAudioData, samples);
+    if (!gCalibDone) {
+      if (gCalibN < 8) gCalib[gCalibN] = db;
+      if (++gCalibN >= 8) {
+        qsort(gCalib, 8, sizeof(double), cmp_double);
+        gNoiseDb = 0.5 * (gCalib[3] + gCalib[4]);
+        gCalibDone = 1;
+      }
+    } else {
+      if (db > gPeakDb) gPeakDb = db;
+      // The gate follows the loudest frame heard so far, 25 dB down. A gate
+      // derived from the room floor alone sat above quiet speech frames on
+      // this path and ended captures mid-phrase; a gate this low can only fail
+      // by not stopping, which leaves the fixed window as the fallback.
+      gGateDb = gPeakDb - GATE_BELOW_PEAK_DB;
+      if (db > gGateDb) {
+        gSpeechFrames++;
+        gQuietFrames = 0;
+        gQuietMs = 0;
+        if (gSpeechFrames >= ARM_FRAMES) gArmed = 1;
+      } else if (gArmed) {
+        gQuietFrames++;
+        gQuietMs += 20;
+        if (gQuietMs >= gEndMs) {
+          gStop = 1;
+          fprintf(stderr, "noise_db=%.1f\n", gNoiseDb);
+          fprintf(stderr, "peak_db=%.1f\n", gPeakDb);
+          fprintf(stderr, "gate_db=%.1f\n", gGateDb);
+          fprintf(stderr, "speech_frames=%d\n", gSpeechFrames);
+          fprintf(stderr, "quiet_frames=%d\n", gQuietFrames);
+          fprintf(stderr, "stop_s=%.6f\n", now_s() - gT0);
+          fprintf(stderr, "end_reason=endpoint\n");
+        }
+      }
+    }
+  }
+
   if (gBytes < gNeed) AudioQueueEnqueueBuffer(q, buf, 0, NULL);
 }
 
 int main(int argc, char **argv) {
   @autoreleasepool {
     gT0 = now_s();
-    if (argc != 3) {
-      fprintf(stderr, "usage: aqrec SECONDS OUT.pcm\n");
+    if (argc < 3 || argc > 4) {
+      fprintf(stderr, "usage: aqrec SECONDS OUT.pcm [END_MS]\n");
       return 2;
     }
     double seconds = atof(argv[1]);
     if (seconds <= 0 || seconds > 120) {
       fprintf(stderr, "aqrec: seconds out of range\n");
+      return 2;
+    }
+    gEndMs = argc == 4 ? atoi(argv[3]) : 0;
+    if (gEndMs < 0 || gEndMs > (int)(seconds * 1000)) {
+      fprintf(stderr, "aqrec: END_MS out of range\n");
       return 2;
     }
     gNeed = (long)(seconds * 16000 * 2);
@@ -87,11 +174,22 @@ int main(int argc, char **argv) {
 
     // 0.5 s grace on top of the requested length, then give up; a missing
     // input volume still yields buffers, just zeros, so the caller checks RMS.
-    for (int i = 0; i < (int)(seconds * 20) + 100 && gBytes < gNeed; i++) usleep(50000);
+    for (int i = 0; i < (int)(seconds * 20) + 100 && gBytes < gNeed && !gStop; i++)
+      usleep(20000);
     AudioQueueStop(queue, true);
     fclose(gOut);
     AudioQueueDispose(queue, true);
 
+    if (gEndMs > 0 && !gStop) {
+      fprintf(stderr, "noise_db=%.1f\n", gNoiseDb);
+      fprintf(stderr, "peak_db=%.1f\n", gPeakDb);
+      fprintf(stderr, "gate_db=%.1f\n", gGateDb);
+      fprintf(stderr, "speech_frames=%d\n", gSpeechFrames);
+      fprintf(stderr, "quiet_frames=%d\n", gQuietFrames);
+      fprintf(stderr, "stop_s=%.6f\n", now_s() - gT0);
+      fprintf(stderr, "end_reason=window\n");
+    }
+    fprintf(stderr, "bytes_s=%.3f\n", gBytes / 32000.0);
     fprintf(stderr, "aqrec: bytes=%ld\n", gBytes);
     return gBytes > 0 ? 0 : 4;
   }
