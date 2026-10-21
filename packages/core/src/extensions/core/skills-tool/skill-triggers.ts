@@ -13,9 +13,13 @@
  *      carry the phrases here and nowhere else);
  *   3. the description's trailing "Triggers: …" segment, the pack's older
  *      convention.
- * A file may use any of them; the first source that yields phrases wins, so
- * the frontmatter stays authoritative and a body heading never silently
- * overrides it.
+ * A file may use any of them, and every source that yields phrases is read:
+ * the lists are MERGED in that order, so a phrase an author put in the body
+ * heading survives when frontmatter also declares some, and the frontmatter
+ * still outranks the rest. First-wins was the defect: agent-testing declares
+ * seven phrases in its description tail and five in its body heading, and
+ * precedence let the tail replace the heading, so the five never reached the
+ * matcher while the file said they had.
  *
  * A trigger hit scores like a name hit and qualifies a skill whose
  * description alone would stay under the qualification bar — the phrase is
@@ -31,19 +35,36 @@ import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 /**
  * Max trigger phrases read per skill — a longer list is an authoring bug, not a
- * matcher input. Two authored lists reach the cap (braid-reference 16,
- * pi-reference 15), so their tail phrases are not read: raising the cap needs
- * the assertion in test-skill-decision.mjs changed with it.
+ * matcher input. Three authored lists reach the cap: braid-reference (16
+ * phrases), pi-reference (15), and agent-testing, which fills it exactly (7 in
+ * the description tail + 5 in the body heading) now that the sources merge.
+ * The cap assertion lives in test-skill-triggers-body.mjs; raising the number
+ * means changing it there.
  */
 export const MAX_TRIGGERS = 12;
 
 /** Max characters of one trigger phrase. */
 export const MAX_TRIGGER_CHARS = 64;
 
+/**
+ * Where an authored phrase came from. Precedence (frontmatter, heading,
+ * description) orders the merged list and decides which source the cap cuts
+ * last; the label itself is what a ranking row reports as its evidence.
+ */
+export type TriggerSource = "frontmatter" | "heading" | "description";
+
+/** One authored phrase and the source that declared it. */
+export interface TriggerEntry {
+  phrase: string;
+  source: TriggerSource;
+}
+
 interface TriggerCacheEntry {
   mtimeMs: number;
   size: number;
-  triggers: string[];
+  /** The description the entries were merged with: a different one is a miss. */
+  description: string;
+  entries: TriggerEntry[];
 }
 
 const cache = new Map<string, TriggerCacheEntry>();
@@ -70,13 +91,28 @@ export function normalizeTriggers(value: unknown): string[] {
 }
 
 /**
- * Read a skill's trigger phrases: frontmatter (`trigger` or `triggers`) first,
- * then a `## trigger:` body heading, then the description's trailing
- * "Triggers: …" segment. Missing/unreadable file or malformed YAML → no
- * triggers (the matcher falls back to name/description scoring alone).
+ * Read a skill's trigger phrases from every source the file uses, merged in
+ * priority order: frontmatter (`trigger` or `triggers`), then a `## trigger:`
+ * body heading, then the description's trailing "Triggers: …" segment.
+ * Missing/unreadable file or malformed YAML → no frontmatter phrases, and the
+ * description tail is still read.
  * Memoized: unchanged files never re-read.
  */
 export function readSkillTriggers(filePath: string, description?: string): string[] {
+  return readSkillTriggerEntries(filePath, description).map((entry) => entry.phrase);
+}
+
+/**
+ * Read a skill's authored phrases WITH their provenance, merged in priority
+ * order: frontmatter (`trigger` or `triggers`), then a `## trigger:` body
+ * heading, then the description's trailing "Triggers: …" segment.
+ * Missing/unreadable file or malformed YAML → no frontmatter phrases, and the
+ * description tail is still read.
+ * Memoized: unchanged files never re-read (a different description argument is
+ * a miss, because the merged list depends on it).
+ */
+export function readSkillTriggerEntries(filePath: string, description?: string): TriggerEntry[] {
+  const desc = description ?? "";
   let st;
   try {
     st = statSync(filePath);
@@ -85,20 +121,54 @@ export function readSkillTriggers(filePath: string, description?: string): strin
     return [];
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.triggers;
-  let triggers: string[];
+  if (
+    cached &&
+    cached.mtimeMs === st.mtimeMs &&
+    cached.size === st.size &&
+    cached.description === desc
+  ) {
+    return cached.entries;
+  }
+  const sources: TriggerEntry[][] = [];
   try {
     const { frontmatter, body } = parseFrontmatter(readFileSync(filePath, "utf-8"));
     const fm = frontmatter as Record<string, unknown>;
-    triggers = normalizeTriggers(fm.trigger);
-    if (!triggers.length) triggers = normalizeTriggers(fm.triggers);
-    if (!triggers.length) triggers = parseBodyTriggers(body);
+    const label = (source: TriggerSource) => (phrase: string) => ({ phrase, source });
+    sources.push(
+      normalizeTriggers(fm.trigger).map(label("frontmatter")),
+      normalizeTriggers(fm.triggers).map(label("frontmatter")),
+      parseBodyTriggers(body).map(label("heading")),
+    );
   } catch {
-    triggers = []; // malformed frontmatter — score on name/description only
+    // Malformed frontmatter: the file sources yield nothing, and the
+    // description tail below is still read.
   }
-  if (!triggers.length && description) triggers = parseDescriptionTriggers(description);
-  cache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, triggers });
-  return triggers;
+  if (desc)
+    sources.push(
+      parseDescriptionTriggers(desc).map((phrase) => ({ phrase, source: "description" })),
+    );
+  const entries = mergeTriggerEntries(sources);
+  cache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, description: desc, entries });
+  return entries;
+}
+
+/**
+ * Merge authored phrase sources into one bounded list, in priority order.
+ *
+ * The cap is a budget spent down the list, so when it binds the LOWEST
+ * priority source is the one that loses phrases — a higher-priority source is
+ * never cut to make room for a later one. A phrase repeated by two sources
+ * keeps its first (highest-priority) source. Pure.
+ */
+export function mergeTriggerEntries(sources: TriggerEntry[][]): TriggerEntry[] {
+  const merged: TriggerEntry[] = [];
+  for (const source of sources) {
+    for (const entry of source) {
+      if (merged.length >= MAX_TRIGGERS) return merged;
+      if (!merged.some((kept) => kept.phrase === entry.phrase)) merged.push(entry);
+    }
+  }
+  return merged;
 }
 
 /** First `## trigger:` / `## triggers:` heading; a heading-shaped line cannot come from frontmatter. */

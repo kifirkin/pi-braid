@@ -15,11 +15,15 @@
  *      a signal: it fires broad skills on almost any prompt.
  *      Keywords are stemmed with one suffix rule (trailing s/es) so plural
  *      prompts hit singular name tokens ("skills" → "skill").
- *      Corpus-common words are gated out of the weak legs: a word present in
- *      COMMON_KEYWORD_DF or more of the cached skills' documents cannot tell
- *      skills apart, so description/path hits from it score nothing. Name and
- *      trigger hits are never gated — the skill's own identity vocabulary is
- *      what a prompt naming it looks like.
+ *      Corpus-common words are gated out of the weak legs AND out of the
+ *      name leg's prefix hits: a word present in COMMON_KEYWORD_DF or more of
+ *      the cached skills' documents cannot tell skills apart, so
+ *      description/path hits from it score nothing. A name hit is word-shaped
+ *      by construction — a whole name token, or the start of one — so a word
+ *      buried inside a coined token ("line" in placement-disc**line**) is not
+ *      a name hit at all. A whole-name-token hit and a trigger hit are never
+ *      gated: the skill's own identity vocabulary is what a prompt naming it
+ *      looks like, and a curated phrase is the author's signal.
  *   1b. Ranking: equal scores compare by more distinct matched signals, then
  *      by rarer evidence (lower summed document frequency), then by name.
  *      Alphabetical order alone decided which of two equally-scored skills
@@ -109,6 +113,7 @@ import {
   recordSessionStart,
 } from "./session-records.js";
 import { triggerMatches } from "./skill-triggers.js";
+import type { TriggerSource } from "./skill-triggers.js";
 
 const log = createLogger("skills-auto-inject");
 
@@ -159,7 +164,8 @@ export const MIN_NON_NAME_SCORE = 2;
  * A keyword present in this many skill documents or more is corpus-common: it
  * appears in a large share of the catalog (5 of 22 skills = 23%), so it cannot
  * distinguish one skill from another and contributes NOTHING to the weak legs
- * (description, catalog path).
+ * (description, catalog path) — or to the name leg's token-prefix rule, the one
+ * name hit that can rest on a shared word.
  *
  * The number is measured, not guessed. Two measurements, one threshold:
  *
@@ -286,6 +292,8 @@ export interface CachedSkill {
   disableModelInvocation?: boolean;
   /** Frontmatter trigger phrases (setCachedSkills resolves them from SKILL.md). */
   triggers?: string[];
+  /** Which source authored each phrase (the row's evidence label). */
+  triggerSources?: Record<string, TriggerSource>;
 }
 
 // Shared module-level variable rather than a per-module copy: the import
@@ -377,16 +385,56 @@ export interface SkillMatch {
   signals: number;
   /** Summed document frequency of the matched keywords — lower is rarer. */
   evidenceDf: number;
+  /** Strongest evidence behind the score; null when the skill did not qualify. */
+  reason: RelevanceReason | null;
 }
 
-const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0 };
+/**
+ * What the strongest evidence for a row was. Short on purpose: a ranking row
+ * says "trigger", not a sentence — the reader is choosing a read, not reading
+ * an explanation.
+ *
+ *   trigger     — an authored phrase from frontmatter or the description tail
+ *   heading     — an authored phrase from a `## trigger:` body heading
+ *   name        — a keyword in the skill's own name
+ *   description — a description or catalog-path keyword (the weak legs)
+ */
+export type RelevanceReason = "trigger" | "heading" | "name" | "description";
+
+/** Evidence strength for the row's single `reason` field. */
+const REASON_STRENGTH: Record<RelevanceReason, number> = {
+  trigger: 4,
+  heading: 3,
+  name: 2,
+  description: 1,
+};
+
+/**
+ * How a keyword occurs in a skill name: as a whole token, as the start of a
+ * longer token, or not at all.
+ *
+ * The third answer is the fix: the name leg used to award points to any
+ * substring anywhere in the name, so a corpus-common word ("line", df 7 of 22)
+ * scored +2 for placement-disc**line** and release-pi**peline** and carried the
+ * name-hit exemption from the qualification bar with it. A word buried inside
+ * a coined token names the author's coinage, not the prompt's subject; a word
+ * that starts a token still reads as the author's own vocabulary ("engine" in
+ * software-engineer).
+ */
+function nameOccurrence(tokens: string[], kw: string): "token" | "prefix" | null {
+  if (tokens.includes(kw)) return "token";
+  for (const token of tokens) if (token.length > kw.length && token.startsWith(kw)) return "prefix";
+  return null;
+}
+
+const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0, reason: null };
 
 /**
  * Score a skill against a set of keywords.
  *
  * Scoring rules:
- *   +3  skill name contains a keyword (exact match)
- *   +2  skill name contains a keyword as substring
+ *   +3  skill name carries a keyword as a whole token (exact match)
+ *   +2  skill name starts a token with a keyword, below the frequency gate
  *   +2  a trigger phrase occurs in the prompt (word-bounded)
  *   +1  skill description contains a keyword
  *   +1  the skill's own catalog path contains a keyword (e.g. "research" in
@@ -397,8 +445,11 @@ const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0 };
  *
  * `keywordDf` is the corpus document frequency of the prompt's keywords (see
  * corpusKeywordFrequency). A keyword at COMMON_KEYWORD_DF or above scores
- * nothing on the weak legs; passing no map scores every keyword at full weight
- * (the pre-rarity behavior, which the unit fixtures pin).
+ * nothing on the weak legs, and nothing on the name leg's token-prefix rule:
+ * a common word that only starts a token ("line" in "line-counting") is
+ * vocabulary the catalog shares, not the skill's own. Passing no map scores
+ * every keyword at full weight (the pre-rarity behavior, which the unit
+ * fixtures pin).
  *
  * Qualification bar: a skill whose match never touches its NAME (description
  * and/or filePath hits only) must reach a total score of at least
@@ -421,7 +472,12 @@ export function matchSkill(
   let signals = 0;
   let evidenceDf = 0;
   let nameHit = false;
+  let reason: RelevanceReason | null = null;
+  const noteReason = (candidate: RelevanceReason) => {
+    if (!reason || REASON_STRENGTH[candidate] > REASON_STRENGTH[reason]) reason = candidate;
+  };
   const name = skill.name.toLowerCase();
+  const nameTokens = name.split(/[^a-z0-9]+/).filter(Boolean);
   const desc = skill.description.toLowerCase();
   const path = skill.filePath.toLowerCase().split(/[\\/]/).filter(Boolean).slice(-2).join("/");
   const dfOf = (kw: string) => keywordDf?.get(kw) ?? 0;
@@ -431,26 +487,32 @@ export function matchSkill(
       score += 2;
       signals++;
       nameHit = true;
-      // A curated phrase is the rarest evidence a skill can offer: df 0.
+      // A curated phrase is the rarest evidence a skill can offer: df 0. Its
+      // provenance is what the row reports as its evidence label.
+      noteReason(skill.triggerSources?.[trig] === "heading" ? "heading" : "trigger");
     }
   }
 
   for (const kw of keywords) {
     const df = dfOf(kw);
-    // Exact token match in name
-    if (name.split(/[^a-z0-9]+/).includes(kw)) {
+    const occurrence = nameOccurrence(nameTokens, kw);
+    // Exact token match in name: the skill's own identity vocabulary, never gated.
+    if (occurrence === "token") {
       score += 3;
       signals++;
       nameHit = true;
       evidenceDf += df;
+      noteReason("name");
       continue;
     }
-    // Substring match in name (catches compound names like "code-search")
-    if (name.includes(kw)) {
+    // Token-prefix match in name ("engine" in "software-engineer"): name
+    // evidence, but only while the word is distinctive enough to mean it.
+    if (occurrence === "prefix" && df < COMMON_KEYWORD_DF) {
       score += 2;
       signals++;
       nameHit = true;
       evidenceDf += df;
+      noteReason("name");
       continue;
     }
     // Corpus-common keyword: the weak legs score nothing for it, so a prompt
@@ -471,11 +533,12 @@ export function matchSkill(
     if (weakHit) {
       signals++;
       evidenceDf += df;
+      noteReason("description");
     }
   }
 
   if (!nameHit && score < MIN_NON_NAME_SCORE) return NO_MATCH;
-  return { score, signals, evidenceDf };
+  return { score, signals, evidenceDf, reason };
 }
 
 /** The score alone (see matchSkill for the rules and the rarity gate). */
@@ -501,7 +564,22 @@ export interface ScoredSkill {
 }
 
 /**
+ * The ranking comparator, shared by the whisper's selection and the catalog
+ * read: score, then breadth of match (distinct signals), then rarity of the
+ * evidence (summed document frequency), then name. Pure.
+ */
+function compareScored(a: ScoredSkill, b: ScoredSkill): number {
+  return (
+    b.score - a.score ||
+    (b.signals ?? 0) - (a.signals ?? 0) ||
+    (a.evidenceDf ?? 0) - (b.evidenceDf ?? 0) ||
+    a.skill.name.localeCompare(b.skill.name)
+  );
+}
+
+/**
  * Decide which scored skills to suggest given the session injection state.
+ *
  * Pure — mirrors the handler's decision path so it can be unit-tested:
  *   sort (score desc, distinct signals desc, evidence df asc, name asc) →
  *   cooldown filter (global floor + per-skill loaded extension) → slot budget
@@ -523,13 +601,7 @@ export function selectSuggestions(
 ): ScoredSkill[] {
   if (!scored.length) return [];
 
-  const sorted = [...scored].sort(
-    (a, b) =>
-      b.score - a.score ||
-      (b.signals ?? 0) - (a.signals ?? 0) ||
-      (a.evidenceDf ?? 0) - (b.evidenceDf ?? 0) ||
-      a.skill.name.localeCompare(b.skill.name),
-  );
+  const sorted = [...scored].sort(compareScored);
 
   const available = sorted.filter((s) => !onCooldown(s.skill.name, injected, currentTurn));
   if (!available.length) return [];
@@ -541,6 +613,106 @@ export function selectSuggestions(
   if (slotBudget <= 0) return [];
 
   return available.slice(0, slotBudget);
+}
+
+// Deterministic ranking for the catalog read
+
+/**
+ * Declared margin: a gap smaller than this between the first and second
+ * qualified skill means the top is a coin flip, and the read says so
+ * (`thin-margin`) instead of presenting the order as a decision. The number is
+ * deliberate, not measured: one description keyword (+1) is exactly the
+ * distance the scorer says is too weak to qualify a skill on its own
+ * (MIN_NON_NAME_SCORE), so a lead that one extra weak hit could erase is not a
+ * lead.
+ */
+export const RANK_MARGIN_THRESHOLD = 2;
+
+/**
+ * A task text shorter than this cannot carry a ranking signal: a greeting or a
+ * two-word nudge names no domain, so the deterministic tier reports itself
+ * short rather than confidently wrong.
+ */
+export const RANK_SHORT_TASK_CHARS = 24;
+
+/** Why the deterministic tier answered the way it did. */
+export type RankingBasis =
+  | "no-task"
+  | "short-task"
+  | "no-score"
+  | "unambiguous"
+  | "tie"
+  | "thin-margin";
+
+/** One skill as the ranking read consumes it: match evidence plus its label. */
+export interface RankedSkill {
+  skill: CachedSkill;
+  score: number;
+  signals: number;
+  evidenceDf: number;
+  reason: RelevanceReason | null;
+}
+
+/** The deterministic tier's whole answer: an ordered list and a verdict on it. */
+export interface DeterministicRanking {
+  /** Qualified skills only, best first (the order the whisper ranks by). */
+  ranked: RankedSkill[];
+  /** True when the list cannot separate its own top — the escalation trigger. */
+  ambiguous: boolean;
+  basis: RankingBasis;
+}
+
+/**
+ * Rank the catalog against a task text without a model. Pure given the cache.
+ *
+ * Ordering is the whisper's comparator (score, then distinct signals, then
+ * summed evidence df, then name) so the two surfaces can never disagree about
+ * which skill is better. `ambiguous` is the one thing the whisper does not
+ * need: it decides every turn with slots and cooldowns, while a catalog read
+ * shows the whole list and therefore must say when its own top is not decided
+ * (a tie or a thin margin) or when the task text could not inform it at all.
+ *
+ * The verdict:
+ *   no-task      — no task text at all; nothing to rank.
+ *   short-task   — the text carries no significant keyword, or is shorter than
+ *                  RANK_SHORT_TASK_CHARS: nothing here can rank a catalog.
+ *   no-score     — every skill scored zero: unambiguous (nothing applies).
+ *   tie          — the top two score the same: ambiguous.
+ *   thin-margin  — the top two sit closer than RANK_MARGIN_THRESHOLD: ambiguous.
+ *   unambiguous  — one skill leads the field by at least the margin.
+ */
+export function rankSkillsDeterministic(
+  skills: CachedSkill[],
+  taskText: string,
+): DeterministicRanking {
+  const text = (taskText ?? "").trim();
+  if (!text) return { ranked: [], ambiguous: false, basis: "no-task" };
+  const keywords = extractKeywords(text);
+  const ranked: RankedSkill[] = [];
+  if (keywords.length) {
+    const keywordDf = corpusKeywordFrequency(keywords, skills);
+    for (const skill of skills) {
+      const match = matchSkill(skill, keywords, text, keywordDf);
+      if (match.score <= 0) continue;
+      ranked.push({
+        skill,
+        score: match.score,
+        signals: match.signals,
+        evidenceDf: match.evidenceDf,
+        reason: match.reason,
+      });
+    }
+  }
+  ranked.sort(compareScored);
+  if (text.length < RANK_SHORT_TASK_CHARS || !keywords.length) {
+    return { ranked, ambiguous: true, basis: "short-task" };
+  }
+  if (!ranked.length) return { ranked, ambiguous: false, basis: "no-score" };
+  if (ranked.length === 1) return { ranked, ambiguous: false, basis: "unambiguous" };
+  const margin = ranked[0].score - ranked[1].score;
+  if (margin === 0) return { ranked, ambiguous: true, basis: "tie" };
+  if (margin < RANK_MARGIN_THRESHOLD) return { ranked, ambiguous: true, basis: "thin-margin" };
+  return { ranked, ambiguous: false, basis: "unambiguous" };
 }
 
 /**

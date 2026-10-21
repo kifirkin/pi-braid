@@ -85,6 +85,18 @@ interface BraidConfig {
     closeGateWellFormedness?: string;
   };
   /**
+   * Skills-layer config. `ranking` picks the tier policy of the `list_skills`
+   * relevance ranking: "auto" (default: the deterministic scorer answers, and
+   * the utility model is asked only when that answer is ambiguous), "keyword"
+   * (never call the model), "model" (always).
+   *
+   * Example: "braid": { "skills": { "ranking": "keyword" } }
+   */
+  skills?: {
+    /** "auto" | "keyword" | "model" — an unknown value falls back to "auto". */
+    ranking?: string;
+  };
+  /**
    * Memory-layer config. Review-before-write quality gate on durable episode
    * writes: `writeGate` controls the per-site policies (repair/dedupe/reject)
    * and the heartbeat cooldown. Defaults live in
@@ -554,6 +566,40 @@ export function getOwnerTimeZone(): string {
   const settings = readSettings();
   const tz = settings.braid?.timezone;
   return typeof tz === "string" && tz.trim() ? tz.trim() : DEFAULT_TIME_ZONE;
+}
+
+// ── skills ranking (braid.skills.ranking) ──────────────────────────────────
+
+/**
+ * Which tier may answer the `list_skills` relevance ranking.
+ *
+ *   keyword — the deterministic scorer answers (the only implemented value;
+ *             the default).
+ *   auto    — reserved: the policy wrote down for a model tier that would
+ *             answer only on an ambiguous deterministic verdict. Measured and
+ *             not kept, so it currently evaluates to the keyword path.
+ *   model   — reserved: the model answers whenever a task text exists. Same
+ *             status as "auto".
+ */
+export type SkillsRankingMode = "auto" | "keyword" | "model";
+
+export const SKILLS_RANKING_DEFAULT: SkillsRankingMode = "keyword";
+
+/**
+ * Resolve the ranking mode from a raw setting value. Unknown or malformed
+ * values fall back to the default rather than guessing: a typo must not turn a
+ * cheap catalog read into anything else. Pure.
+ */
+export function resolveSkillsRankingMode(raw: unknown): SkillsRankingMode {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return value === "keyword" || value === "model" || value === "auto"
+    ? (value as SkillsRankingMode)
+    : SKILLS_RANKING_DEFAULT;
+}
+
+/** Read braid.skills.ranking from settings.json (default: "keyword"). */
+export function getSkillsRankingMode(): SkillsRankingMode {
+  return resolveSkillsRankingMode(readSettings().braid?.skills?.ranking);
 }
 
 // ── stale toolResult offload (braid.context.staleToolResultOffload) ────

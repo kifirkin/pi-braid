@@ -172,6 +172,37 @@ test("a corpus-common word still scores when it is the skill's own name", () => 
   assert.ok(matchSkill(usage, ["skill"], "", df).score >= 3);
 });
 
+test("a generic word buried inside a name is not a name hit", () => {
+  // "line" is corpus-common (df 7 of 22) and sits inside two coined names:
+  // placement-disc**line** and release-pi**peline**. The name leg used to award
+  // both +2 plus the bar exemption for it, so a prompt about a line of install
+  // text bought a slot from a skill about packaging. Neither is a name hit now.
+  const keywords = ["line"];
+  const df = corpusKeywordFrequency(keywords, skills);
+  assert.ok((df.get("line") ?? 0) >= COMMON_KEYWORD_DF, "the probe word must be corpus-common");
+  for (const name of ["placement-discipline", "release-pipeline"]) {
+    const skill = byName.get(name);
+    assert.ok(skillCorpusDocument(skill).includes("line"), `${name} no longer contains the probe`);
+    assert.equal(matchSkill(skill, keywords, "", df).score, 0, `${name} still scores on "line"`);
+  }
+});
+
+test("a generic word that only starts a name token is gated too", () => {
+  // The token-prefix rule is the name leg's other reachable form ("engine" in
+  // software-engineer). It reads as the author's vocabulary only while the
+  // word is rare enough to mean something: a prompt's throwaway word that
+  // happens to start a token is not identity evidence.
+  const skill = mkSkill("liner-notes", "unrelated text");
+  const common = corpusKeywordFrequency(["line"], skills);
+  assert.ok((common.get("line") ?? 0) >= COMMON_KEYWORD_DF);
+  assert.equal(matchSkill(skill, ["line"], "", common).score, 0, "common prefix must not qualify");
+  assert.equal(scoreSkill(skill, ["line"]), 2, "without a frequency map the prefix still scores");
+  const rareSkill = mkSkill("benchmarking-harness", "unrelated text");
+  const rare = corpusKeywordFrequency(["benchmark"], skills);
+  assert.ok((rare.get("benchmark") ?? 0) < COMMON_KEYWORD_DF, "the probe word must be rare");
+  assert.equal(matchSkill(rareSkill, ["benchmark"], "", rare).score, 2, "a rare prefix qualifies");
+});
+
 test("no admission in the sample prompt's turn rests on common words alone", () => {
   // The gate exists so a prompt full of catalog vocabulary cannot buy a slot:
   // every skill that still qualifies must rest on a name, a trigger, or a rare
