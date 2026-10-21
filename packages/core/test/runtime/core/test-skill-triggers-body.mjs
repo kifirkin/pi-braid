@@ -11,6 +11,14 @@
  *
  * Matching is pinned here too: phrases are lowercase, prompts are not.
  *
+ * Every declaring source is read and the lists MERGE (frontmatter, then body
+ * heading, then description tail): source precedence orders the merged list
+ * and decides which source the cap cuts last — it never drops an authored
+ * phrase on its own. The case that proved it is agent-testing, which declares
+ * seven phrases in its description tail and five in its body heading; under
+ * first-wins the body heading replaced the tail, so the seven never reached
+ * the matcher.
+ *
  * Run: npm test -w packages/core
  */
 
@@ -138,6 +146,30 @@ test("the phrases are the ones each heading declares", () => {
   }
 });
 
+test("a skill that declares two sources carries both", () => {
+  // agent-testing is the case first-wins hid: seven description phrases (its
+  // tail) and five body-heading phrases, one of them shared. Under precedence
+  // the body heading replaced the tail and the tail's phrases never existed.
+  const agentTesting = byName.get("agent-testing");
+  for (const phrase of ["agent benchmark", "rpc mode", "agent event parsing"]) {
+    assert.ok(
+      agentTesting.triggers.includes(phrase),
+      `description-tail phrase "${phrase}" is unread: [${agentTesting.triggers.join(", ")}]`,
+    );
+  }
+  for (const phrase of ["benchmarking", "evaluating agent configurations"]) {
+    assert.ok(
+      agentTesting.triggers.includes(phrase),
+      `body-heading phrase "${phrase}" is unread: [${agentTesting.triggers.join(", ")}]`,
+    );
+  }
+  assert.equal(
+    agentTesting.triggers.filter((t) => t === "tool execution verification").length,
+    1,
+    "a phrase both sources declare is kept once",
+  );
+});
+
 test("parseBodyTriggers reads the first heading, strips quotes, takes both spellings", () => {
   assert.deepEqual(parseBodyTriggers('intro\n\n## trigger: "alpha, beta"\n\n## trigger: "gamma"'), [
     "alpha",
@@ -149,7 +181,7 @@ test("parseBodyTriggers reads the first heading, strips quotes, takes both spell
   assert.deepEqual(parseBodyTriggers("no heading here"), []);
 });
 
-test("frontmatter stays authoritative over a body heading", () => {
+test("frontmatter outranks a body heading, and every declaring source is read", () => {
   clearSkillTriggerCache();
   const dir = mkdtempSync(join(tmpdir(), "braid-trigger-body-"));
   try {
@@ -159,7 +191,9 @@ test("frontmatter stays authoritative over a body heading", () => {
       '---\nname: both\ndescription: d\ntrigger: "from frontmatter"\n---\n\n## trigger: "from body"\n',
       "utf-8",
     );
-    assert.deepEqual(readSkillTriggers(both), ["from frontmatter"]);
+    // Merged, frontmatter first: precedence decides ORDER and which source the
+    // cap cuts last, never whether an authored phrase is read at all.
+    assert.deepEqual(readSkillTriggers(both), ["from frontmatter", "from body"]);
 
     const bodyOnly = join(dir, "body.md");
     writeFileSync(bodyOnly, '---\nname: body\ndescription: d\n---\n\n## trigger: "only body"\n', "utf-8");
@@ -201,16 +235,17 @@ test("most of the catalog now carries phrases", () => {
   assert.ok(carrying >= 15, `only ${carrying} skills carry phrases`);
 });
 
-test("the phrase cap holds, and the two lists that hit it are named", () => {
-  // Reading a body heading made these lists visible for the first time; two are
-  // longer than the cap, so their tail phrases stay unread until the cap moves
-  // (which also moves the cap assertion in test-skill-decision.mjs).
+test("the phrase cap holds, and the three lists that reach it are named", () => {
+  // Merging the sources made every authored phrase visible, so three lists now
+  // spend the whole budget (braid-reference 16 and pi-reference 15 are cut;
+  // voice-replies fills it exactly). agent-testing lands on 11 because its two
+  // sources share "tool execution verification" — the dedup keeps one copy.
   assert.ok(skills.every((s) => s.triggers.length <= MAX_TRIGGERS));
   const atCap = skills
     .filter((s) => s.triggers.length === MAX_TRIGGERS)
     .map((s) => s.name)
     .sort();
-  assert.deepEqual(atCap, ["braid-reference", "pi-reference"]);
+  assert.deepEqual(atCap, ["braid-reference", "pi-reference", "voice-replies"]);
 });
 
 // ── matching ───────────────────────────────────────────────────────────────

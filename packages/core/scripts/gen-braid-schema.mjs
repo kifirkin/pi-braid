@@ -81,6 +81,7 @@ const CONST_SOURCES = {
   TERMINAL_BREAKER_DEFAULT_THRESHOLD: SETTINGS,
   OVER_CORRECTION_GATE_DEFAULTS: SETTINGS,
   CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS: SETTINGS,
+  SKILLS_RANKING_DEFAULT: SETTINGS,
   PRESGUARD_DEFAULT_ENABLED: "packages/providers/presend-guard.ts",
   DEFAULT_PROBE_FRESHNESS_MS: "packages/providers/ring-lifecycle.ts",
   DEFAULT_OUTAGE_CONFIG: "packages/providers/outage-watch.ts",
@@ -224,6 +225,14 @@ const MECHANICAL_ROWS = [
     description: "Terminal-class errors before timer wakes stop starting turns.",
     read: { file: SETTINGS, line: 1071, evidence: "readSettings().braid?.session?.terminalBreaker" },
     mech: { const: "TERMINAL_BREAKER_DEFAULT_THRESHOLD", prop: null },
+  },
+  {
+    path: "braid.skills.ranking",
+    type: "string",
+    description:
+      "Tier policy for the list_skills relevance ranking (keyword; auto/model reserved).",
+    read: { file: SETTINGS, line: 602, evidence: "readSettings().braid?.skills?.ranking" },
+    mech: { const: "SKILLS_RANKING_DEFAULT", prop: null },
   },
   {
     path: "braid.telegram.sendMaxChars",
