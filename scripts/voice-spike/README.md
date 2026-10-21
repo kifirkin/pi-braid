@@ -89,17 +89,17 @@ WAV, which it does fine. If the agent is ever launched in the GUI session,
 
 ## Reading the numbers
 
-- `speech_end` is the end of the last 20 ms window in the capture that rises
+- `speech_end` <!-- doc-ref-exempt: JSON field name of a turn record, not a source identifier --> is the end of the last 20 ms window in the capture that rises
   10 dB above the median of the capture's trailing 300 ms, anchored to the
   monotonic time the capture started. It is not the player's exit: `afplay`
   exits 1.0-1.7 s after its last sample (a 0.4 s tone takes 2.7 s to "play"),
   so the player's exit would flatter every downstream number. The capture
   envelope is what the microphone heard, which is what the next stage reacts to.
-- `transcript_ready` is when `whisper-cli` exited. That includes the model load,
+- `transcript_ready` <!-- doc-ref-exempt: JSON field name of a turn record, not a source identifier --> is when `whisper-cli` exited. That includes the model load,
   because this variant spawns one process per utterance.
-- `first_token` is when the stub answer string was produced. It is a stub: no
+- `first_token` <!-- doc-ref-exempt: JSON field name of a turn record, not a source identifier --> is when the stub answer string was produced. It is a stub: no
   model call, no network. It measures the boundary, not an LLM.
-- `first_audio` is when the `afplay` child was first observed alive, roughly
+- `first_audio` <!-- doc-ref-exempt: JSON field name of a turn record, not a source identifier --> is when the `afplay` child was first observed alive, roughly
   15 ms after spawn. A 1 kHz tone recorded through the microphone became
   audible within 20-30 ms of spawn, so this proxy is close; it still proves the
   player started rather than a sample reaching the device.
@@ -136,5 +136,5 @@ distribution. Silero's ggml model, the brief's preferred instrument, could not
 be used: the only ggml VAD on this machine is a test fixture, and on this input
 it reports speech probabilities of 0.85-1.00 through the noise-only tail while
 reporting at most 0.33 through a whole speech capture. The fixed window
-therefore stays the default and every turn records `end_reason`, so a batch
+therefore stays the default and every turn records `end_reason` <!-- doc-ref-exempt: JSON field name of a turn record, not a source identifier -->, so a batch
 shows whether a detector fired or was merely requested.
