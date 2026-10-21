@@ -40,7 +40,7 @@ import {
 } from "./project-docs-section.js";
 import { setCachedSkills, getCachedVisibleSkillNames } from "../skills-tool/index.js";
 import { reconstructMemorySection, resetMemorySectionCache } from "./memory-section.js";
-import { gatherInstanceData } from "./instance-composition.js";
+import { gatherInstanceData, renderCompactInstance } from "./instance-composition.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { formatLocalTime } from "../../../lib/utils/local-time.js";
 import { flushRecoveredFires } from "../../../extensions/scheduling/timer/wake-retry.js";
@@ -434,7 +434,10 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       } catch {
         /* already init'd or non-fatal */
       }
-      memoryCount = memory.getAll(3).length;
+      // getAll(limit) slices the in-memory store, so a small limit turned the
+      // rendered memory count into a floor of 3. The instance line reports a
+      // true count: ask for the whole store.
+      memoryCount = memory.getAll(Number.MAX_SAFE_INTEGER).length;
     } catch {
       /* memory unavailable - non-fatal */
     }
@@ -480,9 +483,12 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
     // Build the prompt as a flat list of sections. Every section is a
     // `PromptSection`; the top-level handler never touches raw strings
     // or arrays of strings.
-    // Instance: compact 1-line orientation (version/cwd/session at a
-    // glance); full data via the system_info tool. The agent should not
-    // need a tool call to discover its own version/cwd/session.
+    // Instance: compact one-line orientation (build + install root, model,
+    // PID, session, resource counts); full data stays in the system_info
+    // tool. The block carries process-stable facts only: the system prompt
+    // is a cached prefix, so a field that changes between turns (a clock,
+    // elapsed time, turn or tool counters, context size) would invalidate
+    // that prefix on every request and cost more than the field is worth.
     const instanceData = await gatherInstanceData(pi, ctx, {
       skillCount: skills.length,
       skillDirs,
@@ -493,8 +499,7 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       })),
       memoryCount,
     });
-    const sessionId = ctx.sessionManager?.getSessionId() ?? "";
-    const compactInstanceLine = `Agent: Braid v${instanceData.braidVersion} (over pi-core v${instanceData.pi.version}) | Cwd: ${instanceData.cwd} | Session: ${sessionId}`;
+    const compactInstanceLine = renderCompactInstance(instanceData);
     // Discovery & exploration stance. Guarded by tool availability: each
     // line only appears when its tools exist; the stance paragraph is
     // unconditional. Placed after guidelines, before tools — a stance, not

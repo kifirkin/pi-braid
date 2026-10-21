@@ -1,14 +1,24 @@
 /**
- * Instance Composition: renders the full Instance block (Agent + pi-core
- * version, runtime paths, OS/PID, session, extension packages, other pi
- * instances) on demand via renderInstance (system_info tool); the prompt
- * carries only a compact one-line orientation (version | cwd | session).
- * Invariants: "Root" = pi-core's npm package folder; packages come from
- * the settings `packages` field (project / user-global, pi-core
- * precedence), never a sibling walk; pi-core version resolves from the
- * running pi binary; skills+memory live in memory-section.ts / the list_skills
- * tool; output
- * never contains internal module paths or "->".
+ * Instance Composition: two renders over the same gathered data.
+ *
+ * renderInstance is the full block (versions, runtime paths, OS/PID,
+ * session stats, extension packages, other pi instances) served on demand by
+ * the system_info tool. renderCompactInstance is the one-line orientation in
+ * the system prompt (braid version + install root, model, PID, session id,
+ * resource counts).
+ *
+ * Volatility rule: the system prompt is a cached prefix, so the compact line
+ * may carry only process-stable facts. A timestamp, elapsed time, turn count,
+ * tool average or context size would rewrite the prefix on every request and
+ * cost more than the field is worth; those facts stay in the system_info
+ * tool, which is a fresh turn by construction.
+ *
+ * Invariants: "Core" = pi-core's npm package folder, "braid root" = the
+ * loaded pi-braid package folder; packages come from the settings `packages`
+ * field (project / user-global, pi-core precedence), never a sibling walk;
+ * pi-core version resolves from the running pi binary; skills+memory live in
+ * memory-section.ts / the list_skills tool; output never contains internal
+ * module paths or "->".
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -175,7 +185,10 @@ function readBraidVersion(): { version: string; root: string } {
   } catch {
     // fall through
   }
-  return { version: "unknown", root: process.cwd() };
+  // No cwd fallback: the compact line renders this path as the braid root,
+  // and a cwd there would read as a real install while duplicating the
+  // pi-injected <cwd>. An unresolved root is the honest value.
+  return { version: "unknown", root: "" };
 }
 
 // Discovers all `pi` processes running on the system (including the current
@@ -328,8 +341,14 @@ export interface InstanceContext {
 /** Exported for system-info-tool — the full Instance data shape. */
 export interface InstanceData {
   braidVersion: string;
+  /** Folder of the running pi-braid package (where the loaded build lives).
+   *  Empty when resolution failed. */
+  braidRoot: string;
   /** Resolved pi-core info (version + npm package folder). */
   pi: PiVersionInfo;
+  /** Session model as pi sees it (provider + model id); null when the
+   *  runtime has no model selected. */
+  model: { provider: string; id: string } | null;
   /** Userland pi settings directory (~/.pi/agent or
    *  PI_CODING_AGENT_DIR override). The agent uses this to find
    *  its own settings, skills, memory, and session files. */
@@ -371,7 +390,7 @@ export async function gatherInstanceData(
   instanceCtx: InstanceContext,
 ): Promise<InstanceData> {
   const pi = discoverRunningPi();
-  const braid = readBraidVersion();
+  const { version: braidVersion, root: braidRoot } = readBraidVersion();
   const session = gatherL1Environment(_pi, ctx);
   const topLevelExtensions = discoverTopLevelExtensions();
   const osInfo = {
@@ -388,8 +407,10 @@ export async function gatherInstanceData(
   };
   const otherPiInstances = discoverOtherPiInstances();
   return {
-    braidVersion: braid.version,
+    braidVersion,
+    braidRoot,
     pi,
+    model: ctx.model ? { provider: String(ctx.model.provider), id: ctx.model.id } : null,
     settingsDir: getAgentDir(),
     os: osInfo,
     cwd: process.cwd(),
@@ -416,6 +437,37 @@ export async function instanceSection(
     name: "instance",
     render: async () => renderInstance(data),
   };
+}
+
+/**
+ * The compact Instance line for the system prompt.
+ *
+ * One field per question the agent would otherwise spend a tool call on:
+ *
+ *   Agent    which braid and pi-core build is answering?
+ *   Root     which pi-braid folder is loaded (stale local install vs global)?
+ *   Model    which provider/model will the next request go to?
+ *   PID      which OS process is this session, for ps/lock checks?
+ *   Session  which session file holds this transcript?
+ *   Resources  did the skill pack and memory stores load at all?
+ *
+ * A field answering only "nice to know" does not belong here, and neither
+ * does anything volatile: see the volatility rule in the module docstring.
+ * The block is process-stable by construction, so it renders byte-identical
+ * on every turn and the provider prefix cache holds across the session.
+ */
+export function renderCompactInstance(d: InstanceData): string {
+  const model = d.model ? `${d.model.provider}/${d.model.id}` : "(unset)";
+  const skills = `${d.skillCount} skill${d.skillCount === 1 ? "" : "s"}`;
+  const memories = `${d.memoryCount} memor${d.memoryCount === 1 ? "y" : "ies"}`;
+  return [
+    `Agent: Braid v${d.braidVersion} (over pi-core v${d.pi.version})`,
+    `Root: ${d.braidRoot || "(unknown)"}`,
+    `Model: ${model}`,
+    `PID: ${d.session.pid}`,
+    `Session: ${d.sessionId || "(unknown)"}`,
+    `Resources: ${skills}, ${memories}`,
+  ].join(" | ");
 }
 
 /** Exported for system-info-tool — renders InstanceData to plain text. */

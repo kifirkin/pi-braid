@@ -24,6 +24,10 @@
  * - No project-specific internal module paths leak into the rendered output.
  * - Instance block does NOT contain Resources or discovery hint;
  * the assertions below pin the negative.
+ * - The compact prompt line (renderCompactInstance) is one line carrying
+ *   the braid install root, model, PID, session id and resource counts;
+ *   it repeats no cwd, carries no timestamp or duration, and stays under
+ *   the byte cap.
  *
  * What this test does NOT do (and why):
  * - It does NOT grep source for "export async function instanceSection".
@@ -35,7 +39,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
@@ -70,7 +74,7 @@ process.env.HOME = FAKE_HOME;
 // We don't wrap in try/catch -- the test runner already builds before
 // running tests; a missing dist file is a build failure, not a test
 // failure.
-const { instanceSection } = require(DIST_INSTANCE);
+const { instanceSection, gatherInstanceData, renderCompactInstance } = require(DIST_INSTANCE);
 const { discoverTopLevelExtensions } = require(DIST_TOP_LEVEL);
 
 
@@ -94,6 +98,9 @@ const pi = {}; // instanceSection doesn't invoke any pi.registerTool / etc.
 // touched by the section.
 const ctx = {
   cwd: ROOT,
+  // Session model as ExtensionContext exposes it: the compact prompt line
+  // renders these two fields verbatim.
+  model: { provider: "test-provider", id: "test-model" },
   sessionManager: {
     getSessionId: () => "test-session-id-1234",
     getSessionFile: () => "/tmp/fake/session.jsonl",
@@ -101,6 +108,17 @@ const ctx = {
 };
 const SECTION = await instanceSection(pi, ctx, { skillCount: 26, memoryCount: 5 });
 const OUT = await SECTION.render();
+const DATA = await gatherInstanceData(pi, ctx, { skillCount: 26, memoryCount: 5 });
+const COMPACT = renderCompactInstance(DATA);
+// A path that exists nowhere in the gathered data except as cwd. If the
+// compact line repeats the working directory, this string shows up.
+const SENTINEL_CWD = join(FAKE_HOME, "sentinel-cwd-never-rendered");
+const COMPACT_WITH_SENTINEL = renderCompactInstance({ ...DATA, cwd: SENTINEL_CWD });
+const COMPACT_BYTES = Buffer.byteLength(COMPACT, "utf8");
+// Bounds the prompt line against future field creep. Today's line measures
+// well under this; the headroom covers a long install path and a UUID
+// session id, not new fields.
+const COMPACT_CAP_BYTES = 320;
 
 
 await test("Section returns a PromptSection named 'instance'", () => {
@@ -205,6 +223,57 @@ await test("Session line includes the session id", () => {
     /^Session: test-session-id-1234, \d+(?:ms|s|m|h)(?:\s\d+(?:ms|s|m|h))? elapsed, last event \d+(?:ms|s|m|h) ago, \d+ turns?$/m,
     "Session line must lead with the session id, then elapsed/last-event/turns",
   );
+});
+
+await test("Compact line: one line, no cwd repeat, under the byte cap", () => {
+  assert.ok(!COMPACT.includes("\n"), "compact instance line must be exactly one line");
+  assert.ok(!COMPACT.includes("Cwd:"), "compact line must not carry a Cwd field");
+  assert.ok(
+    !COMPACT_WITH_SENTINEL.includes(SENTINEL_CWD),
+    "compact line must not render the working directory (pi injects <cwd> natively)",
+  );
+  assert.ok(
+    COMPACT_BYTES <= COMPACT_CAP_BYTES,
+    `compact line is ${COMPACT_BYTES} bytes, over the ${COMPACT_CAP_BYTES}-byte cap: ${COMPACT}`,
+  );
+});
+
+await test("Compact line carries PID, model, session id and resource counts", () => {
+  assert.ok(COMPACT.includes(`PID: ${process.pid}`), `PID must be the running process: ${COMPACT}`);
+  assert.ok(
+    COMPACT.includes("Model: test-provider/test-model"),
+    `model line must render provider/id from ctx.model: ${COMPACT}`,
+  );
+  assert.ok(
+    COMPACT.includes("Session: test-session-id-1234"),
+    `session line must carry the session id: ${COMPACT}`,
+  );
+  assert.ok(
+    COMPACT.includes("Resources: 26 skills, 5 memories"),
+    `resource counts must render: ${COMPACT}`,
+  );
+});
+
+await test("Compact line names the loaded braid root, not the cwd", () => {
+  const rootMatch = COMPACT.match(/Root: ([^|]+?)(?: \||$)/);
+  assert.ok(rootMatch, `compact line must carry a Root field: ${COMPACT}`);
+  const root = rootMatch[1].trim();
+  assert.notEqual(root, "(unknown)", "braid root must resolve (dist sits inside the package)");
+  assert.ok(!root.includes(SENTINEL_CWD), "braid root must not be the cwd fallback");
+  // Independent check: the field is the folder whose package.json says
+  // pi-braid, i.e. the build actually answering, not some other path.
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  assert.equal(pkg.name, "pi-braid", `Root must be the loaded pi-braid package, got: ${root}`);
+});
+
+await test("Compact line carries no timestamp or duration token", () => {
+  // The system prompt is a cached prefix; a clock reading, elapsed time, or
+  // turn/tool counter here would rewrite that prefix every request. These
+  // patterns are the shapes those fields took when they lived in the block.
+  assert.doesNotMatch(COMPACT, /\b(?:19|20)\d{2}-\d{2}-\d{2}T/, "no ISO timestamp");
+  assert.doesNotMatch(COMPACT, /\b\d{4}-\d{2}-\d{2}\b/, "no calendar date");
+  assert.doesNotMatch(COMPACT, /\b\d+(?:ms|s|m|h)\b/, "no elapsed/duration token");
+  assert.doesNotMatch(COMPACT, /\b(?:elapsed|ago|turn|turns)\b/, "no elapsed/turn wording");
 });
 
 await test("Renders 'Pi extensions (N loaded):' header", () => {

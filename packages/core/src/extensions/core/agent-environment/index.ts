@@ -106,9 +106,10 @@ export function gatherL1Environment(_pi: ExtensionAPI, ctx: ExtensionContext): L
   };
 }
 
-// The L1 environment section renders in the prompt-builder's instanceSection
-// (instance-composition.ts), which carries the volatile data in the Instance
-// block instead of a separate section.
+// The L1 environment data is consumed by instance-composition.ts: the
+// volatile stats (elapsed, last event, turns, tool average) render only in
+// the system_info tool, while the compact prompt line takes just the PID,
+// which is process-stable.
 
 export default function agentEnvironmentExtension(pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.Background, async (_event, ctx) => {
