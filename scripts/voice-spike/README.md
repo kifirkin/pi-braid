@@ -103,3 +103,38 @@ WAV, which it does fine. If the agent is ever launched in the GUI session,
   15 ms after spawn. A 1 kHz tone recorded through the microphone became
   audible within 20-30 ms of spawn, so this proxy is close; it still proves the
   player started rather than a sample reaching the device.
+
+## The resident synthesiser (`avspeak.m`, `turn-v2.py`, `run-batch-v2.sh`)
+
+`say -o` pays a fixed 800-850 ms before its first sample exists: process start
+plus voice load, paid per clause and independent of length. `avspeak.m` pays it
+once. It is a resident process that takes `SPEAK<TAB>text` on stdin, streams
+AVSpeechSynthesizer's buffer callback into an AudioQueue, and reports the
+time from reading the text to the first buffer handed to the device. A muted
+warm-up utterance at startup absorbs the voice load, so no measured utterance
+pays it.
+
+Two things about that API are not obvious and both cost time to find:
+
+- the selector is `writeUtterance:toBufferCallback:` on macOS (not `write:`);
+- buffers are delivered on the main queue, so a caller that blocks the main
+  thread waiting for them waits forever. `avspeak.m` runs a dispatch main queue
+  and reads stdin on a second thread.
+
+`turn-v2.py` measures the two v2 changes apart: `--tts say|resident` and
+`--end window|adaptive`. `run-batch-v2.sh` pins and restores gains and devices,
+harms and re-uses nothing across sessions, and prints both.
+
+### The endpoint is still unsolved on this microphone
+
+`aqrec.m` now carries two stopping rules: the v1 peak-relative one, and an
+`adaptive:HANGOVER_MS` level-relative one that stops when the capture falls
+6 dB under a decayed maximum of the recent speech level. Neither fires
+reliably here: the room sits only 10-20 dB below speech, and a fixed threshold
+on either side of the room draws silence and speech words from the same
+distribution. Silero's ggml model, the brief's preferred instrument, could not
+be used: the only ggml VAD on this machine is a test fixture, and on this input
+it reports speech probabilities of 0.85-1.00 through the noise-only tail while
+reporting at most 0.33 through a whole speech capture. The fixed window
+therefore stays the default and every turn records `end_reason`, so a batch
+shows whether a detector fired or was merely requested.

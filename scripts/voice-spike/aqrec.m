@@ -6,16 +6,26 @@
 // The device is whatever the HAL reports as default. Selecting a microphone is
 // configuration, not a mechanism, and does not belong in this file.
 //
-// usage: aqrec SECONDS OUT.pcm [END_MS]   (16 kHz, mono, signed 16-bit LE)
+// usage: aqrec SECONDS OUT.pcm [END_MS | adaptive:HANGOVER_MS]
+//        (16 kHz, mono, signed 16-bit LE)
 // exit:  0 buffers arrived, 4 silence-shaped (no buffers)
 //
-// END_MS > 0 stops the recording END_MS of silence after speech instead of
-// waiting out the whole window. The gate sits 25 dB below the loudest frame
-// heard so far, and a stop requires 400 ms of frames above it first, so a
-// transient cannot clip a phrase and an endpointing that never fires leaves the
-// fixed window in place. The stop condition is reported (stop_s, gate_db,
-// end_reason) so a turn can show what it did rather than be trusted to have
-// endpointed correctly.
+// Two stopping rules, both leaving the fixed window as the fallback:
+//
+//   END_MS (a number)   peak-relative: the gate sits 25 dB below the loudest
+//                       frame heard so far, a stop needs 400 ms of frames
+//                       above it first. On this microphone that gate sits below
+//                       the room floor and never fires; kept for comparability.
+//   adaptive:HANGOVER   floor-relative: the room floor is measured from the
+//                       first 160 ms of every session and then tracked as a
+//                       leaky minimum, the stop gate is floor+8 dB, and it may
+//                       only fire after 300 ms of frames above floor+12 dB, so
+//                       a transient cannot clip a phrase. The hangover is
+//                       HANGOVER_MS of consecutive frames below the stop gate.
+//
+// The condition that fired is reported (stop_s, floor_db, gate_db, end_reason)
+// so a turn can show what it did rather than be trusted to have endpointed
+// correctly.
 #import <AudioToolbox/AudioToolbox.h>
 #import <Foundation/Foundation.h>
 #include <math.h>
@@ -36,6 +46,14 @@ static int gQuietMs;                // trailing silence accumulated
 static int gQuietFrames;
 static int gSpeechFrames;
 static int gEndMs;                  // 0 disables endpointing
+static int gMode;                   // 0 window, 1 peak-relative, 2 adaptive floor
+static double gFloorDb = -60.0;     // room floor, adaptive mode
+// How far under the speech level counts as silence. The room is only 10-20 dB
+// below speech on this microphone, so the drop has to sit inside that margin:
+// 12 dB was under the room and could never fire, 6 dB sits between the two.
+static double gDropDb = 6.0;
+static double gLoudDb = -100.0;     // decayed maximum: what "speech level" means now
+static double gBaseDb = -50.0;      // pre-playback room estimate, for arming only
 static double gGateDb = -90.0;      // peak-relative, so it only ever fails safe
 static double gNoiseDb = 0.0;
 static double gPeakDb = -120.0;
@@ -88,7 +106,51 @@ static void on_buffer(void *ud, AudioQueueRef q, AudioQueueBufferRef buf,
       if (++gCalibN >= 8) {
         qsort(gCalib, 8, sizeof(double), cmp_double);
         gNoiseDb = 0.5 * (gCalib[3] + gCalib[4]);
+        // 25th percentile, not the median: with only eight frames of room
+        // tone before playback, one frame of the stimulus would move the
+        // median into the speech band.
+        gFloorDb = gCalib[1];
         gCalibDone = 1;
+      }
+    } else if (gMode == 2) {
+      // Level-relative, not floor-relative. Two absolute gates were tried on
+      // this microphone and both failed: one 25 dB under the loudest frame sat
+      // below the room floor, and one tied to a measured floor sat inside the
+      // room's own variance, so the stop was a coin flip on noise and never
+      // fired. What separates speech from this room is not where the floor is
+      // but how far the level falls from the speech it followed, so the gate is
+      // a decayed maximum minus a fixed drop. The decay (7.5 dB/s) means a gate
+      // that was set during a loud sentence comes down to the room within half
+      // a second, and the hangover is measured from the last loud frame.
+      if (gLoudDb < db) gLoudDb = db;
+      else gLoudDb -= 0.15;
+      if (gLoudDb < -100.0) gLoudDb = -100.0;
+      if (!gArmed) {
+        // Arming uses the pre-playback room estimate, which is a low estimate:
+        // arming too easily only costs a stop that the hangover must then
+        // confirm, while arming too late leaves the fixed window in place.
+        if (db > gBaseDb + 10.0) gSpeechFrames++;
+        else if (gSpeechFrames > 0) gSpeechFrames--;
+        if (gSpeechFrames >= 15) gArmed = 1;    // 300 ms of speech, decayed
+      } else {
+        int quiet = (db < gLoudDb - gDropDb) && (gLoudDb > gBaseDb + 8.0);
+        if (!quiet) {
+          gQuietFrames = 0;
+          gQuietMs = 0;
+        } else {
+          gQuietFrames++;
+          gQuietMs += 20;
+          if (gQuietMs >= gEndMs) {
+            gStop = 1;
+            fprintf(stderr, "floor_db=%.1f\n", gBaseDb);
+            fprintf(stderr, "loud_db=%.1f\n", gLoudDb);
+            fprintf(stderr, "gate_db=%.1f\n", gLoudDb - gDropDb);
+            fprintf(stderr, "speech_frames=%d\n", gSpeechFrames);
+            fprintf(stderr, "quiet_frames=%d\n", gQuietFrames);
+            fprintf(stderr, "stop_s=%.6f\n", now_s() - gT0);
+            fprintf(stderr, "end_reason=endpoint\n");
+          }
+        }
       }
     } else {
       if (db > gPeakDb) gPeakDb = db;
@@ -134,8 +196,20 @@ int main(int argc, char **argv) {
       fprintf(stderr, "aqrec: seconds out of range\n");
       return 2;
     }
-    gEndMs = argc == 4 ? atoi(argv[3]) : 0;
-    if (gEndMs < 0 || gEndMs > (int)(seconds * 1000)) {
+    if (argc == 4) {
+      if (strncmp(argv[3], "adaptive:", 9) == 0) {
+        gMode = 2;
+        gEndMs = atoi(argv[3] + 9);
+      } else {
+        gMode = 1;
+        gEndMs = atoi(argv[3]);
+      }
+    }
+    if (gMode == 2 && (gEndMs < 100 || gEndMs > 3000)) {
+      fprintf(stderr, "aqrec: adaptive hangover out of range\n");
+      return 2;
+    }
+    if (gMode == 1 && (gEndMs < 0 || gEndMs > (int)(seconds * 1000))) {
       fprintf(stderr, "aqrec: END_MS out of range\n");
       return 2;
     }
@@ -183,7 +257,10 @@ int main(int argc, char **argv) {
     if (gEndMs > 0 && !gStop) {
       fprintf(stderr, "noise_db=%.1f\n", gNoiseDb);
       fprintf(stderr, "peak_db=%.1f\n", gPeakDb);
-      fprintf(stderr, "gate_db=%.1f\n", gGateDb);
+      fprintf(stderr, "floor_db=%.1f\n", gMode == 2 ? gBaseDb : gNoiseDb);
+      fprintf(stderr, "gate_db=%.1f\n", gMode == 2 ? gLoudDb - gDropDb : gGateDb);
+      fprintf(stderr, "loud_db=%.1f\n", gLoudDb);
+      fprintf(stderr, "armed=%d\n", gArmed);
       fprintf(stderr, "speech_frames=%d\n", gSpeechFrames);
       fprintf(stderr, "quiet_frames=%d\n", gQuietFrames);
       fprintf(stderr, "stop_s=%.6f\n", now_s() - gT0);
