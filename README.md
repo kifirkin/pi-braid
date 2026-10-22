@@ -110,7 +110,7 @@ See [`packages/core/CONTRIBUTING.md`](packages/core/CONTRIBUTING.md) and [`packa
 ## Repo hygiene
 
 - The [`.github/workflows/ci.yml`](.github/workflows/ci.yml) gate runs format check, typecheck, build, tests, and the doc/dep checks on every PR.
-- A **private-data scan** (`npm run check:private-data`) runs in CI and locally - the publishability gate. It scans the whole working tree (tracked plus untracked non-ignored files) by default; `--staged` limits it to staged files. An absolute home path, API key, session file, or private-artifact reference fails the build.
+- Docs name product paths only: a repository file may refer to `~/.pi/agent/…` or `~/pi-braid/…`, and never to the maintainer's private directory layout. [`check-doc-links.mjs`](packages/core/scripts/check-doc-links.mjs) enforces this alongside link resolution, so a private home path fails the build rather than shipping.
 - Culled/archived content stays in **git history** - never re-add `node_modules`, `dist/`, `.braid/`, or session files.
 
 ## Support & status

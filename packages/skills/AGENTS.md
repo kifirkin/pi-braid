@@ -19,13 +19,13 @@ These four rules are non-negotiable. They're enforced by the root `.github/workf
 
 Never commit:
 
-- Absolute filesystem paths (`/Users/<name>/...`, `C:\Users\...`, `/home/<you>/...`, `~/projects/<private>/...`)
+- Absolute filesystem paths (`/Users/<name>/...`, `C:\Users\...`, `/home/<you>/...`) and private home layouts (`~/projects/<private>/...`)
 - Usernames (yours or anyone else's)
 - API keys, tokens, bearer headers, env-var values with secret-y names
 - Internal-only URLs (private proxies, internal staging environments)
 - References to specific private projects by name
 
-The scanner lives in `packages/core/scripts/check-private-data.mjs` (monorepo CI runs it on every push). Add new patterns there rather than relying on memory.
+The rule is enforced by `check-doc-links` (`packages/core/scripts/check-doc-links.mjs`): it rejects a home path outside the product (`~/.pi/...`, `~/pi-braid/...` are the only home paths a doc may name) and any in-repo reference that does not resolve. There is no separate private-data scanner: the earlier one matched `/Users/<name>/` and `/home/<name>/` but not the tilde form, so it gave a green build while the leak shipped. If you find a new leak shape, extend that resolver or fix the writing habit at the source, and never lean on a scanner as the guarantee.
 
 ### 3. No project-specific content in `SKILL.md`
 
@@ -62,7 +62,7 @@ A `triggers:` array in the frontmatter is allowed (used by some skills). Any num
 
 1. `mkdir -p skills/<skill-name>`
 2. Write `skills/<skill-name>/SKILL.md` with frontmatter.
-3. Run the monorepo private-data check (`node packages/core/scripts/check-private-data.mjs`) locally before committing.
+3. Run `node packages/core/scripts/check-doc-links.mjs` before committing: it rejects private home paths and in-repo references that do not resolve.
 4. Push - CI will re-check on every PR.
 
 ## Removing a skill

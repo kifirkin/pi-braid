@@ -46,8 +46,7 @@ provenance; they are no longer work.
 1. **Providers de-reference (P10b)** - RESOLVED: the Venice registration is a
    userland catalog seam (`providers/venice-catalog.ts`, resolved from
    `$VENICE_CATALOG_FILE` or `~/.pi/agent/venice-models.json`); the provider
-   registers only when that catalog exists, and `check-private-data` scans the
-   whole tree in `ci:check`.
+   registers only when that catalog exists.
 2. **Version-drift cleanup** - RESOLVED: the four workspace packages declare
    the pi peer as `"*"`; the root manifest pins the installed version
    (`package.json`, the `@earendil-works/*` deps).
@@ -55,9 +54,10 @@ provenance; they are no longer work.
    the root `CHANGELOG.md` - core keeps the bare `v` (iteration tags `v0.40.0-main.N`,
    `package.json` `0.40.0-main.N`; release tag `v0.40.0`), every sibling tags as
    `<workspace>-v<version>` (`telegram-v0.1.4`).
-4. **CI private-data gate** - RESOLVED: `check-private-data.mjs` is a CI step
-   and scans the whole tree by default (tracked plus untracked); the
-   staged-file checks are a local pre-commit convenience.
+4. **Documentation path rule** - RESOLVED: docs may name product paths
+   (`~/.pi/agent/…`, `~/pi-braid/…`) and never a private home layout;
+   `check-doc-links` fails on the latter, and every in-repo reference must
+   resolve.
 5. **Skills pack** - finish validating the five skills still marked
    `verdict: UNVALIDATED` (`braid-reference`, `misdirection-audit`,
    `placement-discipline`, `probe-evaluation`, `voice-replies`); keep the pack

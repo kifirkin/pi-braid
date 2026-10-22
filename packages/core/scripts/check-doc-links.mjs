@@ -40,6 +40,12 @@ const root = resolve(__dirname, "..", "..", "..");
 const MD_LINK_RE = /\]\(([^)\s]+)\)/g;
 // Backticked repo-path tokens: a known top-level dir plus a file extension.
 const PATH_TOKEN_RE = /`((?:packages|docs|src|test|scripts|examples|\.github|skills)\/[A-Za-z0-9._/-]+\.[A-Za-z0-9]{1,5})`/g;
+// Backticked home paths. A doc may name a product path under the user's home
+// (`~/.pi/...`, `~/pi-braid/...`); it may never name the maintainer's private
+// layout (`~/projects/...`). The retired private-data scanner matched only
+// `/Users/<name>/` and `/home/<name>/`, so the tilde form shipped unnoticed.
+const HOME_TOKEN_RE = /`(~\/[A-Za-z0-9._/-]+)`/g;
+const PRODUCT_HOME_DIRS = new Set([".pi", "pi-braid"]);
 // Fenced code block: stripped before scanning so code samples are inert.
 const FENCE_RE = /^(```|~~~)/m;
 
@@ -88,6 +94,15 @@ function scanFile(relFile) {
     const line = lines[i];
     if (FENCE_RE.test(line)) inFence = !inFence;
     if (inFence) continue;
+    for (const match of line.matchAll(HOME_TOKEN_RE)) {
+      const homePath = match[1];
+      const firstSegment = homePath.slice(2).split("/")[0];
+      if (!PRODUCT_HOME_DIRS.has(firstSegment)) {
+        problems.push(
+          `${relFile}:${i + 1}: ${homePath} (home path outside the product: docs name ~/.pi/... or ~/pi-braid/... only)`,
+        );
+      }
+    }
     for (const [regex, capture] of [
       [MD_LINK_RE, (m) => m[1]],
       [PATH_TOKEN_RE, (m) => m[1]],

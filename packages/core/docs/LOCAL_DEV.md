@@ -53,7 +53,6 @@ npm run format:check   # prettier --check .
 npm run check:docs     # every in-scope .md has a status marker
 npm run check:doc-drift # current-state docs must not reference APIs missing from code
 npm run check:deps     # layer-boundary check
-npm run check:private-data # whole-tree private-data scan
 ```
 
 Per-workspace variants use the workspace flag, e.g.
