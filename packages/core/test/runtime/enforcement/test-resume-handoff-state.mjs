@@ -61,12 +61,12 @@ const { SESSION_SHUTDOWN } = await import(join(DIST, "lib/core/event-names.js"))
 
 const SLUG = projectSlugFromCwd(cwd);
 
-function resumePathFor(projectCwd, slug) {
+function resumePathFor(projectCwd) {
   return join(BRAID_HOME, "sessions", projectSlugFromCwd(projectCwd), "resume.json");
 }
 
-function readResume(projectCwd, slug) {
-  const file = resumePathFor(projectCwd, slug);
+function readResume(projectCwd) {
+  const file = resumePathFor(projectCwd);
   assert.ok(existsSync(file), `resume.json written at ${file}`);
   return JSON.parse(readFileSync(file, "utf-8"));
 }
@@ -196,7 +196,7 @@ await test("(1) shutdown writer fills goal, open plans, decisions, learnings", a
   assert.ok(list.length > 0, "session_shutdown handler registered");
   for (const handler of list) await handler({}, { cwd });
 
-  const saved = readResume(cwd, SLUG);
+  const saved = readResume(cwd);
   assertCarriesProgram(saved, { withLearnings: true });
   assert.strictEqual(pad.goal, saved.goal, "the seeded pad is the state that was read");
 });
@@ -265,9 +265,14 @@ await test("(2) turn-end pre-save fills the same program", async () => {
   state.lastCompactionTurn = -100;
 
   registerTurnEndHygiene({ on: () => {}, registerTool: () => {}, sendMessage: () => {} });
-  await dispatchTurnEnd({ turnIndex: 7, ctx }, ctx);
+  // A real turn_end carries the assistant message the boundary rule reads; the
+  // act aborts the run, so it only fires at a boundary that reads as loop-done.
+  await dispatchTurnEnd(
+    { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx },
+    ctx,
+  );
 
-  const saved = readResume(cwd, SLUG);
+  const saved = readResume(cwd);
   assertCarriesProgram(saved, { withLearnings: false });
   assert.strictEqual(saved.reason, "turn-end auto-compact pre-save", "pre-save identifies itself");
 });
@@ -288,7 +293,7 @@ await test("(3) absent scratchpad degrades to empty sections, never a throw", as
   });
   for (const handler of handlers.get(SESSION_SHUTDOWN) ?? []) await handler({}, { cwd: bareCwd });
 
-  const saved = readResume(bareCwd, projectSlugFromCwd(bareCwd));
+  const saved = readResume(bareCwd);
   assert.strictEqual(saved.goal, null, "no goal invented");
   assert.deepStrictEqual(saved.openPlans, [], "no open plans invented");
   assert.deepStrictEqual(saved.recentDecisions, [], "no decisions invented");

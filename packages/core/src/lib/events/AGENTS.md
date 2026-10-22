@@ -15,6 +15,7 @@ communication that doesn't fit pi core's event model.
 | `timer-bus.ts`             | Channel for timer-related cross-extension communication.                                                                                                                                                                                                                                                                |
 | `timer-types.ts`           | Type definitions for timer events.                                                                                                                                                                                                                                                                                      |
 | `turn-end-coordinator.ts`  | Coordinates handlers that need to run at turn end (post-message-end). Provides ordering and dedup.                                                                                                                                                                                                                      |
+| `turn-boundary.ts`         | The one rule for which `turn_end` boundaries a deferred compaction may abort a run at (allow-list over `message.stopReason`, fail-closed on unreadable boundaries). Shared by the context_compress drain and the enforcement hygiene act.                                                                               |
 
 ## Local Contracts
 

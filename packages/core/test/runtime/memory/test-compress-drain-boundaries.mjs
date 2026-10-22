@@ -39,6 +39,11 @@
  *      "toolUse" stop below the 0.90W backstop queues instead of tearing the
  *      dispatch. The 0.90W exception still cuts at the arm, the next loop-done
  *      boundary lands a parked entry, and agent_settled catches the rest.
+ *  10. The rule itself is an allow-list: a boundary carrying no readable stop
+ *      reason parks, and so does one carrying a reason the rule does not
+ *      recognize. `undefined` (no boundary knowledge at all) keeps the prior
+ *      contract and fires. The heartbeat's fixture drives the same rule
+ *      through the real scheduler handler.
  *
  * Run: node test/runtime/memory/test-compress-drain-boundaries.mjs
  * (built first: npm run build)
@@ -76,6 +81,9 @@ const { registerContextCompress, readPendingCompactions, formatPendingCompaction
 const { getCmState, setCompactionActive } = sharedMod;
 const { estimateMessagesTokens } = await import(
   join(D, "lib/detection/context-usage.js")
+);
+const { turnBoundaryIsLoopDone, turnBoundaryMayAbortRun } = await import(
+  join(D, "lib/events/turn-boundary.js")
 );
 
 console.log("=== context_compress drain boundaries ===\n");
@@ -826,6 +834,86 @@ await test("agent_settled lands an auto-arm that a toolUse boundary left queued"
     1,
     "the settle backstop lands it with no loop-done boundary in between",
   );
+});
+
+// ── 10. The boundary rule's fail-closed table ───────────────────────────────
+
+// The rule that judges these boundaries lives in one module
+// (lib/events/turn-boundary.ts) and is shared with the enforcement hygiene act.
+// It is an allow-list, scoped to the reasons pi-ai declares: a boundary saying
+// nothing usable, or something the rule does not recognize, is not evidence
+// that the loop is done, so it parks.
+
+await test("the boundary rule parks every boundary it cannot read", async () => {
+  // 18 entries = 144,000 tokens (72% of the pinned window), 23 = 184,000 (92%).
+  const belowBackstop = () => ({ tokens: 144_000, contextWindow: 200_000 });
+  const atBackstop = () => ({ tokens: 184_000, contextWindow: 200_000 });
+
+  assert.equal(
+    turnBoundaryMayAbortRun(undefined),
+    true,
+    "no boundary knowledge keeps the prior contract (the tool path is parked by its call id)",
+  );
+
+  const unreadable = [
+    ["empty object", {}],
+    ["no message at all", { turnIndex: 7, toolResults: [] }],
+    ["message with no stop reason", { message: { role: "assistant" } }],
+    ["misspelled stop reason", { message: { stopReason: "tool_user" } }],
+    ["stop reason of the wrong type", { message: { stopReason: 7 } }],
+    ["null message", { message: null }],
+  ];
+  for (const [label, boundary] of unreadable) {
+    assert.equal(turnBoundaryIsLoopDone(boundary), false, `${label}: not loop-done`);
+    assert.equal(
+      turnBoundaryMayAbortRun(boundary, belowBackstop),
+      false,
+      `${label}: must park, not drain`,
+    );
+  }
+
+  // The backstop is unconditional by design: it cuts a runaway loop whether or
+  // not the boundary could be read.
+  assert.equal(
+    turnBoundaryMayAbortRun({}, atBackstop),
+    true,
+    "the 0.90W backstop cuts regardless of what the boundary says",
+  );
+
+  // A live loop below the backstop parks; the same boundary above it cuts.
+  const live = { message: { role: "assistant", stopReason: "toolUse" } };
+  assert.equal(turnBoundaryMayAbortRun(live, belowBackstop), false, "toolUse below 0.90W parks");
+  assert.equal(turnBoundaryMayAbortRun(live, atBackstop), true, "toolUse at 0.90W cuts");
+  assert.equal(
+    turnBoundaryMayAbortRun(live, () => null),
+    false,
+    "unreadable usage keeps the loop live (the conservative direction)",
+  );
+  assert.equal(
+    turnBoundaryMayAbortRun(live),
+    false,
+    "no usage reader at all keeps the loop live",
+  );
+
+  // A loop-done reason fires without consulting usage.
+  for (const stopReason of ["stop", "length", "error", "aborted"]) {
+    const boundary = { message: { role: "assistant", stopReason } };
+    assert.equal(turnBoundaryIsLoopDone(boundary), true, `${stopReason} is loop-done`);
+    assert.equal(
+      turnBoundaryMayAbortRun(boundary, () => null),
+      true,
+      `${stopReason} fires between turns`,
+    );
+  }
+
+  // Reasons pi-ai declares that mean the response is not final: park.
+  for (const stopReason of ["pending", "deferred"]) {
+    assert.equal(
+      turnBoundaryMayAbortRun({ message: { stopReason } }, belowBackstop),
+      false,
+      `${stopReason} is not a finished turn`,
+    );
+  }
 });
 
 try {

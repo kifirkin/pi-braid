@@ -121,6 +121,7 @@ import {
   maybeArmAutoCompaction,
 } from "../../memory/context-manager/handlers/tools/context-compress.js";
 import { pushBounded } from "../../../lib/utils/bounded.js";
+import type { TurnBoundary } from "../../../lib/events/turn-boundary.js";
 import { RSS_RING_CAP } from "../../../lib/telemetry/rss-telemetry.js";
 import { recallerModule } from "./modules/recaller.js";
 import { reflectionConsolidatorModule } from "./modules/reflection-consolidator.js";
@@ -317,7 +318,7 @@ function tick(
   state: import("./types.js").HeartbeatState,
   config: import("./types.js").HeartbeatConfig,
   ctx: ExtensionContext,
-  turnEvent?: any,
+  turnEvent?: TurnBoundary,
 ): void {
   state.stats.totalTicks++;
 
@@ -640,7 +641,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
     // The boundary travels with the tick: the usage-driven auto-arm arms inside
     // this dispatch, and a drain there can only be judged from the event that
-    // named the boundary.
+    // named the boundary. Dropping this argument is invisible to every other
+    // fixture, so one drives the real handler end to end:
+    // test/runtime/heartbeat/test-turn-boundary-arm-wiring.mjs.
     tick(pi, state, config, ctx, event);
   });
 

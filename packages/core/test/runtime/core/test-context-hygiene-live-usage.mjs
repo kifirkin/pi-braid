@@ -344,7 +344,10 @@ await test("(b) act fires at the fraction-of-window threshold and is observable"
     state.enforcementActive = true;
     state.lastCompactionTurn = -100;
 
-    await h.dispatchTurnEnd({ turnIndex: 7, ctx: session.ctx }, session.ctx);
+    await h.dispatchTurnEnd(
+      { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
     await settle();
 
     assert.strictEqual(session.compactCalls.length, 1, "act called compact once");
@@ -373,11 +376,17 @@ await test("(c) no second act on the next turn", async () => {
     state.enforcementActive = true;
     state.lastCompactionTurn = -100;
 
-    await h.dispatchTurnEnd({ turnIndex: 7, ctx: session.ctx }, session.ctx);
+    await h.dispatchTurnEnd(
+      { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
     await settle();
     assert.strictEqual(session.compactCalls.length, 1, "first act fired");
 
-    await h.dispatchTurnEnd({ turnIndex: 8, ctx: session.ctx }, session.ctx);
+    await h.dispatchTurnEnd(
+      { turnIndex: 8, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
     await settle();
     assert.strictEqual(
       session.compactCalls.length,
@@ -402,7 +411,10 @@ await test("(d) act path never submits, injects or re-arms a turn", async () => 
     state.enforcementActive = true;
     state.lastCompactionTurn = -100;
 
-    await h.dispatchTurnEnd({ turnIndex: 7, ctx: session.ctx }, session.ctx);
+    await h.dispatchTurnEnd(
+      { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
     await settle();
 
     assert.strictEqual(
@@ -436,7 +448,10 @@ await test("(e) act pre-saves durable state (resume.json carries scratchpad goal
     state.enforcementActive = true;
     state.lastCompactionTurn = -100;
 
-    await h.dispatchTurnEnd({ turnIndex: 7, ctx: session.ctx }, session.ctx);
+    await h.dispatchTurnEnd(
+      { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
     await settle();
 
     const slug = h.projectSlugFromCwd(cwd);
@@ -635,7 +650,10 @@ await test("turn-end check skipped for lack of a number is counted, never acts o
   state.enforcementActive = true;
   state.lastCompactionTurn = -100;
 
-  await h.dispatchTurnEnd({ turnIndex: 7, ctx: session.ctx }, session.ctx);
+  await h.dispatchTurnEnd(
+      { turnIndex: 7, message: { role: "assistant", stopReason: "stop" }, ctx: session.ctx },
+      session.ctx,
+    );
   await settle();
 
   assert.strictEqual(session.compactCalls.length, 0, "no act without a number");
