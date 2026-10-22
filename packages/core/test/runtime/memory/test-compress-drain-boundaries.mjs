@@ -29,6 +29,10 @@
  *      arms ONE deterministic slide; the knob can disable it.
  *   7. The pending-state advisory line (shared by context_inspect and the
  *      heartbeat) names the armed state and the turn-boundary landing.
+ *   8. A live loop is not a drain boundary: a turn_end whose assistant message
+ *      carries stopReason "toolUse" leaves the queue armed (the deferred
+ *      compact would abort the request the loop is dispatching), the 0.90W
+ *      hard backstop cuts anyway, and agent_settled still lands it.
  *
  * Run: node test/runtime/memory/test-compress-drain-boundaries.mjs
  * (built first: npm run build)
@@ -64,6 +68,9 @@ const sharedMod = await import(
 const { registerContextCompress, readPendingCompactions, formatPendingCompactionsLine } =
   compressMod;
 const { getCmState, setCompactionActive } = sharedMod;
+const { estimateMessagesTokens } = await import(
+  join(D, "lib/detection/context-usage.js")
+);
 
 console.log("=== context_compress drain boundaries ===\n");
 
@@ -163,12 +170,12 @@ async function runInBatch(pi, tool, ctx, toolCallId, params) {
   return result;
 }
 
-async function emitTurnEnd(pi, ctx, turnIndex, toolResults = []) {
+async function emitTurnEnd(pi, ctx, turnIndex, toolResults = [], stopReason = "stop") {
   await pi._emit(
     {
       type: "turn_end",
       turnIndex,
-      message: { role: "assistant", stopReason: "stop" },
+      message: { role: "assistant", stopReason },
       toolResults,
     },
     ctx,
@@ -599,6 +606,113 @@ await test("pending advisory names the armed state and the turn-boundary landing
     line,
     /next turn boundary/,
     "the line states the landing boundary (not settle-only)",
+  );
+});
+
+// ── 8. A live loop is not a drain boundary ──────────────────────────────────
+
+// Each world entry carries a `msg N` label plus 31,993 chars of text, which
+// the shared chars/4 estimator reads as 8,000 tokens - 4% of the pinned 200k
+// window. The hard backstop is 0.90W = 180,000 tokens.
+
+await test("a toolUse turn_end leaves an armed slide parked; the next loop-done boundary lands it", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld(18);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  const planted = estimateMessagesTokens(world.branch.map((e) => e.message));
+  assert.equal(
+    planted,
+    144_000,
+    "planted usage: 18 entries x 8,000 = 144,000 tokens = 72% of the 200k window, below the 180,000 hard backstop",
+  );
+
+  // Armed inside the batch: its own call id is still active, so the arm itself
+  // cannot fire. The turn then ends with stopReason "toolUse" - the loop
+  // dispatches its next request as soon as the handlers return.
+  await runInBatch(pi, tool, ctx, "cc", { action: "slide", keep: 4 });
+  await emitTurnEnd(
+    pi,
+    ctx,
+    0,
+    [{ role: "toolResult", toolCallId: "cc", toolName: "context_compress", content: [] }],
+    "toolUse",
+  );
+  assert.equal(
+    ctx.compactCalls.length,
+    0,
+    "a live-loop boundary must not abort the request the loop is about to dispatch",
+  );
+  assert.equal(
+    readPendingCompactions(ctx).length,
+    1,
+    "the armed slide stays armed across a live-loop boundary",
+  );
+
+  // The next assistant message ends the turn with a done stop reason: the loop
+  // has nothing left to dispatch, so the abort lands between turns.
+  await emitTurnEnd(pi, ctx, 1, [], "stop");
+  assert.equal(ctx.compactCalls.length, 1, "a loop-done boundary lands the armed compaction");
+  assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
+});
+
+await test("a toolUse turn_end at the 0.90W backstop cuts the live loop anyway", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld(23);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  const planted = estimateMessagesTokens(world.branch.map((e) => e.message));
+  assert.equal(
+    planted,
+    184_000,
+    "planted usage: 23 entries x 8,000 = 184,000 tokens = 92% of the 200k window, at/above the 180,000 hard backstop",
+  );
+
+  await runInBatch(pi, tool, ctx, "cc", { action: "slide", keep: 4 });
+  await emitTurnEnd(
+    pi,
+    ctx,
+    0,
+    [{ role: "toolResult", toolCallId: "cc", toolName: "context_compress", content: [] }],
+    "toolUse",
+  );
+  assert.equal(
+    ctx.compactCalls.length,
+    1,
+    "at 184,000 tokens of a 200,000 window the runaway live loop is cut (backstop exception)",
+  );
+});
+
+await test("agent_settled drains a compaction that a toolUse turn_end left armed", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const tool = pi.tools.get("context_compress");
+  const world = makeWorld(18);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  await runInBatch(pi, tool, ctx, "cc", { action: "slide", keep: 4 });
+  await emitTurnEnd(
+    pi,
+    ctx,
+    0,
+    [{ role: "toolResult", toolCallId: "cc", toolName: "context_compress", content: [] }],
+    "toolUse",
+  );
+  assert.equal(ctx.compactCalls.length, 0, "parked at the live-loop boundary");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(
+    ctx.compactCalls.length,
+    1,
+    "the settle backstop still lands a queue that a live-loop boundary left armed",
   );
 });
 
