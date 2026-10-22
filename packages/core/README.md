@@ -12,30 +12,25 @@ Honest self-aware agent with a metacognitive suite and extras on top of [pi-codi
 
 ---
 
-## What it does
-
-pi-braid extends pi with a metacognitive layer:
-
-- **Enforcement** - belief-policy engine, structured signal delivery (L1–L3), sycophancy detection, verification nudges, behavioral pattern evolution
-- **Memory** - three-store recall (semantic + episodic + heuristic), cross-session context, scratchpad task tracking, workspace snapshots, conflict resolution
-- **Reasoning** - topic-drift detection, bidirectional verification, claim tracking, contradiction detection
-- **Self-improvement** - heuristic evolution, dreamer (offline consolidation), SOP extraction, degradation detection, reflection
-- **Utilities** - healthcheck, timers, system monitoring, web research, context lifecycle (S-MMU proposals, compaction, rotation)
-
-It runs as a pi _extension package_ - install once, use everywhere on your pi session.
-
 ## Install
 
 ```bash
 pi install npm:pi-braid
 ```
 
-One command, no clone, no build: `pi install` registers the package with pi and
-installs it under pi's npm directory. It carries the suite and the core skill
-set that ships with it. The on-demand skill pack and the other companions are
-add-ons, each its own install: `pi install npm:pi-braid-skills`,
+One command, no clone, no build: `pi install` registers the package with pi,
+writes the declaration to `~/.pi/agent/settings.json`, and installs it under
+pi's npm directory. It carries the suite and the core skill set that ships with
+it. The on-demand skill pack and the other companions are add-ons, each its own
+install: `pi install npm:pi-braid-skills`,
 `pi install npm:pi-braid-contrib`, `pi install npm:pi-braid-providers`,
 `pi install npm:pi-braid-telegram`.
+
+To enable braid for one project only, or to use all five workspaces, see
+[docs/SETUP.md](docs/SETUP.md) § Install paths. For the full setup reference
+(per-project installs, skills, module toggles, troubleshooting) see
+**[`docs/SETUP.md`](docs/SETUP.md)**; new to pi and braid, start with
+**[`docs/BEGINNERS.md`](docs/BEGINNERS.md)**.
 
 ### From a checkout (working on braid)
 
@@ -46,19 +41,13 @@ git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
 cd ~/pi-braid && npm install && npm run build
 ```
 
-```json
-{
-  "packages": ["file:~/pi-braid/packages/core"]
-}
-```
-
-pi loads each workspace through the `pi.extensions` / `pi.skills`
-fields in its `package.json` (no workspaces auto-discovery - register the paths
-you want).
-`packages/core` carries the suite and the core skill set that ships with it;
-`packages/skills` carries the on-demand skill pack, registered per project. Add
-`packages/providers`, `packages/contrib`, or `packages/telegram` as needed. The install-path
-reference is [`docs/SETUP.md`](docs/SETUP.md).
+Register `packages/core` (plus `packages/skills` for the pack) under `packages`
+in pi's settings; the root `package.json` has no `pi` field, so `file:~/pi-braid`
+loads nothing. Each workspace is loaded through the `pi.extensions` /
+`pi.skills` fields in its `package.json` (no workspaces auto-discovery). The
+install-path reference is [`docs/SETUP.md`](docs/SETUP.md);
+[`examples/`](https://github.com/kifirkin/pi-braid/tree/main/examples) carries
+copy-ready settings.
 
 ## What this does not do
 
@@ -76,60 +65,9 @@ reference is [`docs/SETUP.md`](docs/SETUP.md).
 
 ---
 
-## Fast start (TL;DR)
-
-```bash
-# 1. Register braid with pi (one-time, user-global)
-pi install npm:pi-braid
-
-# 2. Use pi as normal — braid loads automatically
-pi
-```
-
-That's it: `pi install` writes the declaration to `~/.pi/agent/settings.json`,
-so there is no clone, no build, and nothing to edit by hand. Working on braid
-itself? [§ Install](#install) carries the checkout path. To enable pi-braid only
-for one project, or to use all five workspaces, see
-[docs/SETUP.md](docs/SETUP.md) § Install paths. For the full setup
-reference (per-project installs, skills, module toggles, troubleshooting), see
-**[`docs/SETUP.md`](docs/SETUP.md)**. New to pi and braid? Start with
-**[`docs/BEGINNERS.md`](docs/BEGINNERS.md)**.
-
----
-
 ## How it fits pi
 
-pi loads extensions from a `packages` entry in `<cwd>/.pi/settings.json` (project) or `~/.pi/agent/settings.json` (user-global). braid is a regular extension package - point pi at it via `file:` or `git+https:` spec.
-
-```
-┌────────────────────────────────────────────┐
-│              pi-coding-agent               │
-│         (base agent loop + tools)          │
-├────────────────────────────────────────────┤
-│   prompt-builder (system prompt)           │
-├──────────────┬─────────────────────────────┤
-│  enforcement │  metacognition              │
-│  (signals,   │  (think, verify,            │
-│   drift,     │   hypothesize, finalize)    │
-│   reflection)│                             │
-├──────────────┴─────────────────────────────┤
-│  memory-agent-bridge                       │
-│  (memory_store, memory, conflict_qa,       │
-│   explore_paths, session)                  │
-├────────────────────────────────────────────┤
-│  three-memory-stores │ context-lifecycle   │
-│  (episodes/heuristics)│ (S-MMU proposals)  │
-├──────────────┬─────────────────────────────┤
-│ heartbeat-   │  scratchpad                 │
-│ scheduler    │  workspace-snapshot         │
-│ (budgets,    │  timer                      │
-│  auto-finalize)│                           │
-├──────────────┴─────────────────────────────┤
-│  session-recall  │  health-maintenance     │
-│  error-tracking  │  latent-activator       │
-│  watchdog        │  analytics              │
-└────────────────────────────────────────────┘
-```
+pi loads extensions from a `packages` entry in `<cwd>/.pi/settings.json` (project) or `~/.pi/agent/settings.json` (user-global). braid is a regular extension package - point pi at it via a `file:` or `git+https:` spec.
 
 This package is the **core** workspace. The monorepo also contains four
 sibling packages (see the root [`README.md`](https://github.com/kifirkin/pi-braid/blob/main/README.md) for the full map):
@@ -144,26 +82,84 @@ sibling packages (see the root [`README.md`](https://github.com/kifirkin/pi-brai
 
 ---
 
-## What you get
+## What it does
 
-28 extensions ship; `health-maintenance` and `error-tracking` are off by default. See [`src/extensions/manifest.ts`](src/extensions/manifest.ts) for the flat list. Highlights:
+28 extensions ship; `health-maintenance` and `error-tracking` are off by
+default, and the flat list is
+[`src/extensions/manifest.ts`](src/extensions/manifest.ts). They cover:
 
-| Tool / Extension                                          | What it adds                                                                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `think`, `verify`, `hypothesize`, `finalize`              | Metacognitive tools (always-on). Use `think` for non-trivial reflection; `verify` to check work; `finalize` to close a task with evidence. |
-| `scratchpad`                                              | Goal/plan/decision/learning tracker that survives context compaction                                                                       |
-| `memory`, `memory_store`, `conflict_qa`                   | Three-store recall (episodes / semantic / heuristics) cross-searched; conflict resolution between sources                                  |
-| `session`                                                 | Cross-session context recall (search / query past sessions)                                                                                |
-| `context_compress`, `context_inspect`, `context_navigate` | S-MMU-style context management                                                                                                             |
-| `topic_drift`                                             | Anchor tracking + drift detection                                                                                                          |
-| `behavior`                                                | Activate / deactivate behavior patterns                                                                                                    |
-| `timer`                                                   | Non-blocking session-scoped timers                                                                                                         |
-| `workspace_snapshot`                                      | Capture / diff / restore workspace state for time-travel debugging                                                                         |
-| `system_monitor`                                          | CPU / memory / disk metrics                                                                                                                |
-| `healthcheck`                                             | Diagnostic across all tools (recursive smoke tests)                                                                                        |
-| `fetch_content`                                           | Web page fetching (pi-web-access): readable markdown, raw text, or a prompt-answered extraction; direct images, GitHub repos, PDFs, videos |
+- **Enforcement** - the turn pipeline: turn validation, signal delivery, sycophancy and verification nudges, behavior patterns
+- **Reasoning** - topic-drift detection, claim tracking, bidirectional verification, contradiction detection
+- **Self-improvement** - heuristic evolution, reflection, offline consolidation
+- **Utilities** - health, timers, workspace snapshots, context lifecycle
 
-Plus 9 pi-native tools ([`TOOLS.md`](TOOLS.md) is the canonical inventory), always available.
+Five capabilities explain the rest of the file:
+
+### The prompt builder
+
+The system prompt is assembled, not written once: named sections are composed
+as `PromptSection` fragments
+([`section.ts`](src/extensions/core/prompt-builder/section.ts)) and published
+through pi's section seam, so a section that changes re-sends alone instead of
+the whole head prompt
+([`section-publish.ts`](src/extensions/core/prompt-builder/section-publish.ts)).
+Sections a host or an earlier handler supplies on the prompt options are
+rendered as their own blocks
+([`custom-sections.ts`](src/extensions/core/prompt-builder/custom-sections.ts)),
+and because braid renders the whole prompt it suppresses pi's native preamble,
+tool list, rules and docs. `prompt_inspect` prints the assembled result at any
+point in a session, which is the point: most of braid's behavior is inspectable
+prompt text rather than hardcoded replies.
+
+### Memory as a system
+
+Three stores hold different kinds of memory: episodes (what happened, per
+session, promoted to semantic when the agent keeps referencing them), semantic
+entries (what it learned, written on shutdown and loaded next session), and the
+heuristics (procedural rules) it applies while working. The scratchpad is working memory that
+survives compaction, and a resume file hands the open plan to a fresh seat at
+session start
+([`resume-state.ts`](src/extensions/enforcement/resume-state.ts)). `memory`
+reads across the stores; `session` reads across past sessions. Deep source:
+[`src/extensions/memory/AGENTS.md`](src/extensions/memory/AGENTS.md).
+
+### A worker fleet
+
+`orchestrate` coordinates parallel agent workers: a per-project worker registry
+with admission and lifecycle, one branch per worker, file locks, conflict
+detection, close gates, and merge verification. Branch handling is git-optional:
+with no repository it falls back to lock-only coordination. The working
+procedure is the [`subagent-orchestration`](skills/subagent-orchestration/SKILL.md)
+skill; the registry is
+[`src/extensions/orchestrator/index.ts`](src/extensions/orchestrator/index.ts).
+
+### Context lifecycle
+
+braid manages its own window: usage bands fire pruning, archiving and
+compaction; a compaction reserve keeps headroom for the next turn;
+auto-compaction arms on usage; oversized tool results are offloaded to disk and
+stubbed. A failed compaction walks retries, then a bounded summarizer, then a
+deterministic cut that needs no provider, so the session keeps compressing even
+when the model stops answering. The
+numbers are owned by [`docs/CONTEXT-POLICY.md`](docs/CONTEXT-POLICY.md); the
+tools are `context_compress`, `context_inspect` and `context_navigate`.
+
+### Highlights
+
+| Tool / Extension                             | What it adds                                                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `think`, `verify`, `hypothesize`, `finalize` | Metacognitive tools (always-on). Use `think` for non-trivial reflection; `verify` to check work; `finalize` to close a task with evidence. |
+| `scratchpad`                                 | Goal/plan/decision/learning tracker that survives context compaction                                                                       |
+| `memory`, `memory_store`, `conflict_qa`      | Three-store recall (episodes / semantic / heuristics) cross-searched; conflict resolution between sources                                  |
+| `session`                                    | Cross-session context recall (search / query past sessions)                                                                                |
+| `topic_drift`                                | Anchor tracking + drift detection                                                                                                          |
+| `behavior`                                   | Activate / deactivate behavior patterns                                                                                                    |
+| `timer`                                      | Non-blocking session-scoped timers                                                                                                         |
+| `workspace_snapshot`                         | Capture / diff / restore workspace state for time-travel debugging                                                                         |
+
+[`TOOLS.md`](TOOLS.md) is the catalog: every tool this package registers, pi's
+own builtins, and the cold tools that stay undeclared until `tool_search` loads
+them. `set_tool_profile` switches the active set to a curated profile.
 
 ---
 
@@ -178,35 +174,19 @@ braid's loader follows a **four-tier precedence** (high → low):
 3. `BRAID_MODULES` env var
 4. Defaults - all non-opt-in extensions enabled
 
-#### `BRAID_MODULES` env var
+A ref is either an **extension id** (`enforcement`, `error-tracking`) or a
+**module group name** (`heartbeat`, `core`, `memory`), prefixed `+` to enable or
+`-` to disable: `BRAID_MODULES="all,-error-tracking"`. Settings win over the env
+var; the runtime API wins over both. Worked patterns are in
+[`AGENTS.md`](AGENTS.md) § Common `BRAID_MODULES` patterns.
 
-```bash
-unset BRAID_MODULES                # default: all non-opt-in extensions
+### Settings
 
-export BRAID_MODULES="all,-error-tracking"    # everything except one
-export BRAID_MODULES="-enforcement"           # disable enforcement group
-export BRAID_MODULES="+heartbeat"             # enable the heartbeat group
-```
-
-A ref can be either an **extension id** (`enforcement`, `error-tracking`) or a **module group name** (`heartbeat`, `core`, `memory`). Prefixes: `+` to enable, `-` to disable.
-
-#### Persistent settings
-
-In `~/.pi/agent/settings.json`:
-
-```json
-{
-  "braid": {
-    "modules": {
-      "enforcement": true,
-      "error-tracking": false,
-      "heartbeat": true
-    }
-  }
-}
-```
-
-Settings win over env var; runtime API wins over settings.
+`braid.modules` is one leaf of the settings surface. The source is
+`schema/braid.schema.json`, [`docs/SETUP.md`](docs/SETUP.md) § Configuration
+reference lists every path with its default, and
+[`examples/full-config.settings.json`](https://github.com/kifirkin/pi-braid/blob/main/examples/full-config.settings.json)
+is copy-ready.
 
 ### Storage
 
@@ -219,9 +199,13 @@ All braid-specific data goes under `~/.pi/agent/braid/`. Use the constants in [`
 Skills come in two tiers: the core set ships inside this package (`skills/`,
 declared by `pi.skills` in `package.json`), and the on-demand pack is the
 content-only **`../skills`** workspace. Every skill is a `SKILL.md` with a
-`name` / `description` frontmatter header. Pi lists a registered package's
-skills in the system prompt's `<available_skills>` block; the agent opens a
-`SKILL.md` on demand.
+`name` / `description` frontmatter header.
+
+Discovery is on demand, not in the prompt: `list_skills` returns the catalog
+ranked against the current task, each row priced by what the read will cost
+(lines, bytes, token estimate, headings). When a skill's triggers match the
+task, an excerpt is steered into the session, and `skill_stats` counts which
+skills were suggested and which were actually read.
 
 The catalog table (one row per skill, with its verdict and one-line
 description, covering both tiers) lives in
@@ -237,6 +221,8 @@ time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | [`docs/BEGINNERS.md`](docs/BEGINNERS.md)                                      | **First walkthrough**: install → how agents use braid → first extension |
 | [`docs/SETUP.md`](docs/SETUP.md)                                              | **Full setup reference**, install paths, troubleshooting                |
+| [`TOOLS.md`](TOOLS.md)                                                        | Tool catalog: registered tools, pi builtins, cold tools                 |
+| [`docs/CONTEXT-POLICY.md`](docs/CONTEXT-POLICY.md)                            | Window, usage bands, compaction reserve, caps, offload, archiving       |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md)                                          | Active roadmap + shipped milestones + open themes                       |
 | [`README.md`](README.md)                                                      | This overview                                                           |
 | [`AGENTS.md`](AGENTS.md)                                                      | Repository structure, DOX contract, conventions                         |
