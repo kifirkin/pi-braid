@@ -33,6 +33,12 @@
  *      carries stopReason "toolUse" leaves the queue armed (the deferred
  *      compact would abort the request the loop is dispatching), the 0.90W
  *      hard backstop cuts anyway, and agent_settled still lands it.
+ *   9. Arming is not a drain boundary either: an arm made inside a turn
+ *      boundary dispatch (the heartbeat's usage-driven auto-arm hands that
+ *      event in) drains only where that boundary is safe to abort on, so a
+ *      "toolUse" stop below the 0.90W backstop queues instead of tearing the
+ *      dispatch. The 0.90W exception still cuts at the arm, the next loop-done
+ *      boundary lands a parked entry, and agent_settled catches the rest.
  *
  * Run: node test/runtime/memory/test-compress-drain-boundaries.mjs
  * (built first: npm run build)
@@ -713,6 +719,112 @@ await test("agent_settled drains a compaction that a toolUse turn_end left armed
     ctx.compactCalls.length,
     1,
     "the settle backstop still lands a queue that a live-loop boundary left armed",
+  );
+});
+
+// ── 9. The arm path is not a drain boundary ────────────────────────────────
+
+// Same entries as section 8: 8,000 tokens each against the pinned 200k window.
+// 18 entries = 144,000 tokens (72%, below the 180,000 hard backstop), 23
+// entries = 184,000 tokens (92%, at/above it).
+
+/**
+ * The heartbeat's arm site: its scheduler ticks on every Nth turn_end and arms
+ * inside that dispatch, handing the boundary it is handling in. Registered
+ * after the context-compress handlers, so the arm lands after the boundary
+ * those handlers already judged - the shape that aborted the live loop.
+ */
+function tickArmingOnTurnEnd(pi) {
+  const reports = [];
+  pi.on("turn_end", (event, c) => {
+    reports.push(compressMod.maybeArmAutoCompaction(pi, c, event));
+  });
+  return reports;
+}
+
+await test("an auto-arm inside a toolUse boundary parks; the next loop-done boundary lands it", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const world = makeWorld(18);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  const planted = estimateMessagesTokens(world.branch.map((e) => e.message));
+  assert.equal(
+    planted,
+    144_000,
+    "planted usage: 18 entries x 8,000 = 144,000 tokens = 72% of the 200k window, below the 180,000 hard backstop",
+  );
+
+  const reports = tickArmingOnTurnEnd(pi);
+  // Hysteresis: the first observation above the threshold only warms the count.
+  compressMod.maybeArmAutoCompaction(pi, ctx);
+
+  await emitTurnEnd(
+    pi,
+    ctx,
+    0,
+    [{ role: "toolResult", toolCallId: "bash-1", toolName: "bash", content: [] }],
+    "toolUse",
+  );
+  assert.equal(reports.at(-1)?.armed, true, "the tick inside the live-loop boundary arms the slide");
+  assert.equal(
+    ctx.compactCalls.length,
+    0,
+    "arming inside a live-loop boundary must not abort the request the loop is about to dispatch",
+  );
+  assert.equal(readPendingCompactions(ctx).length, 1, "the armed slide stays queued");
+
+  await emitTurnEnd(pi, ctx, 1, [], "stop");
+  assert.equal(ctx.compactCalls.length, 1, "the next loop-done boundary lands exactly one");
+  assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
+});
+
+await test("an auto-arm at the 0.90W backstop cuts the live loop anyway", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const world = makeWorld(23);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  const planted = estimateMessagesTokens(world.branch.map((e) => e.message));
+  assert.equal(
+    planted,
+    184_000,
+    "planted usage: 23 entries x 8,000 = 184,000 tokens = 92% of the 200k window, at/above the 180,000 hard backstop",
+  );
+
+  const reports = tickArmingOnTurnEnd(pi);
+  compressMod.maybeArmAutoCompaction(pi, ctx);
+
+  await emitTurnEnd(pi, ctx, 0, [], "toolUse");
+  assert.equal(reports.at(-1)?.armed, true, "the tick inside the boundary arms the slide");
+  assert.equal(
+    ctx.compactCalls.length,
+    1,
+    "at 184,000 tokens of a 200,000 window the arm cuts the runaway live loop (backstop exception)",
+  );
+});
+
+await test("agent_settled lands an auto-arm that a toolUse boundary left queued", async () => {
+  const pi = makeFakePi();
+  registerContextCompress(pi);
+  const world = makeWorld(18);
+  const ctx = world.ctx;
+  pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
+
+  tickArmingOnTurnEnd(pi);
+  compressMod.maybeArmAutoCompaction(pi, ctx);
+
+  await emitTurnEnd(pi, ctx, 0, [], "toolUse");
+  assert.equal(ctx.compactCalls.length, 0, "parked at the live-loop boundary");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(
+    ctx.compactCalls.length,
+    1,
+    "the settle backstop lands it with no loop-done boundary in between",
   );
 });
 

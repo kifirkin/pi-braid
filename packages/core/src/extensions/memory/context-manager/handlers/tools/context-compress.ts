@@ -133,6 +133,12 @@ function optionalNumber(v: unknown): number | undefined {
 // error in the TUI and tearing the finishing turn. agent_settled alone never
 // drains a run kept alive by continuous steers, so the armed compaction stalls
 // behind live work while usage keeps climbing, hence the turn_end boundary.
+// The arm side asks the same question, from the one arm site that can see a
+// boundary: the heartbeat's usage-driven auto-arm runs inside a turn_end
+// dispatch and hands that event in, so a "toolUse" boundary below the 0.90W
+// backstop leaves its entry queued for the next loop-done boundary. Arming
+// inside a tool call has no boundary to read, and its own call id parks the
+// queue there anyway.
 //
 // Active work is tracked by TOOL CALL ID, never by a count: tool_execution_start
 // registers an id, tool_execution_end deletes its own, and a turn boundary
@@ -350,6 +356,25 @@ export function scheduleDegradedCompact(trigger: () => void): void {
 }
 
 /**
+ * The turn boundary an arm is happening inside, when the caller has one: the
+ * turn_end payload, read for the stop reason the loop left behind.
+ */
+type TurnBoundary = { message?: { stopReason?: string } };
+
+/**
+ * Whether an arm may fire its own entry. Firing a compact aborts whatever run
+ * is live, so an arm that happens inside a turn boundary dispatch hands that
+ * boundary in and is judged by the same rule the TURN_END handler applies.
+ * Every other arm site runs inside a tool call, where there is no boundary to
+ * read and the prior contract stands: the arm drains unless a batch is still
+ * active (the arm's own call id keeps it parked, so it does not fire there).
+ */
+function armMayDrainNow(boundary: TurnBoundary | undefined, ctx: any): boolean {
+  if (boundary === undefined) return true;
+  return turnBoundaryMayAbortRun(boundary, ctx);
+}
+
+/**
  * Arm a one-shot compaction at a safe boundary (next turn end or run settle).
  * Returns "pending-exists" when an LLM-class compaction is already armed: the
  * caller must NOT have written its own range/anchor state in that case (the
@@ -367,6 +392,7 @@ function scheduleCompactionAtBatchSettle(
   meta: { kind: PendingCompaction["kind"]; cutEntryId?: string; firstKeptEntryId?: string } = {
     kind: "compact",
   },
+  boundary?: TurnBoundary,
 ): "queued" | "pending-exists" {
   const trigger = () => {
     try {
@@ -400,7 +426,13 @@ function scheduleCompactionAtBatchSettle(
           ` (cap ${PENDING_COMPACT_QUEUE_MAX}); the first-armed entry still fires.`,
       );
     }
-    firePendingCompactionsIfSettled(ctx, st);
+    // Arming fires only where that is safe. Firing a compaction aborts whatever
+    // run is live, and an arm site is not in a position to tell: the tool path
+    // arms inside its own call (whose id parks the queue anyway), and the
+    // heartbeat's arm runs inside a turn_end dispatch, where whether the loop
+    // still has work to dispatch is a fact the event carries. That caller hands
+    // its boundary in; every other caller keeps the prior contract.
+    if (armMayDrainNow(boundary, ctx)) firePendingCompactionsIfSettled(ctx, st);
     return "queued";
   } catch {
     // Degraded path: batch-settle bookkeeping is unavailable (extension state
@@ -429,6 +461,7 @@ function armSlideCompaction(
   pi: ExtensionAPI,
   ctx: any,
   keepCount: number,
+  boundary?: TurnBoundary,
 ): { cutEntryId: string; keptCount: number; droppedCount: number } | null {
   const sm = ctx.sessionManager;
   if (!sm || typeof sm.getBranch !== "function") return null;
@@ -485,6 +518,7 @@ function armSlideCompaction(
     ctx,
     { customInstructions: "SLIDE_MODE:true" },
     { kind: "slide", cutEntryId },
+    boundary,
   );
   return { cutEntryId, keptCount, droppedCount };
 }
@@ -520,11 +554,17 @@ function getAutoArmState(ctx: any): AutoArmState {
  * settle, never mid-run.
  *
  * Called from the heartbeat tick — the only cadence that runs while a session
- * works. Returns what happened and why, so the caller can log it.
+ * works, and the only arm site that runs inside a turn boundary dispatch. It
+ * hands that boundary in, so the arm is judged by the same rule the drain
+ * applies: a "toolUse" boundary below the 0.90W backstop leaves the entry
+ * queued for the next loop-done boundary instead of aborting the request the
+ * loop is about to dispatch. Returns what happened and why, so the caller can
+ * log it.
  */
 export function maybeArmAutoCompaction(
   pi: ExtensionAPI,
   ctx: any,
+  boundary?: TurnBoundary,
 ): { armed: boolean; reason: string } {
   const config: ResolvedAutoCompactConfig = getAutoCompactConfig();
   if (!config.enabled) return { armed: false, reason: "disabled" };
@@ -545,7 +585,7 @@ export function maybeArmAutoCompaction(
   }
   const branchLength = ctx?.sessionManager?.getBranch?.().length ?? 0;
   const keep = resolveAutoSlideKeep(branchLength);
-  const armed = armSlideCompaction(pi, ctx, keep);
+  const armed = armSlideCompaction(pi, ctx, keep, boundary);
   st.aboveCount = 0;
   if (!armed) return { armed: false, reason: "branch-too-short" };
   log.info(
