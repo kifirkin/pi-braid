@@ -19,7 +19,7 @@ Five in-repo workspaces under `packages/` (monorepo migration):
 | `packages/contrib`   | pi-braid-contrib   | Community/experimental extensions (browser, codebase, diff, observatory, path-security, repl, …). Code-only; declares `pi.extensions`, no `pi.skills`.                                                            |
 | `packages/telegram`  | @pi-braid/telegram | Bidirectional Telegram channel (outbound tool + inbound pull/poller). Declares `pi.extensions`.                                                                                                                   |
 
-`pi-braid-evaluation` (benchmarks and results) remains a separate project under `~/projects/agents/`.
+`pi-braid-evaluation` (benchmarks and results) is a separate, non-public project: it is not part of this repository and nothing here should point at its location.
 
 **Install paths:**
 
@@ -185,7 +185,6 @@ ROADMAP.md. Key ongoing concerns:
 | `docs/`                                  | Reference docs: `ROADMAP.md` (open backlog and shipped milestones), `SETUP.md` (setup reference), `HISTORY.md` (narrative history and dated milestone summaries) | (no AGENTS.md - durable reference)                                           |
 | `test/`                                  | Test harness; no AGENTS.md needed (tests are leaf)                                                                                                               | (no AGENTS.md)                                                               |
 | `scripts/`                               | Build/lint/test/check helpers; leaf                                                                                                                              | (no AGENTS.md)                                                               |
-| `~/projects/agents/pi-braid-evaluation/` | Benchmarks and results (separate project)                                                                                                                        | (no AGENTS.md)                                                               |
 
 ## User Preferences (durable)
 

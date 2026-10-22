@@ -46,7 +46,7 @@
  * belong on the line.
  *
  * This script defines the pattern literals it searches for, so it skips
- * itself (same convention as check-private-data.mjs).
+ * itself (the same convention check-doc-links.mjs uses).
  */
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";

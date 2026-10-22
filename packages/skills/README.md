@@ -126,7 +126,7 @@ Pi discovers the skills in `skills/` automatically (see `package.json` → `pi.s
 
 ## The contract
 
-Every file in this repo must obey four rules. They're enforced by the monorepo CI (`.github/workflows/ci.yml` - doc status, doc drift, deps, private-data scan, typecheck, tests).
+Every file in this repo must obey four rules. They're enforced by the monorepo CI (`.github/workflows/ci.yml` - doc status, doc drift, deps, link and home-path resolution, typecheck, tests).
 
 The rules:
 
