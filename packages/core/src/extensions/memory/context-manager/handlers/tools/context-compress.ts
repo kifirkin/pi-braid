@@ -25,7 +25,10 @@ import {
 import { analyzeSession } from "../../analysis.js";
 import * as timerMod from "../../../../scheduling/timer/index.js";
 import { getState } from "../../../../enforcement/state.js";
-import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/context-thresholds.js";
+import {
+  CONTEXT_COMPACT_REFUSE_PERCENT,
+  HYGIENE_AUTO_COMPACT_HARD_BACKSTOP,
+} from "../../../../../lib/detection/context-thresholds.js";
 import { getCmState, isCompactionActive, log, recordNavigationAction } from "../shared.js";
 import { snapBoundaryOutsideToolBatch } from "../tool-batch-boundary.js";
 import { formatTokensK } from "../../../../../lib/detection/context-usage.js";
@@ -68,6 +71,29 @@ function captureUsage(ctx: any): { percent: number; tokens: number; contextWindo
   }
 }
 
+/**
+ * Whether a turn boundary is safe to abort: true when the agent loop has
+ * nothing left to dispatch, or when usage sits at the 0.90W hard backstop and
+ * a runaway loop has to be cut regardless.
+ *
+ * `stopReason: "toolUse"` means the loop continues. pi-agent-core emits
+ * turn_end and then dispatches the next request on the SAME run signal, so a
+ * deferred ctx.compact(), which aborts the active run, tears that request
+ * mid-stream: the recorded signature is an assistant message with stopReason
+ * "aborted", errorMessage "Operation aborted", and a durationMs in the tens,
+ * followed by the compaction that replaced the work. Any other stop reason
+ * ends the turn's work, so the abort lands between turns.
+ *
+ * Unreadable usage keeps the loop live (the conservative direction): the queue
+ * stays armed for the next loop-done boundary or the AGENT_SETTLED backstop.
+ */
+function turnBoundaryMayAbortRun(event: any, ctx: any): boolean {
+  if (event?.message?.stopReason !== "toolUse") return true;
+  const usage = captureUsage(ctx);
+  if (!usage) return false;
+  return usage.tokens >= HYGIENE_AUTO_COMPACT_HARD_BACKSTOP(usage.contextWindow);
+}
+
 // Blank optional selectors.
 //
 // Some clients emit every schema property and send "" for the ones they do
@@ -91,16 +117,22 @@ function optionalNumber(v: unknown): number | undefined {
 // Batch-settle compaction scheduler.
 // Contract: the tool returns its result FIRST (execute() resolves before a
 // compaction is armed), but ctx.compact() — which aborts the turn — fires only
-// at a safe boundary: agent_settled (the run fully settled, abort a clean
-// no-op) or turn_end inside a live run (the turn's messages and tool results
-// are already persisted; the abort lands between turns, where a queued steer
-// is appended before the loop polls the abort signal and its turn runs on the
-// post-compaction resume). Firing while a tool call is still active aborts a
-// still-live run (the agent is streaming its response to the context_compress
-// result), surfacing a spurious "This operation was aborted" error in the TUI
-// and tearing the finishing turn. agent_settled alone never drains a run kept
-// alive by continuous steers, so the armed compaction stalls behind live work
-// while usage keeps climbing, hence the turn_end boundary.
+// at a boundary where the abort cannot tear live work: agent_settled (the run
+// fully settled, abort a clean no-op), or a turn_end whose assistant message
+// does not carry stopReason "toolUse" (the loop has nothing left to dispatch,
+// so the abort lands between turns, where a queued steer is appended before
+// the loop polls the abort signal and its turn runs on the post-compaction
+// resume). A "toolUse" boundary ends a turn, not the run: the loop dispatches
+// its next request as soon as the handlers return, and a compact deferred from
+// there tears that request mid-stream. The 0.90W hard backstop is the one
+// deliberate mid-loop cut, kept for a loop whose usage must not be allowed to
+// overflow. A boundary with a tool call still active is unsafe for a further
+// reason: a parallel sibling's result has not been delivered, so the abort
+// drops it while the agent is still streaming its response to the
+// context_compress result, surfacing a spurious "This operation was aborted"
+// error in the TUI and tearing the finishing turn. agent_settled alone never
+// drains a run kept alive by continuous steers, so the armed compaction stalls
+// behind live work while usage keeps climbing, hence the turn_end boundary.
 //
 // Active work is tracked by TOOL CALL ID, never by a count: tool_execution_start
 // registers an id, tool_execution_end deletes its own, and a turn boundary
@@ -607,10 +639,10 @@ export const contextCompressSchema = Type.Object({
 export function registerContextCompress(pi: ExtensionAPI): void {
   // Batch-settle scheduling: track the ACTIVE tool calls of every running
   // batch by call id and fire the deferred compaction only at a safe boundary
-  // (turn_end or agent_settled). Never mid-batch (would drop a parallel
-  // sibling's result) and never at tool_execution_end (the run is still live
-  // there — an aborting compact would surface a spurious "This operation was
-  // aborted" error and tear the finishing turn).
+  // (a loop-done turn_end or agent_settled). Never mid-batch (would drop a
+  // parallel sibling's result) and never at tool_execution_end (the run is
+  // still live there — an aborting compact would surface a spurious "This
+  // operation was aborted" error and tear the finishing turn).
   onEvent(pi, TOOL_EXECUTION_START, (event: any, ctx: any) => {
     try {
       const st = getBatchSettleState(ctx);
@@ -637,17 +669,21 @@ export function registerContextCompress(pi: ExtensionAPI): void {
     }
   });
   onEvent(pi, TURN_END, (event: any, ctx: any) => {
-    // Between-turns boundary: the turn's assistant message and tool results
-    // are already persisted when turn_end fires, so the abort inside
-    // ctx.compact() cannot tear a live turn or drop a sibling result. The
-    // persisted results carry the toolCallIds of the calls they answer, which
-    // releases a call whose tool_execution_end never arrived; an active id
-    // with NO result in this event is kept (it may still be executing, and a
-    // count could not tell which sibling completed). A run kept alive by
+    // Turn boundary. The turn's assistant message and tool results are already
+    // persisted here, but that alone does not make the run safe to abort: a
+    // "toolUse" stop means the loop dispatches its next request the moment the
+    // handlers return, so the deferred ctx.compact() tears that request
+    // mid-stream and the compaction replaces the work it was about to do (see
+    // turnBoundaryMayAbortRun). Only a loop-done boundary drains, except at
+    // the 0.90W hard backstop, which exists precisely to stop a runaway live
+    // loop before it overflows.
+    //
+    // The persisted results carry the toolCallIds of the calls they answer,
+    // which releases a call whose tool_execution_end never arrived; an active
+    // id with NO result in this event is kept (it may still be executing, and
+    // a count could not tell which sibling completed). A run kept alive by
     // continuous steers never reaches agent_settled — this boundary keeps an
-    // armed compaction from stalling behind live work. A steer queued at this
-    // moment survives: the loop appends it before the aborted response stream,
-    // and its turn runs on the post-compaction resume. Ids are never blanket-
+    // armed compaction from stalling behind live work. Ids are never blanket-
     // reset here (only agent_settled owns that backstop, which is what keeps a
     // missed end event from parking the queue forever).
     try {
@@ -655,6 +691,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       releaseSettledToolCallIds(st, event?.toolResults);
       if (st.pending.length === 0 || st.activeToolCallIds.size > 0) return;
       if (isCompactionActive(ctx)) return;
+      if (!turnBoundaryMayAbortRun(event, ctx)) return;
       firePendingCompactionsIfSettled(ctx, st);
     } catch {
       // A failed boundary drain must not tear the turn_end event pipeline;
