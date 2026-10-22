@@ -15,13 +15,18 @@
  * `ctx.<member>(...)` calls and `ctx?.<member>(...)`, then allow the member
  * by exactly one of:
  *
- *   1. pi-core surface — hardcoded member set extracted from the installed
- *      pi-core type declarations of one version, pinned at PI_CORE_BASELINE
- *      below. The set is frozen: a green run vouches for that baseline, not
- *      for the pi-core version actually installed. Regenerate with:
- *        awk '/export interface ExtensionContext \{/,/^\}/' + ExtensionAPI +
- *        ExtensionCommandContext over ~/.pi/agent/local-packages/node_modules/
- *        @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts
+ *   1. pi-core surface — hardcoded member set extracted from the type
+ *      declarations of one pi-core version, pinned at PI_CORE_BASELINE
+ *      below. The ALLOW set is frozen: a green run vouches for that
+ *      baseline, not for whatever version happens to be installed. The
+ *      staleness line at the end compares it against the declarations
+ *      actually installed, in both directions, and names every difference —
+ *      so the note is evidence about the installed surface, not a guess from
+ *      a version string. Regenerate with:
+ *        awk '/^export interface ExtensionAPI[ {]/,/^\}/' + ExtensionContext
+ *        + ExtensionCommandContext over <install>/node_modules/
+ *        @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts,
+ *        then keep the unique member names
  *   2. declared context field — the member name is a field of some
  *      interface/type-alias declared in the project (any tracked .ts file).
  *      Braid passes locally-typed context shapes (PruneContext,
@@ -45,24 +50,28 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const strict = process.argv.includes("--strict");
 
 /**
- * Frozen baseline: pi-core 0.85.1, extracted from that version's
+ * Frozen baseline: pi-core 1.4.0, extracted from that version's
  * @earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts.
  *
  * It is deliberately not re-derived per run, so a green run says nothing about
- * the surface of the pi-core actually installed — the summary line names both
- * versions when they differ. To refresh: re-extract from the installed
+ * the surface of the pi-core actually installed — the staleness note below
+ * reports that comparison explicitly. The 1.4.0 declarations and the 1.2.0
+ * ones this repo's dev baseline pins are member-for-member equal (58 members
+ * each), so one set covers both. To refresh: re-extract from the installed
  * declarations and bump PI_CORE_BASELINE in the same commit.
  */
-const PI_CORE_BASELINE = "0.85.1";
+const PI_CORE_BASELINE = "1.4.0";
 const PI_CORE_SURFACE = new Set([
   // ExtensionAPI (the `pi` object; kept here because some helpers accept it
   // through a `ctx`-shaped indirection and one shared set is easier to audit)
   "on", "registerTool", "registerCommand", "registerShortcut", "registerFlag",
   "getFlag", "registerMessageRenderer", "registerMarkdownTransformer",
-  "registerEntryRenderer", "sendMessage", "sendUserMessage", "appendEntry",
-  "setSessionName", "getSessionName", "setLabel", "exec", "getActiveTools",
-  "getAllTools", "setActiveTools", "getCommands", "setModel", "getThinkingLevel",
-  "setThinkingLevel", "registerProvider", "unregisterProvider", "events",
+  "registerEntryRenderer", "registerToolRenderer", "sendMessage", "sendUserMessage",
+  "appendEntry", "setSessionName", "getSessionName", "setLabel", "exec",
+  "getActiveTools", "getAllTools", "getSettings", "setActiveTools", "getCommands",
+  "setModel", "getThinkingLevel", "setThinkingLevel", "registerProvider",
+  "unregisterProvider", "registerMcpServer", "unregisterMcpServer", "getMcpServers",
+  "registerVirtualModel", "unregisterVirtualModel", "events",
   // ExtensionContext
   "ui", "mode", "hasUI", "cwd", "sessionManager", "modelRegistry", "model",
   "scopedModels", "thinkingLevel", "isIdle", "isProjectTrusted", "signal",
@@ -137,30 +146,112 @@ function stripComments(text) {
     .replace(/(^|[^:"])\/\/[^\n]*/g, "$1");
 }
 
-/** The pi-core version actually installed here, or null when it is not resolvable. */
-function installedPiCoreVersion() {
-  const manifest = resolve(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "node_modules",
-    "@earendil-works",
-    "pi-coding-agent",
-    "package.json",
+/** The installed pi-core package — version and the declarations file that
+ *  describes its surface — or null when it is not resolvable. */
+function installedPiCore() {
+  const root = resolve(
+    __dirname, "..", "..", "..", "node_modules", "@earendil-works", "pi-coding-agent",
   );
   try {
-    return JSON.parse(readFileSync(manifest, "utf8")).version ?? null;
+    const version = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version ?? null;
+    if (!version) return null;
+    return { version, declarations: resolve(root, "dist/core/extensions/types.d.ts") };
   } catch {
     return null;
   }
 }
 
-/** Staleness suffix for the clean line: empty only when the baseline IS the installed version. */
+/**
+ * The member set of ExtensionAPI + ExtensionContext + ExtensionCommandContext
+ * in a declarations file, or null when it cannot be read or does not parse into
+ * a plausible surface.
+ *
+ * Only the staleness note uses this. The ALLOW set stays frozen, so a green run
+ * still vouches for the baseline; this extraction exists so the note can say
+ * what is actually different instead of inferring trouble from a version
+ * string.
+ */
+function extractPiCoreSurface(declarations) {
+  let text;
+  try {
+    text = stripComments(readFileSync(declarations, "utf8"));
+  } catch {
+    return null;
+  }
+  const members = new Set();
+  for (const name of ["ExtensionAPI", "ExtensionContext", "ExtensionCommandContext"]) {
+    const header = new RegExp(`^export interface ${name}\\b`, "m").exec(text);
+    if (!header) return null;
+    const open = text.indexOf("{", header.index);
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === "{") depth++;
+      else if (text[i] === "}" && --depth === 0) {
+        close = i;
+        break;
+      }
+    }
+    if (close < 0) return null;
+    // Member names at nesting depth 0. A name inside an inline object type is
+    // not part of the interface surface, and a brace inside a string literal
+    // (or a skipped quote) must not shift the depth.
+    let nested = 0;
+    for (const line of text.slice(open + 1, close).split("\n")) {
+      if (nested === 0) {
+        const m = line.match(/^\s+(?:readonly\s+)?([A-Za-z_$][\w$]*)\s*[?(<:]/);
+        if (m) members.add(m[1]);
+      }
+      let quote = "";
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (quote) {
+          if (ch === quote && line[i - 1] !== "\\") quote = "";
+        } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+        else if (ch === "{" || ch === "(") nested++;
+        else if (ch === "}" || ch === ")") nested = Math.max(0, nested - 1);
+      }
+    }
+  }
+  // A reshaped or renamed interface parses into almost nothing; that is a
+  // parse failure to report, not a surface to compare against.
+  return members.size >= 40 ? members : null;
+}
+
+/**
+ * Staleness suffix for the clean line: empty only when the frozen set matches
+ * the installed declarations member-for-member.
+ *
+ * It compares surfaces rather than version strings on purpose. A set extracted
+ * from one release is still exact for a differently versioned install whose
+ * declarations carry the same members, and a version comparison would call that
+ * a failure it cannot see the inside of. The two directions are reported
+ * separately: an installed member the set lacks is a legitimate call the guard
+ * would refuse; a set member the install lacks is an allow for a call that no
+ * longer exists.
+ */
 function baselineNote() {
-  const installed = installedPiCoreVersion();
-  if (!installed || installed === PI_CORE_BASELINE) return "";
-  return `\n   ⚠️  frozen baseline: installed pi-core is ${installed}; re-extract the member set from its declarations`;
+  const installed = installedPiCore();
+  if (!installed) {
+    return "\n   ⚠️  frozen baseline: no installed pi-core package found; re-extract the member set from its declarations";
+  }
+  const surface = extractPiCoreSurface(installed.declarations);
+  if (!surface) {
+    return `\n   ⚠️  frozen baseline: could not read a member set from installed pi-core ${installed.version} (${installed.declarations}); re-extract it by hand`;
+  }
+  const missing = [...surface].filter((m) => !PI_CORE_SURFACE.has(m)).sort();
+  const stale = [...PI_CORE_SURFACE].filter((m) => !surface.has(m)).sort();
+  if (missing.length === 0 && stale.length === 0) return "";
+  const parts = [];
+  if (missing.length) {
+    parts.push(`${missing.length} installed member(s) missing from the frozen set: ${missing.join(", ")}`);
+  }
+  if (stale.length) {
+    parts.push(
+      `${stale.length} frozen member(s) absent from installed ${installed.version}: ${stale.join(", ")}`,
+    );
+  }
+  return `\n   ⚠️  frozen baseline ${PI_CORE_BASELINE} vs installed pi-core ${installed.version}: ${parts.join("; ")}`;
 }
 
 const srcDir = resolve(__dirname, "..", "src");
