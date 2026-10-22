@@ -19,7 +19,7 @@
 
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,6 +194,20 @@ test("an already-due expiry is refused", () => {
   });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /expires_at .* is not in the future/);
+});
+
+test("a constraint with a future expires_at is accepted, and the expiry lands in the line", () => {
+  const expiresAt = tomorrow();
+  const result = append({
+    kind: "constraint",
+    subject: "fixture",
+    status: "open",
+    text: "A constraint that expires re-reads as advice after its date, not as a standing rule.",
+    evidence: ["README.md"],
+    expires_at: expiresAt,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).expires_at, expiresAt);
 });
 
 // ── Supersession: the earlier line is never rewritten ─────────────────────

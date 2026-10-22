@@ -8,12 +8,15 @@
  *      scratchpad + write resume.json) to guarantee zero data loss.
  *
  * Safety gates, checked in order:
- *   - Loop-done gate: the act never fires on a turn_end whose assistant
- *     stopReason is "toolUse" -- the agent loop is live (the next model
- *     call is pending) and ctx.compact() aborts it mid-run (manual
- *     compaction never retries or continues the interrupted turn). The
- *     only exception is the 0.90W backstop, which deliberately stops a
- *     runaway loop before overflow.
+ *   - Loop-done gate: the act aborts the run through ctx.compact(), so it only
+ *     fires at a boundary the shared rule accepts
+ *     (lib/events/turn-boundary.ts, the same rule the context_compress drain
+ *     reads). That rule fires on a loop-done stop reason and parks on a live
+ *     loop ("toolUse") or on a boundary it cannot read. The only exception is
+ *     the 0.90W backstop, which deliberately stops a runaway loop before
+ *     overflow. The rule's residual section names the cases a loop-done stop
+ *     reason does not rule out: a tool call riding a non-"toolUse" stop
+ *     reason, and a steer queued at any boundary.
  *   - Mode awareness: the DETERMINISTIC slide path carries none of the
  *     abort/corruption risk that justifies standing down, so it fires at
  *     the act arm regardless of pi's compaction.enabled. Only the LLM
@@ -21,10 +24,11 @@
  *     per act decision from the merged settings), native compaction owns
  *     LLM compaction and the act stands down to nudge-only.
  *
- * ctx.compact() calls this._disconnectFromAgent() + this.abort() in pi-core
- * (agent-session.js:1245). To keep the handler's synchronous part off the
- * abort path, the compact call is deferred via setTimeout(0). Resume after
- * the compaction is register-session-compact's decision, not ours.
+ * ctx.compact() aborts the current agent operation first and never retries or
+ * continues the interrupted turn (pi-core's agent-session compact()). To keep
+ * the handler's synchronous part off the abort path, the compact call is
+ * deferred via setTimeout(0). Resume after the compaction is
+ * register-session-compact's decision, not ours.
  *
  * Discoverability (scratchpad/memory/episodes surfacing) fires from
  * SESSION_START (register-session-start-discoverability.ts), before the
@@ -38,6 +42,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { createLogger } from "../../../lib/core/logger.js";
 import { registerTurnEndHandler } from "../../../lib/events/turn-end-coordinator.js";
+import { turnBoundaryMayAbortRun } from "../../../lib/events/turn-boundary.js";
 import { sendEnforcementWhisper } from "../whisper.js";
 import { getState } from "../state.js";
 import { fileMutationQueue } from "../../../lib/utils/file-mutation-queue.js";
@@ -247,14 +252,18 @@ async function checkContextUsage(
       recordHygieneSkip(state);
       return;
     }
-    // Loop-done gate: "toolUse" means the agent loop is live -- the next
-    // model call is queued inside the running agent operation, and
-    // ctx.compact() aborts it (manual compaction never retries or continues
-    // the interrupted turn). Act only on a loop-done stop; the 0.90W
-    // backstop below still acts mid-loop to stop a runaway loop before
-    // overflow (its purpose).
-    const loopDone = (event as any)?.message?.stopReason !== "toolUse";
-    if (!loopDone && !atHardBackstop) {
+    // Loop-done gate: the act runs ctx.compact(), which aborts the running
+    // agent operation (manual compaction never retries or continues the
+    // interrupted turn), so the boundary decides it. One rule, shared with the
+    // context_compress drain: a loop-done stop fires, a live loop parks, an
+    // unreadable boundary parks, and the 0.90W backstop below still acts
+    // mid-loop to stop a runaway loop before overflow (its purpose).
+    if (
+      !turnBoundaryMayAbortRun(event, () => ({
+        tokens: usageTokens,
+        contextWindow: usageWindow,
+      }))
+    ) {
       recordHygieneSkip(state);
       return;
     }
