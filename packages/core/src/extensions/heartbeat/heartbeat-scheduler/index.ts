@@ -317,6 +317,7 @@ function tick(
   state: import("./types.js").HeartbeatState,
   config: import("./types.js").HeartbeatConfig,
   ctx: ExtensionContext,
+  turnEvent?: any,
 ): void {
   state.stats.totalTicks++;
 
@@ -407,7 +408,7 @@ function tick(
     log.warn(`[heartbeat] pending-compaction advisory failed: ${err}`);
   }
   try {
-    maybeArmAutoCompaction(pi, ctx);
+    maybeArmAutoCompaction(pi, ctx, turnEvent);
   } catch (err) {
     log.warn(`[heartbeat] context auto-arm check failed: ${err}`);
   }
@@ -622,7 +623,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
   // Event: turn_end
 
-  pi.on(TURN_END, async (_event: any, ctx: ExtensionContext) => {
+  pi.on(TURN_END, async (event: any, ctx: ExtensionContext) => {
     const state = getState(ctx);
     if (!state.enabled || !config.enabled) return;
 
@@ -637,7 +638,10 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     const interval = getAdaptiveInterval(state);
     if (state.turnCount % interval !== 0) return;
 
-    tick(pi, state, config, ctx);
+    // The boundary travels with the tick: the usage-driven auto-arm arms inside
+    // this dispatch, and a drain there can only be judged from the event that
+    // named the boundary.
+    tick(pi, state, config, ctx, event);
   });
 
   // Event: before_agent_start - flush delayed whispers
