@@ -16,9 +16,11 @@
  * Invariants: "Core" = pi-core's npm package folder, "braid root" = the
  * loaded pi-braid package folder; packages come from the settings `packages`
  * field (project / user-global, pi-core precedence), never a sibling walk;
- * pi-core version resolves from the running pi binary; skills+memory live in
- * memory-section.ts / the list_skills tool; output never contains internal
- * module paths or "->".
+ * the pi-core version is pi-core's own `VERSION` export (the library braid is
+ * loaded into names the core that is running), with a filesystem walk as the
+ * fallback and as the source of the binary/package-folder fields; skills+memory
+ * live in memory-section.ts / the list_skills tool; output never contains
+ * internal module paths or "->".
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -26,7 +28,7 @@ import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, VERSION as PI_CORE_VERSION } from "@earendil-works/pi-coding-agent";
 import type { PromptSection } from "./section.js";
 import { discoverTopLevelExtensions, type TopLevelExtension } from "./top-level-extensions.js";
 import { gatherL1Environment, type L1EnvironmentData } from "../agent-environment/index.js";
@@ -43,13 +45,43 @@ export interface SkillEntry {
 }
 
 interface PiVersionInfo {
+  /** The running library's own `VERSION`; the package.json version found by
+   *  the walk only when that export is unavailable. */
   version: string;
   root: string;
   /** Path to the resolved `pi` binary. */
   binary: string;
 }
 
+/**
+ * The pi-core version of the library braid is loaded into, read from pi-core's
+ * own `VERSION` export.
+ *
+ * Braid is loaded by the harness, so that constant names the core actually
+ * running. A filesystem walk cannot answer the same question: the managed
+ * install keeps the entrypoint as a regular shell shim at `bin/pi` (so
+ * `realpathSync` changes nothing) and the package in a sibling
+ * `install/releases/<version>/node_modules` subtree, which no ancestor of
+ * `bin/` contains. Null when the export is absent or is not a version, so the
+ * caller falls back to the walk.
+ */
+function piCoreVersionFromLibrary(): string | null {
+  const value = typeof PI_CORE_VERSION === "string" ? PI_CORE_VERSION.trim() : "";
+  return /^\d+\.\d+\.\d+/.test(value) ? value : null;
+}
+
+/** The pi-core the current process is running over: the library's `VERSION`
+ *  for the version, the filesystem walk for the binary and package folder. */
 function discoverRunningPi(): PiVersionInfo {
+  const located = locateRunningPi();
+  const libraryVersion = piCoreVersionFromLibrary();
+  return libraryVersion ? { ...located, version: libraryVersion } : located;
+}
+
+/** Walk PATH and the filesystem for the running pi binary and its package
+ *  folder. Supplies `root` and `binary`, and a version only as the fallback
+ *  for a runtime where pi-core's `VERSION` export is missing. */
+function locateRunningPi(): PiVersionInfo {
   // 1. Find the actually-running `pi` binary. We DON'T just call
   //    `which pi` because that follows PATH order and can return a
   //    stale binary from a sibling repo's `node_modules/.bin` (e.g.
