@@ -794,6 +794,7 @@ export type DiscoverySignalType =
   | "sessions_prior"
   | "resume"
   | "tags_prior"
+  | "journal_prior"
   | "context_hygiene_tip";
 
 /** Get the shared shown-signal-types set (process-global, survives /reload). */

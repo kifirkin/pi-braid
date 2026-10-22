@@ -122,6 +122,13 @@ export function scratchpadDir(): string {
   return path.join(braidDir(), "scratchpads");
 }
 
+/** Journal root (one dir per project slug), resolved on every call. Durable
+ *  write state: the append-only record of what a seat decided, which a
+ *  replacement seat reads before acting, so BRAID_HOME pinning must move it. */
+export function journalDir(): string {
+  return path.join(braidDir(), "journal");
+}
+
 /** Healthcheck scratch and report root, resolved on every call. Durable-write
  *  state: the probes and the saved report must follow a pinned BRAID_HOME. */
 export function healthcheckDir(): string {
@@ -303,6 +310,19 @@ function sanitizeSegment(s: string): string {
 export function tagsSlugFromCwd(cwd?: string): string {
   if (!cwd) return "default";
   return cwd.split("/").filter(Boolean).join("-") || "default";
+}
+
+/**
+ * Append-only journal file for one project: `<journal root>/<slug>/journal.jsonl`.
+ *
+ * The slug is the scratchpad's `projectSlugFromCwd` form, passed in rather than
+ * re-derived here: the writer, the checker and the session-start pointer must
+ * name ONE file, and a second slug rule is how the tag file split into a writer
+ * and a reader that could never meet (see tagsSlugFromCwd). Resolved on every
+ * call, so a pinned BRAID_HOME writes and reads its own journal.
+ */
+export function journalFilePath(projectSlug: string): string {
+  return path.join(journalDir(), projectSlug, "journal.jsonl");
 }
 
 /**

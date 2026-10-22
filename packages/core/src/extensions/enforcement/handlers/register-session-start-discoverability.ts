@@ -48,6 +48,7 @@ import {
   semanticMemoryFilePath,
   AGENT,
   braidDir,
+  journalFilePath,
   tagsSlugFromCwd,
 } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
@@ -221,7 +222,33 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
         // ignore
       }
 
-      // 7. Context hygiene & state preservation tip: forward-looking
+      // 7. The owner-input journal. The path comes from the constant the
+      // writer appends through, never a hand-built shape: two spellings for
+      // one file is how the scratchpad pointer armed itself against a file
+      // nothing writes (see step 1).
+      try {
+        const slug = projectSlugFromCwd(cwd);
+        const journalFile = journalFilePath(slug);
+        if (existsSync(journalFile)) {
+          const count = readFileSync(journalFile, "utf-8")
+            .split("\n")
+            .filter((line) => line.trim()).length;
+          if (count > 0) {
+            signals.push({
+              type: "journal_prior",
+              text:
+                `The project journal holds ${count} entr${count === 1 ? "y" : "ies"} at ${journalFile} -- ` +
+                `what earlier seats decided and why, readable without their sessions. ` +
+                `Read the open program before acting (digest printer: packages/core/scripts/check-journal.mjs --digest), ` +
+                `so a decision gets superseded, not rediscovered.`,
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // 8. Context hygiene & state preservation tip: forward-looking
       // guidance — when prior state exists, remind the agent how to manage
       // context and preserve state against crashes.
       // Shown only when there's prior state to manage (other signals exist).
@@ -240,14 +267,23 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // persistence (via `projectSlugFromCwd`) lets `pi --session <id>` (a new
       // process) read previously shown signals from disk and skip them, so the
       // discoverability bundle doesn't re-fire on session resume.
+      // Signal types that must reach every seat, not only the first. The
+      // dedupe below -- and the branch entries it writes -- exists so a
+      // resumed session is not told what it already saw. A journal pointer is
+      // aimed at a seat that has never seen this project, so a mark left by an
+      // earlier seat is exactly the one-shot failure it exists to repair.
+      const alwaysShown: ReadonlySet<DiscoverySignalType> = new Set(["journal_prior"]);
+
       const slug = signals.length > 0 && (cwd ? projectSlugFromCwd(cwd) : "");
-      const unseenSignals = slug
-        ? signals.filter((s) => !isProjectSignalShown(slug, s.type))
-        : signals.filter((s) => !isProjectSignalShown("default", s.type));
+      const projectKey = slug || "default";
+      const unseenSignals = signals.filter(
+        (s) => alwaysShown.has(s.type) || !isProjectSignalShown(projectKey, s.type),
+      );
       if (unseenSignals.length > 0) {
         const bundled = unseenSignals.map((s) => s.text).join("\n");
         for (const s of unseenSignals) {
-          markProjectSignalShown(slug || "default", s.type, pi);
+          if (alwaysShown.has(s.type)) continue;
+          markProjectSignalShown(projectKey, s.type, pi);
         }
         // Informational pointers to prior state: park (no forced turn).
         sendEnforcementWhisper(pi, ctx, bundled, false, { delivery: "park" });
