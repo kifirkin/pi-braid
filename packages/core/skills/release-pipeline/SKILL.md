@@ -150,12 +150,27 @@ Rules the script enforces:
 ## Remote Publication
 
 Remote publication uses `.github/workflows/publish.yml`, separate from the
-local install path. A bare core release tag (`v<core version>`) runs the
-workflow. To publish one sibling package, dispatch it from `main` with
-`only=<package>`; sibling tags do not run this release workflow, and iteration
+local install path. A core release tag (`v<core version>`) runs the workflow,
+and the tag must be **annotated**: the workflow's first step is
+`test "$(git cat-file -t refs/tags/${GITHUB_REF_NAME})" = tag`, so a lightweight
+tag pushed with plain `git tag` makes that test fail and the job dies in
+seconds with no publish. Use `git tag -a v<core version> -m "<what shipped>"`.
+`release:check` verifies the annotation too, reporting `annotated, matches`.
+
+To publish one sibling package, dispatch from `main` with
+`only=<workspace directory>`, where the accepted values are exactly
+`core`, `skills`, `providers`, `telegram`, `contrib` — the **directory** names
+under `packages/`, not the npm package names. `only=pi-braid-telegram` is
+refused as an unknown package; `only=telegram` is the correct spelling.
+Sibling tags do not run this release workflow, and iteration
 tags are refused by its job condition. A release-tag run publishes each stable
 workspace version not already present on npm through trusted publishing (OIDC);
 the workflow uses no npm token.
+
+A sibling whose version did not change is **skipped silently**: the run
+succeeds and that package stays at its old version on the registry. Bump the
+sibling's `package.json` and commit it before dispatching, or the fix it
+carries ships in the repository and nowhere else.
 
 Preparation:
 
@@ -184,7 +199,8 @@ After release:
   use the derived iteration version instead.
 - Use `npm version` for semver bumps in the target workspace.
 - A bare core release tag (`v<core version>`) runs the publish workflow. Publish
-  a sibling package by dispatching from `main` with `only=<package>`.
+  a sibling package by dispatching from `main` with `only=<workspace directory>`
+  (`core|skills|providers|telegram|contrib`, not the npm package name).
   `tag-prerelease.mjs` creates package-scoped iteration tags; they do not
   publish.
 
