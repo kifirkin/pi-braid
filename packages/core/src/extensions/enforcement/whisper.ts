@@ -44,6 +44,17 @@ const log = createLogger("enforcement");
  *   options.deliverAs - Delivery mode. Defaults to `"steer"` for a
  *                  non-waking whisper; left undefined when triggerTurn:true so
  *                  pi-core's wake branch is not shadowed by the nextTurn queue.
+ *   options.bypassFloodCap - Skip the per-turn/per-source whisper flood cap
+ *                  in the funnel (see `sendTrackedMessage`'s JSDoc). Opt-in
+ *                  per call site, default false, and reserved for a wake
+ *                  whose loss is a correctness bug rather than a lost nudge:
+ *                  the post-compaction resume, which is the only thing that
+ *                  hands the aborted loop back. Every enforcement whisper
+ *                  shares the `enforcement/whisper` bucket, so three ordinary
+ *                  advisories in one turn are enough to spend it - a blanket
+ *                  exemption for `triggerTurn` would instead turn every
+ *                  waking caller into a flood risk, which is why the cap is
+ *                  bypassed here per call rather than in the funnel.
  *
  * Nudges are suppressed when braid.suppressNudges=true in settings.json.
  */
@@ -52,7 +63,12 @@ export function sendEnforcementWhisper(
   ctx: ExtensionContext,
   message: string,
   critical: boolean = false,
-  options?: { triggerTurn?: boolean; deliverAs?: "steer" | "nextTurn"; delivery?: "live" | "park" },
+  options?: {
+    triggerTurn?: boolean;
+    deliverAs?: "steer" | "nextTurn";
+    delivery?: "live" | "park";
+    bypassFloodCap?: boolean;
+  },
 ): void {
   // Cognitive nudge suppression - separate from confirm dialogs
   if (areCognitiveNudgesDisabled()) {
@@ -116,5 +132,9 @@ export function sendEnforcementWhisper(
     },
     { deliverAs, triggerTurn, delivery },
     { type: "enforcement", source: "enforcement/whisper" },
+    // Forwarded per call, never defaulted on: the funnel's flood cap stays
+    // the gate for every enforcement whisper that does not ask for the
+    // exemption explicitly.
+    { bypassFloodCap: options?.bypassFloodCap === true },
   );
 }

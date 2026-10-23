@@ -228,6 +228,15 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // resume-vs-advisory delivery differs. A mid-work turn stays
       // triggerTurn:true (compaction aborted the loop; it must be handed
       // back to the agent).
+      //
+      // bypassFloodCap: this whisper is the resume. It is the only thing that
+      // restarts a turn the context_compress tool aborted, so dropping it
+      // halts the session instead of losing a nudge. Every enforcement
+      // whisper shares the `enforcement/whisper` per-source bucket (cap 3),
+      // so three ordinary advisories earlier in the same turn are enough to
+      // spend it and swallow the wake. The exemption is granted here, at the
+      // one call site that cannot afford to lose the message - not in the
+      // wrapper's default and not in the funnel.
       setTimeout(() => {
         sendEnforcementWhisper(
           pi,
@@ -238,7 +247,9 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
             `(which preserves speaker context) to distinguish who said what. ` +
             `These surfaces survive compaction - continue from there.`,
           false,
-          naturalStop && !agentRequestedResume ? { delivery: "park" } : { triggerTurn: true },
+          naturalStop && !agentRequestedResume
+            ? { delivery: "park", bypassFloodCap: true }
+            : { triggerTurn: true, bypassFloodCap: true },
         );
       }, 0);
     } finally {
