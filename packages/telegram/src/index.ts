@@ -67,6 +67,7 @@ import {
 import {
   createInboundPoller,
   type IncomingOwnerMessage,
+  type IncomingReplyContext,
   type InboundPoller,
   type PauseStateReader,
 } from "./lib/inbound-poller.js";
@@ -374,6 +375,24 @@ export function log(
 
 // Inbound formatting (agent-zero prompts/fw.telegram.user_message.md template)
 
+/**
+ * The reply reference line, rendered into the envelope header so the owner's
+ * "yes, that one" arrives attached to what it answers. An absent reference
+ * renders NOTHING: a message that is not a reply keeps exactly the envelope it
+ * had, so a missing or malformed reply field can only ever cost the reference.
+ */
+export function formatReplyLine(reply?: IncomingReplyContext): string {
+  if (!reply) return "";
+  const target =
+    reply.author === "agent"
+      ? "your message"
+      : reply.author === "owner"
+        ? "the owner's message"
+        : "an unidentified message";
+  const quoted = reply.excerpt ? ` — "${reply.excerpt}"` : "";
+  return `\nreplying to ${target} ${reply.messageId}${quoted}`;
+}
+
 export function formatInboundMessage(message: IncomingOwnerMessage): string {
   const sender = message.username
     ? `@${message.username}`
@@ -387,7 +406,7 @@ export function formatInboundMessage(message: IncomingOwnerMessage): string {
     : "";
   // The opening tag line carries nothing after `]`: the provenance line
   // starts on its own line so the envelope header is readable at a glance.
-  const header = `[braid-whisper - telegram${sentClock}]\nfrom ${sender}${name} in chat ${message.chatId}/${message.chatType}`;
+  const header = `[braid-whisper - telegram${sentClock}]\nfrom ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatReplyLine(message.replyTo)}`;
   return `${header}\n\n${message.text.trim()}\n[braid-whisper-end]`;
 }
 
@@ -410,7 +429,7 @@ export function formatInboundBatch(messages: IncomingOwnerMessage[]): string {
     const sentClock = Number.isFinite(message.receivedAt)
       ? ` @ ${formatWhisperClock(message.receivedAt)}`
       : "";
-    const partHeader = `[${index + 1}/${messages.length}${sentClock}] from ${sender}${name} in chat ${message.chatId}/${message.chatType}`;
+    const partHeader = `[${index + 1}/${messages.length}${sentClock}] from ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatReplyLine(message.replyTo)}`;
     return `${partHeader}\n\n${message.text.trim()}`;
   });
   return `${header}\n\n${parts.join("\n\n")}\n[braid-whisper-end]`;
