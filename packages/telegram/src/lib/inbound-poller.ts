@@ -69,6 +69,40 @@ import {
   type SttConfig,
 } from "./transcribe.js";
 
+/**
+ * One-line cap for the quoted excerpt. The excerpt is untrusted text copied
+ * into the prompt header, so it is hard-capped: a multi-KB replied message
+ * would ride into every reply for no gain.
+ */
+export const REPLY_EXCERPT_MAX_CHARS = 120;
+
+/**
+ * The message the owner replied to.
+ *
+ * Carried on the received message rather than resolved on demand: a lookup
+ * would put a getMessage round trip inside the receive path, where a failure
+ * costs the owner a delivered message, and the update already holds the
+ * reference.
+ */
+export interface IncomingReplyContext {
+  /** `message_id` of the replied message — the name the owner can point at. */
+  messageId: number;
+  /**
+   * Who sent the replied message. "agent" and "owner" mean different things,
+   * and conflating them misleads worse than silence: "yes, that one" answering
+   * our own message is a confirmation, answering the owner's is a correction.
+   * "unknown" is a sender Telegram omitted, or a bot that is not provably ours
+   * (a message forwarded from another bot).
+   */
+  author: "agent" | "owner" | "unknown";
+  /**
+   * Sanitised one-line excerpt of the replied message's text (or its caption
+   * when it carried no text), capped at REPLY_EXCERPT_MAX_CHARS. Absent when
+   * the replied message carried neither.
+   */
+  excerpt?: string;
+}
+
 export interface IncomingOwnerMessage {
   updateId: number;
   messageId: number;
@@ -78,6 +112,8 @@ export interface IncomingOwnerMessage {
   chatId: number;
   chatType: string;
   text: string;
+  /** Present when the owner replied to a specific message (absent otherwise). */
+  replyTo?: IncomingReplyContext;
   /** Present for photo messages (absent for plain-text). */
   photo?: {
     fileId: string;
@@ -144,6 +180,12 @@ export interface WatchdogTunnelStatusEvent {
 /** Media-extraction context threaded into extractIncomingMessage (photo/voice/document inbound). */
 export interface IncomingMediaContext {
   token?: string;
+  /**
+   * Our own bot id when the caller knows it (a cached getMe result). It only
+   * sharpens the reply-reference author verdict; absent, `is_bot` alone
+   * decides.
+   */
+  botId?: number;
   fetchFn?: TelegramFetch;
   baseUrl?: string;
   mediaDir?: string;
@@ -414,6 +456,89 @@ export function isAllowed(
 }
 
 /**
+ * Read the reply reference from the update the poller already holds.
+ *
+ * Never throws and never fetches: an absent, malformed, or partly readable
+ * `reply_to_message` degrades the REFERENCE (the id alone, or nothing) and
+ * leaves the delivery untouched — this channel's contract is that an owner
+ * message is never dropped, and a richer envelope must not weaken it.
+ */
+export function extractReplyContext(
+  message: unknown,
+  botId?: number,
+): IncomingReplyContext | undefined {
+  if (message === null || typeof message !== "object") return undefined;
+  const raw = (message as { reply_to_message?: unknown }).reply_to_message;
+  if (raw === null || typeof raw !== "object") return undefined;
+  const reply = raw as {
+    message_id?: unknown;
+    from?: unknown;
+    text?: unknown;
+    caption?: unknown;
+  };
+  if (
+    typeof reply.message_id !== "number" ||
+    !Number.isFinite(reply.message_id)
+  ) {
+    return undefined;
+  }
+  const from = reply.from;
+  const sender =
+    from !== null && typeof from === "object"
+      ? (from as { id?: unknown; is_bot?: unknown })
+      : undefined;
+  const excerptText =
+    typeof reply.text === "string" && reply.text.trim()
+      ? reply.text
+      : typeof reply.caption === "string" && reply.caption.trim()
+        ? reply.caption
+        : undefined;
+  const excerpt = excerptText ? oneLineExcerpt(excerptText) : undefined;
+  return {
+    messageId: reply.message_id,
+    author: classifyReplyAuthor(sender, botId),
+    ...(excerpt ? { excerpt } : {}),
+  };
+}
+
+/**
+ * Whose message was replied to. Telegram marks bot senders with `is_bot`; our
+ * own id, when the caller knows it, is the only positive proof that a bot
+ * message was OURS, so a bot that cannot be proven ours reads as "unknown"
+ * rather than claiming authorship we cannot verify.
+ */
+function classifyReplyAuthor(
+  sender: { id?: unknown; is_bot?: unknown } | undefined,
+  botId: number | undefined,
+): IncomingReplyContext["author"] {
+  if (!sender || typeof sender.id !== "number") return "unknown";
+  if (typeof botId === "number") {
+    if (sender.id === botId) return "agent";
+    return sender.is_bot === true ? "unknown" : "owner";
+  }
+  return sender.is_bot === true ? "agent" : "owner";
+}
+
+/**
+ * Flatten the replied text to ONE line and defuse it before it reaches the
+ * envelope header: control and format characters (newlines, line separators,
+ * zero-width joiners) would let the quoted text forge extra header lines, and
+ * a bracketed `[braid-whisper ...]` marker would let it open or close an
+ * envelope inside the one it is quoted into. Then cut to the cap, with a
+ * visible ellipsis.
+ */
+function oneLineExcerpt(raw: string): string | undefined {
+  const flat = raw
+    .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\[\s*braid-whisper([^\]]*)\]/gi, "braid-whisper$1");
+  if (!flat) return undefined;
+  if (flat.length <= REPLY_EXCERPT_MAX_CHARS) return flat;
+  return flat.slice(0, REPLY_EXCERPT_MAX_CHARS - 1).trimEnd() + "…";
+}
+
+/**
  * Extract an accepted message into the shape handed to consumers (shared by
  * the background poller and telegram-inbox). Plain-text messages map 1:1.
  * Photo messages (no text, non-empty `photo`) download the largest variant to
@@ -438,6 +563,10 @@ export async function extractIncomingMessage(
   media: IncomingMediaContext = {},
 ): Promise<IncomingOwnerMessage> {
   const message = update.message!;
+  // Read the reference ONCE and let every variant below inherit it through
+  // `base`: the plain-text, photo, voice, document, and text+document returns
+  // all spread `base`, so no delivery path can lose it by omission.
+  const replyTo = extractReplyContext(message, media.botId);
   const base = {
     updateId: update.update_id,
     messageId: message.message_id,
@@ -447,6 +576,7 @@ export async function extractIncomingMessage(
     chatId: message.chat.id,
     chatType: message.chat.type,
     receivedAt: message.date * 1000,
+    ...(replyTo ? { replyTo } : {}),
   };
   const text = typeof message.text === "string" ? message.text.trim() : "";
   const caption =
