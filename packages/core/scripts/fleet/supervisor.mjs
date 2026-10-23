@@ -165,6 +165,7 @@ export class Supervisor {
       askTtlMs: 600_000,
       turnTimeoutMs: 300_000,
       maxAttempts: 3,
+      idleExitMs: 5_000,
       driver: "rpc",
       model: "opencode-go/deepseek-v4.1-flash",
       piBin: "pi",
@@ -192,6 +193,12 @@ export class Supervisor {
     this.server = null;
     this.stopping = false;
     this.fences = [];
+    this.idleSince = null;
+    // Resolved when this process has stopped itself because the fleet had
+    // nothing left to do; the entry point exits on it rather than on a guess.
+    this.done = new Promise((resolveDone) => {
+      this.doneResolve = resolveDone;
+    });
     this.log = this.options.log ?? ((line) => console.log(line));
   }
 
@@ -226,6 +233,11 @@ export class Supervisor {
    * every turn still marked in-progress. The turn's process group is fenced
    * before its effects are read, so the next drive cannot race a writer that
    * is still alive.
+   *
+   * A lease and a turn left behind by the same owner are the same owner's, so
+   * both loops ask `ownerLiveness` whether that owner is still there. Fencing a
+   * live owner's turn kills a child that is still working and records a
+   * recovery that never happened.
    */
   async reconcile() {
     const supervisors = this.journal.supervisors();
@@ -235,27 +247,89 @@ export class Supervisor {
         this.journal.setSupervisorState(supervisor.pid, "dead");
       }
     }
-    const ownerState = new Map(this.journal.supervisors().map((row) => [row.epoch, row.state]));
+    const owners = this.ownerLiveness();
     for (const lease of this.journal.liveLeases()) {
       if (lease.epoch === this.epoch) continue;
-      if (ownerState.get(lease.epoch) === "live") continue;
+      if (owners.get(lease.epoch)) continue;
       this.journal.expireLease(lease.lease_id);
     }
+    let skippedTurns = 0;
     const openTurns = this.journal.allOpenTurns();
     for (const turn of openTurns) {
       if (turn.supervisor_epoch === this.epoch) continue;
+      if (owners.get(turn.supervisor_epoch)) {
+        skippedTurns += 1;
+        continue;
+      }
       const fence = await this.fenceGroup(turn);
       const unknown = this.journal.markUnknownEffects(turn.turn_id);
       this.journal.endTurn(turn.turn_id, { state: "interrupted" });
       this.journal.bumpAttempt(turn.node_id);
       const node = this.journal.getNode(turn.node_id);
-      if (node && node.state !== "done") this.journal.setNodeState(turn.node_id, "settled");
+      if (node && node.state !== "done") {
+        // The bound closes the crash loop: without it a node that kills its
+        // supervisor every time is interrupted, settled, resumed, and
+        // interrupted again, for ever.
+        if (node.attempts >= this.options.maxAttempts) {
+          this.journal.setNodeState(turn.node_id, "failed", {
+            done_reason: `attempt bound: ${node.attempts} failed or interrupted attempts reached maxAttempts ${this.options.maxAttempts}`,
+          });
+          this.log(
+            `fleet: node ${turn.node_id} reached the attempt bound (${node.attempts}/${this.options.maxAttempts}); not resuming it`,
+          );
+        } else {
+          this.journal.setNodeState(turn.node_id, "settled");
+        }
+      }
       this.journal.setMeta("fences", JSON.stringify(this.fences));
       this.log(
         `fleet: reconciled turn ${turn.turn_id} (node ${turn.node_id}) fence=${fence.killed ? "killed" : fence.reason} unknown_effects=${unknown.length}`,
       );
     }
-    this.journal.expireAsks();
+    this.journal.setMeta("reconcile_skipped_turns", String(skippedTurns));
+    this.drainExpiredAsks();
+  }
+
+  /**
+   * Which supervisor epochs are still alive, by the one predicate both repair
+   * loops need: a row that says `live` whose pid answers. The repair pass above
+   * has already demoted a live row whose pid is gone, so a `live` row here is a
+   * process the box still holds.
+   */
+  ownerLiveness() {
+    const owners = new Map();
+    for (const row of this.journal.supervisors()) {
+      owners.set(row.epoch, row.state === "live" && pidIsAlive(row.pid));
+    }
+    return owners;
+  }
+
+  // ── the ask deadline ─────────────────────────────────────────────────────
+
+  /**
+   * The one drain of expired asks. Resolving an ask to its default is only half
+   * the job: nothing tells the node to move unless the default is also queued
+   * as an ordinary message. Both callers - the tick, and the restart that finds
+   * a deadline passed while no supervisor was running - come through here, so
+   * the two paths cannot drift into one of them doing half the work.
+   *
+   * Only what `expireAsks()` returned is queued. It returns the rows it found
+   * open and overdue, so a second drainer of the same ask queues nothing.
+   */
+  drainExpiredAsks() {
+    const expired = this.journal.expireAsks();
+    for (const ask of expired) {
+      this.journal.addMessage({
+        msgId: `m-${randomBytes(6).toString("hex")}`,
+        nodeId: ask.node_id,
+        kind: "answer",
+        body: ask.default_answer,
+        token: ask.token,
+      });
+      this.journal.setNodeState(ask.node_id, "settled");
+      this.log(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
+    }
+    return expired;
   }
 
   /**
@@ -319,26 +393,76 @@ export class Supervisor {
       });
       if (!renewed) this.log(`fleet: lease for ${nodeId} could not be renewed (ctx ${ctx.turnId})`);
     }
-    for (const ask of this.journal.expireAsks()) {
-      this.journal.addMessage({
-        msgId: `m-${randomBytes(6).toString("hex")}`,
-        nodeId: ask.node_id,
-        kind: "answer",
-        body: ask.default_answer,
-        token: ask.token,
-      });
-      this.journal.setNodeState(ask.node_id, "settled");
-      this.log(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
+    this.drainExpiredAsks();
+    if (this.active.size < this.options.cap) {
+      for (const node of this.journal.listNodes()) {
+        if (this.stopping || this.active.size >= this.options.cap) break;
+        if (this.active.has(node.node_id)) continue;
+        const kind = this.readyKind(node);
+        if (!kind) continue;
+        this.driveNode(node, kind).catch((error) => {
+          this.log(`fleet: drive ${node.node_id} threw: ${error.message}`);
+        });
+      }
     }
-    if (this.active.size >= this.options.cap) return;
-    for (const node of this.journal.listNodes()) {
-      if (this.stopping || this.active.size >= this.options.cap) break;
-      if (this.active.has(node.node_id)) continue;
-      const kind = this.readyKind(node);
-      if (!kind) continue;
-      this.driveNode(node, kind).catch((error) => {
-        this.log(`fleet: drive ${node.node_id} threw: ${error.message}`);
-      });
+    await this.idleCheck();
+  }
+
+  // ── stopping when there is nothing to do ────────────────────────────────
+
+  /**
+   * Whether the fleet has anything left to do. Three things are work at any
+   * capacity: a turn this process is running, an open ask (a cap-0 supervisor
+   * still drains an expired one, because the drain runs before the cap gate),
+   * and a lease this epoch has not let go of.
+   *
+   * A runnable node is work only when this process could drive it. At cap 0 the
+   * drive loop never runs, so a node the scheduler would name is a node this
+   * supervisor is structurally unable to start; counting it as work is how a
+   * cap-0 supervisor outlives its usefulness holding a journal full of nodes it
+   * will never drive.
+   */
+  hasWork() {
+    if (this.active.size > 0) return true;
+    if (this.journal.openAsks().length > 0) return true;
+    if (this.journal.liveLeases().some((lease) => lease.epoch === this.epoch)) return true;
+    if (this.options.cap <= 0) return false;
+    return this.journal.listNodes().some((node) => this.readyKind(node) !== null);
+  }
+
+  /**
+   * The idle exit: nothing to do for a sustained window means stop and let the
+   * process end. A single empty sample is not that window - a node is
+   * registered before the supervisor that drives it is started, so a fresh
+   * supervisor's first tick legitimately finds nothing ready - so the window is
+   * re-sampled on every tick and any work resets it. `idleExitMs: 0` disables
+   * the exit for a supervisor meant to wait.
+   */
+  async idleCheck() {
+    const windowMs = this.options.idleExitMs;
+    if (!windowMs || this.stopping) return;
+    if (this.hasWork()) {
+      this.idleSince = null;
+      return;
+    }
+    if (this.idleSince == null) {
+      this.idleSince = Date.now();
+      return;
+    }
+    const idleMs = Date.now() - this.idleSince;
+    if (idleMs < windowMs) return;
+    // One last look in the same synchronous stretch as the stop, so a node that
+    // arrived while the window elapsed is not exited from.
+    if (this.hasWork()) {
+      this.idleSince = null;
+      return;
+    }
+    this.log(`fleet: no work left for ${idleMs} ms; stopping`);
+    try {
+      await this.stop();
+    } catch (error) {
+      this.log(`fleet: stop during the idle exit failed: ${error.message}`);
+      this.doneResolve(false);
     }
   }
 
@@ -741,6 +865,11 @@ export class Supervisor {
     this.journal.setSupervisorState(process.pid, "stopped");
     this.journal.setMeta("fences", JSON.stringify(this.fences));
     this.journal.close();
+    // Every stop ends the process the entry point is waiting on: the idle exit,
+    // the control channel's `stop`, and a signal all leave the same way. Stop
+    // is the exit, so nothing has to guess whether the process should still be
+    // up.
+    this.doneResolve(true);
   }
 }
 
@@ -832,7 +961,9 @@ function parseArgs(argv) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2));
   if (!args.root) {
-    console.error("usage: supervisor.mjs --root <fleet-root> [--cap N] [--driver rpc|scripted] [--naive]");
+    console.error(
+      "usage: supervisor.mjs --root <fleet-root> [--cap N] [--driver rpc|scripted] [--naive] [--idle-exit-ms N]",
+    );
     process.exit(2);
   }
   const supervisor = new Supervisor({
@@ -843,6 +974,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     naive: Boolean(args.naive),
     turnTimeoutMs: args["turn-timeout-ms"] ? Number(args["turn-timeout-ms"]) : undefined,
     askTtlMs: args["ask-ttl-ms"] ? Number(args["ask-ttl-ms"]) : undefined,
+    idleExitMs: args["idle-exit-ms"] ? Number(args["idle-exit-ms"]) : undefined,
     extensions: args.extension ? [].concat(args.extension) : [],
     fullDiscovery: Boolean(args["full-discovery"]),
     piVersion: args["pi-version"] ? String(args["pi-version"]) : undefined,
@@ -855,6 +987,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
-  // The process stays alive on the tick timer; nothing else keeps it up.
-  await new Promise(() => {});
+  // The tick timer is what held the process up; it stops rescheduling itself
+  // when the fleet has nothing left to do. `done` resolves after that stop has
+  // finished, so this is an exit and not an intention to exit.
+  const cleanExit = await supervisor.done;
+  process.exit(cleanExit ? 0 : 1);
 }

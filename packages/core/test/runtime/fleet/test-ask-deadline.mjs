@@ -11,16 +11,25 @@
  * Also pinned: a parked node holds no lease and has no active drive, so the
  * scheduler's cap is spent on nodes that compute, never on nodes that wait.
  *
+ * And the deadline is drained from one place, so an ask whose deadline passed
+ * while no supervisor was running resolves the same way after a restart as it
+ * does under a running one: the default is queued, and the node moves again.
+ *
  * Run: node test/runtime/fleet/test-ask-deadline.mjs
  */
 
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { openJournal } from "../../../scripts/fleet/journal.mjs";
 import { Supervisor } from "../../../scripts/fleet/supervisor.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SUPERVISOR = resolve(HERE, "../../../scripts/fleet/supervisor.mjs");
 
 let passed = 0;
 let failed = 0;
@@ -192,5 +201,154 @@ await check("the default is queued as an ordinary message the node then takes", 
 });
 
 await supervisor.stop();
+
+// ── a deadline that passed while no supervisor was running ────────────────
+//
+// A restart resolves an overdue ask to its default. Resolving it is not the
+// whole job: unless the default is also queued as a message, the node has no
+// open ask, no interrupted turn and no pending message, so the scheduler finds
+// nothing to drive and the node stays parked forever.
+
+/** The row shape a park leaves behind, with the deadline already in the past. */
+function fabricateParkedNode(label, { deadlineOffsetMs }) {
+  const parkedRoot = mkdtempSync(join(tmpdir(), `fleet-ask-${label}-`));
+  const seedJournal = openJournal(parkedRoot, { driver: "scripted" });
+  seedJournal.addNode({
+    nodeId: "n1",
+    parentId: null,
+    projectRoot: parkedRoot,
+    charterPath: join(parkedRoot, "charter.md"),
+    driver: "scripted",
+    driverConfig: { steps: [{ op: "append", text: "target-B" }, { op: "done" }], worldFile: join(parkedRoot, "world.log") },
+  });
+  const parkedTurn = seedJournal.beginTurn("n1", {
+    kind: "charter",
+    promptText: "work until a question stops you",
+    sessionId: "fleet-n1-parked",
+    supervisorEpoch: 1,
+  });
+  seedJournal.endTurn(parkedTurn, { state: "parked" });
+  seedJournal.recordAsk({
+    token: "ask-overdue",
+    nodeId: "n1",
+    turnId: parkedTurn,
+    priority: 3,
+    question: "Which target should this node write to?",
+    defaultAnswer: "target-B",
+    deadlineAt: Date.now() + deadlineOffsetMs,
+  });
+  seedJournal.setNodeState("n1", "waiting_on_human", { done_reason: "parked on ask-overdue" });
+  seedJournal.close();
+  return { root: parkedRoot, parkedTurn };
+}
+
+function inboxView(root) {
+  const reopened = openJournal(root, {});
+  try {
+    return { messages: reopened.messages(), node: reopened.getNode("n1"), asks: reopened.openAsks() };
+  } finally {
+    reopened.close();
+  }
+}
+
+const overdue = fabricateParkedNode("overdue", { deadlineOffsetMs: -60_000 });
+const restartSupervisor = new Supervisor({
+  root: overdue.root,
+  driver: "scripted",
+  cap: 3,
+  tickMs: 20,
+  control: false,
+  log: () => {},
+});
+await restartSupervisor.start();
+
+await check("a restart queues the default of an ask whose deadline passed while it was down", () => {
+  const view = inboxView(overdue.root);
+  assert.equal(view.asks.length, 0, "the ask is resolved");
+  const answers = view.messages.filter((message) => message.kind === "answer");
+  assert.equal(answers.length, 1, `exactly one answer row, got ${JSON.stringify(view.messages.map((message) => message.kind))}`);
+  assert.equal(answers[0].body, "target-B");
+  assert.equal(answers[0].token, "ask-overdue");
+  assert.notEqual(view.node.state, "waiting_on_human", `the node is runnable again, not ${view.node.state}`);
+});
+
+await check("the node moves on its own after the restart", async () => {
+  const turns = await waitFor("a message turn driven from the queued default", () => {
+    const reopened = openJournal(overdue.root, {});
+    try {
+      const list = reopened.turnsFor("n1");
+      const last = list.at(-1);
+      return list.length >= 2 && last.state !== "in_progress" ? list : null;
+    } finally {
+      reopened.close();
+    }
+  });
+  assert.equal(turns[1].kind, "message");
+  assert.match(turns[1].prompt_text, /target-B/, "the queued default is what the next turn was handed");
+});
+await restartSupervisor.stop();
+
+// The control: a deadline in the future is not a deadline that passed, so a
+// restart must leave the ask open and the node parked.
+const stillWaiting = fabricateParkedNode("future", { deadlineOffsetMs: 600_000 });
+const patientSupervisor = new Supervisor({
+  root: stillWaiting.root,
+  driver: "scripted",
+  cap: 3,
+  tickMs: 20,
+  control: false,
+  log: () => {},
+});
+await patientSupervisor.start();
+await sleep(200);
+
+await check("control: a deadline in the future queues nothing and the node stays parked", () => {
+  const view = inboxView(stillWaiting.root);
+  assert.equal(view.asks.length, 1, "the ask is still open");
+  assert.equal(view.messages.filter((message) => message.kind === "answer").length, 0, "no default is queued");
+  assert.equal(view.node.state, "waiting_on_human");
+});
+await patientSupervisor.stop();
+
+// One overdue ask, drained by more than one reconciler: the second drain must
+// find the ask already resolved, so the default is queued once, not twice.
+const sharedPark = fabricateParkedNode("shared", { deadlineOffsetMs: -60_000 });
+const sharedSupervisor = new Supervisor({
+  root: sharedPark.root,
+  driver: "scripted",
+  cap: 0,
+  tickMs: 60_000,
+  control: false,
+  log: () => {},
+});
+await sharedSupervisor.start();
+const secondDrainer = spawn(
+  process.execPath,
+  [SUPERVISOR, "--root", sharedPark.root, "--cap", "0", "--driver", "scripted"],
+  { stdio: ["ignore", "ignore", "ignore"] },
+);
+await waitFor("a second supervisor process to register", () => {
+  const reopened = openJournal(sharedPark.root, {});
+  try {
+    return reopened.supervisors().filter((row) => row.state === "live").length === 2;
+  } finally {
+    reopened.close();
+  }
+});
+await sleep(400);
+await sharedSupervisor.drainExpiredAsks();
+
+await check("one overdue ask, three drains, one queued default", () => {
+  const view = inboxView(sharedPark.root);
+  assert.equal(view.messages.filter((message) => message.kind === "answer").length, 1);
+});
+
+secondDrainer.kill("SIGKILL");
+await new Promise((resolveExit) => {
+  if (secondDrainer.exitCode !== null || secondDrainer.signalCode !== null) resolveExit();
+  else secondDrainer.once("exit", resolveExit);
+});
+await sharedSupervisor.stop();
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exitCode = failed > 0 ? 1 : 0;
