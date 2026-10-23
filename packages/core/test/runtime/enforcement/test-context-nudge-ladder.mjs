@@ -209,13 +209,6 @@ function advisoryTexts(sent) {
   return nudgeTexts(sent).filter((t) => t.includes("Advisory"));
 }
 
-/** The percent compact tier's copy (80%). */
-function compactTexts(sent) {
-  return nudgeTexts(sent).filter(
-    (t) => t.includes("Pipeline: context_navigate") && t.includes("Tag your position first"),
-  );
-}
-
 const pct = (p) => Math.round((W * p) / 100);
 
 /** What an agent reads at `p` percent, in a world parked at that usage. */
