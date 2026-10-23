@@ -32,6 +32,7 @@ import {
   USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_COMPACT_MEDIUM,
+  USAGE_FIRED_RESET_BELOW,
 } from "./context-thresholds.js";
 import { tokenArms, formatTokensK } from "./context-usage.js";
 import { getResolvedContextWindow } from "../config/braid-settings.js";
@@ -135,26 +136,198 @@ export function contextUsageTokenMessage(
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// THE NUDGE LADDER (one scale, both units)
+// ═══════════════════════════════════════════════════════════════════════════
+// The cascade used to test one unit at a time: the token arms first, the
+// percent tiers only when no token arm was reached. A token arm is a fraction
+// of the same window the percent tiers measure, so 0.45W sits at 45% of EVERY
+// window and the token line won from 45% upward. The advisory (50), warning
+// (65), critical (75) and compact (80) tiers were therefore unreachable: an
+// agent at 95% read the calm pipeline line an agent at 46% read, in the range
+// where escalation is the whole point.
+//
+// So the arms are ONE ordered ladder, ordered by position on the axis both
+// units measure — percent of the resolved window. The rung at the highest
+// reached position wins and no rung can shadow a rung above it, whichever
+// unit it is written in. Each rung keeps its own unit for the latch: the
+// consumer re-arms on a fall back below the rung that fired, measured in that
+// rung's unit (a percent bar in another unit re-arms a token arm immediately
+// whenever the arm sits above the bar, which is the repeat loop itself).
+
+export type ContextNudgeId =
+  | "tokens:soft"
+  | "tokens:warning"
+  | "percent:soft"
+  | "percent:advisory"
+  | "percent:warning"
+  | "percent:critical"
+  | "percent:compact";
+
+export interface ContextNudgeRung {
+  /** Stable rung identity — what a latch records to suppress a repeat. */
+  id: ContextNudgeId;
+  /** Unit the rung is measured in, and the unit the latch re-arms in. */
+  unit: "tokens" | "percent";
+  /** The rung's threshold in `unit` (a resolved token count, or a percent). */
+  threshold: number;
+  /** The same threshold as a percent of the resolved window: ladder order. */
+  position: number;
+}
+
+export interface ContextNudge extends ContextNudgeRung {
+  message: string;
+}
+
+interface RungSpec extends ContextNudgeRung {
+  render: (usagePercent: number, usageTokens: number) => string;
+}
+
 /**
- * Combined enforcement cascade: token tiers first (0.45W/0.18W — fire earlier
- * for large context windows), then the percent tiers (30/50/65/75/80).
- * Returns null when no tier is reached.
+ * The ladder for one window, weakest position first. Token rungs carry the
+ * absolute count in their copy (that is what they are for on a large window);
+ * percent rungs carry the percent.
+ */
+function nudgeRungs(window?: number | null): RungSpec[] {
+  const arms = tokenArms(window);
+  const positionOf = (tokens: number): number => (arms.W > 0 ? (tokens / arms.W) * 100 : 0);
+  const pct = (threshold: number) => ({ unit: "percent" as const, threshold, position: threshold });
+  return [
+    {
+      id: "tokens:soft",
+      unit: "tokens",
+      threshold: arms.soft,
+      position: positionOf(arms.soft),
+      render: (p, t) => contextUsageTokenMessage("soft", p, t),
+    },
+    {
+      id: "percent:soft",
+      ...pct(USAGE_WHISPER_SOFT),
+      render: (p) => contextUsageTierMessage("soft", p),
+    },
+    {
+      id: "tokens:warning",
+      unit: "tokens",
+      threshold: arms.warning,
+      position: positionOf(arms.warning),
+      render: (p, t) => contextUsageTokenMessage("warning", p, t),
+    },
+    {
+      id: "percent:advisory",
+      ...pct(USAGE_WHISPER_ADVISORY),
+      render: (p) => contextUsageTierMessage("advisory", p),
+    },
+    {
+      id: "percent:warning",
+      ...pct(USAGE_WHISPER_WARNING),
+      render: (p) => contextUsageTierMessage("warning", p),
+    },
+    {
+      id: "percent:critical",
+      ...pct(USAGE_WHISPER_CRITICAL),
+      render: (p) => contextUsageTierMessage("critical", p),
+    },
+    {
+      id: "percent:compact",
+      ...pct(USAGE_COMPACT_MEDIUM),
+      render: (p) => contextUsageTierMessage("compact", p),
+    },
+  ];
+}
+
+/**
+ * The strongest rung these numbers reach, or null below the first rung.
+ * Highest POSITION wins, not first match: that is what stops a token arm from
+ * shadowing a percent tier above it. Equal positions keep the earlier rung
+ * (the ladder is built weakest-first), and an equal position is not an
+ * escalation.
+ */
+export function resolveContextNudge(
+  usagePercent: number,
+  usageTokens: number,
+  window?: number | null,
+): ContextNudge | null {
+  let best: RungSpec | null = null;
+  for (const rung of nudgeRungs(window)) {
+    const reached =
+      rung.unit === "tokens" ? usageTokens >= rung.threshold : usagePercent >= rung.threshold;
+    if (reached && (best === null || rung.position > best.position)) best = rung;
+  }
+  if (!best) return null;
+  return {
+    id: best.id,
+    unit: best.unit,
+    threshold: best.threshold,
+    position: best.position,
+    message: best.render(usagePercent, usageTokens),
+  };
+}
+
+/**
+ * One rung by id, resolved against the window in hand: a window change
+ * re-derives the rung's bar instead of comparing a live count against a stale
+ * one. Unknown or absent ids yield null (a latch armed by something that is
+ * not a rung).
+ */
+export function findContextNudgeRung(
+  id: string | null | undefined,
+  window?: number | null,
+): ContextNudgeRung | null {
+  if (!id) return null;
+  for (const rung of nudgeRungs(window)) {
+    if (rung.id === id)
+      return { id: rung.id, unit: rung.unit, threshold: rung.threshold, position: rung.position };
+  }
+  return null;
+}
+
+/**
+ * Has usage fallen back below the rung that armed the latch? The comparison is
+ * in the rung's own unit: a token rung clears on a token count below its arm,
+ * a percent rung on a percent below its threshold. With no recorded rung (the
+ * latch was armed by an act that then stood down) the percent reset bar
+ * applies, which is the pre-ladder behavior for that path.
+ */
+export function contextNudgeFellBelow(
+  id: string | null | undefined,
+  usagePercent: number,
+  usageTokens: number,
+  window?: number | null,
+): boolean {
+  const rung = findContextNudgeRung(id, window);
+  if (!rung) return usagePercent < USAGE_FIRED_RESET_BELOW;
+  return rung.unit === "tokens" ? usageTokens < rung.threshold : usagePercent < rung.threshold;
+}
+
+/**
+ * Was this rung crossed from below since the previous sample? A nudge is an
+ * event: a session that lands above a rung and stays there must not read the
+ * same advice every turn, while a rung climbed past is new information. The
+ * previous sample is a token count, so a percent rung is tested against it
+ * re-expressed as a percent of the window in hand.
+ */
+export function contextNudgeCrossed(
+  rung: ContextNudgeRung,
+  prevUsageTokens: number | undefined,
+  window?: number | null,
+): boolean {
+  if (prevUsageTokens === undefined) return true;
+  if (rung.unit === "tokens") return prevUsageTokens < rung.threshold;
+  const { W } = tokenArms(window);
+  if (W <= 0) return true;
+  return (prevUsageTokens / W) * 100 < rung.threshold;
+}
+
+/**
+ * Combined enforcement nudge: the strongest rung reached, its text, or null.
+ * Kept as a text accessor for callers that need nothing but the message.
  */
 export function contextUsageNudgeMessage(
   usagePercent: number,
   usageTokens: number,
   window?: number | null,
 ): string | null {
-  const arms = tokenArms(window);
-  if (usageTokens >= arms.warning) {
-    return contextUsageTokenMessage("warning", usagePercent, usageTokens);
-  }
-  if (usageTokens >= arms.soft) {
-    return contextUsageTokenMessage("soft", usagePercent, usageTokens);
-  }
-  const tier = contextUsageTier(usagePercent);
-  if (!tier) return null;
-  return contextUsageTierMessage(tier.tier, usagePercent);
+  return resolveContextNudge(usagePercent, usageTokens, window)?.message ?? null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

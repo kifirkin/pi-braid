@@ -67,6 +67,15 @@ export function resetScratchpadState(s: ScratchpadState): void {
 
 export interface ContextHygieneState {
   contextNudgeSent: boolean;
+  /**
+   * The nudge-ladder rung that armed `contextNudgeSent` (its id), or null when
+   * the latch was armed by something that is not a rung (the hygiene act) or
+   * by nothing yet. The latch re-arms in this rung's unit, and the rung is the
+   * floor a weaker rung has to cross to be news rather than a descent. Survives
+   * the re-arm; cleared when a compaction or a context tool makes a fresh
+   * start.
+   */
+  contextNudgeRung: string | null;
   lastContextCheckTurn: number;
   lastCompactionTurn: number;
   overflowRecently: number;
@@ -110,6 +119,7 @@ export interface ContextHygieneState {
 export function createContextHygieneState(): ContextHygieneState {
   return {
     contextNudgeSent: false,
+    contextNudgeRung: null,
     lastContextCheckTurn: 0,
     lastCompactionTurn: 0,
     overflowRecently: 0,
@@ -126,6 +136,7 @@ export function createContextHygieneState(): ContextHygieneState {
 
 export function resetContextHygieneState(s: ContextHygieneState): void {
   s.contextNudgeSent = false;
+  s.contextNudgeRung = null;
   s.lastContextCheckTurn = 0;
   s.lastCompactionTurn = 0;
   s.overflowRecently = 0;
@@ -174,18 +185,21 @@ export function recordLiveUsageSample(s: ContextHygieneState, tokens: number): v
 /** Mark context nudge as sent (system sends nudge to agent). */
 export function markNudgeSent(s: ContextHygieneState, turn: number): void {
   s.contextNudgeSent = true;
+  s.contextNudgeRung = null;
   s.lastContextCheckTurn = turn;
 }
 
 /** Reset context nudge (e.g., after compaction freed space). */
 export function resetNudge(s: ContextHygieneState): void {
   s.contextNudgeSent = false;
+  s.contextNudgeRung = null;
 }
 
 /** Record that a context management tool was used. */
 export function recordContextTool(s: ContextHygieneState, turn: number): void {
   s.lastContextCheckTurn = turn;
   s.contextNudgeSent = false;
+  s.contextNudgeRung = null;
 }
 
 /** Record that compaction happened. Also resets scratchpad nudge timer. */
@@ -196,6 +210,9 @@ export function recordCompaction(
   s.lastCompactionTurn = turn;
   s.lastContextCheckTurn = turn;
   s.contextNudgeSent = false;
+  // A compaction is a fresh start: usage dropped by construction, so the rung
+  // that armed the old latch says nothing about where the next nudge belongs.
+  s.contextNudgeRung = null;
   s.overflowRecently = turn;
   if (typeof s.lastScratchpadNudgeTurn === "number") {
     s.lastScratchpadNudgeTurn = turn;

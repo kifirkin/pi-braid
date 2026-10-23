@@ -13,10 +13,10 @@
  *    since the last attempt, and re-arms at the same 3-turn spacing.
  * 2. Hard backstop: >=0.90W fires subject to the same turn-based cooldown
  *    (every arm is cooldown-gated so the act can never run every turn).
- * 3. Below act tokens and below 90%: no auto-compact; the nudge cascade
- *    still fires (soft token arm 0.18W, with the payload in [soft, act)).
- * 4. Soft tier: fires on the arm crossing, not once per turn in the band;
- *    the warning tier still escalates; a drop below the arm re-arms it.
+ * 3. Below act tokens and below 90%: no auto-compact; the nudge ladder
+ *    still fires (the percent soft rung at 30%).
+ * 4. Soft band: fires on the crossing, not once per turn in the band; the
+ *    warning rung still escalates; a drop below the arm re-arms it.
  * 5. Compact mechanics preserved: ctx.compact called with the canonical
  *    instructions.
  *
@@ -64,7 +64,9 @@ const { getState: getEnforcementState } = await import(
 const { dispatchTurnEnd, clearHandlers } = await import(
   "file://" + join(D, "lib/events/turn-end-coordinator.js")
 );
-const { clearAllBuckets } = await import("file://" + join(D, "lib/utils/injection-tracker.js"));
+const { clearAllBuckets, _setReprimeClockForTests, REPRIME_COOLDOWN_MS } = await import(
+  "file://" + join(D, "lib/utils/injection-tracker.js")
+);
 const { _resetForTests: resetTurnDedup, beginTurn } = await import(
   "file://" + join(D, "lib/enforcement/turn-dedup.js")
 );
@@ -200,11 +202,10 @@ function nudgeTexts(sent) {
   );
 }
 
-/** Soft token tier deliveries (0.18W arm). */
+/** Soft-band deliveries: the percent soft rung (30%) is the strongest rung
+ * reached in the band, so its copy is what the ladder renders there. */
 function softNudges(sent) {
-  return nudgeTexts(sent).filter((t) =>
-    t.includes('Consider context_inspect(detail="prune") to see candidates, or tag position'),
-  );
+  return nudgeTexts(sent).filter((t) => t.includes("Soft whisper"));
 }
 
 /** Warning token tier deliveries (0.45W arm). */
@@ -283,16 +284,15 @@ await test("below act tokens and below 90%: no auto-compact ever; nudge cascade 
       0,
       "below-act tokens never auto-compacts (below the token ACT)",
     );
-    // The payload sits in [soft, act): the soft TOKEN tier is the only nudge
-    // source, and its wording differs from the percent tiers, so match it.
+    // The payload sits in [soft, act): the ladder's strongest reached rung is
+    // the percent soft tier (30%), above the 0.18W token rung and below the
+    // 0.45W warning rung, so that is the copy delivered here.
     const nudgeTexts = sent.flatMap((s) =>
       (s.params?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text ?? ""),
     );
     assert.ok(
-      nudgeTexts.some((t) =>
-        t.includes('Consider context_inspect(detail="prune") to see candidates, or tag position'),
-      ),
-      "the nudge is the soft token arm (0.18W), not a percent tier",
+      nudgeTexts.some((t) => t.includes("Soft whisper")),
+      "the nudge is the percent soft tier (30%)",
     );
   } finally {
     clearHandlers();
@@ -300,7 +300,7 @@ await test("below act tokens and below 90%: no auto-compact ever; nudge cascade 
   }
 });
 
-await test("soft token tier: fires on the arm crossing, not once per turn in the band", async () => {
+await test("soft band: fires on the crossing, not once per turn in the band", async () => {
   const { ctx, tmp, compactCalls, sent } = makeWorld();
   try {
     // Six turns inside the soft band ([0.18W, 0.45W)), usage growing the way
@@ -321,14 +321,18 @@ await test("soft token tier: fires on the arm crossing, not once per turn in the
     assert.equal(softNudges(sent).length, 1, "the warning tier does not re-fire the soft text");
     assert.equal(warningNudges(sent).length, 1, "the warning token tier still fires");
 
-    // Re-arm: a genuine drop below the soft arm re-arms the tier, so the
-    // next crossing fires it again.
+    // Re-arm: a genuine drop below the soft arms re-arms the rung, so the
+    // next crossing fires it again. The whisper funnel's 20-minute
+    // digit-normalized de-bloat would damp the same body, so move past that
+    // window: this case measures the latch, not the funnel's repeat layer.
+    _setReprimeClockForTests(Date.now() + REPRIME_COOLDOWN_MS + 1000);
     await endTurn(ctx, 40_000, 8);
     await endTurn(ctx, 96_000, 9);
     assert.equal(softNudges(sent).length, 2, "a drop below the arm re-arms the soft tier");
 
     assert.equal(compactCalls.length, 0, "no auto-compact below the act arm");
   } finally {
+    _setReprimeClockForTests(null);
     clearHandlers();
     rmSync(tmp, { recursive: true, force: true });
   }

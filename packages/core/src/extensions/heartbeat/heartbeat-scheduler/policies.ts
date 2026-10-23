@@ -44,6 +44,376 @@ export const WEB_TOOLS = new Set(["fetch_content", "browser_navigate", "browser_
 
 export const CODE_TOOLS = new Set(["bash", "write", "edit"]);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFICATION-SHAPE RECOGNITION FOR BASH
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFICATION_TOOLS is a tool-NAME set, and the same work routinely runs
+// through bash: `grep -rn "needle" src`, `git diff main...HEAD`, `node -e
+// 'console.log(m.x)'`. The set cannot see it, so the verification counter
+// stayed at zero while the agent verified and the hint below told the agent it
+// had not verified in ten turns. Counting every bash call would swing the
+// defect the other way — an edit, a build or a publish script is not
+// verification, and a counter that accepts them silences the hint it exists to
+// raise.
+//
+// The rule, in one sentence: a command counts when it puts an inspecting
+// program at a program position and no mutating program anywhere.
+//   - program positions are the first word of each `;` `&&` `||` `|` `&`
+//     segment, tokenized quote-aware (`grep -n "a|b" f` is one segment);
+//   - inspecting: search/locate, read, compare/extract programs, git read
+//     subcommands, and an inline interpreter probe (`node -e`, `python -c`)
+//     whose script shows no write primitive;
+//   - mutating: rm/mv/cp/mkdir/tee/dd/chmod…, `sed -i`, `perl -i`, git write
+//     subcommands, and any unquoted redirect to a file other than /dev/null.
+// Both directions matter: the two named holes are an interpreter script that
+// writes through a primitive outside INLINE_WRITE_RE, and a mutating program
+// behind `eval` or a heredoc body (both are read as inspection when the same
+// command also inspects — they are listed here rather than guessed at).
+
+/** Programs that inspect existing state: search, locate, read, compare, extract. */
+const INSPECT_PROGRAMS = new Set([
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "ag",
+  "ack",
+  "ack-grep",
+  "ugrep",
+  "pcregrep",
+  "find",
+  "fd",
+  "fdfind",
+  "locate",
+  "cat",
+  "tac",
+  "head",
+  "tail",
+  "bat",
+  "less",
+  "more",
+  "wc",
+  "nl",
+  "od",
+  "xxd",
+  "strings",
+  "file",
+  "stat",
+  "ls",
+  "tree",
+  "realpath",
+  "readlink",
+  "jq",
+  "yq",
+  "diff",
+  "diff3",
+  "cmp",
+  "comm",
+  "cut",
+  "uniq",
+  "tr",
+  "column",
+  "awk",
+  "gawk",
+  "sed",
+]);
+
+/** Programs that mutate the tree. Any one of them vetoes the call. */
+const MUTATE_PROGRAMS = new Set([
+  "rm",
+  "rmdir",
+  "mv",
+  "cp",
+  "ln",
+  "touch",
+  "mkdir",
+  "install",
+  "truncate",
+  "dd",
+  "shred",
+  "tee",
+  "patch",
+  "chmod",
+  "chown",
+  "chgrp",
+]);
+
+/**
+ * `git` subcommands that only read (the inspection side of the verbs the
+ * destructive gate covers separately).
+ */
+const GIT_READ_SUBS = new Set([
+  "diff",
+  "diff-tree",
+  "diff-index",
+  "diff-files",
+  "show",
+  "log",
+  "status",
+  "grep",
+  "blame",
+  "shortlog",
+  "whatchanged",
+  "ls-files",
+  "ls-tree",
+  "cat-file",
+  "rev-parse",
+  "rev-list",
+  "show-ref",
+  "for-each-ref",
+  "describe",
+  "merge-base",
+  "name-rev",
+  "count-objects",
+  "fsck",
+]);
+
+/** `git` subcommands that write. Conservative: a remote/config/branch/tag
+ * verb may mutate, so it vetoes rather than counts. */
+const GIT_WRITE_SUBS = new Set([
+  "add",
+  "commit",
+  "push",
+  "pull",
+  "fetch",
+  "checkout",
+  "switch",
+  "restore",
+  "reset",
+  "revert",
+  "merge",
+  "rebase",
+  "cherry-pick",
+  "stash",
+  "apply",
+  "am",
+  "clean",
+  "rm",
+  "mv",
+  "tag",
+  "branch",
+  "init",
+  "clone",
+  "config",
+  "remote",
+  "submodule",
+  "worktree",
+  "update-index",
+  "update-ref",
+  "symbolic-ref",
+  "notes",
+  "gc",
+  "prune",
+  "reflog",
+]);
+
+/** Interpreters whose inline-eval form can be a probe. */
+const INLINE_INTERPRETERS = new Set(["node", "deno", "bun", "python", "python3", "ruby"]);
+
+/** Write primitives inside an inline script (both JS/TS and Python spellings). */
+const INLINE_WRITE_RE =
+  /writeFileSync|writeFile\(|appendFileSync|createWriteStream|rmSync|unlinkSync|renameSync|mkdirSync|copyFileSync|truncateSync|chmodSync|openSync\([^)]*["'`][wa]|os\.remove|os\.rename|shutil\.|open\([^)]*["'`][wa]/;
+
+/** Wrappers whose presence does not decide the kind of the segment. */
+const WRAPPER_PROGRAMS = new Set(["sudo", "env", "time", "nice", "command", "nohup"]);
+
+/** Tokens that end one command segment. */
+const SEGMENT_SEPARATORS = new Set([";", "&&", "||", "|", "&", "\n"]);
+
+/** The program name without its path (`/usr/bin/grep` → `grep`). */
+function baseName(token: string): string {
+  const parts = token.split("/");
+  return parts[parts.length - 1] ?? token;
+}
+
+/**
+ * Quote-aware tokenizer that keeps shell operators as their own tokens
+ * (`;` `&&` `||` `|` `&` newline `>` `>>`, and `&1`/`&2` as one token) and
+ * strips quote characters. An escaped character stays literal, so `find …
+ * -exec grep … \;` yields the word `;` rather than a separator.
+ */
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let cur = "";
+  let quote: '"' | "'" | null = null;
+  const flush = (): void => {
+    if (cur) {
+      tokens.push(cur);
+      cur = "";
+    }
+  };
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i] ?? "";
+    if (quote) {
+      if (ch === "\\" && quote === '"') {
+        cur += command[i + 1] ?? "";
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      cur += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      cur += command[i + 1] ?? "";
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      flush();
+      if (ch === "\n") tokens.push("\n");
+      continue;
+    }
+    if (ch === ";" || ch === "&") {
+      flush();
+      const next = command[i + 1] ?? "";
+      if (ch === "&" && /\d/.test(next)) {
+        tokens.push(`&${next}`);
+        i++;
+        continue;
+      }
+      if (ch === "&" && next === "&") {
+        tokens.push("&&");
+        i++;
+        continue;
+      }
+      tokens.push(ch);
+      continue;
+    }
+    if (ch === "|") {
+      flush();
+      if ((command[i + 1] ?? "") === "|") {
+        tokens.push("||");
+        i++;
+        continue;
+      }
+      tokens.push("|");
+      continue;
+    }
+    if (ch === ">") {
+      flush();
+      if ((command[i + 1] ?? "") === ">") {
+        tokens.push(">>");
+        i++;
+        continue;
+      }
+      tokens.push(">");
+      continue;
+    }
+    cur += ch;
+  }
+  flush();
+  return tokens;
+}
+
+/** Split tokenized commands into segments at the separators. */
+function splitSegments(tokens: string[]): string[][] {
+  const out: string[][] = [];
+  let cur: string[] = [];
+  for (const token of tokens) {
+    if (SEGMENT_SEPARATORS.has(token)) {
+      if (cur.length > 0) out.push(cur);
+      cur = [];
+      continue;
+    }
+    cur.push(token);
+  }
+  if (cur.length > 0) out.push(cur);
+  return out;
+}
+
+/**
+ * A redirect that writes a real file. `/dev/null` and fd duplications
+ * (`2>&1`) are the ordinary shapes of a silent inspection and stay benign — a
+ * redirect into a path is a write, whatever program it follows.
+ */
+function writesFile(tokens: string[]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token !== ">" && token !== ">>") continue;
+    const target = tokens[i + 1];
+    if (!target || SEGMENT_SEPARATORS.has(target)) continue;
+    if (/^\/dev\/(?:null|stdout|stderr)$/.test(target)) continue;
+    if (/^&\d$/.test(target)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** The first argument that is not a flag (`xargs -I{} rm` → `rm`). */
+function firstArgument(args: string[]): string | null {
+  for (const arg of args) if (!arg.startsWith("-")) return arg;
+  return null;
+}
+
+/** Classify one segment by the program in its program position. */
+function classifySegment(tokens: string[]): "inspect" | "mutate" | "neutral" {
+  let i = 0;
+  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i] ?? "")) i++;
+  while (i < tokens.length && WRAPPER_PROGRAMS.has(baseName(tokens[i] ?? ""))) i++;
+  const program = tokens[i] ? baseName(tokens[i] as string) : "";
+  if (!program) return "neutral";
+  const args = tokens.slice(i + 1);
+
+  if (MUTATE_PROGRAMS.has(program)) return "mutate";
+  // xargs runs its first non-flag argument: classify the thing it runs.
+  if (program === "xargs") {
+    const target = firstArgument(args);
+    return target ? classifySegment([target]) : "neutral";
+  }
+  if (program === "git") {
+    const sub = args.find((a) => GIT_READ_SUBS.has(a) || GIT_WRITE_SUBS.has(a));
+    if (!sub) return "neutral";
+    return GIT_WRITE_SUBS.has(sub) ? "mutate" : "inspect";
+  }
+  const inPlace = args.some(
+    (a) => a === "--in-place" || /^-[A-Za-z]*i/.test(a) || /^--in-place=/.test(a),
+  );
+  if (program === "sed" || program === "perl") {
+    if (inPlace) return "mutate";
+    return "inspect";
+  }
+  if (INLINE_INTERPRETERS.has(program)) {
+    const inline = args.some((a) => a === "-e" || a === "-p" || a === "--eval" || a === "-c");
+    if (!inline) return "neutral";
+    return INLINE_WRITE_RE.test(args.join(" ")) ? "mutate" : "inspect";
+  }
+  if (INSPECT_PROGRAMS.has(program)) return "inspect";
+  return "neutral";
+}
+
+/** True when the command is inspection-shaped (see the rule above). */
+export function bashCommandIsVerification(command: string): boolean {
+  if (!command.trim()) return false;
+  const tokens = tokenizeCommand(command);
+  if (writesFile(tokens)) return false;
+  let inspected = false;
+  for (const segment of splitSegments(tokens)) {
+    const kind = classifySegment(segment);
+    if (kind === "mutate") return false;
+    if (kind === "inspect") inspected = true;
+  }
+  return inspected;
+}
+
+/**
+ * Does this tool call count as verification activity? The name set first, then
+ * bash by the command's shape. Every other tool is not verification.
+ */
+export function isVerificationToolCall(toolName: string, input: unknown): boolean {
+  if (VERIFICATION_TOOLS.has(toolName)) return true;
+  if (toolName !== "bash") return false;
+  const command = (input as { command?: unknown } | undefined)?.command;
+  return typeof command === "string" && bashCommandIsVerification(command);
+}
+
 export function createDefaultPolicies(
   getToolTracking: () => ToolTracking,
   onSignal: (type: string, data: Record<string, unknown>) => void,

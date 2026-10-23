@@ -115,7 +115,12 @@ function newestUserText(ctx: ExtensionContext): string {
 import type { CognitiveModule, ModuleContext, PolicyEngine } from "./types.js";
 import { DEFAULT_CONFIG, getState, getMemoryState } from "./state.js";
 import { updateMetaLearning, getAdaptiveInterval } from "./meta-learning.js";
-import { createDefaultPolicies, VERIFICATION_TOOLS, WEB_TOOLS, CODE_TOOLS } from "./policies.js";
+import {
+  createDefaultPolicies,
+  isVerificationToolCall,
+  WEB_TOOLS,
+  CODE_TOOLS,
+} from "./policies.js";
 import {
   formatPendingCompactionsLine,
   maybeArmAutoCompaction,
@@ -692,7 +697,10 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     const toolName = event?.toolName as string;
     if (!toolName) return;
 
-    if (VERIFICATION_TOOLS.has(toolName)) {
+    // Verification activity is a name set plus bash by its command shape:
+    // a search or diff run through bash is the same activity the hint is
+    // about, and counting every bash call (edits, builds) would silence it.
+    if (isVerificationToolCall(toolName, event?.input)) {
       state.metaLearning.toolTracking.verificationCount++;
       state.metaLearning.toolTracking.lastVerificationTurn = state.policyTurnCount;
     }

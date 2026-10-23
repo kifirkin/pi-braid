@@ -179,6 +179,16 @@ const VALID_STAMPS = [
   ["scanned 12 rows at worker/one/two", { n: 12, unit: "rows", revision: "worker/one/two" }],
   ["scanned 3 cases at v1.2", { n: 3, unit: "cases", revision: "v1.2" }],
   ["scanned 7 files at ABC1234", { n: 7, unit: "files", revision: "ABC1234" }],
+  // A unit is one lowercase token: hyphen- and underscore-joined words name a
+  // population as readily as a bare word does (`scanned 288 test-files at
+  // 2b50163c` was real evidence thrown away as unreadable by a letters-only
+  // unit pattern).
+  [
+    "scanned 288 test-files at 2b50163c",
+    { n: 288, unit: "test-files", revision: "2b50163c" },
+  ],
+  ["scanned 7 test_files at rev-one", { n: 7, unit: "test_files", revision: "rev-one" }],
+  ["scanned 4 endpoints2 at main", { n: 4, unit: "endpoints2", revision: "main" }],
   [
     "scanned 9 files at 0123456789abcdef0123456789abcdef01234567",
     { n: 9, unit: "files", revision: "0123456789abcdef0123456789abcdef01234567" },
@@ -187,6 +197,13 @@ const VALID_STAMPS = [
 
 const INVALID_STAMPS = [
   "scanned 914 Files at main",
+  "scanned 5 Test-Files at main",
+  // A unit is never a phrase: a two-word unit cannot be told from a malformed
+  // stamp, so it stays refused.
+  "scanned 5 test files at main",
+  "scanned 5 test-files- at main",
+  "scanned 5 -files at main",
+  "scanned 5 files_ at main",
   "scanned -1 files at main",
   "scanned 1.5 files at main",
   "scanned 5 files at abc123",
@@ -239,6 +256,9 @@ await testAsync("pure: the read compares files rows only, against the supplied c
   assert.equal(read.recorded, true);
   assert.deepEqual(read.lines, [
     "population delta: recorded 1 vs census 2 at rev-one (row 0)",
+    // Another unit is read and named rather than dropped as if unreadable;
+    // it is still not a census subject, so nothing is compared.
+    "population recorded: 3 rows at rev-one (row 1; unit is not the tracked-entry census, not compared)",
     'population stamp unreadable: row 3 "scanned nine files"',
     "population delta: recorded 2 at rev-missing (row 4; revision unresolved, not compared)",
   ]);
@@ -374,6 +394,38 @@ await testAsync("merge: a stamp for another unit is not a file census", async ()
   assert.equal(toolDetails(result).mergeSha, tip);
   assert.match(text, /no recorded population/);
   assert.doesNotMatch(text, /population delta:/);
+  assert.match(
+    text,
+    new RegExp(
+      `population recorded: 3 rows at ${tip} \\(row 0; unit is not the tracked-entry census, not compared\\)`,
+    ),
+    "the stamp is read and named, not silently dropped",
+  );
+});
+
+await testAsync("merge: a hyphenated unit parses, is named, and does not refuse", async () => {
+  const id = "pop-hyphen-unit";
+  // 288 test-files against a 2-entry census: were this unit compared as a file
+  // census it would refuse three hundred times over. It is not a census
+  // subject, so the merge lands and the report says what was read.
+  const { repo, tip } = await admitted({
+    id,
+    sessionRows: (t) => [
+      { cmd: "node count.mjs", exit: 0, stamp: `scanned 288 test-files at ${t}` },
+    ],
+  });
+  const result = await merge(repo, id);
+  const text = toolText(result);
+  assert.equal(toolDetails(result).mergeSha, tip, "a subset-scan stamp never blocks a merge");
+  assert.match(
+    text,
+    /population recorded: 288 test-files at [0-9a-f]+ \(row 0; unit is not the tracked-entry census, not compared\)/,
+  );
+  assert.doesNotMatch(
+    text,
+    /population stamp unreadable/,
+    "hyphenated units are no longer read as malformed",
+  );
 });
 
 await testAsync("merge: a recorded population above the census prints but does not block", async () => {

@@ -54,10 +54,14 @@ import { isCompactionActive, getCmState } from "../../memory/context-manager/han
 import { snapBoundaryOutsideToolBatch } from "../../memory/context-manager/handlers/tool-batch-boundary.js";
 import {
   USAGE_COMPACT_AGGRESSIVE,
-  USAGE_FIRED_RESET_BELOW,
   HYGIENE_AUTO_COMPACT_MIN_TURNS,
 } from "../../../lib/detection/context-thresholds.js";
-import { contextUsageNudgeMessage } from "../../../lib/detection/context-tiers.js";
+import {
+  resolveContextNudge,
+  findContextNudgeRung,
+  contextNudgeFellBelow,
+  contextNudgeCrossed,
+} from "../../../lib/detection/context-tiers.js";
 import {
   measureLiveUsage,
   tokenArms,
@@ -218,16 +222,22 @@ async function checkContextUsage(
     recordHygieneSkip(state);
     return;
   }
-  // The previous usable turn's live sample (the soft tier's crossing
-  // witness), captured before this turn's sample replaces it.
+  // The previous usable turn's live sample (the crossing witness), captured
+  // before this turn's sample replaces it.
   const prevLiveTokens = state.liveUsageSamples[state.liveUsageSamples.length - 1];
   recordLiveUsageSample(state, usageTokens);
 
-  // Re-arm the shared context-nudge latch when usage has dropped (e.g.,
-  // after compaction). The bar is the named policy value, not a literal.
-  // It governs the higher tiers only; the soft tier re-arms on its own arm
-  // crossing, gated at the cascade below.
-  if (state.contextNudgeSent && usagePercent < USAGE_FIRED_RESET_BELOW) {
+  // Re-arm the shared context-nudge latch in the unit that armed it: a token
+  // rung clears on a fall back below that token arm, a percent rung below its
+  // own percent. A bar in the other unit clears a token arm on the very next
+  // turn whenever the arm sits above the bar (0.45W is 45% of every window,
+  // below the 50% bar), which is the repeat loop this latch exists to stop.
+  // The rung id stays recorded: it is the floor a weaker rung must cross to be
+  // news rather than a descent.
+  if (
+    state.contextNudgeSent &&
+    contextNudgeFellBelow(state.contextNudgeRung, usagePercent, usageTokens, usageWindow)
+  ) {
     state.contextNudgeSent = false;
   }
 
@@ -288,6 +298,10 @@ async function checkContextUsage(
           ? "token"
           : "percent";
       state.contextNudgeSent = true;
+      // The act is not a nudge rung: leave no rung recorded, so the nudge
+      // block stays suppressed behind the act (and the percent reset bar
+      // governs this latch) exactly as before.
+      state.contextNudgeRung = null;
 
       // Pre-save safety net before compaction. Awaited: the act arms right
       // after, and the write must land before the compaction it protects
@@ -317,28 +331,31 @@ async function checkContextUsage(
     }
   }
 
-  if (state.contextNudgeSent) return;
-
-  // Progressive nudge: token tiers first, then percent tiers. Cascade shared
-  // from lib/detection/context-tiers.ts (contextUsageNudgeMessage):
-  // token arms 0.45W/0.18W fire earlier for large windows, then percent tiers
-  // soft (30%) -> advisory (50%) -> warning (65%) -> critical (75%) ->
-  // compact (80%).
-  const nudgeMessage = contextUsageNudgeMessage(usagePercent, usageTokens, usageWindow);
-  if (nudgeMessage) {
-    // Soft-tier crossing gate: the cascade's sub-warning level is the soft
-    // token text (the percent tiers are shadowed by the token arms, which
-    // fire first). It fires on the turn its arm is crossed from below, not
-    // on every turn inside the band. The shared latch above re-arms below
-    // USAGE_FIRED_RESET_BELOW, a bar above the soft arm, so without this
-    // gate the same whisper re-injected every turn from the soft arm up to
-    // the reset bar. The higher tiers keep the shared latch untouched.
-    if (usageTokens < arms.warning) {
-      const crossedSoftArm = prevLiveTokens === undefined || prevLiveTokens < arms.soft;
-      if (!crossedSoftArm) return;
+  // Progressive nudge: ONE ladder over both units, ordered by position
+  // (percent of the resolved window) — token soft 0.18W, percent soft 30%,
+  // token warning 0.45W, advisory 50%, warning 65%, critical 75%, compact
+  // 80%. The strongest rung reached wins, so no token arm can shadow a
+  // percent tier above it (see lib/detection/context-tiers.ts).
+  const nudge = resolveContextNudge(usagePercent, usageTokens, usageWindow);
+  if (nudge) {
+    const lastFired = findContextNudgeRung(state.contextNudgeRung, usageWindow);
+    if (state.contextNudgeSent) {
+      // The latch holds the rung that fired; a strictly stronger rung is new
+      // information and may pass it. Without this the ladder went quiet from
+      // the first rung upward and an agent at 95% read the 45% line.
+      if (!lastFired || nudge.position <= lastFired.position) return;
+    } else if (
+      lastFired &&
+      nudge.position < lastFired.position &&
+      !contextNudgeCrossed(nudge, prevLiveTokens, usageWindow)
+    ) {
+      // A weaker rung that usage merely settled at (a descent, not a
+      // crossing) is not news; a rung climbed back past is.
+      return;
     }
     state.contextNudgeSent = true;
-    sendEnforcementWhisper(pi, ctx, nudgeMessage);
+    state.contextNudgeRung = nudge.id;
+    sendEnforcementWhisper(pi, ctx, nudge.message);
   }
 }
 
