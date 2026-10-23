@@ -159,7 +159,7 @@ seconds with no publish. Use `git tag -a v<core version> -m "<what shipped>"`.
 
 To publish one sibling package, dispatch from `main` with
 `only=<workspace directory>`, where the accepted values are exactly
-`core`, `skills`, `providers`, `telegram`, `contrib` — the **directory** names
+`core`, `skills`, `providers`, `telegram`, `contrib`: the **directory** names
 under `packages/`, not the npm package names. `only=pi-braid-telegram` is
 refused as an unknown package; `only=telegram` is the correct spelling.
 Sibling tags do not run this release workflow, and iteration
