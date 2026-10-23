@@ -7,26 +7,27 @@ neither is installable.
 
 ## What each script does
 
-| script | job |
-|---|---|
-| `build.sh` | clones whisper.cpp, configures with cmake (Metal off), builds `whisper-cli`/`whisper-server`, prints wall times |
-| `fetch-model.sh` | downloads `ggml-base.en.bin`, verifies SHA-1 against the project's table, records SHA-256 |
-| `fetch-vad-model.sh` | downloads whisper.cpp's already-converted silero v5.1.2 VAD model, verifies its SHA-256 |
-| `capture.sh` | records the default input to 16 kHz mono WAV and prints its RMS |
-| `transcribe.sh` | runs `whisper-cli` N times, reports wall, real-time factor, peak RSS, text |
-| `speak.sh` | `say` to AIFF, `afplay` it, reports synthesis and play-start numbers |
-| `run-turn.sh` | three full turns, the four timestamps each, then medians |
-| `rms.py` | WAV level; digital silence is a failure, not a success |
-| `measured.py` | wall time and peak RSS for one child process |
-| `aqrec.m` | the capture layer (see below), with optional silence endpointing |
-| `audio-device.m` | reads and sets the system default input/output device, with transport and sample rate |
-| `session.py` | per-turn device/level snapshot, the marker correction, and whether a turn may be pooled |
-| `turn-v1.py` | one v1 turn: resident `whisper-server`, sentence-chunked overlapping TTS |
-| `run-batch.sh` | a batch across configurations, pinning and restoring gain and device pair |
+| script               | job                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `build.sh`           | clones whisper.cpp, configures with cmake (Metal off), builds `whisper-cli`/`whisper-server`, prints wall times |
+| `fetch-model.sh`     | downloads `ggml-base.en.bin`, verifies SHA-1 against the project's table, records SHA-256                       |
+| `fetch-vad-model.sh` | downloads whisper.cpp's already-converted silero v5.1.2 VAD model, verifies its SHA-256                         |
+| `capture.sh`         | records the default input to 16 kHz mono WAV and prints its RMS                                                 |
+| `transcribe.sh`      | runs `whisper-cli` N times, reports wall, real-time factor, peak RSS, text                                      |
+| `speak.sh`           | `say` to AIFF, `afplay` it, reports synthesis and play-start numbers                                            |
+| `run-turn.sh`        | three full turns, the four timestamps each, then medians                                                        |
+| `rms.py`             | WAV level; digital silence is a failure, not a success                                                          |
+| `measured.py`        | wall time and peak RSS for one child process                                                                    |
+| `aqrec.m`            | the capture layer (see below), with optional silence endpointing                                                |
+| `audio-device.m`     | reads and sets the system default input/output device, with transport and sample rate                           |
+| `session.py`         | per-turn device/level snapshot, the marker correction, and whether a turn may be pooled                         |
+| `turn-v1.py`         | one v1 turn: resident `whisper-server`, sentence-chunked overlapping TTS                                        |
+| `run-batch.sh`       | a batch across configurations, pinning and restoring gain and device pair                                       |
 
 Build and artifacts stay outside git under the build home (default `.work/`, ignored), which the
 scripts read from an exported environment variable; export it once and every command below picks it
 up.
+
 <!-- doc-ref-exempt: environment variable read by the shell scripts here, not an identifier in a source module -->
 
 ```
@@ -167,10 +168,10 @@ Ten turns per arm, one stimulus (SHA-256
 microphone and speakers, input volume 80 and output volume 35, both recorded on
 every turn and restored to 50 and 19:
 
-| arm | ok | end_reason | p50 raw | p90 raw | p50 corrected | p90 corrected |
-|---|---|---|---|---|---|---|
-| `resident-window` | 10/10 | window 10 | 1,370.0 | 1,415.0 | 1,510.0 | 1,555.0 |
-| `resident-vad` | 10/10 | vad 10 | 949.8 | 1,012.2 | 1,089.8 | 1,152.2 |
+| arm               | ok    | end_reason | p50 raw | p90 raw | p50 corrected | p90 corrected |
+| ----------------- | ----- | ---------- | ------- | ------- | ------------- | ------------- |
+| `resident-window` | 10/10 | window 10  | 1,370.0 | 1,415.0 | 1,510.0       | 1,555.0       |
+| `resident-vad`    | 10/10 | vad 10     | 949.8   | 1,012.2 | 1,089.8       | 1,152.2       |
 
 The marker correction adds the 150 ms marker's own span. The rule is unsoftened:
 p50 <= 1,500 ms meets the bar. The silero arm meets it at 1,089.8 ms; the v2
