@@ -35,6 +35,14 @@ arms fire late on large windows, which is why both ladders exist. `CONTEXT_COMPA
 mode, guarding against max-call-stack crashes and session corruption at high
 usage; hygiene acts re-arm at most once every three turns.
 
+The two ladders arm one enforcement nudge between them, ordered by position on
+the percent axis both units measure: 0.18W, 30%, 0.45W, 50%, 65%, 75%, 80%. The
+highest reached rung renders, so a token arm never shadows a percent tier above
+it (0.45W is 45% of every window). The nudge latch records the rung that fired
+and re-arms on a fall back below that rung, in that rung's own unit - a percent
+bar would clear a 0.45W arm on the very next turn, repeating the same line.
+Owner: [`src/lib/detection/context-tiers.ts`](../src/lib/detection/context-tiers.ts).
+
 Owner: [`src/lib/detection/context-thresholds.ts`](../src/lib/detection/context-thresholds.ts)
 (single home; consumers import, never restate).
 

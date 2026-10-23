@@ -1234,14 +1234,15 @@ export function productionWriteRefusalDetail(read: ProductionWriteRead): string 
 //   scanned <n> <unit> at <revision>
 //
 // `n` is a non-negative integer, `unit` one lowercase word (`files`, `rows`,
-// ...), and `revision` a 7-to-40-char hex sha or a ref name. The stamp is the
-// reporter's own claim, so it is worth exactly what one comparison against git
-// makes it worth: the merge path resolves the named revision, counts the
-// entries that revision's tree holds, and refuses the merge when the recorded
-// number sits below that census (a scan that ran before staging, certifying
-// fewer tracked entries than the commit carries). The parse and the comparison
-// are pure, with the count supplied by the caller; nothing here reads what the
-// scanned files mean.
+// `test-files` — lowercase letters and digits, hyphen/underscore-joined), and
+// `revision` a 7-to-40-char hex sha or a ref name. The stamp is the reporter's
+// own claim, so it is worth exactly what one comparison against git makes it
+// worth: the merge path resolves the named revision, counts the entries that
+// revision's tree holds, and refuses the merge when the recorded number sits
+// below that census (a scan that ran before staging, certifying fewer tracked
+// entries than the commit carries). The parse and the comparison are pure,
+// with the count supplied by the caller; nothing here reads what the scanned
+// files mean.
 
 export interface PopulationStamp {
   /** Population size the gate recorded. */
@@ -1256,9 +1257,16 @@ export interface PopulationStamp {
  * Bare-token revision rules: an all-hex token is a sha only at 7-40 chars, so
  * a six-char prefix does not slip through the ref-name alternative as a
  * revision git can never resolve.
+ *
+ * The unit is one token of lowercase letters and digits, joined by single
+ * hyphens or underscores and starting with a letter: a reporter writes
+ * `test-files` as readily as `files`, and the earlier letters-only rule threw
+ * that evidence away as unreadable. A unit is never a phrase — `scanned 5 test
+ * files at main` stays refused, because a two-word unit cannot be told from a
+ * malformed stamp.
  */
 const POPULATION_STAMP_RE =
-  /^scanned (\d+) ([a-z]+) at ([0-9a-fA-F]{7,40}|[A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+  /^scanned (\d+) ([a-z][a-z0-9]*(?:[_-][a-z0-9]+)*) at ([0-9a-fA-F]{7,40}|[A-Za-z0-9][A-Za-z0-9._/-]*)$/;
 const ALL_HEX_RE = /^[0-9a-fA-F]+$/;
 
 /** Parse the stamp shape above; null when the value is not that shape. */
@@ -1321,7 +1329,19 @@ function populationLines(rows: PopulationRowRead[]): string[] {
       lines.push(`population stamp unreadable: row ${row.row} ${JSON.stringify(row.raw)}`);
       continue;
     }
-    if (row.stamp === null || row.stamp.unit !== "files") continue;
+    if (row.stamp === null) continue;
+    if (row.stamp.unit !== "files") {
+      // A stamp names the population it scanned. Only `files` is a census
+      // subject here (the tracked-entry count at the revision), so another
+      // unit is read and named but never compared — and never dropped as if it
+      // had been unreadable, which is what the old unit pattern did to
+      // `test-files`.
+      lines.push(
+        `population recorded: ${row.stamp.n} ${row.stamp.unit} at ${row.stamp.revision} ` +
+          `(row ${row.row}; unit is not the tracked-entry census, not compared)`,
+      );
+      continue;
+    }
     if (row.verdict === "unresolved") {
       lines.push(
         `population delta: recorded ${row.stamp.n} at ${row.stamp.revision} ` +
@@ -1344,8 +1364,9 @@ function populationLines(rows: PopulationRowRead[]): string[] {
  * Read every gate row for a population stamp and compare the `files` ones
  * against the census the caller supplies for their named revision. Pure: the
  * count is a lookup parameter, so the parse and the comparison are testable
- * without a repository. Rows of another unit are not census subjects and are
- * left uncompared; an unreadable stamp is named, never silently dropped.
+ * without a repository. Rows of another unit are not census subjects: they are
+ * read, named in the lines, and left uncompared; an unreadable stamp is named,
+ * never silently dropped.
  */
 export function readPopulationStamps(gates: unknown, censusAt: PopulationCensus): PopulationRead {
   const rows: PopulationRowRead[] = [];
