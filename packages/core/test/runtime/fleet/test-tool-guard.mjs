@@ -5,9 +5,12 @@
  * sentence in a prompt:
  *
  *   1. The handler's decision, called directly against rows in a real journal:
- *      a duplicate of a completed mutating call is refused, the first call of
+ *      a duplicate of an applied mutating call is refused, the first call of
  *      that key runs, the same key inside the current turn runs, a read-only
- *      call runs, and a different argument set runs.
+ *      call runs, and a different argument set runs. Then what counts as
+ *      history: a call that threw, a call whose outcome is unknown, a turn
+ *      that finished and one that was cut off, and the two argument dialects
+ *      that arrive in a different type than they were recorded in.
  *   2. The wiring: a supervisor hands every child both the guard's `-e` entry
  *      and the node and turn the guard needs, alongside the extensions it
  *      already passed, and the spawned process really has both.
@@ -104,14 +107,16 @@ const guard = createGuard({ nodeId, turnId: currentTurn, store: () => store });
 const call = (toolName, input, toolCallId = "call-now") => guard.onToolCall({ toolName, toolCallId, input });
 
 /** Re-read the journal as another process would, to see what the guard wrote. */
-function effectsOf(turnId) {
-  const reopened = openJournal(root, {});
+function effectsIn(fleetRoot, turnId) {
+  const reopened = openJournal(fleetRoot, {});
   try {
     return reopened.effects(turnId);
   } finally {
     reopened.close();
   }
 }
+
+const effectsOf = (turnId) => effectsIn(root, turnId);
 
 // ── leg 1: the handler's five decisions ─────────────────────────────────────
 
@@ -247,6 +252,222 @@ await check("loaded without its env, the extension registers no handler at all",
   }
   assert.deepEqual(registered, [], "no env, no hook: pi skips tool_call entirely");
 });
+
+// ── leg 1b: what counts as history, and how far back ───────────────────────
+//
+// The journal above fixes its timeline: turn 1 never ended and turn 2 is the
+// resume. The arms below need a timeline with a finished turn in front of the
+// one that was cut off - a run that settled, then a run that did not - so they
+// seed their own root rather than bend that one.
+
+const historyRoot = mkdtempSync(join(tmpdir(), "fleet-guard-history-"));
+const historyNode = "n2";
+const history = openJournal(historyRoot, { driver: "rpc" });
+const historyEpoch = history.registerSupervisor({ pid: DEAD_PID, driver: "rpc", childArgs: [], piVersion: "test" });
+history.addNode({
+  nodeId: historyNode,
+  parentId: null,
+  projectRoot: historyRoot,
+  charterPath: join(historyRoot, "charter.md"),
+  driver: "rpc",
+});
+const record = (turnId, toolCallId, toolName, args, { isError = false } = {}) => {
+  history.effectAttempted({ turnId, nodeId: historyNode, toolCallId, toolName, args, replay: "never", seq: 0 });
+  history.effectSettled({ turnId, toolCallId, result: isError ? { error: "no such text" } : { ok: true }, isError });
+};
+
+// Turn 1 finished the work it was started for: it ended `settled`. Its effects
+// are finished business, which is what the floor of the window is made of.
+const finished = history.beginTurn(historyNode, {
+  kind: "charter",
+  promptText: "inspect",
+  sessionId: "fleet-n2",
+  supervisorEpoch: historyEpoch,
+});
+record(finished, "h-ls", "bash", { command: "ls -la" });
+record(finished, "h-pad", "bash", { command: "echo pad >> w.txt", timeout: 30 });
+history.endTurn(finished, { state: "settled" });
+
+// Turn 2 was cut off mid-flight: `effectSettled` for what reported back, then
+// `markUnknownEffects` and `endTurn(state: 'interrupted')`, which is exactly
+// what supervisor.reconcile writes after a SIGKILL.
+const cutOff = history.beginTurn(historyNode, {
+  kind: "message",
+  promptText: "work",
+  sessionId: "fleet-n2",
+  supervisorEpoch: historyEpoch,
+});
+record(cutOff, "h-failed-edit", "edit", { path: join(historyRoot, "e1.txt"), oldText: "ZZZ", newText: "Q" }, { isError: true });
+record(cutOff, "h-applied-edit", "edit", { path: join(historyRoot, "e2.txt"), oldText: "a", newText: "b" });
+record(cutOff, "h-status", "bash", { command: "git status" });
+record(cutOff, "h-typed", "bash", { command: "echo typed >> w.txt", timeout: "30" });
+record(cutOff, "h-edits-string", "edit", {
+  path: join(historyRoot, "dup.txt"),
+  edits: JSON.stringify([{ oldText: "y", newText: "y\nz" }]),
+});
+record(cutOff, "h-edits-array", "edit", { path: join(historyRoot, "arr.txt"), edits: [{ oldText: "m", newText: "n" }] });
+history.effectAttempted({
+  turnId: cutOff,
+  nodeId: historyNode,
+  toolCallId: "h-residue",
+  toolName: "bash",
+  args: { command: "echo residue >> w.txt" },
+  replay: "never",
+  seq: 0,
+});
+history.markUnknownEffects(cutOff);
+history.endTurn(cutOff, { state: "interrupted" });
+history.bumpAttempt(historyNode);
+
+// Turn 3 is the resumed turn: the one the guard is driving.
+const resuming = history.beginTurn(historyNode, {
+  kind: "recovery",
+  promptText: "resume",
+  sessionId: "fleet-n2",
+  supervisorEpoch: historyEpoch,
+});
+history.close();
+
+const historyStore = openGuardJournal(historyRoot);
+const historyGuard = createGuard({
+  nodeId: historyNode,
+  turnId: resuming,
+  store: () => historyStore,
+});
+const recall = (toolName, input, toolCallId) => historyGuard.onToolCall({ toolName, toolCallId, input });
+
+await check("history: a call that threw is not a call that happened, so its retry runs", () => {
+  const row = effectsIn(historyRoot, cutOff).find((effect) => effect.tool_call_id === "h-failed-edit");
+  assert.equal(row.state, "completed", "the row is recorded as an attempt that finished");
+  assert.equal(row.is_error, 1, "and it finished as a failure, which is the whole point");
+  const retry = recall("edit", { path: join(historyRoot, "e1.txt"), oldText: "ZZZ", newText: "Q" }, "h-retry-failed");
+  assert.equal(retry, undefined, `there is nothing to repeat; a write that threw wrote nothing: ${JSON.stringify(retry)}`);
+});
+
+await check("history: the same call recorded as applied is still refused, and the refusal is a row", () => {
+  const retry = recall("edit", { path: join(historyRoot, "e2.txt"), oldText: "a", newText: "b" }, "h-retry-applied");
+  assert.equal(retry?.block, true, `expected a block, got ${JSON.stringify(retry)}`);
+  const row = effectsIn(historyRoot, resuming).find((effect) => effect.tool_call_id === "h-retry-applied");
+  assert.equal(row?.state, "blocked", "the refusal is recorded in the journal");
+  assert.equal(JSON.parse(row.result_json).duplicate_of_turn, cutOff, "and names the turn it duplicated");
+});
+
+await check("history: a shell command from a turn that settled runs again", () => {
+  // `ls -la` and `npm test` are `never` in replayPolicy, so before the window
+  // existed a node could not inspect its own work ever again.
+  const again = recall("bash", { command: "ls -la" }, "h-ls-again");
+  assert.equal(again, undefined, `a finished turn's command is not this run's duplicate: ${JSON.stringify(again)}`);
+});
+
+await check("history: the same command inside the interrupted turn is still refused", () => {
+  const again = recall("bash", { command: "git status" }, "h-status-again");
+  assert.equal(again?.block, true, `the window stops at the settled turn, not at the current one: ${JSON.stringify(again)}`);
+  assert.match(String(again.reason), new RegExp(`turn ${cutOff}\\b`), "the refusal names the interrupted turn");
+});
+
+await check("history: the crash residue is refused, and the refusal says it may have applied", () => {
+  const again = recall("bash", { command: "echo residue >> w.txt" }, "h-residue-again");
+  assert.equal(again?.block, true, `an effect in state unknown may have half applied: ${JSON.stringify(again)}`);
+  assert.match(String(again.reason), /never reported back/);
+  const row = effectsIn(historyRoot, resuming).find((effect) => effect.tool_call_id === "h-residue-again");
+  assert.equal(JSON.parse(row.result_json).duplicate_of_tool_call, "h-residue", "the refusal names the residue row");
+});
+
+await check("identity: a scalar the model typed as a string is the same argument", () => {
+  const again = recall("bash", { command: "echo typed >> w.txt", timeout: 30 }, "h-typed-number");
+  assert.equal(again?.block, true, `timeout "30" recorded against timeout 30 called: ${JSON.stringify(again)}`);
+  assert.equal(canonicalKey({ timeout: "30" }), canonicalKey({ timeout: 30 }));
+  assert.equal(canonicalKey({ flag: "true" }), canonicalKey({ flag: true }));
+  assert.equal(canonicalKey({ flag: "false" }), canonicalKey({ flag: false }));
+});
+
+await check("identity: only a string that converts back to itself becomes a number", () => {
+  for (const spelling of ["030", " 30 ", "1e3", "30.0", "-0"]) {
+    assert.notEqual(
+      canonicalKey({ value: spelling }),
+      canonicalKey({ value: Number(spelling) }),
+      `"${spelling}" is a different argument from the number it spells`,
+    );
+  }
+  // A non-finite conversion would stringify to null, and a null leaf is how
+  // these schemas spell "not given": the key would collapse into one that
+  // carries no argument at all.
+  assert.notEqual(canonicalKey({ value: "NaN" }), canonicalKey({}));
+  assert.notEqual(canonicalKey({ value: "Infinity" }), canonicalKey({}));
+  assert.notEqual(canonicalKey({ flag: "TRUE" }), canonicalKey({ flag: true }), "only the two exact spellings convert");
+  // The guard's decision for the case that matters: a padded number is a
+  // different argument, so the call runs.
+  const padded = recall("bash", { command: "echo pad >> w.txt", timeout: "030" }, "h-pad-string");
+  assert.equal(padded, undefined, `"030" against a recorded 30 must not be merged: ${JSON.stringify(padded)}`);
+});
+
+await check("identity: edits sent as a JSON string is the same call as the parsed array", () => {
+  const parsedArray = recall("edit", { path: join(historyRoot, "dup.txt"), edits: [{ oldText: "y", newText: "y\nz" }] }, "h-edits-parsed");
+  assert.equal(parsedArray?.block, true, `a string row against an array call: ${JSON.stringify(parsedArray)}`);
+  const asString = recall("edit", { path: join(historyRoot, "arr.txt"), edits: JSON.stringify([{ oldText: "m", newText: "n" }]) }, "h-edits-as-string");
+  assert.equal(asString?.block, true, `an array row against a string call: ${JSON.stringify(asString)}`);
+  const asPair = recall("edit", { path: join(historyRoot, "dup.txt"), oldText: "y", newText: "y\nz" }, "h-edits-pair");
+  assert.equal(asPair?.block, true, `a string row against the legacy pair: ${JSON.stringify(asPair)}`);
+  const twoEdits = recall(
+    "edit",
+    { path: join(historyRoot, "dup.txt"), edits: [{ oldText: "y", newText: "y\nz" }, { oldText: "p", newText: "q" }] },
+    "h-edits-two",
+  );
+  assert.equal(twoEdits, undefined, "two edits are not the single edit that was recorded");
+  const notJson = recall("edit", { path: join(historyRoot, "dup.txt"), edits: "not json at all" }, "h-edits-garbage");
+  assert.equal(notJson, undefined, "a string that does not parse is a different argument, left as it is");
+});
+
+historyStore.close();
+
+// ── leg 1c: an interruption older than the last settled turn ───────────────
+//
+// The other side of the boundary, and the reason the floor is the last settled
+// turn rather than "every turn that did not settle": a run that settled after
+// an interruption resolved it, so that interruption is history again.
+
+const olderRoot = mkdtempSync(join(tmpdir(), "fleet-guard-older-"));
+const olderNode = "n3";
+const older = openJournal(olderRoot, { driver: "rpc" });
+const olderEpoch = older.registerSupervisor({ pid: DEAD_PID, driver: "rpc", childArgs: [], piVersion: "test" });
+older.addNode({
+  nodeId: olderNode,
+  parentId: null,
+  projectRoot: olderRoot,
+  charterPath: join(olderRoot, "charter.md"),
+  driver: "rpc",
+});
+const ancient = older.beginTurn(olderNode, { kind: "charter", promptText: "work", sessionId: "fleet-n3", supervisorEpoch: olderEpoch });
+older.effectAttempted({
+  turnId: ancient,
+  nodeId: olderNode,
+  toolCallId: "o-ancient",
+  toolName: "bash",
+  args: { command: "echo ancient >> w.txt" },
+  replay: "never",
+  seq: 0,
+});
+older.effectSettled({ turnId: ancient, toolCallId: "o-ancient", result: { ok: true }, isError: false });
+older.endTurn(ancient, { state: "interrupted" });
+// The recovery that resolved it finished normally.
+const resolved = older.beginTurn(olderNode, { kind: "recovery", promptText: "resume", sessionId: "fleet-n3", supervisorEpoch: olderEpoch });
+older.endTurn(resolved, { state: "settled" });
+const later = older.beginTurn(olderNode, { kind: "message", promptText: "next", sessionId: "fleet-n3", supervisorEpoch: olderEpoch });
+older.close();
+
+const olderStore = openGuardJournal(olderRoot);
+const olderGuard = createGuard({ nodeId: olderNode, turnId: later, store: () => olderStore });
+
+await check("history: an interruption older than the last settled turn is not this run", () => {
+  const again = olderGuard.onToolCall({
+    toolName: "bash",
+    toolCallId: "o-ancient-again",
+    input: { command: "echo ancient >> w.txt" },
+  });
+  assert.equal(again, undefined, `a run settled after that turn, so its effects are finished: ${JSON.stringify(again)}`);
+});
+
+olderStore.close();
 
 store.close();
 seed.close();
