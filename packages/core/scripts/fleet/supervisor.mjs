@@ -29,8 +29,8 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, readFileSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
+import { chmodSync, existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createServer, connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -62,6 +62,62 @@ export function controlSocketPath(root) {
   if (Buffer.byteLength(local) <= 100) return local;
   const hash = createHash("sha256").update(absolute).digest("hex").slice(0, 12);
   return join(tmpdir(), `pi-fleet-${hash}.sock`);
+}
+
+/**
+ * How long the arrival probe waits for an answer before it treats the path as a
+ * departed binder's leavings. A supervisor answers a ping in microseconds; the
+ * wait is long enough that a busy tick is not mistaken for a dead channel.
+ */
+const CONTROL_PROBE_MS = 1_000;
+
+/**
+ * The identity of whatever file sits at `path`: a unix socket's device and
+ * inode are stable for the life of the file, and a rebind at the same path
+ * creates a different inode. Used to answer "is the path still the one this
+ * process bound?" from the filesystem rather than from memory of a name.
+ *
+ * Returns null when nothing is there, and throws when the question cannot be
+ * answered at all: a caller that cannot tell must not delete.
+ */
+function fileIdentity(path) {
+  try {
+    const stat = statSync(path);
+    return { dev: stat.dev, ino: stat.ino };
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/**
+ * One request, one response line, over a unix socket path. Resolves `null` when
+ * the path does not answer within the timeout: absent, refused, or silent. The
+ * wire format lives with the server it speaks to, so the supervisor's own
+ * arrival probe and the commands share one implementation.
+ */
+export function requestOnControlSocket(path, request, { timeoutMs = 10_000 } = {}) {
+  return new Promise((resolveReply) => {
+    const socket = connect(path);
+    let buffer = "";
+    const finish = (reply) => {
+      socket.destroy();
+      resolveReply(reply);
+    };
+    socket.setTimeout(timeoutMs, () => finish(null));
+    socket.on("connect", () => socket.write(JSON.stringify(request) + "\n"));
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      const index = buffer.indexOf("\n");
+      if (index < 0) return;
+      try {
+        finish(JSON.parse(buffer.slice(0, index)));
+      } catch {
+        finish(null);
+      }
+    });
+    socket.on("error", () => finish(null));
+  });
 }
 
 export const CHILD_FLAGS = [
@@ -191,6 +247,10 @@ export class Supervisor {
     this.active = new Map();
     this.timer = null;
     this.server = null;
+    // The file this process bound, as the filesystem names it. A name is not an
+    // identity: another process can rebind the same path, so the stop below
+    // compares this against the path rather than trusting the name.
+    this.boundSocket = null;
     this.stopping = false;
     this.fences = [];
     this.idleSince = null;
@@ -774,12 +834,39 @@ export class Supervisor {
     return controlSocketPath(this.root);
   }
 
+  /**
+   * The live responder on `path`, or null when nothing answered: no file, no
+   * listener behind the file, or a reply this process wrote itself.
+   */
+  async _responderOn(path) {
+    if (!existsSync(path)) return null;
+    const reply = await requestOnControlSocket(path, { op: "ping" }, { timeoutMs: CONTROL_PROBE_MS });
+    const data = reply?.ok ? reply.data : null;
+    if (!data || data.pid == null || data.pid === process.pid) return null;
+    return data;
+  }
+
   async _listen() {
     const path = this.socketPath();
-    try {
+    const incumbent = await this._responderOn(path);
+    if (incumbent) {
+      // A live responder with another pid is the owner of this root's channel.
+      // Binding over it would leave a supervisor that runs and works while
+      // nothing can reach it, and nothing would say so for the rest of its
+      // life, so this process refuses instead of clobbering. The journal row
+      // follows: `live` for a process that never served would be the same lie.
+      this.journal.setSupervisorState(process.pid, "refused");
+      throw new Error(
+        `control channel ${path} is served by supervisor pid ${incumbent.pid} (epoch ${incumbent.epoch}); refusing to bind over it`,
+      );
+    }
+    if (existsSync(path)) {
+      // A socket file outlives the process that bound it, so a path nobody
+      // answers is a departed binder's leavings. Reclaiming it is what lets the
+      // channel come back after a crash; refusing to would leave a root that no
+      // supervisor can ever serve again.
+      this.log(`fleet: no answer on ${path}; reclaiming the path`);
       rmSync(path, { force: true });
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
     }
     this.server = createServer((socket) => {
       let buffer = "";
@@ -805,6 +892,8 @@ export class Supervisor {
         resolveListen();
       });
     });
+    const identity = fileIdentity(path);
+    this.boundSocket = identity ? { path, dev: identity.dev, ino: identity.ino } : null;
     this.journal.setMeta("control_socket", path);
     return path;
   }
@@ -867,14 +956,58 @@ export class Supervisor {
     }
   }
 
+  /**
+   * Whether the path still resolves to the file this process bound, and why
+   * not when it does not. An unreadable path is not an ownership claim either:
+   * a claim this process cannot check is a claim it does not have.
+   */
+  _socketPathState(path) {
+    const mine = this.boundSocket;
+    if (!mine || mine.path !== path || mine.ino == null) return { owned: false, why: "this process never bound it" };
+    let current;
+    try {
+      current = fileIdentity(path);
+    } catch (error) {
+      return { owned: false, why: `it cannot be read (${error.code ?? error.message})` };
+    }
+    if (!current) return { owned: false, why: "the file is gone" };
+    if (current.dev !== mine.dev || current.ino !== mine.ino) return { owned: false, why: "another process bound it" };
+    return { owned: true, why: "this process bound it and nothing has replaced it" };
+  }
+
+  /**
+   * Give up the control path, if it is still this process's to give up.
+   *
+   * Closing a unix-socket server removes the path it bound, whatever is there
+   * now: `net.Server.close()` unlinks by name, so a server closed after another
+   * process rebound the path deletes that process's socket and leaves a live
+   * supervisor unreachable. The close is therefore the deletion that has to be
+   * gated, not only the unlink after it. When the path is no longer this
+   * process's, the listener is abandoned instead: it is unreachable either way,
+   * and it keeps the event loop referenced, so the only way out of this process
+   * is an explicit `process.exit()` - which does not run the close that would
+   * delete the file that replaced ours.
+   */
+  async _releaseSocketPath() {
+    const path = this.socketPath();
+    const state = this._socketPathState(path);
+    if (!state.owned) {
+      this.log(`fleet: leaving control socket ${path} alone: ${state.why}`);
+      return;
+    }
+    await new Promise((resolveClose) => this.server.close(resolveClose));
+    this.server = null;
+    // The close above removed the path on this platform; the unlink is for a
+    // runtime whose close leaves it behind, and it is safe only because the
+    // identity was confirmed first.
+    rmSync(path, { force: true });
+  }
+
   async stop() {
     if (this.stopping) return;
     this.stopping = true;
     if (this.timer) clearTimeout(this.timer);
-    if (this.server) {
-      await new Promise((resolveClose) => this.server.close(resolveClose));
-      rmSync(this.socketPath(), { force: true });
-    }
+    if (this.server) await this._releaseSocketPath();
     for (const [nodeId, ctx] of [...this.active]) {
       ctx.driver?.killGroup?.("SIGKILL");
       if (ctx.turnId) {
@@ -1002,7 +1135,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     fullDiscovery: Boolean(args["full-discovery"]),
     piVersion: args["pi-version"] ? String(args["pi-version"]) : undefined,
   });
-  await supervisor.start();
+  try {
+    await supervisor.start();
+  } catch (error) {
+    // A start that cannot happen is an operator's answer, not a stack trace:
+    // the loudest thing this process can do with a refusal is print it and go.
+    console.error(`fleet: ${error.message}`);
+    process.exit(1);
+  }
   const shutdown = async (signal) => {
     console.log(`fleet: ${signal} received, stopping`);
     await supervisor.stop();
