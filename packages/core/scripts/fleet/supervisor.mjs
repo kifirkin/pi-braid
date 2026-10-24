@@ -319,31 +319,40 @@ export class Supervisor {
    * conditional update, not on a shared read.
    */
   drainExpiredAsks() {
-    const expired = this.journal.expireAsks();
-    for (const ask of expired) {
-      // The ask is claimed and answered by now; what is left is whether the
-      // node should be woken. A done node must not be resurrected: the fence
-      // loop guards this, and the drain queued for it anyway, so an overdue
-      // ask on a finished node flipped it back to `settled` and the default
-      // then drove it a second time.
-      const node = this.journal.getNode(ask.node_id);
-      if (!node || node.state === "done") {
-        this.log(
-          `fleet: ask ${ask.token} expired for node ${ask.node_id}, which is ${node ? "done" : "missing"}; default not queued`,
-        );
-        continue;
+    // Claim and queue as one transaction. A supervisor killed between the two
+    // leaves an ask answered with no message queued for it, and a node parked
+    // on that ask then has no open ask, no pending message and no ready kind,
+    // so nothing ever drives it again: the parked-forever shape this drain
+    // exists to prevent, reached through the drain itself. BEGIN IMMEDIATE also
+    // serializes two drainers, so the read that decides a claim cannot land
+    // inside the other process's claims.
+    return this.journal.transaction(() => {
+      const expired = this.journal.expireAsks();
+      for (const ask of expired) {
+        // The ask is claimed and answered by now; what is left is whether the
+        // node should be woken. A done node must not be resurrected: the fence
+        // loop guards this, and the drain queued for it anyway, so an overdue
+        // ask on a finished node flipped it back to `settled` and the default
+        // then drove it a second time.
+        const node = this.journal.getNode(ask.node_id);
+        if (!node || node.state === "done") {
+          this.log(
+            `fleet: ask ${ask.token} expired for node ${ask.node_id}, which is ${node ? "done" : "missing"}; default not queued`,
+          );
+          continue;
+        }
+        this.journal.addMessage({
+          msgId: `m-${randomBytes(6).toString("hex")}`,
+          nodeId: ask.node_id,
+          kind: "answer",
+          body: ask.default_answer,
+          token: ask.token,
+        });
+        this.journal.setNodeState(ask.node_id, "settled");
+        this.log(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
       }
-      this.journal.addMessage({
-        msgId: `m-${randomBytes(6).toString("hex")}`,
-        nodeId: ask.node_id,
-        kind: "answer",
-        body: ask.default_answer,
-        token: ask.token,
-      });
-      this.journal.setNodeState(ask.node_id, "settled");
-      this.log(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
-    }
-    return expired;
+      return expired;
+    });
   }
 
   /**

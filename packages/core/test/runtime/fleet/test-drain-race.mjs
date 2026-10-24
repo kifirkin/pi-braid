@@ -217,5 +217,102 @@ for (let run = 1; run <= RUNS; run += 1) {
   rmSync(root, { recursive: true, force: true });
 }
 
+// ── claim and queue are one edit, not two ──────────────────────────────────
+// Before this, the claim committed on its own and the message was a second
+// write. A supervisor killed between them left the ask answered with nothing
+// queued, and a node parked on that ask has no open ask, no pending message and
+// no ready kind, so nothing drove it again. The drain is now one transaction.
+{
+  const root = mkdtempSync(join(tmpdir(), "fleet-drain-atomic-"));
+  const journal = openJournal(root);
+  journal.addNode({
+    nodeId: "n-parked",
+    parentId: null,
+    projectRoot: root,
+    charterPath: join(root, "charter.md"),
+    driver: "scripted",
+    driverConfig: "{}",
+  });
+  const turnId = journal.beginTurn("n-parked", {
+    kind: "charter",
+    promptText: "park on the ask",
+    sessionId: null,
+    supervisorEpoch: 1,
+  });
+  journal.endTurn(turnId, { state: "parked" });
+  journal.setNodeState("n-parked", "waiting_on_human");
+  journal.recordAsk({
+    token: "ask-parked",
+    nodeId: "n-parked",
+    turnId,
+    priority: 3,
+    question: "which target?",
+    defaultAnswer: "DEFAULT-PARKED",
+    deadlineAt: Date.now() - 60_000,
+  });
+  journal.close();
+
+  const supervisor = new Supervisor({ root, cap: 1, log: () => {} });
+  supervisor.drainExpiredAsks();
+  const afterDrain = openJournal(root);
+  const pending = afterDrain.pendingMessages("n-parked");
+  const readyAfter = supervisor.readyKind(afterDrain.getNode("n-parked"));
+  afterDrain.close();
+  supervisor.journal.close();
+
+  check("the drain queues the default it claimed", () => {
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].token, "ask-parked");
+  });
+  check(`the drained node is drivable again (readyKind ${readyAfter})`, () => {
+    assert.equal(readyAfter, "message");
+  });
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── the transaction is a real one: a failure undoes the claim too ──────────
+{
+  const root = mkdtempSync(join(tmpdir(), "fleet-drain-rollback-"));
+  const journal = openJournal(root);
+  journal.addNode({
+    nodeId: "n1",
+    parentId: null,
+    projectRoot: root,
+    charterPath: join(root, "charter.md"),
+    driver: "scripted",
+    driverConfig: "{}",
+  });
+  journal.setNodeState("n1", "waiting_on_human");
+  journal.recordAsk({
+    token: "ask-rb",
+    nodeId: "n1",
+    turnId: null,
+    priority: 3,
+    question: "q",
+    defaultAnswer: "D",
+    deadlineAt: Date.now() - 60_000,
+  });
+
+  let threw = false;
+  try {
+    journal.transaction(() => {
+      journal.expireAsks();
+      throw new Error("killed between claim and queue");
+    });
+  } catch {
+    threw = true;
+  }
+  const stateAfter = journal.getAsk("ask-rb").state;
+  const pendingAfter = journal.pendingMessages("n1").length;
+  journal.close();
+
+  check("a body that throws is rolled back", () => assert.equal(threw, true));
+  check("a rolled-back claim leaves the ask open and recoverable", () => {
+    assert.equal(stateAfter, "open");
+    assert.equal(pendingAfter, 0);
+  });
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log(failures === 0 ? "\nAll drain-race assertions passed." : `\n${failures} assertion(s) failed.`);
 process.exitCode = failures > 0 ? 1 : 0;

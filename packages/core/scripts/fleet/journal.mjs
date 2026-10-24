@@ -371,6 +371,27 @@ export class Journal {
     this.db.close();
   }
 
+  /**
+   * Run `body` as one write transaction.
+   *
+   * `BEGIN IMMEDIATE` takes the write lock before the body reads, so two
+   * processes that both intend to act on the same rows serialize: the second
+   * one's read happens after the first one's commit, rather than against the
+   * state the first one was about to change. A body that throws is rolled back
+   * whole, which is what lets a caller treat several statements as one edit.
+   */
+  transaction(body) {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = body();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   _stmt(sql) {
     let stmt = this._cache.get(sql);
     if (!stmt) {
