@@ -9,12 +9,16 @@
     ".": "./dist/index.js",
     "./lib": "./dist/lib/public.js"
   },
+  "bin": {
+    "pi-braid-fleet": "./scripts/fleet/cli.mjs"
+  },
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "src/",
     "docs/",
     "skills/",
+    "scripts/fleet/**",
     "README.md",
     "LICENSE",
     "AGENTS.md",

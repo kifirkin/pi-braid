@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * fleet: four operator commands over one journal.
  *
@@ -20,7 +21,7 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, realpathSync } from "node:fs";
 import { connect } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -355,7 +356,28 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/**
+ * Is this module the process's entry point?
+ *
+ * npm installs the `bin` entry as a symlink into `node_modules/.bin`, and the
+ * kernel does not rewrite argv: `process.argv[1]` stays the symlink while
+ * `import.meta.url` names the file it points at. Comparing the two as spelled
+ * makes the installed command load this module, match nothing, and exit 0 with
+ * no output at all, so the comparison is on real paths.
+ */
+function isEntryPoint() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(entry) === realpathSync(self);
+  } catch {
+    // A path that cannot be resolved cannot be another spelling of this file.
+    return resolve(entry) === self;
+  }
+}
+
+if (isEntryPoint()) {
   main().catch((error) => {
     console.error(`fleet: ${error.message}`);
     process.exitCode = 1;
