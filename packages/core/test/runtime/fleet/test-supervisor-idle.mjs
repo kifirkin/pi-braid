@@ -38,8 +38,9 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 
-import { openJournal } from "../../../scripts/fleet/journal.mjs";
+import { journalPath, openJournal, resolveFleetRoot } from "../../../scripts/fleet/journal.mjs";
 import { pidIsAlive } from "../../../scripts/fleet/procs.mjs";
 import { controlSocketPath } from "../../../scripts/fleet/supervisor.mjs";
 
@@ -65,6 +66,28 @@ async function check(name, fn) {
 }
 
 const sleep = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
+
+/**
+ * Read the journal without writing to it.
+ *
+ * `openJournal` is a writer: it runs the DDL and inserts meta rows on every
+ * open, so a poll that uses it takes the write lock up to forty times a second
+ * while the supervisor under observation is trying to write to the same file.
+ * The observer then contends with the observed, which is how this file produced
+ * intermittent `database is locked` errors and a timeout waiting for a node to
+ * be driven. A poll is a read, and it should cost a read.
+ */
+function readOnlyView(root) {
+  const db = new DatabaseSync(journalPath(resolveFleetRoot(root)), { readOnly: true });
+  try {
+    return {
+      nodes: db.prepare("SELECT * FROM nodes").all(),
+      supervisors: db.prepare("SELECT * FROM supervisors").all(),
+    };
+  } finally {
+    db.close();
+  }
+}
 
 async function waitFor(label, predicate, { timeoutMs = 15_000, intervalMs = 25 } = {}) {
   const deadline = Date.now() + timeoutMs;
@@ -102,18 +125,31 @@ function startSupervisor(root, extraArgs = []) {
   return running;
 }
 
+/**
+ * A read-only snapshot of the journal.
+ *
+ * This is the viewer every assertion and every poll in this file uses. It is
+ * deliberately not `openJournal`: that opens the store as a writer, running the
+ * DDL and inserting meta rows on every call, so a poll every 25 ms took the
+ * write lock forty times a second against a supervisor writing to the same file.
+ * The observer contended with the observed, which showed up as intermittent
+ * `database is locked` errors and as arms that timed out waiting for work that
+ * was happening.
+ */
 function journalView(root) {
-  const journal = openJournal(root, {});
+  const db = new DatabaseSync(journalPath(resolveFleetRoot(root)), { readOnly: true });
   try {
     return {
-      supervisors: journal.supervisors(),
-      nodes: journal.listNodes(),
-      turns: journal.allOpenTurns(),
-      asks: journal.openAsks(),
-      messages: journal.messages(),
+      supervisors: db.prepare("SELECT * FROM supervisors ORDER BY epoch").all(),
+      nodes: db.prepare("SELECT * FROM nodes ORDER BY node_id").all(),
+      // The same subsets the journal's own readers return: open turns and open
+      // asks. Reading the tables directly means filtering here, not assuming.
+      turns: db.prepare("SELECT * FROM turns WHERE state = 'in_progress' ORDER BY turn_id").all(),
+      asks: db.prepare("SELECT * FROM asks WHERE state = 'open' ORDER BY token").all(),
+      messages: db.prepare("SELECT * FROM inbox ORDER BY recorded_at, msg_id").all(),
     };
   } finally {
-    journal.close();
+    db.close();
   }
 }
 
@@ -205,12 +241,16 @@ async function expectAlive(running, label) {
 
 const emptyRoot = freshRoot("empty");
 const empty = startSupervisor(emptyRoot, ["--cap", "0"]);
-await waitFor("the supervisor to register", () => journalView(emptyRoot).supervisors.some((row) => row.state === "live"));
+// No wait for a `live` row here. A supervisor with nothing to do leaves within
+// the idle window, and the row it writes on the way out is `stopped`; polling
+// for the transient `live` state raced the very behaviour this arm asserts and
+// failed about one run in twelve under load. The durable row is the assertion.
 await check("empty root, cap 0: the supervisor process ends by itself", async () => {
   await expectExit(empty, "empty root");
 });
 await check("empty root, cap 0: it stopped cleanly on the way out", () => {
   const view = journalView(emptyRoot);
+  assert.ok(view.supervisors.length >= 1, "the supervisor registered before it left");
   assert.equal(view.supervisors.at(-1).state, "stopped", "the journal says stopped, not dead");
   assert.equal(existsSync(controlSocketPath(emptyRoot)), false, "the control socket is removed");
 });
@@ -220,15 +260,16 @@ await check("empty root, cap 0: it stopped cleanly on the way out", () => {
 const runnableRoot = freshRoot("runnable");
 seedNode(runnableRoot, [{ op: "done" }]);
 const runnable = startSupervisor(runnableRoot, ["--cap", "0"]);
-await waitFor("the supervisor to register", () => journalView(runnableRoot).supervisors.some((row) => row.state === "live"));
+// Same reason as the empty arm: this supervisor is defined by leaving, so its
+// `live` row is not something to poll for. The assertions below are the durable
+// facts, and the one that matters is that it never drove the node.
 await check("cap 0 with one runnable node it cannot drive: the supervisor leaves", async () => {
-  const view = journalView(runnableRoot);
-  assert.equal(view.nodes.length, 1);
-  assert.equal(view.nodes[0].turn_count, 0, "the node has never been driven, so its charter is what the scheduler would name");
   await expectExit(runnable, "runnable node at cap 0");
   const after = journalView(runnableRoot);
+  assert.equal(after.nodes.length, 1);
+  assert.equal(after.nodes[0].turn_count, 0, "this process never drove it, so its charter is still what the scheduler would name");
   assert.equal(after.nodes[0].state, "settled", "the node is left runnable in the journal, for whoever has capacity");
-  assert.equal(after.nodes[0].turn_count, 0, "this process never drove it");
+  assert.ok(after.supervisors.length >= 1, "the supervisor registered before it left");
 });
 
 // A cap-0 supervisor does drain an expired ask, because the drain runs before
@@ -322,13 +363,12 @@ const lateStart = startSupervisor(spawnRoot, ["--cap", "1"]);
 
 await check("control: a node registered before the start is driven, then the supervisor leaves", async () => {
   const done = await waitFor("the node to be driven to done", () => {
-    const journal = openJournal(spawnRoot, {});
-    try {
-      const node = journal.getNode("n1");
-      return node.state === "done" ? node : null;
-    } finally {
-      journal.close();
-    }
+    const node = readOnlyView(spawnRoot).nodes.find((row) => row.node_id === "n1");
+    return node && node.state === "done" ? node : null;
+  }).catch((error) => {
+    // A timeout here is indistinguishable from a supervisor that never started,
+    // so the arm has to show what the process itself said.
+    throw new Error(`${error.message}\n${lateStart.log()}`);
   });
   assert.equal(done.state, "done");
   assert.equal(readFileSync(worldFile, "utf8").trim(), "driven-after-start", "the node performed its effect");
