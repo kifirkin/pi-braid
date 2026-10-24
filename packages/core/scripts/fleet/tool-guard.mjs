@@ -2,10 +2,10 @@
  * The fleet's pre-execution duplication guard.
  *
  * Loaded as a pi extension inside every node's child, it refuses a tool call
- * whose effect the node's journal already recorded as completed on an earlier
- * turn, before the tool runs. That is the difference between a promise and an
- * executor: a resumed turn can be talked into repeating work, but a tool call
- * it re-issues cannot reach the world.
+ * whose effect the node's journal already recorded on an earlier turn of the
+ * run it is resuming, before the tool runs. That is the difference between a
+ * promise and an executor: a resumed turn can be talked into repeating work,
+ * but a tool call it re-issues cannot reach the world.
  *
  * The identity is (node_id, tool_name, canonical arguments) and it contains no
  * turn id on purpose. `effectKey` in journal.mjs hashes the turn, so it changes
@@ -15,16 +15,42 @@
  * that runs the same command twice inside one turn is doing work and is left
  * alone.
  *
+ * The history it is compared against is the recovery window, not the project's
+ * lifetime. A fleet root outlives every turn (`<cwd>/.fleet` by default), so a
+ * filter that read "an earlier turn" as "any earlier turn" made every effect a
+ * node had ever recorded permanent: one `ls -la` in the project's past blocked
+ * that command for the rest of the project's life, and `replayPolicy("bash")`
+ * is `never`, so every shell command a node had completed became unrunnable -
+ * the inspection commands a resumed turn needs first of all. The hazard this
+ * module exists for is narrow, and the window is now the same width: the
+ * current turn, plus every turn back to the last one that ended normally. That
+ * is the recovery chain - the turns of this unfinished run. A turn that ended
+ * normally (`settled`, `parked`, `done`) finished the work it was started for,
+ * so its effects are finished business: a later turn that repeats one is doing
+ * new work, and no crash can have left it half applied. An `interrupted` or
+ * `failed` turn, and a turn still `in_progress`, did not finish; its effects
+ * are what a resumed turn is at risk of re-issuing without knowing.
+ *
+ * Inside that window a row is history only if it may have reached the world:
+ * `completed` with `is_error = 0`, or `unknown`, which is the crash residue
+ * where the tool started and never reported. A call that threw applied
+ * nothing, so refusing its retry refused work that never happened. `attempted`
+ * is a call still in flight and `blocked` is one this guard refused; neither
+ * is history.
+ *
  * "Canonical arguments" is not a string compare, because the two sides of it
  * are two views of one tool call. The journal row was written from the RPC
  * stream's `tool_execution_start` args, which are the model's raw arguments;
  * this hook is handed the tool's own view of the same call. Measured for every
  * shipped tool at pi 1.4.0: explicit nulls appear on one side and not the
- * other (`{"command":"x","timeout":null}` against `{"command":"x"}`), and
- * the edit tool rewrites a legacy `{oldText,newText}` pair into
- * `{edits:[{oldText,newText}]}` before the hook runs. So a call matches a
- * recorded row when every argument it carries agrees with that row and unset
- * fields are ignored, with that one rewrite collapsed on both sides.
+ * other (`{"command":"x","timeout":null}` against `{"command":"x"}`), the
+ * edit tool rewrites a legacy `{oldText,newText}` pair into
+ * `{edits:[{oldText,newText}]}` before the hook runs, a scalar the model typed
+ * as a string arrives as the tool's validated type (`timeout: "30"` recorded,
+ * `timeout: 30` handed to the hook), and `edits` sent as a JSON string arrives
+ * as the parsed array. So a call matches a recorded row when every argument it
+ * carries agrees with that row and unset fields are ignored, with those three
+ * dialects folded on both sides.
  *
  * Reads are never refused: `replayPolicy` in journal.mjs is the single policy
  * table, and a call it calls `safe` runs again however often it is issued.
@@ -49,6 +75,24 @@
  * `SCHEMA_VERSION` bump is involved, and `settledEffects` (state = completed)
  * and `markUnknownEffects` (state = attempted) both ignore it: a refusal is
  * neither an applied effect nor an unknown one.
+ *
+ * A refusal stays recoverable, deliberately through an operator and not
+ * through the model. A node that genuinely has to repeat a recorded effect and
+ * cannot express it differently - a shell command, whose arguments are the
+ * whole identity - is released by retiring exactly the row the refusal names
+ * in its `result_json`:
+ *
+ *   sqlite3 <root>/fleet.sqlite "UPDATE effects SET state = 'superseded'
+ *     WHERE turn_id = <duplicate_of_turn> AND tool_call_id = '<duplicate_of_tool_call>'"
+ *
+ * `superseded` is another value of the same state column, and every reader of
+ * `effects` in journal.mjs matches a positive list (`completed`, `attempted`),
+ * so the retired row stops counting as history without leaving the record.
+ * The statement is not offered to the model and nothing in the child runs it:
+ * the refusal tells the model to continue from the next unfinished step and
+ * names the release as an operator's decision. A model that goes around the
+ * guard to the database itself is attacking the instrument, and an in-process
+ * guard cannot defend against a process it is loaded inside.
  */
 
 import { appendFileSync, existsSync } from "node:fs";
@@ -66,13 +110,42 @@ export const GUARD_ENV = {
 };
 
 /**
+ * A scalar leaf, with the one coercion the two views of a call disagree about.
+ *
+ * A model writes `timeout: "30"`; pi validates the arguments against the
+ * tool's schema and hands this hook `timeout: 30`; the journal kept the
+ * string. So the same argument arrives in two types and the row never
+ * matched. The rule that closes it is the narrowest one available: a string
+ * converts only when it converts back to itself, `String(Number(s)) === s`.
+ * `"30"` becomes 30 and matches a recorded 30; `"030"`, `" 30 "`, `"1e3"`,
+ * `"NaN"` and `""` all spell numbers and stay strings, because an argument
+ * typed as a string may legitimately hold one and merging it with a number
+ * would call two genuinely different arguments the same.
+ *
+ * The asymmetry of the two failure modes is why the rule is this narrow. A
+ * spelling that is not converted lets a duplicate run, which leaves the guard
+ * advisory for that spelling - the state every other tool shape is already in.
+ * A spelling that is converted too eagerly refuses a call that should run,
+ * permanently, which is the defect this canonicalisation exists to repair.
+ * `"true"` and `"false"` convert for the same reason and with the same
+ * exactness: only those two spellings, only to the boolean.
+ */
+function canonicalScalar(value) {
+  if (typeof value !== "string") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) && String(asNumber) === value ? asNumber : value;
+}
+
+/**
  * Keys sorted at every depth, unset fields dropped, so two spellings of one
  * call compare equal. A null is how these tool schemas spell "not given", and
  * the two surfaces disagree about whether to carry it.
  */
 export function canonicalArgs(value) {
   if (value === null || value === undefined) return undefined;
-  if (typeof value !== "object") return value;
+  if (typeof value !== "object") return canonicalScalar(value);
   if (Array.isArray(value)) return value.map(canonicalArgs);
   const sorted = {};
   for (const key of Object.keys(value).sort()) {
@@ -85,6 +158,26 @@ export function canonicalArgs(value) {
 
 export function canonicalKey(args) {
   return JSON.stringify(canonicalArgs(args ?? null) ?? null);
+}
+
+/**
+ * Two of pi's models send `edits` as a JSON string instead of an array; the
+ * edit tool parses it before this hook runs, so the hook holds the array while
+ * the journal kept the string. Parse it on the recorded side and on the call
+ * side, so either direction compares equal. A string that does not parse to an
+ * array is left exactly as it is: it is then a genuinely different argument,
+ * not a dialect of the same one.
+ */
+function parseEditArgs(args) {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return args;
+  if (typeof args.edits !== "string") return args;
+  let parsed;
+  try {
+    parsed = JSON.parse(args.edits);
+  } catch {
+    return args;
+  }
+  return Array.isArray(parsed) ? { ...args, edits: parsed } : args;
 }
 
 /** The edit tool's one rewrite, applied to whichever side carries the pair. */
@@ -127,16 +220,15 @@ function covers(stored, call) {
  * every argument-less call of a tool that has ever run.
  */
 export function sameCall({ toolName, recorded, args }) {
-  const call = canonicalArgs(args ?? {});
-  const row = canonicalArgs(recorded ?? {});
+  const isEdit = toolName === "edit";
+  const call = canonicalArgs(isEdit ? parseEditArgs(args) : args);
+  const row = canonicalArgs(isEdit ? parseEditArgs(recorded) : recorded);
   if (!carriesFields(call)) return false;
   if (covers(row, call)) return true;
-  if (toolName === "edit") {
-    const collapsedCall = canonicalArgs(collapseEditShape(call));
-    if (!carriesFields(collapsedCall)) return false;
-    return covers(canonicalArgs(collapseEditShape(row)), collapsedCall);
-  }
-  return false;
+  if (!isEdit) return false;
+  const collapsedCall = canonicalArgs(collapseEditShape(call));
+  if (!carriesFields(collapsedCall)) return false;
+  return covers(canonicalArgs(collapseEditShape(row)), collapsedCall);
 }
 
 /** Values of the switch that mean "off"; anything else leaves the guard on. */
@@ -163,7 +255,16 @@ export function guardContext(env = process.env) {
 }
 
 /**
- * The journal, as the guard needs it: one read and one write, both spelled
+ * The states a turn can end in and be finished. `settled` is an ordinary turn,
+ * `parked` stopped to ask a human, `done` reported the charter complete; each
+ * finished the work it was started for, so the recovery window stops there.
+ * `interrupted` and `failed` are turns that were cut off, and `in_progress` is
+ * a turn that has not ended at all - all three are inside the window.
+ */
+export const SETTLED_TURN_STATES = Object.freeze(["settled", "parked", "done"]);
+
+/**
+ * The journal, as the guard needs it: two reads and one write, each spelled
  * here rather than added to journal.mjs so the shipped reader stays untouched.
  *
  * The supervisor holds its own connection to the same file, so every write is
@@ -179,9 +280,19 @@ export function openGuardJournal(root) {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA synchronous = FULL");
-  const findCompleted = db.prepare(
-    `SELECT turn_id, tool_call_id, seq, args_json FROM effects
-      WHERE node_id = ? AND tool_name = ? AND state = 'completed' AND turn_id <> ?
+  // The floor of the recovery window: the last turn of this node that ended
+  // normally. `MAX` is what makes the window the recovery chain rather than
+  // "every turn that did not settle": an interruption older than a later
+  // settled turn was resolved by the run that settled, so its effects are
+  // finished business again.
+  const windowFloor = db.prepare(
+    `SELECT COALESCE(MAX(turn_id), 0) AS floor FROM turns
+      WHERE node_id = ? AND turn_id < ? AND state IN (${SETTLED_TURN_STATES.map(() => "?").join(", ")})`,
+  );
+  const findApplied = db.prepare(
+    `SELECT turn_id, tool_call_id, seq, args_json, state FROM effects
+      WHERE node_id = ? AND tool_name = ? AND turn_id <> ? AND turn_id > ?
+        AND (state = 'unknown' OR (state = 'completed' AND is_error = 0))
       ORDER BY turn_id, seq`,
   );
   const upsertBlock = db.prepare(
@@ -191,10 +302,27 @@ export function openGuardJournal(root) {
      ON CONFLICT(turn_id, tool_call_id) DO UPDATE SET
        state = 'blocked', result_json = excluded.result_json, is_error = 1, ended_at = excluded.ended_at`,
   );
+  let floorFor = null;
   return {
-    /** The oldest completed row for this call outside the current turn. */
-    completedDuplicate({ nodeId, toolName, args, excludeTurnId }) {
-      for (const row of findCompleted.all(nodeId, toolName, excludeTurnId)) {
+    /**
+     * The oldest recorded effect for this call that may have reached the
+     * world, inside the recovery window. `unknown` is included on purpose: the
+     * tool started and never reported, so the effect may have half applied,
+     * which is the one class where repeating it is dangerous.
+     *
+     * The floor is read once per turn and not once per call: a turn that ended
+     * before this one cannot start ending differently while this one runs, and
+     * the only writer that touches an older turn is reconcile, which marks an
+     * open turn `interrupted` and never `settled`. So the window cannot move
+     * under a turn, and on a node issuing fifty shell commands a turn the
+     * second read would otherwise be fifty scans of `turns`.
+     */
+    appliedDuplicate({ nodeId, toolName, args, currentTurnId }) {
+      const windowKey = `${nodeId}\u0000${currentTurnId}`;
+      if (floorFor?.key !== windowKey) {
+        floorFor = { key: windowKey, floor: windowFloor.get(nodeId, currentTurnId, ...SETTLED_TURN_STATES).floor };
+      }
+      for (const row of findApplied.all(nodeId, toolName, currentTurnId, floorFor.floor)) {
         let stored;
         try {
           stored = JSON.parse(row.args_json);
@@ -202,7 +330,7 @@ export function openGuardJournal(root) {
           continue;
         }
         if (sameCall({ toolName, recorded: stored, args })) {
-          return { turnId: row.turn_id, toolCallId: row.tool_call_id, seq: row.seq };
+          return { turnId: row.turn_id, toolCallId: row.tool_call_id, seq: row.seq, state: row.state };
         }
       }
       return null;
@@ -258,7 +386,9 @@ export function createGuard({ nodeId, turnId, store, report = stderrReport }) {
     /**
      * Called by pi before the tool executes. Returns a refusal, or nothing.
      * The refusal text becomes the tool's result, so it has to tell the model
-     * what happened and what not to do next.
+     * what happened and what not to do next. It says who releases a blocked
+     * effect and does not say how: a model that could retire its own rows is a
+     * model policing itself, which is what this module exists instead of.
      */
     onToolCall(event) {
       const toolName = event?.toolName;
@@ -270,7 +400,7 @@ export function createGuard({ nodeId, turnId, store, report = stderrReport }) {
       let duplicate;
       try {
         journal = store();
-        duplicate = journal.completedDuplicate({ nodeId, toolName, args, excludeTurnId: turnId });
+        duplicate = journal.appliedDuplicate({ nodeId, toolName, args, currentTurnId: turnId });
       } catch (error) {
         // Cannot read, so cannot refuse: the alternative is a fleet that stops
         // working when its journal does.
@@ -280,11 +410,16 @@ export function createGuard({ nodeId, turnId, store, report = stderrReport }) {
         return undefined;
       }
       if (!duplicate) return undefined;
+      const recorded =
+        duplicate.state === "unknown"
+          ? `was recorded on turn ${duplicate.turnId} of node ${nodeId} as an attempt that never reported back, so it may have reached the world`
+          : `was already completed on turn ${duplicate.turnId} of node ${nodeId}`;
       const reason =
-        `fleet guard: refused ${toolName} call ${toolCallId}. The same call, with identical arguments, ` +
-        `was already completed on turn ${duplicate.turnId} of node ${nodeId} and this turn is ${turnId}. ` +
-        `It was not executed. Do not retry it; continue from the next unfinished step, or change the call ` +
-        `if the work genuinely differs.`;
+        `fleet guard: refused ${toolName} call ${toolCallId}. The same call, with identical arguments, ${recorded}; ` +
+        `this turn is ${turnId} and it was not executed. Do not retry it: continue from the next unfinished step, ` +
+        `or change the call if the work genuinely differs. Repeating a recorded effect is not something this turn ` +
+        `can authorise - an operator has to release the recorded effect in the node's journal first, and the ` +
+        `refusal this call leaves records which row that is.`;
       try {
         journal.recordBlock({ turnId, nodeId, toolCallId, toolName, args, reason, duplicate });
       } catch (error) {
