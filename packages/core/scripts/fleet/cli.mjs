@@ -22,12 +22,11 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, realpathSync } from "node:fs";
-import { connect } from "node:net";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openJournal, resolveFleetRoot } from "./journal.mjs";
-import { buildStatus, controlSocketPath, DEFAULT_ANSWER } from "./supervisor.mjs";
+import { buildStatus, controlSocketPath, DEFAULT_ANSWER, requestOnControlSocket } from "./supervisor.mjs";
 import { pidIsAlive } from "./procs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -49,29 +48,10 @@ function slug(text) {
 export function controlRequest(root, request, { timeoutMs = 10_000 } = {}) {
   const path = controlSocketPath(root);
   if (!existsSync(path)) return Promise.resolve(null);
-  return new Promise((resolveReply) => {
-    const socket = connect(path);
-    let buffer = "";
-    const finish = (reply) => {
-      socket.destroy();
-      resolveReply(reply);
-    };
-    socket.setTimeout(timeoutMs, () => finish(null));
-    socket.on("connect", () => socket.write(JSON.stringify(request) + "\n"));
-    socket.on("data", (chunk) => {
-      buffer += chunk.toString("utf8");
-      const index = buffer.indexOf("\n");
-      if (index < 0) return;
-      try {
-        finish(JSON.parse(buffer.slice(0, index)));
-      } catch {
-        finish(null);
-      }
-    });
-    socket.on("error", () => finish(null));
-  });
+  return requestOnControlSocket(path, request, { timeoutMs });
 }
 
+/** The journalled supervisor that is still a live process, or null. */
 function liveSupervisor(journal) {
   for (const row of journal.supervisors()) {
     if (row.state !== "live") continue;
@@ -82,11 +62,20 @@ function liveSupervisor(journal) {
 }
 
 /**
- * Start the supervisor if the journal shows none alive. Detached with its own
- * process group: the drill kills it with SIGKILL, which is only a meaningful
- * test if nothing else is holding it up.
+ * Start the supervisor unless one is already there. Two instruments answer
+ * that, and they answer different questions: the channel says whether a
+ * supervisor can actually be reached, the journal row says whether a process
+ * claims the job. A supervisor that never bound, or refused to, leaves a row
+ * that only the channel corrects, so the channel is asked first, and the
+ * journal is the answer when the channel is the thing that is broken. Starting
+ * a second supervisor over a live channel is the one outcome neither may cause.
+ *
+ * Detached with its own process group: the drill kills it with SIGKILL, which
+ * is only a meaningful test if nothing else is holding it up.
  */
-export function ensureSupervisor(root, options = {}) {
+export async function ensureSupervisor(root, options = {}) {
+  const answering = await controlRequest(root, { op: "ping" }, { timeoutMs: 1000 });
+  if (answering?.ok) return { started: false, pid: answering.data.pid };
   const journal = openJournal(root, {});
   const live = liveSupervisor(journal);
   journal.close();
@@ -154,7 +143,7 @@ async function cmdSpawn(args) {
   } finally {
     journal.close();
   }
-  const supervisor = ensureSupervisor(root, {
+  const supervisor = await ensureSupervisor(root, {
     cap: args.cap ? Number(args.cap) : undefined,
     driver: args["supervisor-driver"],
     model: args.model,
@@ -165,7 +154,15 @@ async function cmdSpawn(args) {
   if (!live) {
     throw new Error(`supervisor did not answer on ${controlSocketPath(root)}; see ${svrLogPath(root)}`);
   }
-  console.log(`supervisor ${live.pid ?? supervisor.pid}${supervisor.started ? " (started)" : " (already running)"} root ${resolveFleetRoot(root)}`);
+  // "(started)" is a claim about this command, so it holds only when the
+  // supervisor that answers is the one this command started. A process spawned
+  // over a live channel is refused by the incumbent, and the pid that answers
+  // names the supervisor that was already there.
+  const answeredBy = live.pid ?? supervisor.pid;
+  const startedHere = supervisor.started && answeredBy === supervisor.pid;
+  console.log(
+    `supervisor ${answeredBy}${startedHere ? " (started)" : " (already running)"} root ${resolveFleetRoot(root)}`,
+  );
 }
 
 async function cmdStatus(args) {
