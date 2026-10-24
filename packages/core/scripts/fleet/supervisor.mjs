@@ -44,6 +44,26 @@ export { ASK_SENTINEL, DONE_SENTINEL };
 
 export const NODE_STATES = ["settled", "waiting_on_child", "waiting_on_human", "failed", "done"];
 
+/**
+ * Why no future turn can carry a message for this node, or null.
+ *
+ * `done` and `failed`-at-its-attempt-bound are the two states the scheduler
+ * skips for good, so a message queued for one of them is not early, it is
+ * undeliverable. Every other state can still be driven - an open ask gets an
+ * answer, a turn in flight ends - so a message queued there is only waiting.
+ *
+ * `maxAttempts` is the caller's policy, and a caller that does not have one
+ * passes null and learns only the `done` half: the command line cannot see the
+ * bound a supervisor is running with.
+ */
+export function undeliverableReason(node, maxAttempts = null) {
+  if (node.state === "done") return "the node is done";
+  if (maxAttempts != null && node.state === "failed" && node.attempts >= maxAttempts) {
+    return `the node failed after ${node.attempts} attempts`;
+  }
+  return null;
+}
+
 export const DEFAULT_ANSWER = "No decision arrived before the deadline. Continue with the charter's stated default.";
 
 /**
@@ -133,8 +153,8 @@ export const CHILD_FLAGS = [
 ];
 
 /** The fleet preamble a node's first turn carries, before its charter body. */
-export function charterPrompt(node, body) {
-  return [
+export function charterPrompt(node, body, pending = []) {
+  const lines = [
     `You are node ${node.node_id} of a fleet. Your charter follows.`,
     `Work the charter with your tools. One tool call per step, in order.`,
     `When the charter's steps are complete, end your turn with the single line ${DONE_SENTINEL}.`,
@@ -143,7 +163,15 @@ export function charterPrompt(node, body) {
     "",
     "CHARTER:",
     body.trim(),
-  ].join("\n");
+  ];
+  // A queued message is an operator's instruction for this node, and the first
+  // turn is a turn: it rides along instead of waiting for a later one. The
+  // charter keeps its shape, and the queue is a section of its own after it.
+  if (pending.length > 0) {
+    lines.push("", "The operator sent this before your first turn. It applies to this turn as well:");
+    for (const message of pending) lines.push(`- ${message.body}`);
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -328,6 +356,14 @@ export class Supervisor {
       const fence = await this.fenceGroup(turn);
       const unknown = this.journal.markUnknownEffects(turn.turn_id);
       this.journal.endTurn(turn.turn_id, { state: "interrupted" });
+      // Messages the interrupted turn had already recorded as carried go back to
+      // the queue: the prompt went out and the turn did not finish, so the
+      // recovery turn below is the first place they can be acted on.
+      const abandoned = this.journal
+        .messages(turn.node_id)
+        .filter((message) => message.state === "delivered" && message.delivered_turn_id === turn.turn_id)
+        .map((message) => message.msg_id);
+      const requeued = this.journal.releaseMessages(abandoned);
       this.journal.bumpAttempt(turn.node_id);
       const node = this.journal.getNode(turn.node_id);
       if (node && node.state !== "done") {
@@ -347,7 +383,7 @@ export class Supervisor {
       }
       this.journal.setMeta("fences", JSON.stringify(this.fences));
       this.log(
-        `fleet: reconciled turn ${turn.turn_id} (node ${turn.node_id}) fence=${fence.killed ? "killed" : fence.reason} unknown_effects=${unknown.length}`,
+        `fleet: reconciled turn ${turn.turn_id} (node ${turn.node_id}) fence=${fence.killed ? "killed" : fence.reason} unknown_effects=${unknown.length} requeued_messages=${requeued}`,
       );
     }
     this.journal.setMeta("reconcile_skipped_turns", String(skippedTurns));
@@ -481,6 +517,7 @@ export class Supervisor {
       if (!renewed) this.log(`fleet: lease for ${nodeId} could not be renewed (ctx ${ctx.turnId})`);
     }
     this.drainExpiredAsks();
+    this.retireUndeliverableMessages();
     if (this.active.size < this.options.cap) {
       for (const node of this.journal.listNodes()) {
         if (this.stopping || this.active.size >= this.options.cap) break;
@@ -563,9 +600,8 @@ export class Supervisor {
    * been driven takes its charter before anything else.
    */
   readyKind(node) {
-    if (node.state === "done") return null;
     if (this.journal.openAsks(node.node_id).length > 0) return null;
-    if (node.state === "failed" && node.attempts >= this.options.maxAttempts) return null;
+    if (undeliverableReason(node, this.options.maxAttempts)) return null;
     const turns = this.journal.turnsFor(node.node_id);
     const last = turns.at(-1) ?? null;
     if (last && last.state === "in_progress") return null;
@@ -573,6 +609,34 @@ export class Supervisor {
     if (last && last.state === "interrupted") return this.options.naive ? "naive" : "recovery";
     if (this.journal.pendingMessages(node.node_id).length > 0) return "message";
     return null;
+  }
+
+  /**
+   * Queued messages on a node that will never run again take a terminal state
+   * of their own.
+   *
+   * `recorded` is a promise that some turn will carry the message. When the node
+   * it was routed to is done, or failed at its attempt bound, no turn will ever
+   * do that, and leaving the row in `recorded` is the same silent lie as
+   * retiring a message that never reached a prompt. The sweep runs on every
+   * tick, so a message is stamped as soon as a supervisor can see that it cannot
+   * be delivered - including one that was queued while the node was still
+   * running and whose later turn ended the node instead of carrying it.
+   */
+  retireUndeliverableMessages() {
+    for (const node of this.journal.listNodes()) {
+      if (this.active.has(node.node_id)) continue;
+      const why = undeliverableReason(node, this.options.maxAttempts);
+      if (!why) continue;
+      const retired = this.journal.markMessagesUndeliverable(node.node_id);
+      if (retired.length > 0) {
+        this.log(
+          `fleet: ${why}; ${retired.length} queued message(s) for node ${node.node_id} can never be delivered: ${retired
+            .map((message) => message.msg_id)
+            .join(", ")}`,
+        );
+      }
+    }
   }
 
   // ── driving one node ─────────────────────────────────────────────────────
@@ -626,6 +690,10 @@ export class Supervisor {
       lastAssistantText: "",
       error: null,
       startedAt: Date.now(),
+      // What this turn's prompt carries, and what was steered into it. Both are
+      // decided by the turn itself; the settle gate retires exactly these.
+      carried: [],
+      steeredIds: [],
     };
     ctx.settlePromise = new Promise((resolveSettle) => {
       ctx.settleResolve = resolveSettle;
@@ -660,9 +728,15 @@ export class Supervisor {
           "\n",
         );
       } else {
-        prompt = charterPrompt(node, this._charter(node));
+        prompt = charterPrompt(node, this._charter(node), pending);
         if (kind === "naive") promptKind = "naive-replay";
       }
+      // The messages this prompt carries, asked of the text that is about to be
+      // journalled rather than of the branch that built it. The settle gate
+      // retires this list and nothing else, so a turn kind that forgets the
+      // queue cannot inherit a delivery it never made: the message keeps
+      // waiting, and the next turn that does carry it retires it.
+      ctx.carried = pending.filter((message) => prompt.includes(message.body)).map((message) => message.msg_id);
       this.journal.setNodeState(node.node_id, "waiting_on_child");
       const turnId = this.journal.beginTurn(node.node_id, {
         kind: promptKind,
@@ -671,8 +745,8 @@ export class Supervisor {
         supervisorEpoch: this.epoch,
       });
       ctx.turnId = turnId;
-      for (const message of pending) {
-        this.journal.markMessageDelivered(message.msg_id, {
+      for (const msgId of ctx.carried) {
+        this.journal.markMessageDelivered(msgId, {
           tier: "B",
           turnId,
           afterEffectSeq: 0,
@@ -694,6 +768,10 @@ export class Supervisor {
       if (ctx.turnId) {
         this.journal.markUnknownEffects(ctx.turnId);
         this.journal.endTurn(ctx.turnId, { state: "failed", ...this._usage(ctx) });
+        // The prompt went out and the turn did not finish it, so its messages
+        // are queued again rather than left in a `delivered` row nothing will
+        // ever read.
+        this.journal.releaseMessages([...ctx.carried, ...ctx.steeredIds]);
         this.journal.bumpAttempt(node.node_id);
       }
       this.journal.setNodeState(node.node_id, "failed", { done_reason: `turn failed: ${error.message}` });
@@ -830,7 +908,10 @@ export class Supervisor {
       tokensOut: this._usage(ctx).tokensOut,
       projectRoot: node.project_root,
     });
-    this.journal.markMessagesConsumed(node.node_id);
+    // Only what this turn's prompt carried is retired. A message whose body was
+    // not in the prompt keeps the state that makes the next turn pick it up,
+    // which is what makes `consumed` a record of what a model read.
+    this.journal.consumeMessages([...ctx.carried, ...ctx.steeredIds]);
     this.journal.setNodeState(node.node_id, nodeState, doneReason ? { done_reason: doneReason } : {});
     this.log(
       `fleet: node ${node.node_id} turn ${ctx.turnId} ${turnState} effects=${this.journal.effects(ctx.turnId).length} requests=${ctx.requestSeq}`,
@@ -917,6 +998,11 @@ export class Supervisor {
       case "inject": {
         const node = this.journal.getNode(request.node);
         if (!node) return { ok: false, error: `no such node: ${request.node}` };
+        // A message for a node no future turn will drive cannot be delivered,
+        // and recording it would be the command claiming it can. Refusing here
+        // is what turns that into an answer the operator sees now.
+        const retired = undeliverableReason(node, this.options.maxAttempts);
+        if (retired) return { ok: false, error: `cannot queue a message for ${node.node_id}: ${retired}; no turn will ever carry it` };
         const msgId = request.msgId ?? `m-${randomBytes(6).toString("hex")}`;
         let kind = "user";
         if (request.token) {
@@ -944,6 +1030,8 @@ export class Supervisor {
               afterEffectSeq: ctx.toolEnds,
               beforeRequestSeq: ctx.requestSeq,
             });
+            // Steered into this turn, so this turn's settle is what retires it.
+            ctx.steeredIds.push(msgId);
             return { ok: true, data: { msgId, tier: "A", disposition: queued, turnId: ctx.turnId, effectSeq: ctx.toolEnds } };
           } catch (error) {
             this.log(`fleet: steer for ${node.node_id} refused: ${error.message}`);
@@ -1022,6 +1110,10 @@ export class Supervisor {
       if (ctx.turnId) {
         this.journal.markUnknownEffects(ctx.turnId);
         this.journal.endTurn(ctx.turnId, { state: "interrupted", ...this._usage(ctx) });
+        // The same rule as a failed turn: the prompt went out and the turn did
+        // not settle, so its messages are queued for the next drive rather than
+        // left in a `delivered` row nothing will read again.
+        this.journal.releaseMessages([...ctx.carried, ...ctx.steeredIds]);
       }
       this.journal.setNodeState(nodeId, "settled");
       this.journal.releaseLease(nodeId, this.epoch);
@@ -1065,6 +1157,9 @@ export function buildStatus(journal, supervisor = null) {
       openAsks: journal.openAsks(node.node_id).map((ask) => ask.token),
       lease: journal.liveLease(node.node_id)?.epoch ?? null,
       pending: journal.pendingMessages(node.node_id).length,
+      // Queued messages that no turn will ever carry: a count an operator can
+      // read without opening SQLite.
+      undeliverable: journal.messages(node.node_id).filter((message) => message.state === "undeliverable").length,
     };
   });
   const liveSupervisors = journal.supervisors().filter((row) => row.state === "live" && pidIsAlive(row.pid));
