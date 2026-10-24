@@ -366,9 +366,38 @@ export function openJournal(root, options = {}) {
   const fleetRoot = resolveFleetRoot(root);
   mkdirSync(dirname(journalPath(fleetRoot)), { recursive: true });
   const db = new DatabaseSync(journalPath(fleetRoot));
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA synchronous = FULL");
+  // The wait goes first. Every statement below can block on another process's
+  // write, and a busy handler installed after them never applies to them: setting
+  // the journal mode on a store another process is writing raises
+  // "database is locked" immediately, because at that point this connection has
+  // no handler and SQLite cannot wait. Measured: a two-drainer race failed about
+  // one run in twenty at this line, before the timeout was ever in force.
   db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+  // The mode is a property of the file, not of this connection. Asking first
+  // means a reader never has to take the exclusive lock that changing the mode
+  // needs, and on a store that is already WAL the answer costs one pragma read.
+  // The mode is a property of the file, not of this connection, so ask before
+  // setting it: a reader never needs the exclusive lock that changing it takes.
+  const isWal = () => String(Object.values(db.prepare("PRAGMA journal_mode").get() ?? {})[0] ?? "").toLowerCase() === "wal";
+  if (!isWal()) {
+    // Setting the mode needs an exclusive lock, and SQLite answers SQLITE_BUSY
+    // for that statement without consulting the busy handler, so waiting on it is
+    // not available. Two processes initialising one fresh store therefore race
+    // and one of them throws. Retry a bounded number of times, and treat "someone
+    // else already made it WAL" as success.
+    const deadline = Date.now() + BUSY_TIMEOUT_MS;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        db.exec("PRAGMA journal_mode = WAL");
+        break;
+      } catch (error) {
+        if (isWal()) break;
+        if (Date.now() >= deadline) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(50 * (attempt + 1), 250));
+      }
+    }
+  }
+  db.exec("PRAGMA synchronous = FULL");
   db.exec(DDL);
   const projectRoot = options.projectRoot ? resolve(options.projectRoot) : fleetRoot;
   const meta = {
