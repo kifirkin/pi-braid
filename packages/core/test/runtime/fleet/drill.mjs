@@ -12,6 +12,10 @@
  *   steer    measure where a Tier A steer lands inside a live turn
  *   rss      resident set of the supervisor plus three open sessions
  *   nonstall one node parked on a question, the other two still turning
+ *   nonote   a resumed turn whose recovery prompt carries no journal note, run
+ *            against a real pi child and a model that re-issues the completed
+ *            calls: the unguarded arm duplicates in the world, the guarded one
+ *            does not
  *
  * With no arguments the scripted `crash` arms run, both the guarded and the
  * naive one; the others are opt-in because they cost a real model call and a
@@ -19,13 +23,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openJournal } from "../../../scripts/fleet/journal.mjs";
 import { groupIsAlive, residentMb } from "../../../scripts/fleet/procs.mjs";
+import { DONE_SENTINEL, Supervisor } from "../../../scripts/fleet/supervisor.mjs";
+import { GUARD_ENV } from "../../../scripts/fleet/tool-guard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR = resolve(HERE, "../../../scripts/fleet/supervisor.mjs");
@@ -65,6 +72,11 @@ function extensionPath() {
 }
 
 const MODEL = process.env.PI_FLEET_MODEL ?? "opencode-go/deepseek-v4.1-flash";
+
+/** The stub model's provider/model id, and the pid a killed supervisor leaves. */
+const STUB_MODEL_ID = "stub-1";
+const STUB_MODEL = `stub/${STUB_MODEL_ID}`;
+const DEAD_PID = 2_147_483_600;
 
 const spawnedSupervisors = new Set();
 
@@ -675,6 +687,304 @@ async function nonstallArm() {
   await new Promise((resolveExit) => supervisor.once("exit", resolveExit));
 }
 
+// ── the note-removal arm ─────────────────────────────────────────────────────
+
+/**
+ * A model whose answers are a list, not a choice.
+ *
+ * The end-to-end arm needs a real pi child - only a real child runs an
+ * extension - and it needs the same two tool calls every time. A hosted model
+ * gives the first and not the second: asked to repeat work it can see in its
+ * own session, it may decline, and then the arm measures the model instead of
+ * the guard. This stub speaks the same OpenAI chat-completions wire format the
+ * child already uses, so opt-in through `models.json`, and answers the n-th
+ * request with the n-th planned message. The child, the tool pipeline and the
+ * extension are all real; only the choosing is scripted.
+ */
+function startStubModel(plan) {
+  const requests = [];
+  let step = 0;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      if (!req.url.endsWith("/chat/completions")) {
+        res.writeHead(404).end();
+        return;
+      }
+      let payload = {};
+      try {
+        payload = JSON.parse(body);
+      } catch {
+        payload = {};
+      }
+      requests.push({
+        messages: (payload.messages ?? []).length,
+        tools: (payload.tools ?? []).map((tool) => tool.function?.name),
+      });
+      const action = plan[Math.min(step, plan.length - 1)] ?? { text: "done" };
+      step += 1;
+      const base = {
+        id: `stub-${step}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: payload.model ?? STUB_MODEL_ID,
+      };
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      if (action.tool) {
+        res.write(
+          `data: ${JSON.stringify({
+            ...base,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `call_${step}`,
+                      type: "function",
+                      function: { name: action.tool.name, arguments: JSON.stringify(action.tool.args) },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`);
+      } else {
+        res.write(
+          `data: ${JSON.stringify({
+            ...base,
+            choices: [{ index: 0, delta: { role: "assistant", content: action.text }, finish_reason: null }],
+          })}\n\n`,
+        );
+        res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+    });
+  });
+  return new Promise((resolveListen) => {
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      resolveListen({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        requests,
+        close: () => new Promise((done) => server.close(() => done())),
+      });
+    });
+  });
+}
+
+/** The agent directory the child reads its model from, so no key is needed. */
+function writeStubAgentDir(root, baseUrl) {
+  const dir = join(root, "agent");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "models.json"),
+    JSON.stringify(
+      {
+        providers: {
+          stub: {
+            name: "Stub",
+            baseUrl,
+            api: "openai-completions",
+            apiKey: "stub-key",
+            models: [
+              {
+                id: STUB_MODEL_ID,
+                name: STUB_MODEL_ID,
+                contextWindow: 200_000,
+                maxTokens: 8_192,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              },
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  return dir;
+}
+
+/**
+ * The arm the review built: the same recovery turn with the journal's note
+ * removed from the prompt.
+ *
+ * A predecessor is fabricated to the shape a SIGKILL leaves - a live
+ * supervisor row with a dead pid, a turn still in progress, two effects
+ * completed and one in flight - and a fresh supervisor reconciles it and
+ * resumes the node. Its recovery prompt is built by the same code that builds
+ * a real one; only the note is withheld. The model is scripted to re-issue the
+ * two calls the interrupted turn had already completed.
+ *
+ * With the guard out of the child (`FLEET_GUARD=off`) the world file grows from
+ * two lines to four. With it in, the calls are refused before they run and the
+ * world stays at two.
+ */
+async function noNoteArm({ guard = true } = {}) {
+  const label = `nonote-${guard ? "guarded" : "unguarded"}`;
+  console.log(`\n== ${label} ==`);
+  const root = freshRoot(label);
+  const worldFile = join(root, "world.log");
+  writeFileSync(worldFile, "effect-1\neffect-2\n");
+  const nodeId = "n1-nonote";
+  const sessionId = `fleet-${nodeId}`;
+  const charterPath = join(root, `${nodeId}.charter.md`);
+  writeFileSync(charterPath, "Append effect-1 and effect-2 to the world file, one call each, then finish.");
+  // The two calls the interrupted turn completed, byte for byte what the model
+  // will issue: a repeat is a duplicate of a recorded effect, not a new one.
+  const commands = [`printf 'effect-1\\n' >> ${worldFile}`, `printf 'effect-2\\n' >> ${worldFile}`];
+
+  const journal = openJournal(root, { driver: "rpc" });
+  const epoch = journal.registerSupervisor({ pid: DEAD_PID, driver: "rpc", childArgs: [], piVersion: "test" });
+  journal.addNode({ nodeId, parentId: null, projectRoot: root, charterPath, driver: "rpc" });
+  const interruptedTurn = journal.beginTurn(nodeId, {
+    kind: "charter",
+    promptText: "append effect-1 and effect-2",
+    sessionId,
+    supervisorEpoch: epoch,
+  });
+  journal.setNodeSession(nodeId, { sessionId, sessionFile: join(root, "sessions", `${sessionId}.jsonl`) });
+  commands.forEach((command, index) => {
+    const toolCallId = `call-${index + 1}`;
+    journal.effectAttempted({
+      turnId: interruptedTurn,
+      nodeId,
+      toolCallId,
+      toolName: "bash",
+      // The shape the supervisor records for this tool: the RPC event carries
+      // the field the tool reports back, and the model's call does not.
+      args: { command, timeout: null },
+      replay: "never",
+      seq: index + 1,
+    });
+    journal.effectSettled({ turnId: interruptedTurn, toolCallId, result: { ok: true }, isError: false });
+  });
+  journal.effectAttempted({
+    turnId: interruptedTurn,
+    nodeId,
+    toolCallId: "call-3",
+    toolName: "bash",
+    args: { command: "sleep 45" },
+    replay: "never",
+    seq: 3,
+  });
+  // The control: a read-only call completed on the same interrupted turn. It
+  // must run again in the resumed turn, because repeating a read is not a
+  // duplicated effect and blocking it would break ordinary work.
+  const readPath = charterPath;
+  journal.effectAttempted({
+    turnId: interruptedTurn,
+    nodeId,
+    toolCallId: "call-4",
+    toolName: "read",
+    args: { path: readPath, offset: null, limit: 2000 },
+    replay: "safe",
+    seq: 4,
+  });
+  journal.effectSettled({ turnId: interruptedTurn, toolCallId: "call-4", result: { ok: true }, isError: false });
+  journal.setNodeState(nodeId, "waiting_on_child");
+  journal.close();
+
+  const stub = await startStubModel([
+    ...commands.map((command) => ({ tool: { name: "bash", args: { command } } })),
+    { tool: { name: "read", args: { path: readPath } } },
+    { text: DONE_SENTINEL },
+  ]);
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const previousGuard = process.env[GUARD_ENV.off];
+  process.env.PI_CODING_AGENT_DIR = writeStubAgentDir(root, stub.baseUrl);
+  if (guard) delete process.env[GUARD_ENV.off];
+  else process.env[GUARD_ENV.off] = "off";
+
+  const supervisor = new Supervisor({
+    root,
+    driver: "rpc",
+    cap: 1,
+    tickMs: 20,
+    control: false,
+    idleExitMs: 120_000,
+    model: STUB_MODEL,
+    recoveryNote: false,
+    log: (line) => console.log(`    ${line}`),
+  });
+  try {
+    await supervisor.start();
+    const after = await waitFor(
+      "the resumed turn to settle",
+      () => {
+        const [view] = journalView(root);
+        if (!view) return null;
+        const last = view.turns.at(-1);
+        if (view.turns.length < 2 || last.state === "in_progress") return null;
+        return view;
+      },
+      { timeoutMs: 180_000, intervalMs: 200 },
+    );
+    await sleep(400);
+    const [view] = journalView(root);
+    const resumed = view.turns.at(-1);
+    const resumedEffects = view.allEffects.filter((effect) => effect.turn_id === resumed.turn_id);
+    const worldAfter = worldLines(worldFile);
+
+    console.log(`  turns ${view.turns.map((turn) => `${turn.turn_id}:${turn.kind}:${turn.state}`).join(" ")}`);
+    console.log(`  resumed turn prompt carries the note: ${String(resumed.prompt_text).includes("Effects already applied")}`);
+    console.log(
+      `  resumed effects ${resumedEffects.map((effect) => `${effect.seq}:${effect.tool_name}:${effect.state}`).join(", ") || "(none)"}`,
+    );
+    console.log(`  world before 2 lines, after ${worldAfter.length} ${JSON.stringify(worldAfter)}`);
+    console.log(`  model requests ${stub.requests.length}`);
+
+    const readRows = resumedEffects.filter((effect) => effect.tool_name === "read");
+
+    check(
+      `${label}: the resumed turn's prompt carries no journal note`,
+      !String(resumed.prompt_text).includes("Effects already applied") &&
+        !String(resumed.prompt_text).includes("No effect had been recorded"),
+      String(resumed.prompt_text).split("\n").slice(0, 3).join(" / ").slice(0, 120),
+    );
+    check(`${label}: the arm resumed the interrupted node in a second turn`, view.turns.length >= 2, String(view.turns.length));
+    // The control, end to end: the same read-only call, completed on an earlier
+    // turn, reaches the tool again in a real child.
+    check(
+      `${label}: a repeated read-only call is never blocked`,
+      readRows.length === 1 && readRows[0].state === "completed",
+      readRows.map((effect) => `${effect.tool_name}:${effect.state}`).join(",") || "no read row",
+    );
+    if (guard) {
+      check(`${label}: the duplicate calls did not reach the world`, worldAfter.length === 2, `world lines ${worldAfter.length}`);
+      check(
+        `${label}: every refused call left a blocked row in the journal`,
+        resumedEffects.filter((effect) => effect.state === "blocked").length === commands.length,
+        resumedEffects.map((effect) => effect.state).join(",") || "none",
+      );
+    } else {
+      check(`${label}: the duplicate calls reached the world`, worldAfter.length === 4, `world lines ${worldAfter.length}`);
+      check(
+        `${label}: no call was refused`,
+        resumedEffects.every((effect) => effect.state !== "blocked"),
+        resumedEffects.map((effect) => effect.state).join(",") || "none",
+      );
+    }
+    return { root, worldAfter, effects: resumedEffects };
+  } finally {
+    await supervisor.stop();
+    await stub.close();
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    if (previousGuard === undefined) delete process.env[GUARD_ENV.off];
+    else process.env[GUARD_ENV.off] = previousGuard;
+  }
+}
+
 // ── argv ────────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
@@ -696,7 +1006,7 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: drill.mjs [--driver scripted|rpc] [--arms crash,steer,rss,nonstall]");
+    console.log("usage: drill.mjs [--driver scripted|rpc] [--arms crash,steer,rss,nonstall,nonote] [--guard on|off]");
     return;
   }
   const arms = args.arms ?? ["crash"];
@@ -707,6 +1017,7 @@ async function main() {
   if (arms.includes("steer")) await steerArm();
   if (arms.includes("rss")) await rssArm();
   if (arms.includes("nonstall")) await nonstallArm();
+  if (arms.includes("nonote")) await noNoteArm({ guard: args.guard !== "off" });
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
   process.exitCode = failed > 0 ? 1 : 0;
 }

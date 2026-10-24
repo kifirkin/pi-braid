@@ -16,8 +16,38 @@
  */
 
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+import { GUARD_ENV } from "./tool-guard.mjs";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * The guard every child loads, whatever else it is or is not given.
+ *
+ * It is resolved from this module's own location rather than from a configured
+ * path, so a fleet root cannot point a child at a guard that is not the one
+ * shipped beside the driver that spawned it.
+ */
+export const GUARD_EXTENSION = fileURLToPath(new URL("./tool-guard.mjs", import.meta.url));
+
+/**
+ * The child-side contract the guard reads. Env because it is the only channel
+ * a spawned child inherits without a second configuration source, and because
+ * the values are per-turn: the driver is constructed after `beginTurn` has
+ * assigned the turn id, so they are known before the spawn.
+ *
+ * An incomplete contract yields an empty environment, and the guard then
+ * registers no hook at all rather than guarding the wrong turn.
+ */
+export function guardEnvironment({ root, nodeId, turnId }) {
+  if (!root || nodeId == null || turnId == null) return {};
+  return {
+    [GUARD_ENV.root]: String(root),
+    [GUARD_ENV.node]: String(nodeId),
+    [GUARD_ENV.turn]: String(turnId),
+  };
+}
 
 export class RpcDriver {
   /**
@@ -28,6 +58,7 @@ export class RpcDriver {
    * @param {string} args.sessionDir   where pi stores the session file
    * @param {string} args.model        provider/model string passed to the child
    * @param {string[]} args.extensions extra `-e` entries (provider packages a lean child needs)
+   * @param {string} args.guardExtension the duplication guard every child loads
    * @param {string[]} args.extraArgs  additional child flags
    * @param {Record<string,string>} args.env  child environment
    * @param {(event: object) => void} args.onEvent  normalized event sink
@@ -71,6 +102,10 @@ export class RpcDriver {
       args.push("--no-extensions", "--no-skills", "--no-prompt-templates");
       for (const ext of cfg.extensions ?? []) args.push("-e", ext);
     }
+    // The guard is not an optional extension: it loads in both resource modes,
+    // because a child that discovers its own extensions still needs the one
+    // that refuses a duplicated effect.
+    if (cfg.guardExtension) args.push("-e", cfg.guardExtension);
     args.push(...(cfg.extraArgs ?? []));
     return args;
   }

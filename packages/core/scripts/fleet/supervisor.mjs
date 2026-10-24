@@ -36,7 +36,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { openJournal, replayPolicy, resolveFleetRoot, SCHEMA_VERSION } from "./journal.mjs";
-import { createRpcDriver } from "./driver-rpc.mjs";
+import { createRpcDriver, GUARD_EXTENSION, guardEnvironment } from "./driver-rpc.mjs";
 import { createScriptedDriver, ASK_SENTINEL, DONE_SENTINEL } from "./driver-scripted.mjs";
 import { groupIsAlive, pidIsAlive, residentMb } from "./procs.mjs";
 
@@ -149,25 +149,29 @@ export function charterPrompt(node, body) {
 /**
  * The recovery prompt is built from the journal, not from the charter. A node
  * that sees its own completed effects listed cannot be told to start over.
+ *
+ * `note` is the journal account, and it can be suppressed: the note-removal arm
+ * measures what the resumed turn does when the prompt is silent about the
+ * effects already applied. Nothing but that arm sets it to false.
  */
-export function recoveryPrompt({ node, interruptedTurn, completed, unknown, pending }) {
+export function recoveryPrompt({ node, interruptedTurn, completed, unknown, pending, note = true }) {
   const lines = [
     `FLEET RESUME. Node ${node.node_id} keeps the same session. Turn ${interruptedTurn.turn_id} was interrupted while it was running.`,
   ];
-  if (completed.length > 0) {
+  if (note && completed.length > 0) {
     lines.push("", "Effects already applied and recorded (do NOT repeat them):");
     for (const effect of completed) {
       lines.push(`- seq ${effect.seq} ${effect.tool_name} completed (idempotency ${effect.idempotency_key})`);
     }
   }
-  if (unknown.length > 0) {
+  if (note && unknown.length > 0) {
     lines.push("", "Effects whose outcome is unknown (the tool started and never reported):");
     for (const effect of unknown) {
       lines.push(`- seq ${effect.seq} ${effect.tool_name} unknown (idempotency ${effect.idempotency_key})`);
     }
     lines.push("Check the world before acting on these; never repeat a completed effect.");
   }
-  if (completed.length === 0 && unknown.length === 0) {
+  if (note && completed.length === 0 && unknown.length === 0) {
     lines.push("", "No effect had been recorded when the turn was interrupted.");
   }
   if (pending.length > 0) {
@@ -573,7 +577,7 @@ export class Supervisor {
 
   // ── driving one node ─────────────────────────────────────────────────────
 
-  createDriver(node) {
+  createDriver(node, turnId) {
     const config = JSON.parse(node.driver_config || "{}");
     const sessionId = node.session_id ?? `fleet-${node.node_id}-${randomBytes(3).toString("hex")}`;
     if (node.driver === "scripted") {
@@ -591,6 +595,8 @@ export class Supervisor {
       sessionDir: join(this.root, "sessions"),
       model: this.options.model,
       extensions: this.options.extensions,
+      guardExtension: GUARD_EXTENSION,
+      env: guardEnvironment({ root: this.root, nodeId: node.node_id, turnId }),
       extraArgs: this.options.extraArgs,
       fullDiscovery: this.options.fullDiscovery,
       thinking: this.options.thinking,
@@ -645,6 +651,9 @@ export class Supervisor {
             .effects(interrupted.turn_id)
             .filter((effect) => effect.state === "unknown" || effect.state === "attempted"),
           pending,
+          // In-process only, and no command-line flag maps to it: the
+          // note-removal arm is the single caller that turns the note off.
+          note: this.options.recoveryNote !== false,
         });
       } else if (kind === "message") {
         prompt = ["FLEET MESSAGE.", ...pending.map((message) => `- ${message.body}`), "", "Act on it, then end your turn."].join(
@@ -670,7 +679,7 @@ export class Supervisor {
           beforeRequestSeq: 0,
         });
       }
-      const driver = this.createDriver(node);
+      const driver = this.createDriver(node, turnId);
       ctx.driver = driver;
       driver.onEvent((event) => this._onDriverEvent(ctx, event));
       const { sessionId, sessionFile } = await driver.start();
@@ -1118,7 +1127,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const args = parseArgs(process.argv.slice(2));
   if (!args.root) {
     console.error(
-      "usage: supervisor.mjs --root <fleet-root> [--cap N] [--driver rpc|scripted] [--naive] [--idle-exit-ms N]",
+      "usage: supervisor.mjs --root <fleet-root> [--cap N] [--driver rpc|scripted] [--naive] [--idle-exit-ms N]\n" +
+        "\n" +
+        "Each child loads the duplication guard. FLEET_GUARD=off in this process's environment disables it for every child it spawns.",
     );
     process.exit(2);
   }
