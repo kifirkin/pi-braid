@@ -650,13 +650,30 @@ export class Journal {
   /**
    * Parked work whose deadline passed takes its default. This is what keeps a
    * deadline from being decoration: the answer source says nobody answered.
+   *
+   * Returns only the asks THIS call claimed, and the claim is the conditional
+   * UPDATE rather than the read. Two supervisors that both read the same
+   * overdue rows must not both report them: each caller queues one message per
+   * returned row, so a shared read set gives a parked node two copies of its
+   * default in one prompt. `changes` is what decides, so the loser of the race
+   * returns nothing and queues nothing.
    */
   expireAsks(at = now()) {
-    const expired = this.openAsks().filter((ask) => ask.deadline_at <= at);
-    for (const ask of expired) {
-      this.resolveAsk(ask.token, { answerText: ask.default_answer, answerSource: "deadline-default" });
+    const claimed = [];
+    for (const ask of this.openAsks().filter((ask) => ask.deadline_at <= at)) {
+      const result = this._stmt(
+        "UPDATE asks SET state = 'answered', answer_text = ?, answer_source = ?, answered_at = ? WHERE token = ? AND state = 'open'",
+      ).run(ask.default_answer, "deadline-default", now(), ask.token);
+      if (result.changes > 0) {
+        claimed.push({
+          ...ask,
+          state: "answered",
+          answer_text: ask.default_answer,
+          answer_source: "deadline-default",
+        });
+      }
     }
-    return expired;
+    return claimed;
   }
 
   addMessage(msg) {
