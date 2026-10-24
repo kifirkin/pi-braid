@@ -12,7 +12,8 @@
  *   charter        a message queued before the first turn rides with it
  *   message        control: the between-turns turn still carries it
  *   recovery       control: a resumed turn still lists it
- *   steer          control: a tier A steer is retired by the turn it entered
+ *   steer          a tier A steer is retired by the turn it entered, and only
+ *                  once the child ran the text: the ack alone records nothing
  *   retired        a message for a node that will never run again gets a
  *                  terminal state instead of sitting in `recorded`
  *   below-bound    control: the same fabricated row, one attempt under the
@@ -37,6 +38,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 import { journalPath, openJournal, resolveFleetRoot } from "../../../scripts/fleet/journal.mjs";
+import { RpcDriver } from "../../../scripts/fleet/driver-rpc.mjs";
 import { controlSocketPath, Supervisor } from "../../../scripts/fleet/supervisor.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -323,26 +325,85 @@ await check("control: the resumed turn still lists the queued message, and retir
 // A steer enters the running conversation rather than a turn's prompt, so its
 // body is not in `prompt_text` by construction. It is still retired, and by the
 // turn it entered: the alternative is a `delivered` row nothing ever reads again.
+//
+// Two moments, and the difference between them is the whole arm. When `inject`
+// returns, the child has *queued* the text: pi answers a steer request there,
+// and a queue is not a delivery, so the row must still be `recorded`. The row
+// becomes tier A only when the child runs the text, which is the one moment the
+// fleet can testify to.
 
 const steerRoot = freshRoot("steer");
-registerNode(steerRoot, { steps: [{ op: "sleep", ms: 2500 }, { op: "done" }] });
+registerNode(steerRoot, { steps: [{ op: "sleep", ms: 3000 }, { op: "done" }] });
 const steerSupervisor = spawnSupervisor(steerRoot);
 await settle(() => turnsOf(steerRoot, "n1").some((turn) => turn.state === "in_progress"));
 const steered = fleet(steerRoot, "inject", "n1", BODY);
-const steeredId = steered.stdout.match(/delivered (\S+) to n1/)?.[1] ?? "";
+const steeredId = steered.stdout.match(/steered (\S+) into n1/)?.[1] ?? "";
+const midTurn = { turn: turnsOf(steerRoot, "n1")[0], row: steeredId ? inboxRow(steerRoot, steeredId) : null };
 await settle(() => nodeOf(steerRoot)?.state === "done");
 await stopSpawned(steerSupervisor);
 
-await check("control: a steered message is retired by the turn it was steered into", () => {
+await check("a steer's ack is not a delivery: the row is still recorded while the turn runs", () => {
   assert.equal(steered.status, 0, steered.stderr);
-  assert.match(steered.stdout, /tier A/, `the steer is acknowledged as one: ${steered.stdout}`);
+  assert.doesNotMatch(steered.stdout, /delivered/, `the command does not claim a delivery: ${steered.stdout}`);
+  assert.match(steered.stdout, /steered \S+ into n1 turn \d+/, `it names the steer and the turn: ${steered.stdout}`);
   assert.ok(steeredId, `the message id is printed: ${steered.stdout}`);
+  assert.equal(midTurn.turn.state, "in_progress", "the turn was still running when the row was read");
+  assert.equal(midTurn.row.state, "recorded", "an ack leaves the message waiting, not delivered");
+  assert.equal(midTurn.row.delivered_tier, null, "no tier is written for a request");
+  assert.equal(midTurn.row.delivered_turn_id, null);
+});
+
+await check("control: the delivery event retires it, against the turn that ran the text", () => {
   const [turn] = turnsOf(steerRoot, "n1");
   assert.equal(promptsCarrying(steerRoot, BODY).length, 0, "a steer is not part of the turn's prompt text");
   const row = inboxRow(steerRoot, steeredId);
   assert.equal(row.state, "consumed", "the turn it entered settled, so it is not left in delivered");
-  assert.equal(row.delivered_tier, "A");
+  assert.equal(row.delivered_tier, "A", "the tier is written by the child's delivery event");
   assert.equal(row.delivered_turn_id, turn.turn_id);
+  assert.equal(row.delivered_after_effect_seq, 1, "it landed after the tool call that was in flight");
+});
+
+// ── the driver's own account of a steer ─────────────────────────────────────
+//
+// The supervisor writes tier A from `steer_delivered`, so that event is the
+// claim and this is where it comes from. pi queues a steering message and hands
+// it to the model later, so the observable moment is the user message carrying
+// that text arriving on the child's stream. The RpcDriver is driven here the way
+// its child drives it - JSON lines in, events out - with no model and no child.
+
+function feed(driver, record) {
+  driver._read(Buffer.from(`${JSON.stringify(record)}\n`, "utf8"));
+}
+
+await check("the driver reports a steer delivered only when the text comes back as a user message", () => {
+  const driver = new RpcDriver({});
+  const events = [];
+  driver.onEvent((event) => events.push(event));
+  const text = "the operator says: stop, the target moved";
+  driver.request = async () => ({ type: "response", data: { disposition: "queued" } });
+
+  feed(driver, { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 1" } });
+  feed(driver, { type: "message_end", message: { role: "user", content: [{ type: "text", text: "something else" }] } });
+  assert.equal(events.filter((event) => event.type === "steer_delivered").length, 0, "an unrelated message is not a delivery");
+
+  return driver.steer(text).then(() => {
+    assert.equal(driver.pendingSteers.length, 1, "a queued steer is remembered for the message that carries it");
+    feed(driver, { type: "message_end", message: { role: "user", content: [{ type: "text", text }] } });
+    const delivered = events.filter((event) => event.type === "steer_delivered");
+    assert.equal(delivered.length, 1, JSON.stringify(events.map((event) => event.type)));
+    assert.equal(delivered[0].text, text);
+    assert.equal(delivered[0].afterEffectSeq, 1, "it is placed after the tool call in flight");
+    assert.deepEqual(driver.pendingSteers, [], "the text is not delivered twice");
+  });
+});
+
+await check("a steer the child's handler consumes is never awaited as a delivery", () => {
+  const driver = new RpcDriver({});
+  driver.onEvent(() => {});
+  driver.request = async () => ({ type: "response", data: { disposition: "handled" } });
+  return driver.steer("do this").then(() => {
+    assert.deepEqual(driver.pendingSteers, [], "no user message will carry it, so none is expected");
+  });
 });
 
 // ── arm: a message no turn will ever carry ──────────────────────────────────

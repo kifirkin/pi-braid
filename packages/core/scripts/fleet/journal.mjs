@@ -244,6 +244,16 @@ CREATE TABLE IF NOT EXISTS effects (
   PRIMARY KEY (turn_id, tool_call_id)
 );
 CREATE INDEX IF NOT EXISTS effects_idempotency_key ON effects(idempotency_key);
+-- One node's calls to one tool, oldest turn first: the read the duplication
+-- guard makes before every refusable call. Without it SQLite walks every effect
+-- in the store and sorts the matches, so the refusal path costs more as the
+-- project's history grows. The columns are the guard's own filters in its own
+-- order - the node and tool are equalities, the turn is the range that bounds
+-- its recovery window - so the ORDER BY ends on seq and is the index walk
+-- rather than a temp b-tree. What is left (the state disjunction and is_error)
+-- filters the handful of rows the window holds, which is why it is not in the
+-- key: an equality-shaped index would leave the rows unordered by turn.
+CREATE INDEX IF NOT EXISTS effects_call_history ON effects(node_id, tool_name, turn_id, seq);
 
 CREATE TABLE IF NOT EXISTS asks (
   token TEXT PRIMARY KEY,
@@ -601,6 +611,22 @@ export class Journal {
    * An attempt with no end is the crash residue: the effect may or may not
    * have reached the world. It stays visible with `state = 'unknown'` so the
    * next turn is told about it instead of quietly repeating it.
+   *
+   * This state is inside the duplication guard, and the note says so. An
+   * `unknown` row counts as history: a call it matches is refused before it
+   * runs, because an effect that may have reached the world is the one class
+   * where repeating is dangerous and the record cannot settle it. The guard's
+   * window is the run being resumed - its current turn back to the last turn
+   * that ended normally - so this is not "never again": a turn that finished its
+   * work retires the run, and an operator retires a single row.
+   *
+   * Two instruments cover this class and they must agree: the guard refuses the
+   * call, and `recoveryPrompt` in supervisor.mjs names every unknown effect with
+   * the idempotency key that identifies it and tells the node the guard will
+   * refuse a repeat. The interrupted turn this row belongs to is never a settled
+   * turn, so it is inside the window of the turn that resumes it by
+   * construction; a note that promised a refusal the guard does not make, or a
+   * guard that refused without the note naming why, would each be half a fact.
    */
   markUnknownEffects(turnId) {
     const rows = this.attemptedEffects(turnId);

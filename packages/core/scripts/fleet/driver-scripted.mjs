@@ -20,6 +20,11 @@
  * instructions skips them. An effect listed as unknown is never re-executed -
  * the node checks the world for its mark and moves on. A plain prompt (the
  * charter, or a naive replay) names nothing, so the whole list runs again.
+ *
+ * A steer is delivered the way pi delivers one: after the tool call in flight
+ * finishes and before the next request. Text still queued when the script has
+ * no further tool call is never delivered, so the `steer_delivered` event says
+ * the model was handed the message rather than that the request was made.
  */
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -155,6 +160,11 @@ export class ScriptedDriver {
         }
         if (this.stopped) return;
         this._emit({ type: "tool_end", toolCallId, toolName: "bash", result: { ok: true }, isError: false });
+        // pi hands a queued steering message to the model after the current
+        // tool call finishes and before the next request. This is that moment.
+        // A steer that arrives after the last one is never delivered, which is
+        // the case no driver may report as a delivery.
+        this._deliverSteer(index + 1);
         continue;
       }
       if (step.op === "park") {

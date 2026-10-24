@@ -12,11 +12,19 @@
  * to a parked node).
  *
  * Delivery tiers, recorded on the inbox row, never guessed at:
- *   A  a turn was in flight and pi accepted the steer (`delivered_tier = 'A'`)
+ *   A  a turn was in flight, and the child ran the steered text inside that turn
+ *      (`delivered_tier = 'A'`). Written only from the driver's own
+ *      `steer_delivered` event: pi answers a steer request when it has *queued*
+ *      the text, and a queue is not a delivery, so the ack alone records
+ *      nothing.
  *   B  the supervisor was up but the node was not streaming; queued, and the
  *      next turn for the node carries it (`delivered_tier = 'B'`)
  *   C  no supervisor was running; the message waits in the journal for the next
  *      turn a supervisor drives (`state = 'recorded'`)
+ *
+ * So `inject` during a turn reports "steered", not "delivered": the row stays
+ * `recorded` until the child runs the text, and the turn after it carries the
+ * message if the child ends without doing so.
  *
  * And the other end of the same account: a message is retired
  * (`state = 'consumed'`) only when its body was in the prompt a turn sent. One
@@ -68,6 +76,43 @@ function liveSupervisor(journal) {
 }
 
 /**
+ * The supervisor's command line, built in one place so a flag cannot be read by
+ * the parser and then dropped on the way to the process that understands it.
+ *
+ * `--idle-exit-ms` is the flag that made this a function: `fleet spawn`
+ * accepted it and never passed it on, which is worse than not accepting it, so
+ * it is now forwarded and its value is refused when it is not a number the
+ * supervisor can use.
+ */
+export function supervisorArgs(root, options = {}) {
+  const args = [SUPERVISOR, "--root", resolveFleetRoot(root)];
+  if (options.cap != null) args.push("--cap", String(options.cap));
+  if (options.driver) args.push("--driver", options.driver);
+  if (options.model) args.push("--model", options.model);
+  if (options.piBin) args.push("--pi-bin", options.piBin);
+  if (options.idleExitMs != null) args.push("--idle-exit-ms", String(wholeMilliseconds(options.idleExitMs, "--idle-exit-ms")));
+  for (const extension of options.extensions ?? []) args.push("--extension", extension);
+  for (const flag of options.childFlags ?? []) args.push(flag);
+  return args;
+}
+
+/**
+ * A flag the supervisor will read as milliseconds, or a refusal.
+ *
+ * Read from its spelled form on purpose: `--idle-exit-ms` with no value arrives
+ * as the boolean `true`, and `Number(true)` is 1, which would have been a
+ * supervisor told to exit after one millisecond. A caller that has already
+ * parsed the flag passes a number, and a number is checked the same way.
+ */
+function wholeMilliseconds(value, flag) {
+  const text = typeof value === "number" ? String(value) : value;
+  if (typeof text !== "string" || !/^\d+$/.test(text.trim()) || Number(text) <= 0) {
+    throw new Error(`${flag} needs a whole number of milliseconds greater than 0 (got ${JSON.stringify(value)})`);
+  }
+  return Number(text);
+}
+
+/**
  * Start the supervisor unless one is already there. Two instruments answer
  * that, and they answer different questions: the channel says whether a
  * supervisor can actually be reached, the journal row says whether a process
@@ -89,13 +134,7 @@ export async function ensureSupervisor(root, options = {}) {
   const logPath = join(resolveFleetRoot(root), "supervisor.log");
   mkdirSync(dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, "a");
-  const args = [SUPERVISOR, "--root", resolveFleetRoot(root)];
-  if (options.cap != null) args.push("--cap", String(options.cap));
-  if (options.driver) args.push("--driver", options.driver);
-  if (options.model) args.push("--model", options.model);
-  if (options.piBin) args.push("--pi-bin", options.piBin);
-  for (const extension of options.extensions ?? []) args.push("--extension", extension);
-  for (const flag of options.childFlags ?? []) args.push(flag);
+  const args = supervisorArgs(root, options);
   const child = spawn(process.execPath, args, {
     detached: true,
     stdio: ["ignore", logFd, logFd],
@@ -126,6 +165,10 @@ async function waitForSupervisor(root, { timeoutMs = 10_000 } = {}) {
 async function cmdSpawn(args) {
   const [parent, charter] = args._;
   if (!parent || !charter) throw new Error("usage: fleet spawn <parent|-> <charter-path>");
+  // Read before the node is registered: a flag refused after the journal has
+  // already recorded a spawn is a half-done command, and the operator asked for
+  // one thing that failed.
+  const idleExitMs = args["idle-exit-ms"] == null ? undefined : wholeMilliseconds(args["idle-exit-ms"], "--idle-exit-ms");
   const root = args.root ?? defaultRoot();
   const charterPath = resolve(charter);
   if (!existsSync(charterPath)) throw new Error(`charter not found: ${charterPath}`);
@@ -154,6 +197,7 @@ async function cmdSpawn(args) {
     driver: args["supervisor-driver"],
     model: args.model,
     piBin: args["pi-bin"],
+    idleExitMs,
     extensions: args.extension ? [].concat(args.extension) : [],
   });
   const live = supervisor.started ? await waitForSupervisor(root) : { pid: supervisor.pid };
@@ -169,6 +213,14 @@ async function cmdSpawn(args) {
   console.log(
     `supervisor ${answeredBy}${startedHere ? " (started)" : " (already running)"} root ${resolveFleetRoot(root)}`,
   );
+  // An idle exit belongs to the process that was started with it. Saying that
+  // when this command did not start one is the difference between a flag that
+  // was applied and a flag that was dropped quietly.
+  if (args["idle-exit-ms"] != null && !startedHere) {
+    console.log(
+      `note: --idle-exit-ms ${idleExitMs} was not applied: supervisor ${answeredBy} was already running and keeps its own idle exit`,
+    );
+  }
 }
 
 async function cmdStatus(args) {
@@ -245,13 +297,14 @@ async function cmdInject(args) {
   });
   if (reply?.ok) {
     const data = reply.data;
-    // "Delivered" is a claim, and only a tier A steer earns it. Tier B is a row
-    // the next turn will carry, and saying which one it is is the difference
-    // between a queue and a delivery.
-    if (data.tier === "A") {
+    // "Delivered" is a claim, and only a delivery event earns it. A steer's ack
+    // is pi saying it queued the text, so the row is still `recorded` when this
+    // prints: it must not read as though a model saw it.
+    if (data.steered) {
       console.log(
-        `delivered ${data.msgId} to ${nodeId} tier A turn ${data.turnId}${data.disposition ? ` disposition ${data.disposition}` : ""}`,
+        `steered ${data.msgId} into ${nodeId} turn ${data.turnId} (the child queued it${data.disposition ? `, disposition ${data.disposition}` : ""})`,
       );
+      console.log("  delivery is recorded when that turn runs the text; if it ends first, the next turn carries it");
     } else {
       console.log(`queued ${data.msgId} for ${nodeId} tier ${data.tier} (the next turn for this node carries it)`);
     }
@@ -350,11 +403,15 @@ function parseArgs(argv) {
 }
 
 const USAGE = `fleet commands:
-  spawn <parent|-> <charter> [--cap N] [--model p/m] [--token-cap N]
+  spawn <parent|-> <charter> [--cap N] [--model p/m] [--token-cap N] [--idle-exit-ms N]
   status [--json]
   inject <node> <text> [--token <ask-token>]
   ask <node> <question> [--default <answer>] [--priority N] [--ttl-seconds N]
-common: --root <fleet-root> (default $PI_FLEET_ROOT or <cwd>/.fleet)`;
+common: --root <fleet-root> (default $PI_FLEET_ROOT or <cwd>/.fleet)
+
+spawn's --cap, --model, --pi-bin, --extension, --supervisor-driver and
+--idle-exit-ms configure the supervisor this command starts; a supervisor that
+is already running keeps the flags it was started with, and spawn says so.`;
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);

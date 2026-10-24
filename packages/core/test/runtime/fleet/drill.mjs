@@ -9,7 +9,9 @@
  * Arms:
  *   crash    kill the supervisor mid-turn, restart, compare (scripted driver by
  *            default; `--driver rpc` uses a real pi session and a real model)
- *   steer    measure where a Tier A steer lands inside a live turn
+ *   steer    measure where a Tier A steer lands inside a live turn, and that
+ *            the tier is written when the child runs the text rather than when
+ *            it acknowledges the request
  *   rss      resident set of the supervisor plus three open sessions
  *   nonstall one node parked on a question, the other two still turning
  *   nonote   a resumed turn whose recovery prompt carries no journal note, run
@@ -476,6 +478,15 @@ async function steerArm() {
   const afterSteer = messages[steerIndex + 1];
 
   check("steer: the fleet recorded a Tier A delivery", row?.delivered_tier === "A", String(row?.delivered_tier));
+  // The two halves of the claim, measured together on a real child: the command
+  // reported a steer and nothing else, and the row reached tier A anyway. That
+  // is only possible if the tier came from the child running the text rather
+  // than from the request the command made.
+  check(
+    "steer: the tier is the child's delivery event, not the command's ack",
+    /steered \S+ into/.test(reply.out) && !/\bdelivered\b/.test(reply.out) && row?.delivered_tier === "A",
+    `reply ${JSON.stringify(reply.out.split("\n")[0])}, tier ${row?.delivered_tier}`,
+  );
   check(
     "steer: the message lands after the in-flight tool result and inside the same turn",
     toolResultIndex >= 0 && steerIndex > toolResultIndex && row?.delivered_turn_id === view.turns[0]?.turn_id,

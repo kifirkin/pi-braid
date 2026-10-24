@@ -13,6 +13,13 @@
  * is journalled with the turn, and it is the fence: a restarted supervisor
  * kills the group a dead predecessor left behind before it resumes that node,
  * so a stale drive cannot keep writing after its supervisor is gone.
+ *
+ * Steering is queued, not delivered. pi answers a `steer` request with the
+ * disposition of its queue and hands the message to the model later, if the
+ * turn gets that far. The one observable moment is the user message carrying
+ * that text arriving on this child's event stream, so that is what
+ * `steer_delivered` reports. A driver that reported the ack instead would be
+ * reporting a request the fleet made, not an event the fleet saw.
  */
 
 import { spawn } from "node:child_process";
@@ -21,6 +28,24 @@ import { fileURLToPath } from "node:url";
 import { GUARD_ENV } from "./tool-guard.mjs";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * How many queued steer texts this driver tracks at once. A long turn can be
+ * steered many times; the ones that matter are the ones still waiting, so the
+ * list keeps the newest and forgets the oldest rather than growing with the
+ * turn.
+ */
+const MAX_PENDING_STEERS = 32;
+
+/** The text of a message's content, which is either a string or text blocks. */
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n");
+}
 
 /**
  * The guard every child loads, whatever else it is or is not given.
@@ -80,6 +105,10 @@ export class RpcDriver {
     this.requests = 0;
     this.stderr = "";
     this.settled = false;
+    // Steer texts the child has queued and has not yet run. A text leaves this
+    // list when the user message carrying it arrives, or when the ack says the
+    // queue will never hand it on.
+    this.pendingSteers = [];
   }
 
   args() {
@@ -194,6 +223,12 @@ export class RpcDriver {
       case "message_end":
         this.messageCount += 1;
         emit({ type: "message_end", role: record.message?.role, message: record.message });
+        if (record.message?.role === "user") {
+          const delivered = this._takeSteer(messageText(record.message?.content));
+          if (delivered != null) {
+            emit({ type: "steer_delivered", afterEffectSeq: this.toolCount, text: delivered });
+          }
+        }
         break;
       case "agent_settled":
         this.settled = true;
@@ -206,6 +241,19 @@ export class RpcDriver {
 
   /** Installed by the supervisor; overwritten immediately after construction. */
   onRaw() {}
+
+  _forgetSteer(text) {
+    const index = this.pendingSteers.indexOf(text);
+    if (index !== -1) this.pendingSteers.splice(index, 1);
+  }
+
+  /** The queued text this user message carries, or null when it carries none. */
+  _takeSteer(text) {
+    const index = text ? this.pendingSteers.indexOf(text) : -1;
+    if (index === -1) return null;
+    this.pendingSteers.splice(index, 1);
+    return text;
+  }
 
   onEvent(sink) {
     this.onRaw = (event) => sink(event);
@@ -239,7 +287,22 @@ export class RpcDriver {
   }
 
   async steer(text) {
-    return this.request({ type: "steer", message: text });
+    const body = String(text);
+    this.pendingSteers.push(body);
+    if (this.pendingSteers.length > MAX_PENDING_STEERS) this.pendingSteers.shift();
+    let ack;
+    try {
+      ack = await this.request({ type: "steer", message: body });
+    } catch (error) {
+      this._forgetSteer(body);
+      throw error;
+    }
+    // A disposition other than `queued` means an input handler consumed the
+    // text: no message with this body will reach the conversation, so waiting
+    // for one would be waiting for a delivery that cannot happen.
+    const disposition = ack?.data?.disposition;
+    if (disposition && disposition !== "queued") this._forgetSteer(body);
+    return ack;
   }
 
   async state() {

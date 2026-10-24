@@ -197,7 +197,15 @@ export function recoveryPrompt({ node, interruptedTurn, completed, unknown, pend
     for (const effect of unknown) {
       lines.push(`- seq ${effect.seq} ${effect.tool_name} unknown (idempotency ${effect.idempotency_key})`);
     }
-    lines.push("Check the world before acting on these; never repeat a completed effect.");
+    // The guard refuses a repeat of these, and the note has to say which gate is
+    // closed: a node told to "check the world" without being told what will stop
+    // it reads the line as a caution, and one that discovers the refusal by
+    // hitting it spends a turn learning what the prompt could have said. The
+    // release is named as an operator's decision because it is: a node that can
+    // retire its own rows is policing itself.
+    lines.push(
+      "Re-issuing one of these is refused: an effect whose outcome is unknown counts as history the guard will not let you repeat, and releasing it is an operator's decision, not this turn's. Check the world before acting on these; never repeat a completed effect.",
+    );
   }
   if (note && completed.length === 0 && unknown.length === 0) {
     lines.push("", "No effect had been recorded when the turn was interrupted.");
@@ -208,6 +216,38 @@ export function recoveryPrompt({ node, interruptedTurn, completed, unknown, pend
   }
   lines.push("", "Continue the charter from its first unfinished step.");
   return lines.join("\n");
+}
+
+/**
+ * How much of a child's stderr one turn's log line shows. The driver keeps the
+ * last 8000 characters, and the whole of it stays on the driver object; a log
+ * line is a report, not a transcript, so it is capped here and names what it
+ * withheld rather than trailing off.
+ */
+const CHILD_STDERR_SHOWN = 400;
+
+/**
+ * The log line for a child that wrote to stderr, or null when it wrote nothing.
+ *
+ * A child's stderr is where a guard that failed open says so, and a fail-open
+ * guard has no other visible product: it refuses nothing, records nothing, and
+ * the turn looks exactly like one the guard watched and found clean. A wrong
+ * FLEET_GUARD_ROOT, the likeliest way to be unguarded, leaves its only trace
+ * here, so it is reported on every turn that produced any stderr at all.
+ *
+ * Collapsed to one line and tail-only, because the alternative is a noisy child
+ * deciding how large the supervisor's log gets.
+ */
+export function childStderrReport(stderr, { limit = CHILD_STDERR_SHOWN } = {}) {
+  const text = String(stderr ?? "");
+  if (!text.trim()) return null;
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  const over = Math.max(0, collapsed.length - limit);
+  return {
+    chars: text.length,
+    withheld: over,
+    shown: over > 0 ? `[${over} chars withheld] ${collapsed.slice(-limit)}` : collapsed,
+  };
 }
 
 export function parseAsk(text) {
@@ -778,6 +818,13 @@ export class Supervisor {
       this.log(`fleet: node ${node.node_id} turn failed: ${error.message}`);
     } finally {
       if (ctx.driver) await ctx.driver.stop().catch(() => {});
+      // After the child is gone, so stderr written on the way out is included.
+      const report = childStderrReport(ctx.driver?.stderr);
+      if (report) {
+        this.log(
+          `fleet: node ${node.node_id} turn ${ctx.turnId ?? "-"} child stderr ${report.chars} chars: ${report.shown}`,
+        );
+      }
       this.journal.releaseLease(node.node_id, this.epoch);
       this.active.delete(node.node_id);
     }
@@ -844,16 +891,33 @@ export class Supervisor {
         ctx.settled = true;
         ctx.settleResolve?.();
         break;
-      case "steer_delivered":
-        for (const message of this.journal.pendingMessages(ctx.nodeId)) {
+      case "steer_delivered": {
+        // The only delivery this fleet can testify to: the child ran the text it
+        // was given, in this turn. Rows are matched by the body the child
+        // carried, so a delivery cannot be charged to a message that was never
+        // run. Every message is recorded before the steer is requested, which
+        // is what makes an event that arrives before the ack findable.
+        const waiting = this.journal.pendingMessages(ctx.nodeId);
+        if (event.text == null) {
+          // A driver that cannot name the body leaves the oldest waiting row as
+          // the only honest candidate; saying so is better than a silent guess.
+          this.log(`fleet: node ${ctx.nodeId} reported a steer with no body; the oldest waiting message is charged with it`);
+        }
+        const matched = event.text == null ? waiting.slice(0, 1) : waiting.filter((message) => message.body === event.text);
+        if (event.text != null && matched.length === 0) {
+          this.log(`fleet: node ${ctx.nodeId} ran a steered message no queued row carried, so no row is marked delivered`);
+        }
+        for (const message of matched) {
           this.journal.markMessageDelivered(message.msg_id, {
             tier: "A",
             turnId: ctx.turnId,
             afterEffectSeq: event.afterEffectSeq,
             beforeRequestSeq: ctx.requestSeq,
           });
+          if (!ctx.steeredIds.includes(message.msg_id)) ctx.steeredIds.push(message.msg_id);
         }
         break;
+      }
       case "settled":
         ctx.finalText = ctx.finalText || ctx.lastAssistantText;
         ctx.settled = true;
@@ -1023,16 +1087,17 @@ export class Supervisor {
         if (ctx?.driver && !ctx.settled && ctx.turnId) {
           try {
             const ack = await ctx.driver.steer(request.text);
-            const queued = ack?.data?.disposition ?? ack?.disposition ?? "queued";
-            this.journal.markMessageDelivered(msgId, {
-              tier: "A",
-              turnId: ctx.turnId,
-              afterEffectSeq: ctx.toolEnds,
-              beforeRequestSeq: ctx.requestSeq,
-            });
-            // Steered into this turn, so this turn's settle is what retires it.
-            ctx.steeredIds.push(msgId);
-            return { ok: true, data: { msgId, tier: "A", disposition: queued, turnId: ctx.turnId, effectSeq: ctx.toolEnds } };
+            const disposition = ack?.data?.disposition ?? ack?.disposition ?? "queued";
+            // The ack is the child's queue talking, not a delivery. pi answers
+            // `steer` once the text is queued and hands it to the model later,
+            // or never, so the row stays `recorded` until a `steer_delivered`
+            // event matches its body. That is what keeps a steer the turn never
+            // ran: the next turn carries it, instead of the row being retired
+            // as read by a model that never saw it.
+            return {
+              ok: true,
+              data: { msgId, steered: true, disposition, turnId: ctx.turnId, effectSeq: ctx.toolEnds, message },
+            };
           } catch (error) {
             this.log(`fleet: steer for ${node.node_id} refused: ${error.message}`);
             return { ok: true, data: { msgId, tier: "B", reason: `steer refused: ${error.message}`, message } };
