@@ -9,8 +9,10 @@
  * second list.
  *
  * Also pinned: one root is one store (two roots are never one journal), the
- * discovery record names the store's own path, and the effect identity is
- * stable for one tool call and different across turns.
+ * discovery record names the store's own path, the effect identity is stable
+ * for one tool call and different across turns, and the read the duplication
+ * guard makes before every refusable call is an index seek rather than a scan
+ * of every effect the store has ever held.
  *
  * Run: node test/runtime/fleet/test-journal-schema.mjs
  */
@@ -19,6 +21,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   effectKey,
@@ -29,6 +32,7 @@ import {
   replayPolicy,
   SCHEMA_VERSION,
 } from "../../../scripts/fleet/journal.mjs";
+import { openGuardJournal } from "../../../scripts/fleet/tool-guard.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -181,6 +185,39 @@ check("the same tool call cannot be recorded twice inside one turn", () => {
   assert.equal(rows[0].state, "completed");
   assert.equal(rows[0].idempotency_key, first);
   assert.match(rows[0].args_json, /echo one/, "the first attempt's arguments are the recorded ones");
+});
+
+check("the guard's history read is an index seek, not a scan of every effect", () => {
+  // The query belongs to the guard, so it is read from the guard: a copy
+  // restated here would keep passing after the real one changed. Every prepare
+  // made while the guard opens its journal is captured, the patch is restored
+  // at once, and the statement that reads completed effects is the subject.
+  const statements = [];
+  const realPrepare = DatabaseSync.prototype.prepare;
+  DatabaseSync.prototype.prepare = function capture(sql) {
+    statements.push(String(sql));
+    return realPrepare.call(this, sql);
+  };
+  let guard;
+  try {
+    guard = openGuardJournal(root);
+  } finally {
+    DatabaseSync.prototype.prepare = realPrepare;
+  }
+  try {
+    const history = statements.find((sql) => /FROM effects/.test(sql) && sql.includes("state = 'completed'"));
+    assert.ok(history, `the guard prepares a read of completed effects: ${JSON.stringify(statements)}`);
+    const plan = journal.db
+      .prepare(`EXPLAIN QUERY PLAN ${history}`)
+      .all()
+      .map((row) => row.detail)
+      .join(" | ");
+    assert.doesNotMatch(plan, /SCAN effects/, `the plan reads every effect in the store: ${plan}`);
+    assert.doesNotMatch(plan, /TEMP B-TREE/, `the plan sorts the matches it finds: ${plan}`);
+    assert.match(plan, /effects_call_history/, `the plan does not use the history index: ${plan}`);
+  } finally {
+    guard.close();
+  }
 });
 
 journal.close();

@@ -14,13 +14,16 @@
  *     answer path that resolves it;
  *   - with the supervisor killed, `inject` still records the message (tier C)
  *     and `status` still reads the store;
- *   - an unknown node fails loudly instead of recording into nothing.
+ *   - an unknown node fails loudly instead of recording into nothing;
+ *   - `spawn` forwards `--idle-exit-ms` to the supervisor it starts, says so when
+ *     it did not start one, and refuses a value it cannot use before it has
+ *     registered anything.
  *
  * Run: node test/runtime/fleet/test-cli.mjs
  */
 
 import { strict as assert } from "node:assert";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -209,6 +212,139 @@ await check("a fleet root deeper than the socket path limit still gets a control
   while (pidIsAlive(pid) && Date.now() < deadline) await sleep(50);
   assert.equal(pidIsAlive(pid), false);
 });
+
+// ── spawn's supervisor flags reach the process they configure ───────────────
+//
+// `fleet spawn` once accepted `--idle-exit-ms`, registered the node, started a
+// supervisor, and never passed the flag on. The instrument here is the kernel's
+// view of that supervisor's argv, not this file's account of what it asked for:
+// an arm that rebuilt the same string on both sides would pass either way.
+
+function psCommand(pid) {
+  return execFileSync("ps", ["-ww", "-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim();
+}
+
+const idleRoot = mkdtempSync(join(tmpdir(), "fleet-cli-idle-"));
+const idleCharter = join(idleRoot, "idle.charter.md");
+writeFileSync(idleCharter, "Wait for work that never comes.");
+const idleEnv = { ...process.env, PI_FLEET_ROOT: idleRoot };
+const idleSpawn = spawnSync(
+  process.execPath,
+  [CLI, "spawn", "-", idleCharter, "--cap", "0", "--idle-exit-ms", "4321"],
+  { encoding: "utf8", env: idleEnv, timeout: 30_000 },
+);
+const idlePid = Number(idleSpawn.stdout.match(/supervisor (\d+) \(started\)/)?.[1] ?? 0);
+
+await check("spawn forwards --idle-exit-ms to the supervisor process it starts", () => {
+  assert.equal(idleSpawn.status, 0, idleSpawn.stderr);
+  assert.ok(idlePid > 0, `the started supervisor is named: ${idleSpawn.stdout}`);
+  assert.match(psCommand(idlePid), /--idle-exit-ms 4321/, psCommand(idlePid));
+});
+
+await check("a flag for a supervisor this command did not start is reported, not swallowed", () => {
+  const again = spawnSync(
+    process.execPath,
+    [CLI, "spawn", "-", idleCharter, "--cap", "0", "--idle-exit-ms", "999999"],
+    { encoding: "utf8", env: idleEnv, timeout: 30_000 },
+  );
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /already running/);
+  assert.match(again.stdout, /--idle-exit-ms 999999 was not applied/);
+  assert.match(psCommand(idlePid), /--idle-exit-ms 4321/, "the incumbent keeps the flag it was started with");
+  const journal = openJournal(idleRoot, {});
+  try {
+    assert.equal(journal.supervisors().length, 1, "no second supervisor was started");
+  } finally {
+    journal.close();
+  }
+});
+
+await check("a value the supervisor cannot use is refused before anything is registered", () => {
+  const refuseRoot = mkdtempSync(join(tmpdir(), "fleet-cli-refuse-"));
+  const refuseCharter = join(refuseRoot, "refuse.charter.md");
+  writeFileSync(refuseCharter, "Never driven: the command refuses first.");
+  const refuseEnv = { ...process.env, PI_FLEET_ROOT: refuseRoot };
+  for (const [value, why] of [
+    ["soon", "not a number"],
+    ["0", "not a duration"],
+    [null, "the flag with no value at all"],
+  ]) {
+    const argv = [CLI, "spawn", "-", refuseCharter, "--cap", "0"];
+    if (value == null) argv.push("--idle-exit-ms");
+    else argv.push("--idle-exit-ms", value);
+    const out = spawnSync(process.execPath, argv, { encoding: "utf8", env: refuseEnv, timeout: 30_000 });
+    assert.equal(out.status, 1, `${why}: it fails (${out.stdout}${out.stderr})`);
+    assert.match(out.stderr, /--idle-exit-ms needs a whole number of milliseconds greater than 0/, why);
+    assert.doesNotMatch(out.stdout, /spawned/, `${why}: nothing was spawned before the refusal`);
+  }
+  const journal = openJournal(refuseRoot, {});
+  try {
+    assert.equal(journal.listNodes().length, 0, "a command that refused registered no node");
+    assert.equal(journal.supervisors().length, 0, "and started no supervisor");
+  } finally {
+    journal.close();
+  }
+});
+
+// The value governs the exit, measured on the process rather than on the log: a
+// supervisor told to wait 1200 ms for work leaves on its own, and one told
+// nothing does not leave inside that window. Together with the argv arm above,
+// this is the difference between the flag reaching the process and the process
+// understanding it.
+
+async function waitForExit(pid, { timeoutMs = 12_000 } = {}) {
+  const started = Date.now();
+  while (pidIsAlive(pid) && Date.now() - started < timeoutMs) await sleep(50);
+  return Date.now() - started;
+}
+
+await check("the forwarded value is the idle window the supervisor actually waits", async () => {
+  const windowRoot = mkdtempSync(join(tmpdir(), "fleet-cli-window-"));
+  const windowCharter = join(windowRoot, "window.charter.md");
+  writeFileSync(windowCharter, "Nothing here is work at cap 0.");
+  const windowEnv = { ...process.env, PI_FLEET_ROOT: windowRoot };
+  const out = spawnSync(
+    process.execPath,
+    [CLI, "spawn", "-", windowCharter, "--cap", "0", "--idle-exit-ms", "1200"],
+    { encoding: "utf8", env: windowEnv, timeout: 30_000 },
+  );
+  assert.equal(out.status, 0, out.stderr);
+  const pid = Number(out.stdout.match(/supervisor (\d+) \(started\)/)?.[1] ?? 0);
+  assert.ok(pid > 0, out.stdout);
+  const elapsed = await waitForExit(pid);
+  assert.equal(pidIsAlive(pid), false, `the supervisor left inside ${elapsed} ms`);
+  assert.ok(elapsed >= 1000, `it waited the window it was given, not less: ${elapsed} ms`);
+  assert.ok(elapsed < 8000, `and not the default five seconds: ${elapsed} ms`);
+});
+
+await check("without the flag a spawn keeps the default window, not a leak of the last one", async () => {
+  const defaultRoot = mkdtempSync(join(tmpdir(), "fleet-cli-default-"));
+  const defaultCharter = join(defaultRoot, "default.charter.md");
+  writeFileSync(defaultCharter, "Nothing here is work at cap 0.");
+  const defaultEnv = { ...process.env, PI_FLEET_ROOT: defaultRoot };
+  const out = spawnSync(process.execPath, [CLI, "spawn", "-", defaultCharter, "--cap", "0"], {
+    encoding: "utf8",
+    env: defaultEnv,
+    timeout: 30_000,
+  });
+  assert.equal(out.status, 0, out.stderr);
+  assert.doesNotMatch(psCommand(Number(out.stdout.match(/supervisor (\d+) \(started\)/)?.[1] ?? 0)), /--idle-exit-ms/);
+  const pid = Number(out.stdout.match(/supervisor (\d+) \(started\)/)?.[1] ?? 0);
+  assert.ok(pid > 0, out.stdout);
+  await sleep(2000);
+  assert.equal(pidIsAlive(pid), true, "the default window is longer than the 1200 ms an arm asked for");
+  process.kill(pid, "SIGKILL");
+  await waitForExit(pid, { timeoutMs: 5000 });
+});
+
+// Guarded: `process.kill(0, ...)` signals this process's own group, so a pid
+// that failed to parse must never reach the kill.
+if (idlePid > 0) {
+  process.kill(idlePid, "SIGKILL");
+  const deadline = Date.now() + 5000;
+  while (pidIsAlive(idlePid) && Date.now() < deadline) await sleep(50);
+  assert.equal(pidIsAlive(idlePid), false, "the arm leaves no supervisor behind");
+}
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exitCode = failed > 0 ? 1 : 0;
