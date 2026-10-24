@@ -39,6 +39,25 @@
  * workspace list is discovered, never hardcoded, so a new package is covered
  * by existing.
  *
+ * The real tarball. A fixture built from the allowlist cannot witness a
+ * `prepack` that removes files: it never packs the package those files belong
+ * to. So every packable manifest that declares a `bin` is also packed for real
+ * — the checkout's own tree, its own lifecycle, no `--ignore-scripts` — and the
+ * tarball is held against the committed file list of the directory the command
+ * ships from. That comparison is against git, not against the directory, for
+ * the same reason: a prepack that deletes a fleet file deletes it from disk
+ * first, so a reading of the tree would agree with the damaged tarball. The
+ * direction asserted is one-way on purpose - every tracked file under the
+ * command's directory must be in the tarball. Files that ship without being
+ * tracked are the fleet packaging gate's business (test-pack-ships.mjs), which
+ * compares the artifact against an explicit allowlist.
+ *
+ * Bounds and cost, both stated because this probe is the expensive one: it runs
+ * a package's real lifecycle, so for `packages/core` that is a `tsc` build
+ * through `prepack` and it rewrites `dist/`. It must not run beside a test
+ * suite or a second pack in the same checkout. A manifest with no `bin` is
+ * skipped: it has no command whose shipped files this probe could hold.
+ *
  * Bounds: the command bodies are read with a small shell-splitting tokenizer
  * (boundaries `&&`, `||`, `;`, newline, and a single `|` or `&`, so `|&` splits
  * as both; whitespace-separated words, no quoting or redirection parsing). A
@@ -272,6 +291,7 @@ function packProbe({ writer, rel, manifest, proveRegeneration }) {
 
 const packages = packablePackages();
 if (packages.length === 0) fail("packages/: no packable package manifest found");
+const packedForReal = [];
 
 const writers = new Map();
 
@@ -388,6 +408,106 @@ if (distinct.length === 1) {
   }
 }
 
+/**
+ * Every repo-relative path git has committed under `<pkgRel>/<dirName>`.
+ *
+ * git is the instrument on purpose: the tree on disk is what the pack reads, so
+ * a deletion planted in `prepack` would be invisible to a comparison against
+ * the tree itself. A repository that cannot answer fails the probe rather than
+ * passing it.
+ */
+function trackedUnder(pkgRel, dirName) {
+  const listed = spawnSync("git", ["-C", root, "ls-tree", "-r", "--name-only", "HEAD", "--", `${pkgRel}/${dirName}`], {
+    encoding: "utf8",
+  });
+  if (listed.status !== 0) {
+    throw new Error(`git ls-tree exited ${listed.status}: ${(listed.stderr ?? "").trim()}`);
+  }
+  const prefix = `${pkgRel}/${dirName}/`;
+  return listed.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((entry) => entry.slice(prefix.length));
+}
+
+/**
+ * Pack one real package through its real lifecycle and hold the tarball against
+ * the committed files of every directory its `bin` entries live in.
+ *
+ * Returns a problem string, null for a manifest with no `bin` (there is no
+ * command whose files could go missing, and the fixture probe covers that
+ * package), or a one-line record of what was packed.
+ */
+function realPackProbe({ dir, rel, manifest }) {
+  const bins = Object.values(manifest.bin ?? {}).filter((value) => typeof value === "string");
+  if (bins.length === 0) return null;
+
+  const work = mkdtempSync(join(tmpdir(), "check-provenance-real-"));
+  const dest = join(work, "dest");
+  mkdirSync(dest);
+  const pkgRel = relative(root, dir);
+  const tail = (text) => (text ?? "").trim().split("\n").slice(-4).join(" | ");
+  try {
+    const packed = spawnSync("npm", ["pack", "--pack-destination", dest], {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 300_000,
+    });
+    if (packed.status !== 0) {
+      return `${rel}: a real pack (npm pack, this package's own lifecycle) exited ${packed.status}: ${tail(packed.stderr) || tail(packed.stdout)}`;
+    }
+    const tarball = join(dest, `${manifest.name}-${manifest.version}.tgz`);
+    if (!existsSync(tarball)) return `${rel}: a real pack wrote no ${manifest.name}-${manifest.version}.tgz`;
+    const listing = spawnSync("tar", ["-tzf", tarball], { encoding: "utf8" });
+    if (listing.status !== 0) return `${rel}: the real tarball could not be listed: ${tail(listing.stderr)}`;
+    const entries = new Set(listing.stdout.split("\n").filter(Boolean));
+
+    if (!entries.has(`package/${BUILD_INFO_FILE}`)) {
+      return `${rel}: the real tarball carries no ${BUILD_INFO_FILE}`;
+    }
+    const extracted = spawnSync("tar", ["-xzOf", tarball, `package/${BUILD_INFO_FILE}`], { encoding: "utf8" });
+    let info = null;
+    try {
+      info = extracted.status === 0 ? JSON.parse(extracted.stdout) : null;
+    } catch {
+      info = null;
+    }
+    if (!info) return `${rel}: the real tarball's ${BUILD_INFO_FILE} is not readable`;
+    if (info.name !== manifest.name || info.version !== manifest.version) {
+      return (
+        `${rel}: the real tarball's record names ${info.name}@${info.version}, the manifest being packed is ` +
+        `${manifest.name}@${manifest.version}`
+      );
+    }
+
+    const missing = [];
+    const binDirs = [];
+    for (const target of bins) {
+      const relativeTarget = target.replace(/^\.\//, "");
+      if (!entries.has(`package/${relativeTarget}`)) missing.push(`package/${relativeTarget}`);
+      const dirName = dirname(relativeTarget);
+      if (dirName === ".") continue;
+      binDirs.push(dirName);
+      // What git has committed under the command's directory must be in the
+      // artifact. A hook that removed one of those files before npm built the
+      // tarball shows up here and nowhere else: the tree no longer has it
+      // either, so a comparison against the tree would agree with the damage.
+      for (const tracked of trackedUnder(pkgRel, dirName)) {
+        if (!entries.has(`package/${dirName}/${tracked}`)) missing.push(`package/${dirName}/${tracked}`);
+      }
+    }
+    if (missing.length > 0) {
+      return (
+        `${rel}: the real tarball is missing ${missing.length} file(s) the committed tree ships, including ` +
+        `${missing.slice(0, 3).join(", ")} - a prepack or a filtered allowlist removed them`
+      );
+    }
+    return { packed: `${manifest.name}@${manifest.version}`, entries: entries.size, binDirs: [...new Set(binDirs)] };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
 // The artifact probe. The arms above read the wiring; this one holds what the
 // wiring produces. Each packable manifest is packed once through npm's own
 // lifecycle — its allowlist, its `prepare` body, the shared writer — and the
@@ -400,6 +520,16 @@ if (distinct.length === 1) {
   });
 }
 
+// The real artifact. The fixture above is built from the allowlist, so it cannot
+// see a lifecycle hook that removes a shipped file; this packs each package that
+// ships a command, through its own lifecycle, and holds the tarball against the
+// committed files under the command's directory.
+for (const pkg of packages) {
+  const outcome = realPackProbe(pkg);
+  if (typeof outcome === "string") fail(outcome);
+  else if (outcome) packedForReal.push(outcome);
+}
+
 if (problems.length > 0) {
   console.error(`check-provenance: ${problems.length} problem(s)`);
   for (const problem of problems) console.error(`  - ${problem}`);
@@ -407,5 +537,10 @@ if (problems.length > 0) {
 }
 console.log(
   `check-provenance: ${packages.length} packable package(s) ship ${BUILD_INFO_FILE} ` +
-    `(${packages.map((p) => p.manifest.name).join(", ")}) through one writer`,
+    `(${packages.map((p) => p.manifest.name).join(", ")}) through one writer` +
+    (packedForReal.length > 0
+      ? `; packed for real: ${packedForReal
+          .map((row) => `${row.packed} from ${row.binDirs.join(", ")} (${row.entries} entries)`)
+          .join(", ")}`
+      : ""),
 );

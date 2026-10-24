@@ -57,6 +57,14 @@ const ALLOWANCES = new Map([
         "drives real publish/install swaps at ~10s each on a warm machine; on a busy one it crosses the 30s default cap and reads as a timeout even though every subtest passes",
     },
   ],
+  [
+    "fleet/test-drain-contention.mjs",
+    {
+      ms: 60_000,
+      reason:
+        "three arms hold a real SQLite write lock in a second process for 6.2s, 1.2s and 2.5s, so the file is slow by construction and a loaded box can push it past the 30s default",
+    },
+  ],
 ]);
 
 /** Recursively find all .mjs test files in subdirectories too. */

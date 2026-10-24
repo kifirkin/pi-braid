@@ -346,5 +346,37 @@ if (idlePid > 0) {
   assert.equal(pidIsAlive(idlePid), false, "the arm leaves no supervisor behind");
 }
 
+// ── the help path ──────────────────────────────────────────────────────────
+// `--help` used to print the usage on stderr and exit 2, which reads as a
+// refusal: an installed user asking the command what it does got an error code
+// from a shell that treats non-zero as failure. A help request is an answer, so
+// it goes to stdout and exits 0; only an unknown command stays a refusal.
+for (const spelling of ["--help", "-h", "help"]) {
+  await check(`${spelling} prints the usage on stdout and exits 0`, () => {
+    const out = fleet(spelling);
+    assert.equal(out.status, 0, `exit ${out.status}: ${out.stderr}`);
+    assert.equal(out.stderr.trim(), "", "the help goes to stdout, where a pager and a pipe read it");
+    assert.match(out.stdout, /^pi-braid-fleet: /m, "the help names the command it belongs to");
+    for (const command of ["spawn", "status", "inject", "ask"]) {
+      assert.match(out.stdout, new RegExp(`^  ${command} `, "m"), `the help lists ${command}`);
+    }
+    assert.match(out.stdout, /supervisor fleet/, "the help says which fleet this is");
+    assert.match(out.stdout, /docs\/FLEET\.md/, "the help points at the guide");
+  });
+}
+
+await check("a bare invocation is the help path, not a usage error", () => {
+  const out = fleet();
+  assert.equal(out.status, 0, `exit ${out.status}: ${out.stderr}`);
+  assert.match(out.stdout, /^pi-braid-fleet: /m);
+});
+
+await check("an unknown command is refused on stderr with exit 2", () => {
+  const out = fleet("bogus");
+  assert.equal(out.status, 2, `exit ${out.status}`);
+  assert.match(out.stderr, /unknown command "bogus"/, "the refusal names the word it did not understand");
+  assert.equal(out.stdout.trim(), "", "a refusal does not write the answer stream");
+});
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exitCode = failed > 0 ? 1 : 0;

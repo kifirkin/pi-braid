@@ -35,7 +35,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { openJournal, replayPolicy, resolveFleetRoot, SCHEMA_VERSION } from "./journal.mjs";
+import { BUSY_TIMEOUT_MS, openJournal, replayPolicy, resolveFleetRoot, SCHEMA_VERSION } from "./journal.mjs";
 import { createRpcDriver, GUARD_EXTENSION, guardEnvironment } from "./driver-rpc.mjs";
 import { createScriptedDriver, ASK_SENTINEL, DONE_SENTINEL } from "./driver-scripted.mjs";
 import { groupIsAlive, pidIsAlive, residentMb } from "./procs.mjs";
@@ -65,6 +65,42 @@ export function undeliverableReason(node, maxAttempts = null) {
 }
 
 export const DEFAULT_ANSWER = "No decision arrived before the deadline. Continue with the charter's stated default.";
+
+/**
+ * Is this error SQLite saying "another process holds the write lock"?
+ *
+ * The primary result codes are what decide: 5 is SQLITE_BUSY, 6 is
+ * SQLITE_LOCKED, and 517 is SQLITE_BUSY_SNAPSHOT, which node:sqlite can report
+ * as an extended code. The message is the fallback for a driver that hands over
+ * a bare Error, and it matches SQLite's own strings rather than the word
+ * "locked" on its own, so a schema complaint cannot be mistaken for contention.
+ */
+export function isBusyError(error) {
+  const code = Number(error?.errcode);
+  if (code === 5 || code === 6 || code === 517) return true;
+  return /database is locked|database table is locked|SQLITE_BUSY/i.test(String(error?.message ?? ""));
+}
+
+/**
+ * Block the current thread for `ms`. The drain is synchronous on purpose: its
+ * claim and its queue are one transaction, and a promise there would mean the
+ * transaction spans an await, which is the shape that lets a second writer in
+ * between the two halves. So the pause between two attempts blocks.
+ */
+function sleepSync(ms) {
+  if (ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** A JSON meta value, or null when the key is absent or unreadable. */
+function jsonMeta(meta, key) {
+  if (!meta[key]) return null;
+  try {
+    return JSON.parse(meta[key]);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Where the control socket lives.
@@ -294,6 +330,16 @@ export class Supervisor {
       turnTimeoutMs: 300_000,
       maxAttempts: 3,
       idleExitMs: 5_000,
+      // The drain's contention policy. Two windows at the journal's own 10s
+      // timeout plus one backoff stay inside the 30s lease TTL, so a drain that
+      // is waiting cannot let its own lease lapse.
+      drainAttempts: 2,
+      drainBusyTimeoutMs: BUSY_TIMEOUT_MS,
+      drainBackoffMs: 250,
+      // How long a single drain may block before the fact is journalled, even
+      // though it completed: one attempt that waited 7s for the lock is a fact
+      // an operator wants, not a silent success.
+      drainWaitReportMs: 1_000,
       driver: "rpc",
       model: "opencode-go/deepseek-v4.1-flash",
       piBin: "pi",
@@ -326,6 +372,9 @@ export class Supervisor {
     this.stopping = false;
     this.fences = [];
     this.idleSince = null;
+    // A drain that gave up and could not write its own record: the store was
+    // still locked. The fact is journalled at the first drain that can write.
+    this.pendingDrainDeferral = null;
     // Resolved when this process has stopped itself because the fleet had
     // nothing left to do; the entry point exits on it rather than on a guess.
     this.done = new Promise((resolveDone) => {
@@ -457,8 +506,57 @@ export class Supervisor {
    * actually transitioned, not the rows it read, so a second drainer of the same
    * ask claims nothing and queues nothing: the queue decision rests on the
    * conditional update, not on a shared read.
+   *
+   * Contention is waited out, not thrown. A drain that meets the store's write
+   * lock waits out the journal's busy timeout, retries with a backoff, and
+   * reports a drain it could not finish as a journal fact
+   * (`drain_deferred`) instead of as an exception from a tick. The earlier
+   * shape was measured: two drainers on one store, a full-suite run, one of them
+   * `database is locked` and gone, and the asks it was there to drain stayed
+   * held. A supervisor whose drain throws does not drain that ask, and its
+   * caller is a tick handler, so the failure was a log line and a skipped
+   * maintenance pass.
    */
   drainExpiredAsks() {
+    const started = Date.now();
+    const attempts = Math.max(1, Math.floor(this.options.drainAttempts));
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const { expired, notes } = this.journal.transaction(() => this._claimExpiredAsks(), {
+          busyTimeoutMs: this.options.drainBusyTimeoutMs,
+        });
+        // After the commit, so a retried attempt cannot log the same claim
+        // twice, and so the log line describes a decision that survived.
+        for (const note of notes) this.log(note);
+        this._recordDrainContention({ attempt, waitedMs: Date.now() - started });
+        return expired;
+      } catch (error) {
+        // A locked store is the one error this drain answers itself. Anything
+        // else is a defect in the body, and swallowing it would hide a real
+        // failure behind a maintenance pass nobody reads.
+        if (!isBusyError(error)) throw error;
+        const why = error.errstr ?? error.message;
+        if (attempt >= attempts) {
+          this._recordDrainDeferral({ attempts: attempt, waitedMs: Date.now() - started, error: why });
+          return [];
+        }
+        const backoffMs = this.options.drainBackoffMs * attempt;
+        this.log(
+          `fleet: drain met ${why} on attempt ${attempt}/${attempts}; waiting ${backoffMs} ms and retrying`,
+        );
+        sleepSync(backoffMs);
+      }
+    }
+    return [];
+  }
+
+  /**
+   * The drain's body: claim the overdue asks and queue one message per claimed
+   * row. It runs inside the transaction, so it must stay synchronous and free
+   * of side effects that a rollback cannot undo - the log lines are returned to
+   * the caller rather than printed here.
+   */
+  _claimExpiredAsks() {
     // Claim and queue as one transaction. A supervisor killed between the two
     // leaves an ask answered with no message queued for it, and a node parked
     // on that ask then has no open ask, no pending message and no ready kind,
@@ -466,33 +564,91 @@ export class Supervisor {
     // exists to prevent, reached through the drain itself. BEGIN IMMEDIATE also
     // serializes two drainers, so the read that decides a claim cannot land
     // inside the other process's claims.
-    return this.journal.transaction(() => {
-      const expired = this.journal.expireAsks();
-      for (const ask of expired) {
-        // The ask is claimed and answered by now; what is left is whether the
-        // node should be woken. A done node must not be resurrected: the fence
-        // loop guards this, and the drain queued for it anyway, so an overdue
-        // ask on a finished node flipped it back to `settled` and the default
-        // then drove it a second time.
-        const node = this.journal.getNode(ask.node_id);
-        if (!node || node.state === "done") {
-          this.log(
-            `fleet: ask ${ask.token} expired for node ${ask.node_id}, which is ${node ? "done" : "missing"}; default not queued`,
-          );
-          continue;
-        }
-        this.journal.addMessage({
-          msgId: `m-${randomBytes(6).toString("hex")}`,
-          nodeId: ask.node_id,
-          kind: "answer",
-          body: ask.default_answer,
-          token: ask.token,
-        });
-        this.journal.setNodeState(ask.node_id, "settled");
-        this.log(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
+    const expired = this.journal.expireAsks();
+    const notes = [];
+    for (const ask of expired) {
+      // The ask is claimed and answered by now; what is left is whether the
+      // node should be woken. A done node must not be resurrected: the fence
+      // loop guards this, and the drain queued for it anyway, so an overdue
+      // ask on a finished node flipped it back to `settled` and the default
+      // then drove it a second time.
+      const node = this.journal.getNode(ask.node_id);
+      if (!node || node.state === "done") {
+        notes.push(
+          `fleet: ask ${ask.token} expired for node ${ask.node_id}, which is ${node ? "done" : "missing"}; default not queued`,
+        );
+        continue;
       }
-      return expired;
-    });
+      this.journal.addMessage({
+        msgId: `m-${randomBytes(6).toString("hex")}`,
+        nodeId: ask.node_id,
+        kind: "answer",
+        body: ask.default_answer,
+        token: ask.token,
+      });
+      this.journal.setNodeState(ask.node_id, "settled");
+      notes.push(`fleet: ask ${ask.token} hit its deadline; default answer queued`);
+    }
+    return { expired, notes };
+  }
+
+  /**
+   * Record that a drain waited for the lock, and flush a deferral a previous
+   * drain could not write.
+   *
+   * Neither write is allowed to throw: this runs after a successful drain, and
+   * losing the note because another writer holds the lock again is not a reason
+   * to report the drain itself as failed. The deferral stays pending until a
+   * write lands, which is the earliest point the store can hold the fact at all.
+   */
+  _recordDrainContention({ attempt, waitedMs }) {
+    this._flushDrainDeferral(Date.now());
+    if (attempt <= 1 && waitedMs < this.options.drainWaitReportMs) return;
+    try {
+      this.journal.transaction(
+        () =>
+          this.journal.setMeta("drain_contention", JSON.stringify({ at: Date.now(), attempts: attempt, waitedMs })),
+        { busyTimeoutMs: Math.max(100, this.options.drainBackoffMs) },
+      );
+    } catch (error) {
+      // Best effort: the drain's decision is already committed and correct.
+      this.log(`fleet: the drain could not record its wait (${error.message}); the next drain retries the note`);
+    }
+  }
+
+  /**
+   * Write a pending deferral, if one is pending. `recoveredAt` says whether a
+   * later drain got through, which is what tells a reader of the fact whether
+   * the work was done after all.
+   */
+  _flushDrainDeferral(recoveredAt) {
+    if (!this.pendingDrainDeferral) return false;
+    const fact = recoveredAt == null ? this.pendingDrainDeferral : { ...this.pendingDrainDeferral, recoveredAt };
+    try {
+      this.journal.transaction(() => this.journal.setMeta("drain_deferred", JSON.stringify(fact)), {
+        busyTimeoutMs: Math.max(100, this.options.drainBackoffMs),
+      });
+      this.pendingDrainDeferral = null;
+      if (recoveredAt != null) this.log("fleet: the earlier drain deferral was journalled; a later drain completed the work");
+      return true;
+    } catch (error) {
+      this.log(`fleet: the drain deferral could not be journalled yet (${error.message}); the next drain retries it`);
+      return false;
+    }
+  }
+
+  /**
+   * A drain that gave up after its last attempt: the store stayed locked for
+   * the whole budget. This is a journal fact, not an exception, so the tick
+   * keeps ticking; the write lands here if the lock has freed in the meantime
+   * and is otherwise retried by the next drain that can write.
+   */
+  _recordDrainDeferral({ attempts, waitedMs, error }) {
+    this.pendingDrainDeferral = { at: Date.now(), attempts, waitedMs, error };
+    this.log(
+      `fleet: drain gave up after ${attempts} attempt(s) in ${waitedMs} ms (${error}); the deferral is journalled when the store accepts a write`,
+    );
+    this._flushDrainDeferral(null);
   }
 
   /**
@@ -1233,10 +1389,11 @@ export function buildStatus(journal, supervisor = null) {
     .map((turn) => turn.child_pid)
     .filter(Boolean);
   const resident = residentMb([...liveSupervisors.map((row) => row.pid), ...childPids]);
+  const meta = journal.meta();
   return {
     store: journal.path,
     schemaVersion: SCHEMA_VERSION,
-    meta: journal.meta(),
+    meta,
     epoch: supervisor?.epoch ?? null,
     cap: supervisor?.options.cap ?? null,
     active: supervisor ? [...supervisor.active.keys()] : [],
@@ -1252,7 +1409,15 @@ export function buildStatus(journal, supervisor = null) {
       defaultAnswer: ask.default_answer,
       deadlineAt: ask.deadline_at,
     })),
-    fences: JSON.parse(journal.meta().fences ?? "[]"),
+    fences: JSON.parse(meta.fences ?? "[]"),
+    // The drain's two facts: a pass that could not finish, and a pass that had
+    // to wait for the store's lock. Both are journal rows, so an operator sees
+    // a supervisor struggling with the store without reading its log, and a
+    // deferral that a later drain completed says so rather than disappearing.
+    drain: {
+      deferred: jsonMeta(meta, "drain_deferred"),
+      waited: jsonMeta(meta, "drain_contention"),
+    },
     resident,
   };
 }

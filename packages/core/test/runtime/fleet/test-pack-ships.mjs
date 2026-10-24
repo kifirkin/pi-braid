@@ -14,6 +14,13 @@
  *   - the allowlist widened to the whole `scripts/` directory, so a stranger's
  *     install carries this repository's own CI gates.
  *
+ * The expected file set is an explicit list, never a reading of `scripts/fleet`
+ * itself. Deriving it with `readdirSync` made the gate self-fulfilling: a
+ * fixture, a test double or a scratch file dropped into that directory shipped
+ * in the tarball and kept the arm green, because the expectation moved with the
+ * artifact. With a list, an addition and a removal both redden, and adding a
+ * fleet file is deliberately two edits.
+ *
  * The `bin` entry is exercised through a symlink, because that is the shape an
  * install has and a checkout does not: the kernel leaves `process.argv[1]` as
  * the symlink while `import.meta.url` names its target, and an entry-point
@@ -43,6 +50,39 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG = resolve(HERE, "..", "..", "..");
 const FLEET_DIR = join(PKG, "scripts", "fleet");
+
+/**
+ * The fleet files that ship, by name.
+ *
+ * This is the gate's expectation, not a reading of the directory it guards.
+ * It exists so the comparison has a source that does not move when the
+ * directory does: a file added to `scripts/fleet` without an edit here is a
+ * file the tarball carries and the gate refuses, and a name here that does not
+ * ship is refused too.
+ */
+const SHIPPED_FLEET_FILES = [
+  "cli.mjs",
+  "driver-rpc.mjs",
+  "driver-scripted.mjs",
+  "journal.mjs",
+  "procs.mjs",
+  "supervisor.mjs",
+  "tool-guard.mjs",
+];
+
+/**
+ * What `shipped` carries that `allowed` does not name, and what `allowed` names
+ * that `shipped` does not carry. Both empty is the only passing answer; one
+ * direction alone is how the old census passed while a scratch file shipped.
+ */
+function allowlistDiff(shipped, allowed) {
+  const expected = new Set(allowed);
+  const found = new Set(shipped);
+  return {
+    unexpected: shipped.filter((entry) => !expected.has(entry)),
+    missing: allowed.filter((entry) => !found.has(entry)),
+  };
+}
 
 const sleep = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
 
@@ -131,26 +171,53 @@ writeFileSync(charter, "A node admitted for its registration, never driven: the 
 
 let supervisorPid = null;
 
-await check("the tarball carries the fleet and nothing else under scripts/", () => {
+await check("the tarball carries exactly the fleet files on the explicit ship list", () => {
   assert.ok(tarball, `npm pack wrote one tarball into ${artifacts}: ${out(pack)}`);
   const prefix = "package/scripts/fleet/";
   const shippedFleet = shippedFiles
     .filter((entry) => entry.startsWith(prefix))
     .map((entry) => entry.slice(prefix.length))
     .sort();
-  const onDisk = readdirSync(FLEET_DIR)
-    .filter((entry) => statSync(join(FLEET_DIR, entry)).isFile())
-    .sort();
-  assert.deepEqual(
-    shippedFleet,
-    onDisk,
-    "every fleet file on disk is in the tarball, and no other fleet file is",
-  );
+  const { unexpected, missing } = allowlistDiff(shippedFleet, SHIPPED_FLEET_FILES);
+  assert.deepEqual(unexpected, [], "these files reached the tarball and are not on the ship list");
+  assert.deepEqual(missing, [], "these files are on the ship list and did not reach the tarball");
 
   const otherScripts = shippedFiles.filter(
     (entry) => entry.startsWith("package/scripts/") && !entry.startsWith(prefix),
   );
   assert.deepEqual(otherScripts, [], "the tarball ships no scripts/ entry from outside the fleet");
+});
+
+await check("scripts/fleet on disk holds exactly the files on the ship list", () => {
+  const onDisk = readdirSync(FLEET_DIR)
+    .filter((entry) => statSync(join(FLEET_DIR, entry)).isFile())
+    .sort();
+  const { unexpected, missing } = allowlistDiff(onDisk, SHIPPED_FLEET_FILES);
+  assert.deepEqual(unexpected, [], "these files sit in scripts/fleet and are not on the ship list");
+  assert.deepEqual(missing, [], "these files are on the ship list and are not in scripts/fleet");
+});
+
+await check("the comparison itself moves in both directions", () => {
+  // The arms above compare the real tarball and the real directory, which are
+  // identical on a healthy tree. This one fixes the predicate's shape: an entry
+  // only in the artifact is unexpected, an entry only on the list is missing,
+  // and neither may be swallowed by the other.
+  const base = [...SHIPPED_FLEET_FILES];
+  const extra = allowlistDiff([...base, "fixture-double.mjs"], base);
+  assert.deepEqual(extra.unexpected, ["fixture-double.mjs"], "a file the artifact carries alone is unexpected");
+  assert.deepEqual(extra.missing, [], "nothing is missing from a list that is a subset");
+  const short = allowlistDiff(base.slice(1), base);
+  assert.deepEqual(short.missing, [base[0]], "a file the list names alone is missing");
+  assert.deepEqual(short.unexpected, [], "nothing is unexpected in an artifact that is a subset");
+  assert.deepEqual(allowlistDiff(base, base), { unexpected: [], missing: [] }, "the list matches itself");
+});
+
+await check("the shipped command answers --help on stdout, and the guide it points at ships", () => {
+  const result = fleet(["--help"]);
+  assert.equal(result.status, 0, `the help exit is 0: ${out(result)}`);
+  assert.equal((result.stderr ?? "").trim(), "", "help is an answer, not an error stream");
+  assert.match(result.stdout, /^pi-braid-fleet: /m, "the extracted command names itself in its help");
+  assert.ok(shippedFiles.includes("package/docs/FLEET.md"), "the guide the help points at is in the tarball");
 });
 
 await check("the shipped command is executable, with a shebang", () => {
