@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * fleet: four operator commands over one journal.
+ * pi-braid-fleet: the supervisor fleet's four operator commands, over one
+ * journal.
  *
  *   fleet spawn <parent|-> <charter>   register a node and make sure one supervisor runs
  *   fleet status [--json]              the fleet as the journal and ps report it
@@ -253,6 +254,25 @@ function printStatus(status, { supervisor }) {
   console.log(
     `resident ${resident.totalMb} MB over ${resident.pids.length} pids ${resident.pids.map((row) => `${row.pid}:${row.mb}`).join(" ") || "-"}`,
   );
+  // The drain's own account of the store. A deferral is the record of a pass
+  // that could not finish, and a completed one says so rather than reading as
+  // an open failure; a wait is a supervisor that is contending for the write
+  // lock, which is worth seeing before a drain ever gives up.
+  if (status.drain?.deferred) {
+    const deferred = status.drain.deferred;
+    const outcome = deferred.recoveredAt
+      ? `completed at ${new Date(deferred.recoveredAt).toISOString()}`
+      : "still outstanding";
+    console.log(
+      `drain deferred ${new Date(deferred.at).toISOString()}: ${deferred.attempts} attempt(s) in ${deferred.waitedMs} ms (${deferred.error}); ${outcome}`,
+    );
+  }
+  if (status.drain?.waited) {
+    const waited = status.drain.waited;
+    console.log(
+      `drain waited ${waited.waitedMs} ms over ${waited.attempts} attempt(s) for the store lock, last at ${new Date(waited.at).toISOString()}`,
+    );
+  }
   console.log(`nodes ${status.nodes.length}:`);
   for (const node of status.nodes) {
     const effects = node.lastTurn ? JSON.stringify(node.lastTurn.effects) : "{}";
@@ -402,7 +422,13 @@ function parseArgs(argv) {
   return args;
 }
 
-const USAGE = `fleet commands:
+const USAGE = `pi-braid-fleet: the supervisor fleet's operator command.
+
+The fleet is one supervisor process driving local node sessions against one
+SQLite journal. It is not the worker registry \`orchestrate\` keeps for parallel
+agents; that pool is a different thing with the same word in its prose.
+
+commands:
   spawn <parent|-> <charter> [--cap N] [--model p/m] [--token-cap N] [--idle-exit-ms N]
   status [--json]
   inject <node> <text> [--token <ask-token>]
@@ -411,10 +437,21 @@ common: --root <fleet-root> (default $PI_FLEET_ROOT or <cwd>/.fleet)
 
 spawn's --cap, --model, --pi-bin, --extension, --supervisor-driver and
 --idle-exit-ms configure the supervisor this command starts; a supervisor that
-is already running keeps the flags it was started with, and spawn says so.`;
+is already running keeps the flags it was started with, and spawn says so.
+
+exit: 0 success, 1 the command failed, 2 unknown command or bad usage.
+guide: docs/FLEET.md, in this package.`;
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
+  // A help request is an answer, not a refusal: usage on stdout, exit 0. That
+  // includes the bare invocation, because an operator who types the command
+  // name and nothing else is asking what it does. An unknown word stays a
+  // refusal (stderr, exit 2): that caller asked for something that is not here.
+  if (command == null || command === "--help" || command === "-h" || command === "help") {
+    console.log(USAGE);
+    return undefined;
+  }
   const args = parseArgs(rest);
   switch (command) {
     case "spawn":
@@ -426,6 +463,7 @@ async function main() {
     case "ask":
       return cmdAsk(args);
     default:
+      console.error(`pi-braid-fleet: unknown command "${command}"\n`);
       console.error(USAGE);
       process.exitCode = 2;
       return undefined;

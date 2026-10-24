@@ -26,6 +26,13 @@ install: `pi install npm:pi-braid-skills`,
 `pi install npm:pi-braid-contrib`, `pi install npm:pi-braid-providers`,
 `pi install npm:pi-braid-telegram`.
 
+The core package also installs one command, `pi-braid-fleet`, the operator
+surface of braid's **supervisor fleet**: one supervisor process driving local
+node sessions against a single SQLite journal. It is not the worker registry
+`orchestrate` keeps for parallel agents, which is a worker pool (see below).
+`pi-braid-fleet --help` prints the four commands and exits 0;
+[`docs/FLEET.md`](docs/FLEET.md) is the guide to the fleet and its journal.
+
 To enable braid for one project only, or to use all five workspaces, see
 [docs/SETUP.md](docs/SETUP.md) § Install paths. For the full setup reference
 (per-project installs, skills, module toggles, troubleshooting) see
@@ -123,7 +130,7 @@ session start
 reads across the stores; `session` reads across past sessions. Deep source:
 [`src/extensions/memory/AGENTS.md`](src/extensions/memory/AGENTS.md).
 
-### A worker fleet
+### A worker pool
 
 `orchestrate` coordinates parallel agent workers: a per-project worker registry
 with admission and lifecycle, one branch per worker, file locks, conflict
@@ -132,6 +139,10 @@ with no repository it falls back to lock-only coordination. The working
 procedure is the [`subagent-orchestration`](skills/subagent-orchestration/SKILL.md)
 skill; the registry is
 [`src/extensions/orchestrator/index.ts`](src/extensions/orchestrator/index.ts).
+
+This is a pool of workers, not a fleet: the package's `pi-braid-fleet` command,
+described in Install above, is the supervisor fleet, and the two share no code,
+journal or lifecycle.
 
 ### Context lifecycle
 
@@ -223,6 +234,7 @@ time (`find packages/skills/skills -name SKILL.md | wc -l` counts the pack).
 | [`docs/SETUP.md`](docs/SETUP.md)                                              | **Full setup reference**, install paths, troubleshooting                |
 | [`TOOLS.md`](TOOLS.md)                                                        | Tool catalog: registered tools, pi builtins, cold tools                 |
 | [`docs/CONTEXT-POLICY.md`](docs/CONTEXT-POLICY.md)                            | Window, usage bands, compaction reserve, caps, offload, archiving       |
+| [`docs/FLEET.md`](docs/FLEET.md)                                              | The `pi-braid-fleet` supervisor fleet: commands, tiers, journal         |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md)                                          | Active roadmap + shipped milestones + open themes                       |
 | [`README.md`](README.md)                                                      | This overview                                                           |
 | [`AGENTS.md`](AGENTS.md)                                                      | Repository structure, DOX contract, conventions                         |

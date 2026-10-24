@@ -31,6 +31,23 @@ export const SCHEMA_VERSION = 1;
 export const JOURNAL_FILE = "fleet.sqlite";
 
 /**
+ * How long one statement waits for the write lock before SQLite reports it
+ * busy, in milliseconds.
+ *
+ * 5000 was too small. Every write here commits with `synchronous = FULL`, so a
+ * single commit is an fsync, and a supervisor draining a few hundred overdue
+ * asks holds the lock for as long as that takes on a loaded box. A drainer that
+ * met contention therefore threw `database is locked` at five seconds - a
+ * legitimate drain under load, reported as a crash. Ten seconds is the wait
+ * that turns that class of contention into waiting, and it is also the ceiling
+ * a blocked statement may impose on a supervisor's tick: two of them plus the
+ * drain's backoff stay under the default 30s lease TTL, so a drain that is
+ * waiting cannot outlive the lease it holds and let a second supervisor claim
+ * the same node.
+ */
+export const BUSY_TIMEOUT_MS = 10_000;
+
+/**
  * The twelve things the journal must hold, in the design's order. `columns`
  * are `table.column`; `failure` is what breaks without the field, quoted so
  * the reason survives independently of the design document.
@@ -351,7 +368,7 @@ export function openJournal(root, options = {}) {
   const db = new DatabaseSync(journalPath(fleetRoot));
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = FULL");
-  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
   db.exec(DDL);
   const projectRoot = options.projectRoot ? resolve(options.projectRoot) : fleetRoot;
   const meta = {
@@ -375,6 +392,7 @@ export class Journal {
     this.root = root;
     this.path = journalPath(root);
     this._cache = new Map();
+    this.busyTimeoutMs = BUSY_TIMEOUT_MS;
   }
 
   close() {
@@ -389,16 +407,33 @@ export class Journal {
    * one's read happens after the first one's commit, rather than against the
    * state the first one was about to change. A body that throws is rolled back
    * whole, which is what lets a caller treat several statements as one edit.
+   *
+   * `busyTimeoutMs` is the wait this transaction may spend acquiring that
+   * lock, and it is per-connection state, so it is restored afterwards: a
+   * caller with a bounded window of its own (the drain, whose retry loop is the
+   * policy) does not leave every later statement in the process with it.
    */
-  transaction(body) {
-    this.db.exec("BEGIN IMMEDIATE");
+  transaction(body, { busyTimeoutMs } = {}) {
+    const previous = this.busyTimeoutMs;
+    if (busyTimeoutMs != null && busyTimeoutMs !== previous) {
+      this.db.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.floor(busyTimeoutMs))}`);
+      this.busyTimeoutMs = Math.max(0, Math.floor(busyTimeoutMs));
+    }
     try {
-      const result = body();
-      this.db.exec("COMMIT");
-      return result;
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
+      this.db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = body();
+        this.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      }
+    } finally {
+      if (this.busyTimeoutMs !== previous) {
+        this.db.exec(`PRAGMA busy_timeout = ${previous}`);
+        this.busyTimeoutMs = previous;
+      }
     }
   }
 
@@ -421,6 +456,11 @@ export class Journal {
       key,
       String(value),
     );
+  }
+
+  /** Drop a meta key, for a fact that stops being true (a deferral that recovered). */
+  clearMeta(key) {
+    this._stmt("DELETE FROM fleet_meta WHERE key = ?").run(key);
   }
 
   // ── nodes ────────────────────────────────────────────────────────────────
