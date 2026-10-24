@@ -729,8 +729,68 @@ export class Journal {
     this._stmt("UPDATE routes SET delivery_state = ? WHERE msg_id = ?").run(tier === "A" ? "steered" : "delivered", msgId);
   }
 
+  /**
+   * Retire every delivered row a node holds.
+   *
+   * Node-wide, so it cannot tell a message a prompt carried from one it did
+   * not: the settle gate uses `consumeMessages` with the turn's own list, and
+   * this remains the blunt instrument for callers that mean all of them.
+   */
   markMessagesConsumed(nodeId) {
     this._stmt("UPDATE inbox SET state = 'consumed' WHERE node_id = ? AND state = 'delivered'").run(nodeId);
+  }
+
+  /**
+   * Retire exactly the messages a turn carried.
+   *
+   * The ids are the turn's own account of what its prompt contained, so this
+   * consumes what a model read and nothing else: a row that reached `delivered`
+   * another way stays where it is, for the next turn that actually carries it.
+   */
+  consumeMessages(msgIds) {
+    let consumed = 0;
+    for (const msgId of msgIds) {
+      consumed += this._stmt("UPDATE inbox SET state = 'consumed' WHERE msg_id = ? AND state = 'delivered'").run(msgId).changes;
+    }
+    return consumed;
+  }
+
+  /**
+   * Put delivered messages back in the queue.
+   *
+   * A turn that never settled sent its prompt and did not finish: the body
+   * reached a model and nothing acted on it, so the delivery columns are
+   * cleared and the next turn carries it again. For an operator's instruction
+   * the safe side to err on is at-least-once, and the recovery prompt is the
+   * instrument that keeps the repetition visible.
+   */
+  releaseMessages(msgIds) {
+    let released = 0;
+    for (const msgId of msgIds) {
+      released += this._stmt(
+        `UPDATE inbox SET state = 'recorded', delivered_at = NULL, delivered_tier = NULL, delivered_turn_id = NULL,
+          delivered_after_effect_seq = NULL, delivered_before_request_seq = NULL
+         WHERE msg_id = ? AND state = 'delivered'`,
+      ).run(msgId).changes;
+    }
+    return released;
+  }
+
+  /**
+   * The terminal state for a message no turn will ever carry: the node it was
+   * routed to is finished, or failed at its attempt bound, so the promise a
+   * `recorded` row makes cannot be kept. Only the rows this call transitions
+   * are returned, so two sweepers do not both report the same message.
+   */
+  markMessagesUndeliverable(nodeId) {
+    const claimed = [];
+    for (const message of this.pendingMessages(nodeId)) {
+      const result = this._stmt("UPDATE inbox SET state = 'undeliverable' WHERE msg_id = ? AND state = 'recorded'").run(
+        message.msg_id,
+      );
+      if (result.changes > 0) claimed.push({ ...message, state: "undeliverable" });
+    }
+    return claimed;
   }
 
   messages(nodeId) {

@@ -13,10 +13,16 @@
  *
  * Delivery tiers, recorded on the inbox row, never guessed at:
  *   A  a turn was in flight and pi accepted the steer (`delivered_tier = 'A'`)
- *   B  the supervisor was up but the node was not streaming; queued for the
- *      next drive (`delivered_tier = 'B'`)
- *   C  no supervisor was running; the message waits in the journal and the
- *      next supervisor delivers it (`state = 'recorded'`)
+ *   B  the supervisor was up but the node was not streaming; queued, and the
+ *      next turn for the node carries it (`delivered_tier = 'B'`)
+ *   C  no supervisor was running; the message waits in the journal for the next
+ *      turn a supervisor drives (`state = 'recorded'`)
+ *
+ * And the other end of the same account: a message is retired
+ * (`state = 'consumed'`) only when its body was in the prompt a turn sent. One
+ * that no turn will ever carry - the node is done, or failed at its attempt
+ * bound - is stamped `undeliverable` by the supervisor and counted in `status`,
+ * and this command refuses to queue for a finished node in the first place.
  */
 
 import { spawn } from "node:child_process";
@@ -26,7 +32,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { openJournal, resolveFleetRoot } from "./journal.mjs";
-import { buildStatus, controlSocketPath, DEFAULT_ANSWER, requestOnControlSocket } from "./supervisor.mjs";
+import { buildStatus, controlSocketPath, DEFAULT_ANSWER, requestOnControlSocket, undeliverableReason } from "./supervisor.mjs";
 import { pidIsAlive } from "./procs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -198,11 +204,12 @@ function printStatus(status, { supervisor }) {
   console.log(`nodes ${status.nodes.length}:`);
   for (const node of status.nodes) {
     const effects = node.lastTurn ? JSON.stringify(node.lastTurn.effects) : "{}";
+    const undeliverable = node.undeliverable > 0 ? ` undeliverable ${node.undeliverable}` : "";
     console.log(
       `  ${node.nodeId.padEnd(22)} ${node.state.padEnd(17)} turns ${String(node.turns).padStart(3)} attempts ${node.attempts}  session ${node.sessionId ?? "-"}`,
     );
     console.log(
-      `    last turn ${node.lastTurn ? `${node.lastTurn.turnId} ${node.lastTurn.kind} ${node.lastTurn.state}` : "-"} effects ${effects} pending ${node.pending} lease ${node.lease ?? "-"}`,
+      `    last turn ${node.lastTurn ? `${node.lastTurn.turnId} ${node.lastTurn.kind} ${node.lastTurn.state}` : "-"} effects ${effects} pending ${node.pending}${undeliverable} lease ${node.lease ?? "-"}`,
     );
     if (node.openAsks.length > 0) console.log(`    asks ${node.openAsks.join(", ")}`);
     if (node.doneReason) console.log(`    note ${node.doneReason}`);
@@ -238,7 +245,16 @@ async function cmdInject(args) {
   });
   if (reply?.ok) {
     const data = reply.data;
-    console.log(`delivered ${data.msgId} to ${nodeId} tier ${data.tier}${data.turnId ? ` turn ${data.turnId}` : ""}${data.disposition ? ` disposition ${data.disposition}` : ""}`);
+    // "Delivered" is a claim, and only a tier A steer earns it. Tier B is a row
+    // the next turn will carry, and saying which one it is is the difference
+    // between a queue and a delivery.
+    if (data.tier === "A") {
+      console.log(
+        `delivered ${data.msgId} to ${nodeId} tier A turn ${data.turnId}${data.disposition ? ` disposition ${data.disposition}` : ""}`,
+      );
+    } else {
+      console.log(`queued ${data.msgId} for ${nodeId} tier ${data.tier} (the next turn for this node carries it)`);
+    }
     if (data.reason) console.log(`note: ${data.reason}`);
     return;
   }
@@ -248,6 +264,12 @@ async function cmdInject(args) {
   try {
     const node = journal.getNode(nodeId);
     if (!node) throw new Error(`no such node: ${nodeId}`);
+    // The journal alone can decide this half: a done node is never driven again.
+    // The attempt bound is the running supervisor's policy and is not visible
+    // here, so a failed node is queued and the supervisor's sweep stamps it
+    // `undeliverable` if the bound is what keeps it from running.
+    const retired = undeliverableReason(node);
+    if (retired) throw new Error(`cannot queue a message for ${nodeId}: ${retired}; no turn will ever carry it`);
     let kind = "user";
     if (args.token) {
       const ask = journal.getAsk(args.token);
@@ -263,7 +285,7 @@ async function cmdInject(args) {
       body: text,
       token: args.token,
     });
-    console.log(`recorded ${message.msg_id} for ${nodeId} tier C (no supervisor running; delivered on the next drive)`);
+    console.log(`recorded ${message.msg_id} for ${nodeId} tier C (no supervisor running; the next turn this node is driven for carries it)`);
   } finally {
     journal.close();
   }
