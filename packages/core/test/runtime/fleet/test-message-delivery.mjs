@@ -184,7 +184,7 @@ async function stopSpawned(running) {
 // ── arm: the defect itself ──────────────────────────────────────────────────
 //
 // Zero turns, one message queued with no supervisor running, then a supervisor
-// at cap 1. Before this wave the node was driven by a charter turn that ignored
+// at cap 1. The node used to be driven by a charter turn that ignored
 // the queue and the message was retired anyway.
 
 const charterRoot = freshRoot("charter");
@@ -236,7 +236,7 @@ await check("charter: the message is retired, and against the turn that carried 
 // ── control: the between-turns turn ─────────────────────────────────────────
 //
 // A node that already finished a turn and has an unread message is driven by a
-// `message` turn. This path worked before the wave; it has to keep working,
+// `message` turn. That path predates the queue's new reach and has to keep working,
 // including the retirement that follows it.
 
 const messageRoot = freshRoot("message");
