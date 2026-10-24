@@ -313,12 +313,26 @@ export class Supervisor {
    * a deadline passed while no supervisor was running - come through here, so
    * the two paths cannot drift into one of them doing half the work.
    *
-   * Only what `expireAsks()` returned is queued. It returns the rows it found
-   * open and overdue, so a second drainer of the same ask queues nothing.
+   * Only what `expireAsks()` claimed is queued. It returns the rows this call
+   * actually transitioned, not the rows it read, so a second drainer of the same
+   * ask claims nothing and queues nothing: the queue decision rests on the
+   * conditional update, not on a shared read.
    */
   drainExpiredAsks() {
     const expired = this.journal.expireAsks();
     for (const ask of expired) {
+      // The ask is claimed and answered by now; what is left is whether the
+      // node should be woken. A done node must not be resurrected: the fence
+      // loop guards this, and the drain queued for it anyway, so an overdue
+      // ask on a finished node flipped it back to `settled` and the default
+      // then drove it a second time.
+      const node = this.journal.getNode(ask.node_id);
+      if (!node || node.state === "done") {
+        this.log(
+          `fleet: ask ${ask.token} expired for node ${ask.node_id}, which is ${node ? "done" : "missing"}; default not queued`,
+        );
+        continue;
+      }
       this.journal.addMessage({
         msgId: `m-${randomBytes(6).toString("hex")}`,
         nodeId: ask.node_id,
