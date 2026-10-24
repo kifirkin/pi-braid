@@ -266,7 +266,7 @@ async function fabricatePredecessor(label, { ownerPid }) {
     driver: "scripted",
     driverConfig: { steps: [{ op: "done" }], worldFile: join(caseRoot, "world.log") },
   });
-  const lease = seed.acquireLease({ nodeId: "n1", ownerPid, epoch, ttlMs: 600_000 });
+  const lease = seed.acquireLease({ nodeId: "n1", ownerPid, epoch });
   const turnId = seed.beginTurn("n1", {
     kind: "charter",
     promptText: "a turn its owner is still running",
@@ -392,7 +392,7 @@ function interruptNewTurn(root, { ownerPid, label }) {
   const seed = openJournal(root, { driver: "scripted" });
   try {
     const epoch = seed.registerSupervisor({ pid: ownerPid, driver: "scripted", childArgs: [], piVersion: "test" });
-    seed.acquireLease({ nodeId: "n1", ownerPid, epoch, ttlMs: 600_000 });
+    seed.acquireLease({ nodeId: "n1", ownerPid, epoch });
     const turnId = seed.beginTurn("n1", {
       kind: "charter",
       promptText: `a turn ${label}`,

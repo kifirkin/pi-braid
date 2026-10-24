@@ -27,7 +27,20 @@ import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export const SCHEMA_VERSION = 1;
+/**
+ * The shape a store has once `openJournal` returns.
+ *
+ * Version 2 is version 1 with the lease's expiry column nullable and unset. The
+ * column stays because the build that shipped version 1 names it in its lease
+ * write, so a store without it is a store that build cannot open: a rollback
+ * would die on "no such column" instead of on something an operator can act on.
+ * Nothing here reads or writes it (see the leases DDL for why).
+ *
+ * A store recording a version above this one is refused rather than opened. Its
+ * shape is one this code does not know, and `CREATE TABLE IF NOT EXISTS` would
+ * leave it looking fine and then fail inside a statement far from the reason.
+ */
+export const SCHEMA_VERSION = 2;
 export const JOURNAL_FILE = "fleet.sqlite";
 
 /**
@@ -39,11 +52,12 @@ export const JOURNAL_FILE = "fleet.sqlite";
  * asks holds the lock for as long as that takes on a loaded box. A drainer that
  * met contention therefore threw `database is locked` at five seconds - a
  * legitimate drain under load, reported as a crash. Ten seconds is the wait
- * that turns that class of contention into waiting, and it is also the ceiling
- * a blocked statement may impose on a supervisor's tick: two of them plus the
- * drain's backoff stay under the default 30s lease TTL, so a drain that is
- * waiting cannot outlive the lease it holds and let a second supervisor claim
- * the same node.
+ * that turns that class of contention into waiting.
+ *
+ * It bounds one statement. Not a pass, and not a lease: a pass with its own
+ * budget (the drain) or its own record (the tick's maintenance) sets the wait
+ * per call with `withBusyTimeout`, and a node lease is not time-bounded at all
+ * - exclusivity is its owner answering for it, as `acquireLease` explains.
  */
 export const BUSY_TIMEOUT_MS = 10_000;
 
@@ -164,7 +178,7 @@ export const FLEET_JOURNAL_FIELDS = [
   },
   {
     n: 11,
-    what: "the node lease: owner, epoch or start time, and its heartbeat",
+    what: "the node lease: its owner, epoch, heartbeat and state",
     columns: ["leases.node_id", "leases.owner_pid", "leases.epoch", "leases.heartbeat_at", "leases.state"],
     failure: "two supervisors both believe they own one node",
   },
@@ -311,6 +325,13 @@ CREATE TABLE IF NOT EXISTS routes (
   delivery_state TEXT NOT NULL
 );
 
+-- expires_at is kept here, and left unset. The build that shipped schema version 1
+-- writes it by name in its lease INSERT, so a store without the column is a store
+-- that build cannot open. Nothing here reads it or writes it: a lease is
+-- exclusive for as long as its owner answers for the node (see acquireLease), so
+-- the value bounded nothing, and an expiry sitting in it is a number an operator
+-- could read and be wrong about. A version-1 store is relaxed to this shape on
+-- open and its stale values are cleared, so the column says "unset" afterwards.
 CREATE TABLE IF NOT EXISTS leases (
   lease_id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
@@ -318,7 +339,7 @@ CREATE TABLE IF NOT EXISTS leases (
   epoch INTEGER NOT NULL,
   acquired_at INTEGER NOT NULL,
   heartbeat_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
+  expires_at INTEGER,
   released_at INTEGER,
   state TEXT NOT NULL
 );
@@ -362,6 +383,58 @@ export function journalPath(root) {
  * recorded inside the file. A copy that travels without its root still says
  * which root it came from; two roots are two fleets and never one store.
  */
+
+/** The schema version a store records, or null when it has never been written. */
+function readStoredSchemaVersion(db) {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fleet_meta'").get();
+  if (!table) return null;
+  const row = db.prepare("SELECT value FROM fleet_meta WHERE key = 'schema_version'").get();
+  const version = Number(row?.value);
+  return Number.isFinite(version) ? version : null;
+}
+
+/**
+ * Relax `leases.expires_at` from NOT NULL to nullable, clearing every value, so
+ * that a store written by the version-1 build opens here and that build's own
+ * lease write keeps working after a rollback.
+ *
+ * SQLite cannot change a column in place, so the table is rebuilt once: every
+ * row and the index come with it. The values do not - a stale expiry is the one
+ * thing this column must not carry, because the column says nothing about the
+ * lease and a number in it reads like something that does.
+ */
+function relaxLeaseExpiry(db) {
+  const column = db
+    .prepare("PRAGMA table_info(leases)")
+    .all()
+    .find((entry) => entry.name === "expires_at");
+  if (!column || column.notnull === 0) return false;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`CREATE TABLE leases_relaxed (
+  lease_id TEXT PRIMARY KEY,
+  node_id TEXT NOT NULL,
+  owner_pid INTEGER NOT NULL,
+  epoch INTEGER NOT NULL,
+  acquired_at INTEGER NOT NULL,
+  heartbeat_at INTEGER NOT NULL,
+  expires_at INTEGER,
+  released_at INTEGER,
+  state TEXT NOT NULL
+)`);
+    db.exec(`INSERT INTO leases_relaxed (lease_id, node_id, owner_pid, epoch, acquired_at, heartbeat_at, expires_at, released_at, state)
+  SELECT lease_id, node_id, owner_pid, epoch, acquired_at, heartbeat_at, NULL, released_at, state FROM leases`);
+    db.exec("DROP TABLE leases");
+    db.exec("ALTER TABLE leases_relaxed RENAME TO leases");
+    db.exec("CREATE INDEX IF NOT EXISTS leases_node ON leases(node_id, state)");
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return true;
+}
+
 export function openJournal(root, options = {}) {
   const fleetRoot = resolveFleetRoot(root);
   mkdirSync(dirname(journalPath(fleetRoot)), { recursive: true });
@@ -398,7 +471,16 @@ export function openJournal(root, options = {}) {
     }
   }
   db.exec("PRAGMA synchronous = FULL");
+  // Before the DDL, because the DDL is written for this version's shape and a
+  // store from a newer build has one this code does not know.
+  const storedVersion = readStoredSchemaVersion(db);
+  if (storedVersion != null && storedVersion > SCHEMA_VERSION) {
+    throw new Error(
+      `fleet store ${journalPath(fleetRoot)} was written by a newer build (schema ${storedVersion}; this build speaks ${SCHEMA_VERSION}): open it with that build, or move it aside and start a new root`,
+    );
+  }
   db.exec(DDL);
+  relaxLeaseExpiry(db);
   const projectRoot = options.projectRoot ? resolve(options.projectRoot) : fleetRoot;
   const meta = {
     store_path: journalPath(fleetRoot),
@@ -411,6 +493,12 @@ export function openJournal(root, options = {}) {
   };
   const insertMeta = db.prepare("INSERT OR IGNORE INTO fleet_meta(key, value) VALUES (?, ?)");
   for (const [key, value] of Object.entries(meta)) insertMeta.run(key, value);
+  // A store opened here records the shape it now has. The insert above ignores a
+  // row that already exists, so a store migrated from an older version needs the
+  // value written rather than inserted.
+  if (storedVersion !== SCHEMA_VERSION) {
+    db.prepare("UPDATE fleet_meta SET value = ? WHERE key = 'schema_version'").run(String(SCHEMA_VERSION));
+  }
   db.prepare("INSERT OR IGNORE INTO projects(project_root, created_at) VALUES (?, ?)").run(projectRoot, now());
   return new Journal(db, fleetRoot);
 }
@@ -460,6 +548,31 @@ export class Journal {
       }
     } finally {
       if (this.busyTimeoutMs !== previous) {
+        this.db.exec(`PRAGMA busy_timeout = ${previous}`);
+        this.busyTimeoutMs = previous;
+      }
+    }
+  }
+
+  /**
+   * Run `body` with a statement wait of `ms`, restoring the previous one after.
+   *
+   * The wait is per-connection state, and a caller with a bounded budget of its
+   * own (the tick's maintenance passes, which must not block on a lock another
+   * process may hold for as long as it likes) sets it here rather than leaving
+   * every later statement in the process with it.
+   */
+  withBusyTimeout(ms, body) {
+    const previous = this.busyTimeoutMs;
+    const bounded = Math.max(0, Math.floor(ms));
+    if (bounded !== previous) {
+      this.db.exec(`PRAGMA busy_timeout = ${bounded}`);
+      this.busyTimeoutMs = bounded;
+    }
+    try {
+      return body();
+    } finally {
+      if (bounded !== previous) {
         this.db.exec(`PRAGMA busy_timeout = ${previous}`);
         this.busyTimeoutMs = previous;
       }
@@ -921,15 +1034,32 @@ export class Journal {
     return this._stmt("SELECT * FROM supervisors ORDER BY epoch").all();
   }
 
-  acquireLease({ nodeId, ownerPid, epoch, ttlMs }) {
+  /**
+   * Take or renew this epoch's lease on one node.
+   *
+   * Exclusivity is the owner answering for the node, not a clock. A lease lives
+   * as long as its owner keeps renewing it, and a predecessor's lease ends in
+   * reconciliation, which asks whether that owner is still there before it
+   * touches anything.
+   *
+   * There is no expiry here, and the stored column of that name is deliberately
+   * neither read nor written: a wall-clock bound was measured into disrepute (one
+   * legitimate tick ran 32.7s under write contention, so any TTL short enough to
+   * name lapsed mid-turn, and a lapsed lease a second supervisor may claim puts
+   * one node under two drivers). Reconciliation refuses to fence a live owner's
+   * turn for the same reason: a clock cannot see whether a child is still
+   * working. The column survives only so the build that shipped it can still
+   * open the store - see the leases DDL.
+   */
+  acquireLease({ nodeId, ownerPid, epoch }) {
     const existing = this.liveLease(nodeId);
     if (existing && existing.epoch !== epoch) return null;
     const leaseId = `${nodeId}:${epoch}`;
     this._stmt(
-      `INSERT INTO leases (lease_id, node_id, owner_pid, epoch, acquired_at, heartbeat_at, expires_at, state)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'live')
-       ON CONFLICT(lease_id) DO UPDATE SET heartbeat_at = excluded.heartbeat_at, expires_at = excluded.expires_at, state = 'live'`,
-    ).run(leaseId, nodeId, ownerPid, epoch, now(), now(), now() + ttlMs);
+      `INSERT INTO leases (lease_id, node_id, owner_pid, epoch, acquired_at, heartbeat_at, state)
+       VALUES (?, ?, ?, ?, ?, ?, 'live')
+       ON CONFLICT(lease_id) DO UPDATE SET heartbeat_at = excluded.heartbeat_at, state = 'live'`,
+    ).run(leaseId, nodeId, ownerPid, epoch, now(), now());
     return this._stmt("SELECT * FROM leases WHERE lease_id = ?").get(leaseId);
   }
 

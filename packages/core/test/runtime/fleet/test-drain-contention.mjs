@@ -20,8 +20,21 @@
  *      the attempt number, so the retry path is visible rather than inferred.
  *   C. contention for the whole budget. The drain gives up: it returns nothing
  *      and throws nothing, and the store is asked again once the lock is free,
- *      at which point the deferral is a journal row (`drain_deferred`, with the
- *      attempts and the error) and the asks are drained.
+ *      at which point the deferral is a journal row (`store_deferred`, with the
+ *      attempts and the error) and the asks are drained. While the store is
+ *      locked the same fact is on disk beside it (`store-deferred.json`), which
+ *      is the only place it can be: a fact about a wedged store is the one fact
+ *      the store cannot hold, and a supervisor that dies holding it used to
+ *      leave nothing behind at all.
+ *   D. the tick's second maintenance pass. The sweep of undeliverable messages
+ *      meets the same lock after the drain gave up. It is recorded like the
+ *      drain's deferral instead of thrown, so the pass is retried by the next
+ *      tick rather than logged and skipped, and the queued message is still
+ *      `recorded` (not stamped `undeliverable`) until the store takes it.
+ *   E. the operator's command in that state. With the store still locked and
+ *      the deferring process already gone, `status` cannot read the journal and
+ *      prints the deferral from the file beside it, then exits non-zero: the
+ *      reason the fleet is idle survives the thing it is written about.
  *
  * The facts are read back with raw SQL over the file through `node:sqlite`, not
  * through the journal's own accessors: an instrument that shares the code under
@@ -34,8 +47,8 @@
  */
 
 import { strict as assert } from "node:assert";
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -45,6 +58,7 @@ import { openJournal } from "../../../scripts/fleet/journal.mjs";
 import { Supervisor } from "../../../scripts/fleet/supervisor.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
+const CLI = fileURLToPath(new URL("../../../scripts/fleet/cli.mjs", import.meta.url));
 /** Enough asks that the drain does real work; the lock, not the count, is the subject. */
 const ASK_COUNT = 20;
 
@@ -99,7 +113,19 @@ function readFacts(root) {
       db.prepare("SELECT COUNT(*) AS n FROM (SELECT token FROM inbox WHERE kind = 'answer' GROUP BY token HAVING COUNT(*) > 1)").get().n,
     );
     const json = (key) => (meta[key] ? JSON.parse(meta[key]) : null);
-    return { meta, asks, answers, duplicatedTokens, deferred: json("drain_deferred"), waited: json("drain_contention") };
+    const sidecar = join(root, "store-deferred.json");
+    const late = db.prepare("SELECT state FROM inbox WHERE msg_id = 'm-late'").get() ?? null;
+    return {
+      meta,
+      asks,
+      answers,
+      duplicatedTokens,
+      deferred: json("store_deferred"),
+      // The fact a store that cannot be written leaves beside itself.
+      onDisk: existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, "utf8")) : null,
+      lateState: late?.state ?? null,
+      waited: json("drain_contention"),
+    };
   } finally {
     db.close();
   }
@@ -242,7 +268,7 @@ if (process.argv[2] === "--drain") {
     let claimed = null;
     let threw = null;
     try {
-      claimed = supervisor.drainExpiredAsks().length;
+      claimed = (options.maintenance ? supervisor.maintenance() : supervisor.drainExpiredAsks()).length;
     } catch (error) {
       threw = error.message;
     }
@@ -356,8 +382,15 @@ function check(name, body) {
     assert.equal(during.answers, 0, "no answer row was queued");
     assert.equal(during.asks.open ?? 0, ASK_COUNT, `open asks: ${JSON.stringify(during.asks)}`);
   });
-  check("C: the deferral is not claimed to be on disk while the store is locked", () => {
+  check("C: the journal does not claim a deferral while the store is locked", () => {
     assert.equal(during.deferred, null, "nothing could be written to a locked store");
+  });
+  check(`C: while the store is locked the deferral is beside it, where status reads it (${during.onDisk?.what})`, () => {
+    assert.ok(during.onDisk, "a drain that gave up left nothing an operator can read");
+    assert.equal(during.onDisk.what, "drain", "the fact names the pass that could not write");
+    assert.equal(during.onDisk.attempts, 2, "the fact names the attempts it spent");
+    assert.ok(during.onDisk.waitedMs > 0, "the fact names how long it waited");
+    assert.match(String(during.onDisk.error), /locked|busy/i, `the fact quotes the error: ${during.onDisk.error}`);
   });
 
   assert.equal((await exitWithin(run.holder, 10_000, "the lock holder")).code, 0, `the holder exits: ${run.holder.stderr}`);
@@ -375,12 +408,118 @@ function check(name, body) {
     assert.equal(secondExit.code, 0, "the process that gave up and then recovered exits 0: a deferral is not a crash");
   });
   check(`C: the deferral is journalled once the store accepts a write (attempts ${after.deferred?.attempts})`, () => {
-    assert.ok(after.deferred, "a drain that could not finish left no drain_deferred row behind");
+    assert.ok(after.deferred, "a drain that could not finish left no store_deferred row behind");
+    assert.equal(after.deferred.what, "drain", "the journalled fact still names the pass");
     assert.equal(after.deferred.attempts, 2, "the fact names the attempts the drain spent");
     assert.ok(after.deferred.waitedMs > 0, "the fact names how long it spent");
     assert.match(String(after.deferred.error), /locked|busy/i, `the fact quotes the error: ${after.deferred.error}`);
     assert.ok(after.deferred.recoveredAt > after.deferred.at, "the later drain marked the deferral as recovered");
+    assert.equal(after.onDisk, null, "and the file beside the store is gone: the journal holds the fact now");
   });
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── D. the tick's second maintenance pass: recorded, not thrown ─────────
+//
+// The measured tick deferred its drain and then died throwing `database is
+// locked` from the sweep after it, which left an overdue ask open with nothing
+// saying why. The sweep has the same budget as the drain now, and meeting the
+// lock is a fact rather than an exception: the next tick retries the pass.
+{
+  const root = mkdtempSync(join(tmpdir(), "fleet-drain-sweep-"));
+  seed(root, 3);
+  // A message queued for a node that is done can never be carried, so the sweep
+  // has a write of its own to make after the drain has given up on one.
+  {
+    const journal = openJournal(root);
+    journal.addNode({
+      nodeId: "late",
+      parentId: null,
+      projectRoot: root,
+      charterPath: join(root, "charter.md"),
+      driver: "scripted",
+      driverConfig: "{}",
+    });
+    journal.setNodeState("late", "done");
+    journal.addMessage({ msgId: "m-late", nodeId: "late", kind: "user", body: "too late to matter" });
+    journal.close();
+  }
+  const holdMs = 1_200;
+  const run = await drainWhileLocked(root, holdMs, {
+    drainBusyTimeoutMs: 200,
+    drainAttempts: 1,
+    drainBackoffMs: 100,
+    maintenance: true,
+    rounds: 2,
+  });
+  const during = readFacts(root);
+
+  check("D: a maintenance pass that cannot write does not throw", () => {
+    assert.equal(run.report.threw, null, `the pass threw: ${run.report.threw}`);
+  });
+  check(`D: the deferral names the pass that met the lock (${during.onDisk?.what})`, () => {
+    assert.equal(during.deferred, null, "the journal could not take it either");
+    assert.ok(during.onDisk, "the pass that could not write left nothing behind");
+    assert.equal(during.onDisk.what, "undeliverable sweep", "the fact names the sweep, not the drain before it");
+    assert.match(String(during.onDisk.error), /locked|busy/i, `the fact quotes the error: ${during.onDisk.error}`);
+  });
+  check("D: the work is still open and the message is not yet stamped", () => {
+    assert.equal(during.answers, 0, "no answer row was queued");
+    assert.equal(during.asks.open ?? 0, 3, `open asks: ${JSON.stringify(during.asks)}`);
+    assert.equal(during.lateState, "recorded", "the sweep did not run, so the message is not stamped undeliverable");
+  });
+
+  assert.equal((await exitWithin(run.holder, 10_000, "the lock holder")).code, 0, `the holder exits: ${run.holder.stderr}`);
+  run.drainer.child.stdin.write("go\n");
+  const second = await run.drainer.nextReport();
+  const secondExit = await exitWithin(run.drainer, 10_000, "the maintenance process");
+  const after = readFacts(root);
+  check(`D: the next pass does both halves of the work (drain ${second.claimed}, exit ${secondExit.code})`, () => {
+    assert.equal(second.threw, null, `the retried pass threw: ${second.threw}`);
+    assert.equal(second.claimed, 3);
+    assert.equal(after.asks.open ?? 0, 0);
+    assert.equal(after.lateState, "undeliverable", "the retried sweep stamped the message no turn can carry");
+  });
+  check("D: the deferral ends up in the journal, with the file beside the store gone", () => {
+    assert.ok(after.deferred, "the retried pass journalled nothing");
+    assert.equal(after.deferred.what, "undeliverable sweep");
+    assert.ok(after.deferred.recoveredAt > after.deferred.at, "the later pass marked it recovered");
+    assert.equal(after.onDisk, null, "the file is removed once the journal holds the fact");
+  });
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ── E. the operator's command while the store is still unreadable ────────
+//
+// The fact exists to be read in exactly this state: another process holds the
+// write lock, the pass that could not write is gone, and `status` cannot open
+// the journal. It still has to say why nothing moved.
+{
+  const root = mkdtempSync(join(tmpdir(), "fleet-drain-status-"));
+  seed(root, 1);
+  const holdMs = 13_000;
+  const run = await drainWhileLocked(root, holdMs, {
+    drainBusyTimeoutMs: 200,
+    drainAttempts: 1,
+    drainBackoffMs: 100,
+    maintenance: true,
+    rounds: 1,
+  });
+  // The measured death: one pass, then the process ends holding nothing but the
+  // file it wrote.
+  const drainerExit = await exitWithin(run.drainer, 10_000, "the maintenance process");
+  const started = Date.now();
+  const status = spawnSync(process.execPath, [CLI, "status", "--root", root], { encoding: "utf8", timeout: 30_000 });
+  const elapsedMs = Date.now() - started;
+
+  check(`E: status names the deferral while the store is unreadable (exit ${status.status}, ${elapsedMs}ms)`, () => {
+    assert.equal(drainerExit.code, 0, `the deferring process exits 0: ${run.drainer.stderr}`);
+    assert.equal(status.status, 1, `status exits non-zero when its report is partial: ${status.stdout}`);
+    assert.match(String(status.stdout), /store unreadable: /, `status does not say the store could not be read: ${status.stdout}`);
+    assert.match(String(status.stdout), /deferred \d{4}-/, `status printed no deferral: ${status.stdout}`);
+    assert.ok(elapsedMs > holdMs - 3_000, `status returned after ${elapsedMs}ms, before the ${holdMs}ms lock: it did not wait`);
+  });
+  assert.equal((await exitWithin(run.holder, 10_000, "the lock holder")).code, 0, `the holder exits: ${run.holder.stderr}`);
   rmSync(root, { recursive: true, force: true });
 }
 

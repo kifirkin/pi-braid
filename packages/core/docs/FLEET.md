@@ -53,9 +53,32 @@ used, and the inbox row records it:
 - **C** - no supervisor was running; the message waits in the journal for the
   next supervisor that drives the node.
 
+A turn retires a message only when the section the turn appends carries it: the
+supervisor takes the ids from that section, and checks them against the prompt
+before it writes anything. A charter that repeats the operator's instruction
+word for word is therefore not read as a delivery - the coincidence is the one
+thing this cannot be - and the message keeps waiting for a turn that really
+carries it.
+
 When a turn cannot carry a message at all (the node is done, or failed at its
 attempt bound), the supervisor stamps the row `undeliverable` and `status`
 counts it, rather than leaving a promise nobody keeps.
+
+## Leases
+
+A node is leased to one supervisor epoch at a time, so two supervisors never
+drive the same node. The lease is held for as long as its owner answers for it:
+exclusivity is the owner's liveness, not a clock, and reconciliation ends a
+predecessor's lease only once that owner is gone. A supervisor whose turn runs
+long - a tick under write contention can - keeps its node, which is the property
+a wall-clock expiry would have broken.
+
+The lease row therefore carries an `expires_at` column that means nothing. It is
+kept because the build that shipped schema version 1 writes it by name, so a
+store without it is a store that build cannot open; this build neither reads nor
+writes it, and a store from the previous version has the column relaxed to
+nullable with its stale values cleared the first time it is opened here. Read no
+expiry into it.
 
 ## Asks and deadlines
 
@@ -67,9 +90,13 @@ neither, and the drain is what a restart runs to recover.
 
 Two supervisors may drain the same root: the claim is a conditional update, so
 each overdue ask is answered exactly once and queued exactly once. If the store's
-write lock is held by someone else, the drain waits and retries; a drain that
-cannot finish is journalled as `drain_deferred` (with the attempts, the wait and
-the error) and only reported, never thrown at the process. `status` prints both
+write lock is held by someone else, the drain waits and retries; a pass that
+cannot finish is recorded as `store_deferred` (with the pass's name, the
+attempts, the wait and the error) and only reported, never thrown at the
+process. Because the store is exactly what cannot take that record, it is also
+written to `<fleet-root>/store-deferred.json` while the lock is held and moved
+into the journal by the first pass that gets through, so a supervisor killed with
+the fact in hand still leaves it where `status` reads it. `status` prints both
 facts when they exist.
 
 ## The journal
@@ -79,6 +106,14 @@ One file per fleet root, `<fleet-root>/fleet.sqlite`, in WAL mode with
 failure each column prevents are documented where they are defined -
 [`../scripts/fleet/journal.mjs`](../scripts/fleet/journal.mjs) - and this page
 does not restate them. Read them there before writing to a journal by hand.
+
+The store records the schema version that wrote it. Opening a store that records
+a version above the running build's is refused with one sentence naming both
+numbers, rather than opened and left to fail inside a statement: that store's
+shape belongs to a newer build, and the way forward is that build or a new root.
+Opening an older store migrates it and records the new version, and the previous
+build keeps its access: a rollback can open and write a store this build created,
+because the column it needs was kept rather than dropped.
 
 ## Where the code is
 

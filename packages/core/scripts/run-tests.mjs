@@ -60,9 +60,9 @@ const ALLOWANCES = new Map([
   [
     "fleet/test-drain-contention.mjs",
     {
-      ms: 60_000,
+      ms: 90_000,
       reason:
-        "three arms hold a real SQLite write lock in a second process for 6.2s, 1.2s and 2.5s, so the file is slow by construction and a loaded box can push it past the 30s default",
+        "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s), and one of them waits out that 13s from a status command, so the file spends about half a minute waiting on locks it holds itself and a loaded box can push it past the 30s default",
     },
   ],
 ]);

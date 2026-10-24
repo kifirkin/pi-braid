@@ -29,7 +29,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +43,14 @@ import { groupIsAlive, pidIsAlive, residentMb } from "./procs.mjs";
 export { ASK_SENTINEL, DONE_SENTINEL };
 
 export const NODE_STATES = ["settled", "waiting_on_child", "waiting_on_human", "failed", "done"];
+
+/**
+ * Where a maintenance fact goes when the store will not take the write: beside
+ * the journal, because a fact about a wedged store is the one fact the store
+ * cannot hold. `status` reads it, and the first pass that gets through copies it
+ * into the journal and removes it.
+ */
+export const DEFERRED_FILE = "store-deferred.json";
 
 /**
  * Why no future turn can carry a message for this node, or null.
@@ -97,6 +105,20 @@ function jsonMeta(meta, key) {
   if (!meta[key]) return null;
   try {
     return JSON.parse(meta[key]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The deferral a wedged or dead supervisor left beside the store, or null.
+ *
+ * Exported because `status` reads it too: when the store cannot be opened at all,
+ * this is the one fact about why the fleet is idle that is still readable.
+ */
+export function deferralFromDisk(root) {
+  try {
+    return JSON.parse(readFileSync(join(root, DEFERRED_FILE), "utf8"));
   } catch {
     return null;
   }
@@ -188,6 +210,46 @@ export const CHILD_FLAGS = [
   "off",
 ];
 
+/**
+ * The queue section of one prompt: the lines it appends for the messages the
+ * turn carries, and the ids those lines are.
+ *
+ * Both halves come out of one array here, and no other code builds the section
+ * by hand, so the answer to "what did this turn carry?" is the section that went
+ * into the prompt rather than a second reading of the finished text. That is the
+ * difference between a delivery and a coincidence: a charter written beside a
+ * queued message very often repeats the operator's instruction word for word,
+ * and a body found by search is not a message the model was given.
+ */
+export function queueSection(header, pending) {
+  const entries = pending.map((message) => ({ msgId: message.msg_id, line: `- ${message.body}` }));
+  return { header, lines: entries.map((entry) => entry.line), entries };
+}
+
+/**
+ * Which of the section's messages the prompt really carries.
+ *
+ * The builder already says what it appended, and the text has to agree: the
+ * section's own sentence must be there, and so must the message's own line. A
+ * turn kind that appends no section carries nothing, and a prompt that repeats a
+ * body in another section - above all a charter - is not read as one.
+ */
+export function carriedBy(prompt, section) {
+  if (section.entries.length === 0) return [];
+  if (!prompt.includes(section.header)) return [];
+  return section.entries.filter((entry) => prompt.includes(entry.line)).map((entry) => entry.msgId);
+}
+
+/** A prompt assembled around its queue section: the head, the section, the tail. */
+function withSection(head, section, tail = []) {
+  const lines = [...head];
+  if (section.entries.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(section.header, ...section.lines);
+  }
+  return { prompt: [...lines, ...tail].join("\n"), section };
+}
+
 /** The fleet preamble a node's first turn carries, before its charter body. */
 export function charterPrompt(node, body, pending = []) {
   const lines = [
@@ -203,11 +265,15 @@ export function charterPrompt(node, body, pending = []) {
   // A queued message is an operator's instruction for this node, and the first
   // turn is a turn: it rides along instead of waiting for a later one. The
   // charter keeps its shape, and the queue is a section of its own after it.
-  if (pending.length > 0) {
-    lines.push("", "The operator sent this before your first turn. It applies to this turn as well:");
-    for (const message of pending) lines.push(`- ${message.body}`);
-  }
-  return lines.join("\n");
+  return withSection(
+    lines,
+    queueSection("The operator sent this before your first turn. It applies to this turn as well:", pending),
+  );
+}
+
+/** The between-turns turn: the queued messages, and nothing else to read. */
+export function messagePrompt(pending) {
+  return withSection([], queueSection("FLEET MESSAGE.", pending), ["", "Act on it, then end your turn."]);
 }
 
 /**
@@ -246,12 +312,10 @@ export function recoveryPrompt({ node, interruptedTurn, completed, unknown, pend
   if (note && completed.length === 0 && unknown.length === 0) {
     lines.push("", "No effect had been recorded when the turn was interrupted.");
   }
-  if (pending.length > 0) {
-    lines.push("", "Messages waiting for you:");
-    for (const message of pending) lines.push(`- ${message.body}`);
-  }
-  lines.push("", "Continue the charter from its first unfinished step.");
-  return lines.join("\n");
+  return withSection(lines, queueSection("Messages waiting for you:", pending), [
+    "",
+    "Continue the charter from its first unfinished step.",
+  ]);
 }
 
 /**
@@ -325,14 +389,15 @@ export class Supervisor {
     const defaults = {
       cap: 3,
       tickMs: 250,
-      leaseTtlMs: 30_000,
       askTtlMs: 600_000,
       turnTimeoutMs: 300_000,
       maxAttempts: 3,
       idleExitMs: 5_000,
-      // The drain's contention policy. Two windows at the journal's own 10s
-      // timeout plus one backoff stay inside the 30s lease TTL, so a drain that
-      // is waiting cannot let its own lease lapse.
+      // The maintenance budget: how long a pass may spend meeting another
+      // process's write lock before it is recorded as deferred and left to a
+      // later tick. Two windows at ten seconds plus one backoff is the most a
+      // tick's maintenance can spend waiting. Nothing here bounds a lease: a
+      // lease is exclusive for as long as its owner answers (journal.mjs).
       drainAttempts: 2,
       drainBusyTimeoutMs: BUSY_TIMEOUT_MS,
       drainBackoffMs: 250,
@@ -345,6 +410,11 @@ export class Supervisor {
       piBin: "pi",
       naive: false,
       control: true,
+      // What a prompt appends for the messages it carries. The only caller that
+      // turns it off is the queue arm, which needs a prompt whose body appears
+      // somewhere else in the text; no flag maps to it, and it can only make a
+      // turn carry less.
+      queueSection: true,
       extensions: [],
       extraArgs: [],
     };
@@ -372,9 +442,12 @@ export class Supervisor {
     this.stopping = false;
     this.fences = [];
     this.idleSince = null;
-    // A drain that gave up and could not write its own record: the store was
-    // still locked. The fact is journalled at the first drain that can write.
-    this.pendingDrainDeferral = null;
+    // A maintenance pass that could not write: the store was locked when the
+    // fact was made. It is written beside the store at once and journalled at
+    // the first pass that gets through, so it outlives this process - the
+    // measured case is a tick that threw `database is locked` and left an
+    // overdue ask open with nothing saying why.
+    this.pendingStoreDeferral = null;
     // Resolved when this process has stopped itself because the fleet had
     // nothing left to do; the entry point exits on it rather than on a guess.
     this.done = new Promise((resolveDone) => {
@@ -509,13 +582,12 @@ export class Supervisor {
    *
    * Contention is waited out, not thrown. A drain that meets the store's write
    * lock waits out the journal's busy timeout, retries with a backoff, and
-   * reports a drain it could not finish as a journal fact
-   * (`drain_deferred`) instead of as an exception from a tick. The earlier
-   * shape was measured: two drainers on one store, a full-suite run, one of them
-   * `database is locked` and gone, and the asks it was there to drain stayed
-   * held. A supervisor whose drain throws does not drain that ask, and its
-   * caller is a tick handler, so the failure was a log line and a skipped
-   * maintenance pass.
+   * reports a drain it could not finish as a fact (`store_deferred`) instead of
+   * as an exception from a tick. The earlier shape was measured: two drainers on
+   * one store, a full-suite run, one of them `database is locked` and gone, and
+   * the asks it was there to drain stayed held. A supervisor whose drain throws
+   * does not drain that ask, and its caller is a tick handler, so the failure
+   * was a log line and a skipped maintenance pass.
    */
   drainExpiredAsks() {
     const started = Date.now();
@@ -537,7 +609,7 @@ export class Supervisor {
         if (!isBusyError(error)) throw error;
         const why = error.errstr ?? error.message;
         if (attempt >= attempts) {
-          this._recordDrainDeferral({ attempts: attempt, waitedMs: Date.now() - started, error: why });
+          this._recordStoreDeferral({ what: "drain", attempts: attempt, waitedMs: Date.now() - started, error: why });
           return [];
         }
         const backoffMs = this.options.drainBackoffMs * attempt;
@@ -602,7 +674,7 @@ export class Supervisor {
    * write lands, which is the earliest point the store can hold the fact at all.
    */
   _recordDrainContention({ attempt, waitedMs }) {
-    this._flushDrainDeferral(Date.now());
+    this._flushStoreDeferral(Date.now());
     if (attempt <= 1 && waitedMs < this.options.drainWaitReportMs) return;
     try {
       this.journal.transaction(
@@ -616,39 +688,80 @@ export class Supervisor {
     }
   }
 
+  /** The path a fact goes to when the store will not take it. */
+  deferredPath() {
+    return join(this.root, DEFERRED_FILE);
+  }
+
   /**
-   * Write a pending deferral, if one is pending. `recoveredAt` says whether a
-   * later drain got through, which is what tells a reader of the fact whether
-   * the work was done after all.
+   * The deferral as it stands: this process's, or one an earlier process left
+   * beside the store. Reading the file is what makes the fact survive a death,
+   * and it is also what lets the next supervisor finish the job.
    */
-  _flushDrainDeferral(recoveredAt) {
-    if (!this.pendingDrainDeferral) return false;
-    const fact = recoveredAt == null ? this.pendingDrainDeferral : { ...this.pendingDrainDeferral, recoveredAt };
+  _pendingDeferral() {
+    if (this.pendingStoreDeferral) return this.pendingStoreDeferral;
+    const onDisk = deferralFromDisk(this.root);
+    if (onDisk) this.pendingStoreDeferral = onDisk;
+    return this.pendingStoreDeferral;
+  }
+
+  /**
+   * Put the fact where it can be read with no lock: a file beside the journal.
+   *
+   * There is no second try if this fails - the store is unwritable and so is the
+   * root - so the log line is the last surface left, and it says so.
+   */
+  _writeDeferralFile(fact) {
+    const path = this.deferredPath();
     try {
-      this.journal.transaction(() => this.journal.setMeta("drain_deferred", JSON.stringify(fact)), {
-        busyTimeoutMs: Math.max(100, this.options.drainBackoffMs),
-      });
-      this.pendingDrainDeferral = null;
-      if (recoveredAt != null) this.log("fleet: the earlier drain deferral was journalled; a later drain completed the work");
-      return true;
+      writeFileSync(`${path}.tmp`, `${JSON.stringify(fact, null, 2)}\n`);
+      renameSync(`${path}.tmp`, path);
     } catch (error) {
-      this.log(`fleet: the drain deferral could not be journalled yet (${error.message}); the next drain retries it`);
-      return false;
+      this.log(`fleet: the deferral could not be written to ${path} (${error.code ?? error.message})`);
     }
   }
 
   /**
-   * A drain that gave up after its last attempt: the store stayed locked for
-   * the whole budget. This is a journal fact, not an exception, so the tick
-   * keeps ticking; the write lands here if the lock has freed in the meantime
-   * and is otherwise retried by the next drain that can write.
+   * Copy a pending deferral into the journal, if one is pending. `recoveredAt`
+   * says whether a later pass got the work done anyway, which is what tells a
+   * reader whether the store was merely busy or the work is still waiting.
+   *
+   * The file is removed only after the journal has the fact, so a crash between
+   * the two leaves it readable rather than losing it; the next pass writes it
+   * again.
    */
-  _recordDrainDeferral({ attempts, waitedMs, error }) {
-    this.pendingDrainDeferral = { at: Date.now(), attempts, waitedMs, error };
+  _flushStoreDeferral(recoveredAt) {
+    const pending = this._pendingDeferral();
+    if (!pending) return false;
+    const fact = recoveredAt == null ? pending : { ...pending, recoveredAt };
+    try {
+      this.journal.transaction(() => this.journal.setMeta("store_deferred", JSON.stringify(fact)), {
+        busyTimeoutMs: Math.max(100, this.options.drainBackoffMs),
+      });
+    } catch (error) {
+      this.log(`fleet: the deferral could not be journalled yet (${error.message}); the next pass retries it`);
+      return false;
+    }
+    this.pendingStoreDeferral = null;
+    rmSync(this.deferredPath(), { force: true });
+    if (recoveredAt != null) this.log("fleet: the earlier deferral was journalled; a later pass completed the work");
+    return true;
+  }
+
+  /**
+   * A maintenance pass that gave up on a locked store. The store cannot hold
+   * this fact - that is the fact - so it goes to the file first, then into the
+   * journal at the first moment the store accepts a write. It is not an
+   * exception: the tick keeps ticking, and the pass is retried.
+   */
+  _recordStoreDeferral({ what, attempts, waitedMs, error }) {
+    const fact = { at: Date.now(), what, attempts, waitedMs, error };
+    this.pendingStoreDeferral = fact;
+    this._writeDeferralFile(fact);
     this.log(
-      `fleet: drain gave up after ${attempts} attempt(s) in ${waitedMs} ms (${error}); the deferral is journalled when the store accepts a write`,
+      `fleet: ${what} could not write after ${attempts} attempt(s) in ${waitedMs} ms (${error}); recorded in ${DEFERRED_FILE} until the store takes it`,
     );
-    this._flushDrainDeferral(null);
+    this._flushStoreDeferral(null);
   }
 
   /**
@@ -701,6 +814,45 @@ export class Supervisor {
     }, this.options.tickMs);
   }
 
+  /**
+   * The tick's maintenance pass: the expired asks, then the queued messages no
+   * turn will ever carry.
+   *
+   * One named pass because it is the part of a tick another process's write lock
+   * can stall, and because both halves are retried by the next tick rather than
+   * failed for good - which is only true if the failure is recorded. Returns what
+   * the drain claimed, so a caller can say what the pass did.
+   */
+  maintenance() {
+    const expired = this.drainExpiredAsks();
+    this._maintenanceWrite("undeliverable sweep", () => this.retireUndeliverableMessages());
+    return expired;
+  }
+
+  /**
+   * One maintenance write, with a busy store recorded instead of thrown.
+   *
+   * The drain answers its own contention; the pass after it meets the same lock
+   * and has no policy of its own, and it used to throw into the tick's catch: one
+   * log line, no fact, and the rest of the tick skipped. A store that will not
+   * take the write is a fact an operator can read, and the next tick retries the
+   * pass. Anything that is not contention is a defect and stays an exception.
+   */
+  _maintenanceWrite(what, body) {
+    const started = Date.now();
+    try {
+      this.journal.withBusyTimeout(Math.max(100, this.options.drainBusyTimeoutMs), body);
+    } catch (error) {
+      if (!isBusyError(error)) throw error;
+      this._recordStoreDeferral({
+        what,
+        attempts: 1,
+        waitedMs: Date.now() - started,
+        error: error.errstr ?? error.message,
+      });
+    }
+  }
+
   async tick() {
     this.journal.heartbeatSupervisor(process.pid);
     for (const [nodeId, ctx] of this.active) {
@@ -708,12 +860,10 @@ export class Supervisor {
         nodeId,
         ownerPid: process.pid,
         epoch: this.epoch,
-        ttlMs: this.options.leaseTtlMs,
       });
       if (!renewed) this.log(`fleet: lease for ${nodeId} could not be renewed (ctx ${ctx.turnId})`);
     }
-    this.drainExpiredAsks();
-    this.retireUndeliverableMessages();
+    this.maintenance();
     if (this.active.size < this.options.cap) {
       for (const node of this.journal.listNodes()) {
         if (this.stopping || this.active.size >= this.options.cap) break;
@@ -868,7 +1018,6 @@ export class Supervisor {
       nodeId: node.node_id,
       ownerPid: process.pid,
       epoch: this.epoch,
-      ttlMs: this.options.leaseTtlMs,
     });
     if (!lease) return;
     const ctx = {
@@ -902,37 +1051,41 @@ export class Supervisor {
         return;
       }
       const pending = this.journal.pendingMessages(node.node_id);
+      // What the prompt is built with. The queue arm is the only caller that
+      // passes none while messages are waiting, and it does so to build the
+      // prompt the old carrier could not tell from a delivery: the body present
+      // in the text, and no section that put it there.
+      const queued = this.options.queueSection === false ? [] : pending;
       const turns = this.journal.turnsFor(node.node_id);
       const interrupted = turns.at(-1)?.state === "interrupted" ? turns.at(-1) : null;
-      let prompt;
+      let built;
       let promptKind = kind;
       if (kind === "recovery" && interrupted) {
-        prompt = recoveryPrompt({
+        built = recoveryPrompt({
           node,
           interruptedTurn: interrupted,
           completed: this.journal.settledEffects(interrupted.turn_id),
           unknown: this.journal
             .effects(interrupted.turn_id)
             .filter((effect) => effect.state === "unknown" || effect.state === "attempted"),
-          pending,
+          pending: queued,
           // In-process only, and no command-line flag maps to it: the
           // note-removal arm is the single caller that turns the note off.
           note: this.options.recoveryNote !== false,
         });
       } else if (kind === "message") {
-        prompt = ["FLEET MESSAGE.", ...pending.map((message) => `- ${message.body}`), "", "Act on it, then end your turn."].join(
-          "\n",
-        );
+        built = messagePrompt(queued);
       } else {
-        prompt = charterPrompt(node, this._charter(node), pending);
+        built = charterPrompt(node, this._charter(node), queued);
         if (kind === "naive") promptKind = "naive-replay";
       }
-      // The messages this prompt carries, asked of the text that is about to be
-      // journalled rather than of the branch that built it. The settle gate
-      // retires this list and nothing else, so a turn kind that forgets the
-      // queue cannot inherit a delivery it never made: the message keeps
-      // waiting, and the next turn that does carry it retires it.
-      ctx.carried = pending.filter((message) => prompt.includes(message.body)).map((message) => message.msg_id);
+      const prompt = built.prompt;
+      // The messages this turn carried, from the section the builder appended
+      // and the text that holds it - never from a search of the finished prompt
+      // for a body. A charter that repeats an operator instruction is not a
+      // delivery of the message that happens to say the same thing: the row
+      // keeps waiting, and the next turn that carries it retires it.
+      ctx.carried = carriedBy(prompt, built.section);
       this.journal.setNodeState(node.node_id, "waiting_on_child");
       const turnId = this.journal.beginTurn(node.node_id, {
         kind: promptKind,
@@ -1410,12 +1563,14 @@ export function buildStatus(journal, supervisor = null) {
       deadlineAt: ask.deadline_at,
     })),
     fences: JSON.parse(meta.fences ?? "[]"),
-    // The drain's two facts: a pass that could not finish, and a pass that had
-    // to wait for the store's lock. Both are journal rows, so an operator sees
-    // a supervisor struggling with the store without reading its log, and a
-    // deferral that a later drain completed says so rather than disappearing.
+    // The store's own account of a pass it would not take: a maintenance pass
+    // that could not finish, and one that had to wait for the lock. The journal
+    // is the first place to look and the file beside it the second, because the
+    // deferral is written while the journal cannot be - a reader that stops at
+    // the journal would see nothing exactly when the store is wedged.
     drain: {
-      deferred: jsonMeta(meta, "drain_deferred"),
+      deferred:
+        jsonMeta(meta, "store_deferred") ?? jsonMeta(meta, "drain_deferred") ?? deferralFromDisk(journal.root),
       waited: jsonMeta(meta, "drain_contention"),
     },
     resident,

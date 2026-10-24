@@ -137,14 +137,31 @@ check("a node budget refuses the next turn instead of warning about it", () => {
 });
 
 check("a lease is exclusive per node and epoch", () => {
-  const first = journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 1, ttlMs: 5_000 });
+  const first = journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 1 });
   assert.ok(first);
-  assert.equal(journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 2, ttlMs: 5_000 }), null);
+  assert.equal(journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 2 }), null);
   assert.equal(journal.liveLease("n1").epoch, 1);
   journal.releaseLease("n1", 1);
   assert.equal(journal.liveLease("n1"), null);
-  assert.ok(journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 2, ttlMs: 5_000 }));
+  assert.ok(journal.acquireLease({ nodeId: "n1", ownerPid: process.pid, epoch: 2 }));
   journal.releaseLease("n1", 2);
+});
+
+check("a lease is held until its owner lets go, not until a clock says so", () => {
+  journal.acquireLease({ nodeId: "n2", ownerPid: process.pid, epoch: 1 });
+  // An hour of no heartbeat is a lease nothing has refreshed, and a long-past
+  // expiry is a value the build that shipped the column would have written, and
+  // it still holds: exclusivity is the owner answering for the node, and
+  // reconciliation ends a lease by asking whether that owner is still there. The
+  // column is written here by the test alone - nothing in the fleet reads it - so
+  // a wall-clock bound would free a node whose child is still running.
+  journal.db.exec(
+    "UPDATE leases SET heartbeat_at = heartbeat_at - 3600000, expires_at = 1000 WHERE node_id = 'n2'",
+  );
+  assert.equal(journal.liveLease("n2")?.epoch, 1, "the stale lease is still the live one");
+  assert.equal(journal.acquireLease({ nodeId: "n2", ownerPid: process.pid, epoch: 2 }), null, "a second epoch is refused");
+  journal.releaseLease("n2", 1);
+  assert.equal(journal.liveLease("n2"), null, "and it is gone when its owner releases it");
 });
 
 check("a delivered message keeps the tier it was delivered at", () => {

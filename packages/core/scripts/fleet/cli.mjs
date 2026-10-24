@@ -40,8 +40,15 @@ import { closeSync, existsSync, mkdirSync, openSync, realpathSync } from "node:f
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { openJournal, resolveFleetRoot } from "./journal.mjs";
-import { buildStatus, controlSocketPath, DEFAULT_ANSWER, requestOnControlSocket, undeliverableReason } from "./supervisor.mjs";
+import { journalPath, openJournal, resolveFleetRoot } from "./journal.mjs";
+import {
+  buildStatus,
+  controlSocketPath,
+  DEFAULT_ANSWER,
+  deferralFromDisk,
+  requestOnControlSocket,
+  undeliverableReason,
+} from "./supervisor.mjs";
 import { pidIsAlive } from "./procs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -229,42 +236,75 @@ async function cmdStatus(args) {
   const live = await controlRequest(root, { op: "status" }, { timeoutMs: 1500 });
   let status = live?.ok ? live.data : null;
   let supervisor = "up";
+  let unavailable = null;
   if (!status) {
     supervisor = "down";
-    const journal = openJournal(root, {});
     try {
-      status = buildStatus(journal);
-    } finally {
-      journal.close();
+      const journal = openJournal(root, {});
+      try {
+        status = buildStatus(journal);
+      } finally {
+        journal.close();
+      }
+    } catch (error) {
+      // A store another process holds the write lock on for longer than this
+      // connection may wait cannot be read, and that is exactly when this
+      // command is run. The deferral beside the store needs no lock, so the
+      // reason the fleet stopped working survives the store being unreadable -
+      // which is the whole reason that fact is written there. The exit stays
+      // non-zero: what was printed is partial and says so.
+      const deferred = deferralFromDisk(root);
+      if (!deferred) throw error;
+      unavailable = error.message;
+      status = {
+        store: journalPath(root),
+        unavailable,
+        drain: { deferred },
+        nodes: [],
+        asks: [],
+        supervisors: [],
+        leases: [],
+        active: [],
+        fences: [],
+      };
     }
   }
   if (args.json) {
     console.log(JSON.stringify(status, null, 2));
+    if (unavailable) process.exitCode = 1;
     return;
   }
   printStatus(status, { supervisor });
+  if (unavailable) process.exitCode = 1;
 }
 
 function printStatus(status, { supervisor }) {
   const resident = status.resident ?? { pids: [], totalMb: 0 };
   console.log(`fleet store ${status.store}`);
-  console.log(
-    `schema ${status.schemaVersion}  supervisor ${supervisor}  epoch ${status.epoch ?? "-"}  cap ${status.cap ?? "-"}  active ${status.active.length}`,
-  );
-  console.log(
-    `resident ${resident.totalMb} MB over ${resident.pids.length} pids ${resident.pids.map((row) => `${row.pid}:${row.mb}`).join(" ") || "-"}`,
-  );
-  // The drain's own account of the store. A deferral is the record of a pass
-  // that could not finish, and a completed one says so rather than reading as
-  // an open failure; a wait is a supervisor that is contending for the write
-  // lock, which is worth seeing before a drain ever gives up.
+  if (status.unavailable) {
+    // The rows below the store line were unreadable; say so, then print what a
+    // lock-free read could still say.
+    console.log(`store unreadable: ${status.unavailable}`);
+  } else {
+    console.log(
+      `schema ${status.schemaVersion}  supervisor ${supervisor}  epoch ${status.epoch ?? "-"}  cap ${status.cap ?? "-"}  active ${status.active.length}`,
+    );
+    console.log(
+      `resident ${resident.totalMb} MB over ${resident.pids.length} pids ${resident.pids.map((row) => `${row.pid}:${row.mb}`).join(" ") || "-"}`,
+    );
+  }
+  // The store's own account of a pass it would not take. A deferral is the
+  // record of a pass that could not finish, and a completed one says so rather
+  // than reading as an open failure; a wait is a supervisor that is contending
+  // for the write lock, which is worth seeing before a pass ever gives up. The
+  // deferral names the pass, because the store can refuse more than one.
   if (status.drain?.deferred) {
     const deferred = status.drain.deferred;
     const outcome = deferred.recoveredAt
       ? `completed at ${new Date(deferred.recoveredAt).toISOString()}`
       : "still outstanding";
     console.log(
-      `drain deferred ${new Date(deferred.at).toISOString()}: ${deferred.attempts} attempt(s) in ${deferred.waitedMs} ms (${deferred.error}); ${outcome}`,
+      `${deferred.what ?? "drain"} deferred ${new Date(deferred.at).toISOString()}: ${deferred.attempts} attempt(s) in ${deferred.waitedMs} ms (${deferred.error}); ${outcome}`,
     );
   }
   if (status.drain?.waited) {
@@ -273,6 +313,7 @@ function printStatus(status, { supervisor }) {
       `drain waited ${waited.waitedMs} ms over ${waited.attempts} attempt(s) for the store lock, last at ${new Date(waited.at).toISOString()}`,
     );
   }
+  if (status.unavailable) return;
   console.log(`nodes ${status.nodes.length}:`);
   for (const node of status.nodes) {
     const effects = node.lastTurn ? JSON.stringify(node.lastTurn.effects) : "{}";

@@ -166,7 +166,7 @@ await check("the guard lets a settled run's effect go, so the window is the run 
 });
 
 await check("the recovery note names every unknown effect and says the guard will refuse a repeat", () => {
-  const note = recoveryPrompt({
+  const { prompt: note } = recoveryPrompt({
     node,
     interruptedTurn: { turn_id: interruptedTurn },
     completed: [],
@@ -181,7 +181,7 @@ await check("the recovery note names every unknown effect and says the guard wil
 });
 
 await check("suppressing the note is the only thing that removes the account", () => {
-  const silent = recoveryPrompt({
+  const { prompt: silent } = recoveryPrompt({
     node,
     interruptedTurn: { turn_id: interruptedTurn },
     completed: [],

@@ -12,6 +12,9 @@
  *   charter        a message queued before the first turn rides with it
  *   message        control: the between-turns turn still carries it
  *   recovery       control: a resumed turn still lists it
+ *   section        the carrier is the queue section, not a search of the text:
+ *                  a prompt that repeats the body with no section appended
+ *                  carries nothing, and the row is not retired
  *   steer          a tier A steer is retired by the turn it entered, and only
  *                  once the child ran the text: the ack alone records nothing
  *   retired        a message for a node that will never run again gets a
@@ -39,7 +42,7 @@ import { fileURLToPath } from "node:url";
 
 import { journalPath, openJournal, resolveFleetRoot } from "../../../scripts/fleet/journal.mjs";
 import { RpcDriver } from "../../../scripts/fleet/driver-rpc.mjs";
-import { controlSocketPath, Supervisor } from "../../../scripts/fleet/supervisor.mjs";
+import { carriedBy, charterPrompt, controlSocketPath, queueSection, Supervisor } from "../../../scripts/fleet/supervisor.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = resolve(HERE, "../../../scripts/fleet/cli.mjs");
@@ -233,7 +236,66 @@ await check("charter: the message is retired, and against the turn that carried 
   assert.equal(row.delivered_turn_id, turn.turn_id, "the record names the turn whose prompt carried it");
 });
 
-// ── control: the between-turns turn ─────────────────────────────────────────
+// ── the carrier is the section, not a search of the text ────────────────────
+//
+// Asking whether the prompt contains the body is a coincidence a charter can
+// produce on purpose: a charter written beside a queued message very often
+// repeats the operator's instruction. `queueSection: false` builds exactly the
+// prompt the old carrier could not tell from a delivery - the body in the text,
+// no section that put it there - and the row must not be charged for it.
+
+await check("the ids a turn carries are the section's, and a body elsewhere is not", () => {
+  const node = { node_id: "n-section" };
+  const message = { msg_id: "m-section", body: BODY };
+  // The same body above the queue: present twice, carried once.
+  const both = charterPrompt(node, `Instruction already in force: ${BODY}`, [message]);
+  assert.deepEqual(carriedBy(both.prompt, both.section), ["m-section"], "the section carries the message once");
+  const charterOnly = charterPrompt(node, `Instruction already in force: ${BODY}`, []);
+  assert.ok(charterOnly.prompt.includes(BODY), "the body is in the prompt");
+  assert.deepEqual(carriedBy(charterOnly.prompt, charterOnly.section), [], "and nothing was carried");
+});
+
+await check("a reported section the prompt does not hold is not believed", () => {
+  const section = queueSection("Messages waiting for you:", [
+    { msg_id: "m-one", body: "one" },
+    { msg_id: "m-two", body: "two" },
+  ]);
+  const whole = ["a head", "", section.header, ...section.lines].join("\n");
+  assert.deepEqual(carriedBy(whole, section), ["m-one", "m-two"]);
+  assert.deepEqual(carriedBy(`a head\n${section.lines.join("\n")}`, section), [], "no section sentence, no delivery");
+  const partial = ["a head", "", section.header, section.lines[0]].join("\n");
+  assert.deepEqual(carriedBy(partial, section), ["m-one"], "one line short is one message short");
+});
+
+const sectionRoot = freshRoot("section");
+registerNode(sectionRoot, {
+  charter: `Read the operator's instruction, then finish.\n\nInstruction already in force: ${BODY}\n`,
+});
+const sectionQueued = fleet(sectionRoot, "inject", "n1", BODY);
+const sectionId = sectionQueued.stdout.match(/recorded (\S+)/)?.[1] ?? "";
+const sectionSupervisor = supervisorFor(sectionRoot, { queueSection: false });
+await sectionSupervisor.start();
+await settle(() => nodeOf(sectionRoot)?.state === "done");
+await sectionSupervisor.stop();
+
+await check("section: a body in the charter, with the queue omitted, is not a delivery", () => {
+  assert.ok(sectionId, `the message id is printed: ${sectionQueued.stdout}`);
+  const turns = turnsOf(sectionRoot, "n1");
+  assert.equal(turns.length, 1, `one turn: ${turns.map((turn) => turn.kind).join(", ")}`);
+  assert.equal(turns[0].kind, "charter");
+  assert.ok(turns[0].prompt_text.includes(BODY), "the body is in the prompt, which is why the old test passed");
+  assert.doesNotMatch(
+    turns[0].prompt_text,
+    /It applies to this turn as well/,
+    "the section that would have carried it was not appended",
+  );
+  const row = inboxRow(sectionRoot, sectionId);
+  assert.equal(row.delivered_turn_id, null, "no turn is credited with carrying it");
+  assert.equal(row.delivered_tier, null, "no tier is recorded for it");
+  assert.notEqual(row.state, "consumed", `the row is not retired as read: it is ${row.state}`);
+});
+
+// ── control: the between-turns turn ──────────────────────────────────────────
 //
 // A node that already finished a turn and has an unread message is driven by a
 // `message` turn. That path predates the queue's new reach and has to keep working,
