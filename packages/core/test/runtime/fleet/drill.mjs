@@ -723,7 +723,7 @@ function startStubModel(plan) {
         res.writeHead(404).end();
         return;
       }
-      let payload = {};
+      let payload;
       try {
         payload = JSON.parse(body);
       } catch {
@@ -929,7 +929,7 @@ async function noNoteArm({ guard = true } = {}) {
   });
   try {
     await supervisor.start();
-    const after = await waitFor(
+    await waitFor(
       "the resumed turn to settle",
       () => {
         const [view] = journalView(root);
