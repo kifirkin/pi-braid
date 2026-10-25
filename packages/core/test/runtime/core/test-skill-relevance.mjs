@@ -28,6 +28,17 @@
  *      turn of a session: no cooldown, both slots free, so the number describes
  *      ranking rather than throttling.
  *
+ *   4. Session twins. The labelled set opens each session with its real
+ *      opening prompt, which is the one prompt that carries the task. The
+ *      class that measurement cannot see is the session whose first prompt
+ *      is thin and whose work happens later (a resume, an onboarding turn, a
+ *      continuation), because a keyword matcher has no signal there at all.
+ *      The twins quantify that class against the same expected skills, and
+ *      the current answer is zero: it is the measured premise of the skills
+ *      floor in the prompt, which does not depend on the task text matching.
+ *      The number is a measurement, not a floor, and it stays in the suite so
+ *      a matcher change that reaches a thin continuation becomes visible.
+ *
  * Run: npm test -w packages/core
  */
 
@@ -423,9 +434,15 @@ const CASES = [
   },
   { label: "status-chatter", prompt: "whats the latest state here?", expected: [] },
   {
+    // Relabelled from `[]`. This is the near-twin of a resumed session whose
+    // continuation prompt is this one with "observe, onboard" removed; that
+    // session then implemented a storefront across three work areas, so the
+    // skill whose own description covers writing and improving code applies.
+    // An empty label said no core skill applies to continuing work in a
+    // repository, which is only true if implementation is not a skill's job.
     label: "onboard-and-pick-up",
     prompt: "let's observe, onboard and pick up, then continue work here",
-    expected: [],
+    expected: ["software-engineer"],
   },
   {
     label: "provider-route-preference",
@@ -498,8 +515,64 @@ test("the labelled set has at least 20 prompt→expected-skill pairs", () => {
 
 test("recall@2 holds at or above the measured floor", () => {
   // Floor, not a ceiling: a corpus change that lowers it must move this number
-  // deliberately, with the labelled set re-read.
-  assert.ok(recall >= 56.5, `recall@2 ${recall.toFixed(1)}% below the 56.5% floor`);
+  // deliberately, with the labelled set re-read. The floor is a HIT COUNT, not
+  // a percentage: 13 of 24 expected skills is 54.17%, and pinning the rounded
+  // percentage made a correct measurement fail its own floor by 0.03. The
+  // floor moved here from 13/23 (56.5%) when the continuation near-twin above
+  // gained its expected skill: the same 13 hits over a larger set, and the
+  // matcher still picks nothing for that prompt. A drop below 13 hits is a
+  // matcher regression; the 23 -> 24 denominator is a labelling correction.
+  assert.ok(expectedHit >= 13, `recall@2 ${expectedHit}/${expectedTotal} holds ${expectedHit} of the 13 hits`);
+});
+
+// ── 3b. session twins ──────────────────────────────────────────────────────
+
+/**
+ * The thin continuation prompt, reused for every twin: it is the recorded
+ * first prompt of a resumed session that went on to do a full task, and no
+ * continuation prompt was recorded for the other sessions in the set.
+ * Inventing one per case would measure the fixture author, not the matcher.
+ */
+const CONTINUATION_PROMPT = "let's pick up recent state and continue work here";
+
+const TWINS = CASES.filter((c) => c.expected.length > 0).map((c) => ({
+  label: c.label,
+  expected: c.expected,
+}));
+
+const twinRows = [];
+let twinExpected = 0;
+let twinHit = 0;
+let twinAdmitted = 0;
+for (const twin of TWINS) {
+  const { picks, admitted } = rank(CONTINUATION_PROMPT);
+  const hit = twin.expected.filter((e) => picks.includes(e)).length;
+  twinExpected += twin.expected.length;
+  twinHit += hit;
+  twinAdmitted += admitted;
+  twinRows.push({ case: twin.label, expected: twin.expected.join(","), picked: picks.join(",") || "—" });
+}
+
+console.log("\nsession twins (same expected skills, thin continuation prompt):");
+console.table(twinRows.slice(0, 6));
+console.log(
+  `twin recall@2 = ${twinHit}/${twinExpected} = ${((100 * twinHit) / twinExpected).toFixed(1)}% | admissions on the continuation prompt = ${twinAdmitted}`,
+);
+
+test("the thin continuation admits no skill at all", () => {
+  // The mechanism, not just the outcome: no skill qualifies, so no ranking
+  // could have rescued the session. A threshold or gate change that starts
+  // admitting skills on a 49-character continuation shows up here.
+  assert.equal(rank(CONTINUATION_PROMPT).admitted, 0, "the continuation prompt now admits a skill");
+});
+
+test("the session twins reach no expected skill (the class the floor serves)", () => {
+  assert.equal(twinExpected, 24, `the twin set covers ${twinExpected} expected skills`);
+  assert.equal(
+    twinHit,
+    0,
+    `a thin continuation now reaches ${twinHit} expected skill(s): the floor's premise changed`,
+  );
 });
 
 const outcome = (label) => {

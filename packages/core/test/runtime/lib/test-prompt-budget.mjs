@@ -74,7 +74,7 @@ const {
 // its guard travel with the tool that owns the strategy). The mechanical
 // trigger's worked examples are derived from the inputs, so the test feeds
 // a fixed synthetic catalog to keep the assembly environment-free.
-const { SKILLS_DISCOVERY_RULE, SKILLS_POINTER_RULE, mechanicalTriggerExamples, skillsLoadingText } =
+const { skillsCatalogRule, SKILLS_POINTER_RULE, mechanicalTriggerExamples, skillsLoadingText } =
   await import(join(ROOT, "dist", "extensions", "core", "skills-tool", "loading-guidance.js"));
 
 // Surface discipline is its own prompt-builder section file; the handler
@@ -165,10 +165,18 @@ const CONTEXT_NAV_GUARD_TOOLS = [
 // TOOL_GUIDELINES key) but is active in every real session; including it
 // gives the skills-loading derivation a real pair to render.
 const HERDR_FAMILY_TOOLS = ["herdr_agent", "herdr_layout", "herdr_pane"];
-// Fixed synthetic catalog for the derived trigger examples (the real catalog
-// is runtime state). It mirrors today's relevant shape with stable names:
-// a herdr skill exists; no memory or session skill does.
+// Fixed synthetic catalog for the floor's rows and the derived trigger
+// examples (the real catalog is runtime state). It mirrors today's relevant
+// shape with stable names: a herdr skill exists; no memory or session skill
+// does. The rows live under one synthetic pack, so the section states that
+// root.
 const SKILL_NAMES = ["herdr-topology", "placement-discipline", "pi-reference"];
+const SYNTHETIC_PACK = "/catalog";
+const SKILL_ROWS = SKILL_NAMES.map((name) => ({
+  name,
+  description: `Synthetic row for ${name}.`,
+  filePath: `${SYNTHETIC_PACK}/${name}/SKILL.md`,
+}));
 const ALL_TOOLS = [
   ...new Set([
     ...DOC_TOOLS,
@@ -306,9 +314,9 @@ async function assemblePrompt({ toolNames, projectDocs = [], toolGuidelines = {}
     ),
 
     // 2. skills-loading — guarded by read + list_skills (as in index.ts);
-    //    the derived trigger examples consume the same fixed inputs.
+    //    the floor renders every row of the fixed catalog.
     ...(hasRead && hasListSkills
-      ? [simpleSection("skills-loading", skillsLoadingText(toolNames, SKILL_NAMES))]
+      ? [simpleSection("skills-loading", skillsLoadingText(toolNames, SKILL_ROWS))]
       : []),
 
     // 3. guidelines (dedup: true in production builder).
@@ -409,7 +417,7 @@ describe("prompt-builder (structural de-dup regression guard)", () => {
     // Skills-loading is a multi-line section — count as a whole block. The
     // text is the builder's output over the same fixed inputs the assembly
     // consumed (byte-identical by construction).
-    const sectionText = skillsLoadingText(ALL_TOOLS, SKILL_NAMES).trim();
+    const sectionText = skillsLoadingText(ALL_TOOLS, SKILL_ROWS).trim();
     const ndl = output.split(sectionText).length - 1;
     assert.equal(ndl, 1, "skills-loading directive must appear exactly once");
     // Strategy contract: pointer rule, mid-task re-list trigger,
@@ -419,8 +427,8 @@ describe("prompt-builder (structural de-dup regression guard)", () => {
       "pointer rule must render",
     );
     assert.ok(
-      output.includes("call list_skills again (catalog is paginated)"),
-      "mid-task re-list trigger must render",
+      !output.includes("call list_skills again"),
+      "the re-list trigger is superseded: the whole catalog is in the prompt",
     );
     assert.ok(
       output.includes("never act from memory of a skill's contents"),
@@ -545,12 +553,16 @@ describe("prompt-builder (structural de-dup regression guard)", () => {
     );
     assert.ok(output.includes("- read: "), "at least one tool one-liner must be present");
     assert.ok(
-      output.includes("You discover skills on demand, not in advance:"),
-      "skills-loading guidance must be present",
+      output.includes("This catalog is every installed skill"),
+      "the skills floor must be present",
     );
     assert.ok(
-      output.includes("call list_skills once"),
-      "skills-loading must carry the task-start catalog trigger (round-2 deeper dive)",
+      output.includes("read the WHOLE SKILL.md before acting in that domain"),
+      "the floor must carry the read obligation",
+    );
+    assert.ok(
+      output.includes(`- ${SKILL_ROWS[0].name}: ${SKILL_ROWS[0].description}`),
+      "the floor must render a row per skill",
     );
     assert.ok(output.includes("Available tools:"), "tools section header must be present");
     // The standalone resources section stays deleted. The only resource
@@ -977,7 +989,9 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
     // The arrow target keeps the skill's own casing (case-insensitive match).
     assert.deepEqual(mechanicalTriggerExamples(["x_ray"], ["X-Ray-Viewer"]), ["`x_ray` → X"]);
     assert.ok(
-      skillsLoadingText(["herdr_layout"], ["herdr-topology"]).includes(
+      skillsLoadingText(["herdr_layout"], [
+        { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+      ]).includes(
         "(`herdr_layout` → herdr) → read that SKILL.md before the first call in the family.",
       ),
       "the trigger renders the computed pair inline",
@@ -990,7 +1004,9 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
       [],
       "no skill token matches the memory/session families",
     );
-    const trigger = skillsLoadingText(["memory_store", "session_health"], ["herdr-topology"])
+    const trigger = skillsLoadingText(["memory_store", "session_health"], [
+      { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+    ])
       .split("\n")
       .find((l) => l.startsWith("Mechanical trigger"));
     assert.equal(
@@ -1022,13 +1038,17 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
     );
   });
 
-  it("an empty skill list yields the bare sentence (no parenthetical)", () => {
-    const text = skillsLoadingText(["memory_store"], []);
-    const trigger = text.split("\n").find((l) => l.startsWith("Mechanical trigger"));
-    assert.ok(trigger, "the trigger line must render");
-    assert.ok(!trigger.includes("("), "no parenthetical with an empty catalog");
+  it("an empty catalog renders no section", () => {
+    // The floor is a catalog: with nothing installed there is no section to
+    // render, rather than a section claiming to list every skill and listing
+    // none. A catalog that installs no tool-family-named skill still renders
+    // the trigger without a parenthetical (the case above).
+    assert.equal(skillsLoadingText(["memory_store"], []), "", "no catalog, no floor");
+    const text = skillsLoadingText(["memory_store"], [
+      { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+    ]);
     // Paragraphs 1 and 2 stay byte-stable (the pinned strategy text).
-    assert.ok(text.startsWith(SKILLS_DISCOVERY_RULE), "discovery rule renders first");
+    assert.ok(text.startsWith(skillsCatalogRule(SYNTHETIC_PACK)), "catalog rule renders first");
     assert.ok(text.includes(`\n\n${SKILLS_POINTER_RULE}\n\n`), "pointer rule renders second");
   });
 });

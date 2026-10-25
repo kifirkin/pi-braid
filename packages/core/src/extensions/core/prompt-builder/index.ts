@@ -38,7 +38,8 @@ import {
   reconstructProjectDocsSection,
   resetProjectDocsSectionCache,
 } from "./project-docs-section.js";
-import { setCachedSkills, getCachedVisibleSkillNames } from "../skills-tool/index.js";
+import { setCachedSkills } from "../skills-tool/index.js";
+import { getCachedVisibleSkills } from "../skills-tool/auto-inject.js";
 import { reconstructMemorySection, resetMemorySectionCache } from "./memory-section.js";
 import { gatherInstanceData, renderCompactInstance } from "./instance-composition.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
@@ -523,21 +524,16 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       surfaceDisciplineSection(),
       simpleSection("identity-core", [EPISTEMIC_STANCE, SELF_AUDIT, PHILOSOPHY].join("\n\n")),
 
-      // 2. Skills-loading directive (before guidelines, before tools).
+      // 2. Skills floor (before guidelines, before tools).
       //    Owned by the skills-tool module (loading-guidance.ts) and rendered
-      //    here. Guarded by read AND list_skills availability — the directive
-      //    instructs list_skills discovery + full-file read, so both tools
-      //    must be present. The trigger's worked examples are derived here
-      //    from the active tool names and the visible skill catalog (the
-      //    cache setCachedSkills populated above is the catalog's source of
-      //    truth); the text itself never hardcodes a tool or skill name.
+      //    here: the visible catalog itself, one row per skill, plus the
+      //    read rule and the mechanical trigger. Guarded by read AND
+      //    list_skills availability — the rule instructs a full-file read and
+      //    the trigger names the catalog, so both tools must be present. The
+      //    rows and the read root come from the live cache (setCachedSkills
+      //    above); an empty catalog renders no section at all.
       ...(hasRead && hasListSkills
-        ? [
-            simpleSection(
-              "skills-loading",
-              skillsLoadingText(toolNames, getCachedVisibleSkillNames()),
-            ),
-          ]
+        ? [simpleSection("skills-loading", skillsLoadingText(toolNames, getCachedVisibleSkills()))]
         : []),
 
       // 3. Guidelines (before tools, pi-core native pattern).

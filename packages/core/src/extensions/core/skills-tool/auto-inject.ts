@@ -88,6 +88,13 @@
  *      and surfaces the state through skill_stats instead of mutating the
  *      transcript.
  *   9. Best-effort: failures are non-fatal, logged at debug level.
+ *  10. Drift trigger: the visible catalog in the prompt is a snapshot of the
+ *      work's directory, not of the session. When the path-taking tools
+ *      accumulate entries in a new work area, one steer line re-points at the
+ *      catalog (at most DRIFT_MAX_FIRES a session, DRIFT_WINDOW_CALLS apart,
+ *      and never within that window of a suggestion or a SKILL.md read). The
+ *      rule and its bounds live in loading-guidance.ts beside the floor text
+ *      the line points at; this module only wires them to tool results.
  *
  * Structure matches the existing steer whisper pattern used by topic-drift,
  * turn-outcome, compaction-retry, context-lifecycle, and others.
@@ -114,6 +121,17 @@ import {
 } from "./session-records.js";
 import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
+import {
+  advanceDrift,
+  driftDirectoryFor,
+  driftPayload,
+  initialDrift,
+  noteDriftSurface,
+  recordDriftDrop,
+  recordDriftFire,
+  skillReadRoot,
+} from "./loading-guidance.js";
+import type { CatalogEntry, DriftTracker } from "./loading-guidance.js";
 
 const log = createLogger("skills-auto-inject");
 
@@ -265,6 +283,8 @@ interface AutoInjectState {
   currentTurn: number;
   /** True once the once-per-session profile hint whisper fired. */
   hintSent: boolean;
+  /** Where the work is going, for the drift trigger (loading-guidance.ts). */
+  drift: DriftTracker;
 }
 
 const STATE_KEY = "skills-auto-inject";
@@ -274,6 +294,7 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     injected: [],
     currentTurn: 0,
     hintSent: false,
+    drift: initialDrift(),
   }));
 }
 
@@ -304,6 +325,18 @@ let _skillsCache: CachedSkill[] = [];
 /** Called by index.ts's setCachedSkills to keep the auto-inject cache in sync. */
 export function updateSkillCache(skills: CachedSkill[]): void {
   _skillsCache = skills;
+}
+
+/**
+ * The visible catalog as the prompt floor renders it (see loading-guidance.ts):
+ * every cached skill model selection may route to, with the description and
+ * path the row needs. Read from this module because the cache lives here; the
+ * floor's read root is derived from the paths, never hardcoded.
+ */
+export function getCachedVisibleSkills(): CatalogEntry[] {
+  return _skillsCache
+    .filter((s) => !s.disableModelInvocation)
+    .map((s) => ({ name: s.name, description: s.description, filePath: s.filePath }));
 }
 
 // Keyword Extraction
@@ -1120,41 +1153,115 @@ export function resolveDiscoveryMode(ctx: ExtensionContext): DiscoveryState {
 
 // Main Handler
 
+/** The tool_result fields this module reads. */
+interface ToolResultEvent {
+  toolName?: string;
+  isError?: boolean;
+  input?: { path?: string };
+  content?: Array<{ text?: string }>;
+}
+
 /**
- * Register the auto-inject handler on before_agent_start plus the
- * read-tool load detector on tool_result.
+ * Count a SKILL.md read (the list→read load path) and mark the matching
+ * injection loaded (releases its slot and extends its cooldown: the skill is
+ * in the agent's context now). Returns the skill name when the read was one,
+ * so the caller can treat it as a skill surface.
+ */
+function detectSkillLoad(
+  ev: ToolResultEvent,
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+): string | undefined {
+  if (ev?.toolName !== "read") return undefined;
+  // A failed read returns the error text, not the file — counting it
+  // inflated `loaded` with phantom loads (the read-detector never saw
+  // the skill content, and no SKILL.md was opened).
+  if (ev.isError) return undefined;
+  const text = (ev.content ?? []).map((c) => c.text ?? "").join("\n");
+  const name = skillNameFromRead(ev.input?.path, text);
+  if (!name) return undefined;
+  const held = state.injected.find((i) => i.name === name && i.loadedTurn === undefined);
+  if (held) held.loadedTurn = state.currentTurn;
+  recordSkillLoad(ctx, name);
+  log.debug(`[skills-auto-inject] counted actual load of "${name}" via read`);
+  return name;
+}
+
+/**
+ * Fire the drift line when the work has moved into a new work area (the rule
+ * and its bounds live in loading-guidance.ts, beside the floor text the line
+ * points at). The floor is the catalog against the prompt that was in view;
+ * a session now reading and writing elsewhere has its catalog in the prompt
+ * and its task text elsewhere, and one line re-points at it.
+ *
+ * Guarded like the floor section itself: without read and list_skills there is
+ * no catalog in the prompt to point at, so nothing fires.
+ */
+function stepDrift(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  ev: ToolResultEvent,
+): void {
+  const target = advanceDrift(
+    state.drift,
+    driftDirectoryFor(ev?.toolName, ev?.input?.path, ctx.cwd ?? ""),
+  );
+  if (!target) return;
+  const toolNames = new Set(pi.getAllTools().map((t) => t.name));
+  if (!toolNames.has("read") || !toolNames.has("list_skills")) {
+    recordDriftDrop(state.drift);
+    return;
+  }
+  const delivered = sendTrackedMessage(
+    pi,
+    {
+      customType: "skills-drift",
+      content: [{ type: "text" as const, text: driftPayload(target, skillReadRoot(_skillsCache)) }],
+      display: true,
+      details: {
+        [BRAID_INJECTED]: true,
+        [BRAID_SOURCE]: "skills-auto-inject",
+        directory: target,
+      },
+    },
+    { delivery: "park", deliverAs: "steer" },
+    { type: "context", source: "skills-auto-inject" },
+    // The module's own budget is the bound (DRIFT_MAX_FIRES a session,
+    // DRIFT_WINDOW_CALLS between fires), so a suppression cap must not drop
+    // the line in a busy turn: that is exactly when the work is moving and
+    // the floor's snapshot goes stale.
+    { bypassFloodCap: true },
+  );
+  if (!delivered) {
+    recordDriftDrop(state.drift);
+    return;
+  }
+  recordDriftFire(state.drift, target);
+  log.info(
+    `[skills-auto-inject] drift line for ${target} (fire ${state.drift.fires}, call ${state.drift.calls})`,
+  );
+}
+
+/**
+ * Register the auto-inject handler on before_agent_start, the read-tool load
+ * detector and the drift trigger on tool_result.
  *
  * Call this from the skills-tool extension factory, after registering
  * the list_skills tool.
  */
 export function registerAutoInject(pi: ExtensionAPI): void {
-  // Count SKILL.md reads (the list→read load path) via the read tool, and
-  // per-skill: mark the matching injection as loaded (releases its slot and
-  // extends its cooldown — the skill is in the agent's context now).
+  // Two jobs per tool result. The load detector runs first: a SKILL.md read
+  // that just landed is a skill surface, and the drift guard must see it
+  // before it decides whether to speak.
   pi.on("tool_result", (event: unknown, ctx: ExtensionContext) => {
     try {
-      const ev = event as {
-        toolName?: string;
-        isError?: boolean;
-        input?: { path?: string };
-        content?: Array<{ text?: string }>;
-      };
-      if (ev?.toolName !== "read") return;
-      // A failed read returns the error text, not the file — counting it
-      // inflated `loaded` with phantom loads (the read-detector never saw
-      // the skill content, and no SKILL.md was opened).
-      if (ev.isError) return;
-      const text = (ev.content ?? []).map((c) => c.text ?? "").join("\n");
-      const name = skillNameFromRead(ev.input?.path, text);
-      if (name) {
-        const state = getState(ctx);
-        const held = state.injected.find((i) => i.name === name && i.loadedTurn === undefined);
-        if (held) held.loadedTurn = state.currentTurn;
-        recordSkillLoad(ctx, name);
-        log.debug(`[skills-auto-inject] counted actual load of "${name}" via read`);
-      }
+      const ev = event as ToolResultEvent;
+      const state = getState(ctx);
+      if (detectSkillLoad(ev, ctx, state)) noteDriftSurface(state.drift);
+      stepDrift(pi, ctx, state, ev);
     } catch {
-      // best-effort — never break the tool loop over a counter
+      // best-effort — never break the tool loop over a counter or a whisper
     }
   });
 
@@ -1299,6 +1406,11 @@ export function registerAutoInject(pi: ExtensionAPI): void {
         `[skills-auto-inject] Suggesting ${skillsToInject.map((s) => s.name).join(", ")} ` +
           `(turn ${state.currentTurn}, keywords: ${keywords.slice(0, 5).join(", ")})`,
       );
+
+      // A delivered suggestion is a skill surface: the drift trigger stays
+      // quiet for its window, because the pointer the trigger exists to
+      // supply has just landed.
+      noteDriftSurface(state.drift);
 
       for (const item of toInject) {
         state.injected.push({
