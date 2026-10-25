@@ -25,7 +25,61 @@
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+
+/**
+ * The fleet's only way in to SQLite, and the answer to what its import costs.
+ *
+ * `node:sqlite` says it is experimental on stderr, once per process, at the moment
+ * it is imported: true of every 24 release up to 24.14, and no longer true from
+ * 24.15, where the module became a release candidate and the warning stopped
+ * (measured: 24.0.0 and 24.14.0 warn, 24.15.0 and 24.22.1 are silent). The floor
+ * `engines` declares is 24.0.0, so without this block a user on the floor meets a
+ * warning nobody documented, and every command that asserts an empty stderr - the
+ * fleet's own arms among them - fails on a healthy run. Once Node's whole supported
+ * line is past 24.15 this block answers nothing and can be deleted with its test.
+ *
+ * Every process that opens a journal pays it: the four commands, the supervisor
+ * they start, the drivers, and the guard extension. One import, answered once, is
+ * why they do not each need their own handling - `DatabaseSync` is re-exported for
+ * the guard rather than imported there a second time.
+ *
+ * The answer is matched on the warning's own type and text, and it lasts for the
+ * length of that import only: the original emitter is restored in `finally`, so a
+ * warning from any other module - another experimental API, a deprecation -
+ * reaches stderr exactly as it would without this file. The flags that would also
+ * remove this line, `--disable-warning` and `NODE_OPTIONS`, silence the whole
+ * ExperimentalWarning class for the entire process, which would hide those.
+ *
+ * A `warning` listener is not an alternative: it cannot suppress anything. Node's
+ * default printer is registered by the runtime, and it prints whether or not
+ * another listener exists (measured on 22.19.0, 22.23.4 and 24.0.0 - the listener
+ * sees the warning and stderr gets it too), so the emitter call itself is answered
+ * here, inside an import nobody else can route around.
+ */
+const SQLITE_WARNING_TYPE = "ExperimentalWarning";
+const SQLITE_WARNING_TEXT = "SQLite is an experimental feature and might change at any time";
+
+/** The runtime's emitter, with the SQLite import's one warning withheld. */
+function answerSqliteWarning(emit) {
+  return function (warning, type, ...rest) {
+    const text = typeof warning === "string" ? warning : warning?.message;
+    const name = type ?? warning?.name;
+    if (text === SQLITE_WARNING_TEXT && name === SQLITE_WARNING_TYPE) return undefined;
+    return emit.call(process, warning, type, ...rest);
+  };
+}
+
+async function importSqlite() {
+  const emit = process.emitWarning;
+  process.emitWarning = answerSqliteWarning(emit);
+  try {
+    return await import("node:sqlite");
+  } finally {
+    process.emitWarning = emit;
+  }
+}
+
+export const { DatabaseSync } = await importSqlite();
 
 /**
  * The shape a store has once `openJournal` returns.

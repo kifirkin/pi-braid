@@ -9,11 +9,20 @@ on:
 jobs:
   quality-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The same chain publish.yml runs, with the same allowance: a budget tighter
+    # than the release path's can only ever produce a false red, and a file the
+    # runner declares slow (three of them hold allowances of 90s to 150s) is
+    # legitimate work, not a hang. The suite is 301 files walked one at a time.
+    timeout-minutes: 30
 
     strategy:
+      # The Node line `engines` declares, and the one publish.yml runs, so the
+      # gate that reports red and the gate that decides a release see the same
+      # runtime. Change it here and in publish.yml together, and only to a
+      # version inside `engines`: a release whose gate ran on a version the
+      # manifest excludes is the defect this pin exists to prevent.
       matrix:
-        node-version: [22]
+        node-version: [24]
 
     steps:
       - uses: actions/checkout@v4

@@ -97,9 +97,8 @@
 
 import { appendFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
-import { effectKey, journalPath, replayPolicy } from "./journal.mjs";
+import { DatabaseSync, effectKey, journalPath, replayPolicy } from "./journal.mjs";
 
 /** The names the child reads. `off` is the switch, not an identifier. */
 export const GUARD_ENV = {

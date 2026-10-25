@@ -26,7 +26,7 @@ Core alone gives you the metacognitive layer. Add `skills` for the agent skill l
 
 | Tool            | Version    | Verify                     |
 | --------------- | ---------- | -------------------------- |
-| Node.js         | ≥ 22.19    | `node --version`           |
+| Node.js         | ≥ 24.0     | `node --version`           |
 | pi-coding-agent | installed  | `which pi && pi --version` |
 | npm             | bundled    | `npm --version`            |
 | git             | any recent | `git --version`            |

@@ -115,6 +115,27 @@ Opening an older store migrates it and records the new version, and the previous
 build keeps its access: a rollback can open and write a store this build created,
 because the column it needs was kept rather than dropped.
 
+## Node versions
+
+The journal is reached through one module,
+[`../scripts/fleet/journal.mjs`](../scripts/fleet/journal.mjs), which is also
+where the fleet answers what importing SQLite costs. `node:sqlite` says it is
+experimental on stderr, once per process, at the import: true of every 24 release
+before 24.15, and no longer true from 24.15, where the module became a release
+candidate and stopped saying it. The floor `engines` declares is 24.0.0, so the
+answer is installed at that import - the warning withheld by its own type and
+text, for the length of the import only, with the emitter restored in a `finally`
+so a warning from any other module still reaches stderr. It is not done with
+`--disable-warning` or `NODE_OPTIONS`, which remove the whole
+`ExperimentalWarning` class for the process and hide those along with it, and it
+cannot be done with a `warning` listener at all - Node's default printer is
+registered by the runtime and prints whether or not another listener exists.
+
+Both workflows run Node 24, the line `engines` declares, so the gate that reports
+red and the gate that decides a release see the same runtime. The answer costs
+nothing on 24.15 and above, and goes with its test once the whole supported line
+is past it.
+
 ## Where the code is
 
 | File                                                                           | What it owns                                                      |

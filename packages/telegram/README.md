@@ -70,7 +70,7 @@ One command, no clone, no build: `pi install` registers the package with pi and 
   most ONE poller per process (singleton). Owner messages are delivered as
   `[braid-whisper - telegram] ... [braid-whisper-end]` envelopes.
 
-Zero npm runtime dependencies: the client is built on Node 22's global fetch.
+Zero npm runtime dependencies: the client is built on the global fetch Node ships.
 No live credentials, no real network calls in the test suite (recorded-fixture
 fake fetch).
 
@@ -94,7 +94,7 @@ Or register the workspace in `~/.pi/agent/settings.json`:
   opt-in, and the tracked in-progress message fires only on an escalated inbound owner message.
 - It does not accept strangers. Only whitelisted chats/users are read, and only owner messages may
   be escalated to a turn.
-- It does not bundle a Telegram client library - the Bot API calls use Node 22's global fetch.
+- It does not bundle a Telegram client library - the Bot API calls use the global fetch Node ships.
 
 ## Activation preconditions
 

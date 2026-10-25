@@ -65,7 +65,7 @@
   },
   "homepage": "https://github.com/kifirkin/pi-braid/tree/main/packages/contrib",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=24.0.0"
   },
   "pi": {
     "extensions": [

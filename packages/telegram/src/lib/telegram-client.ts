@@ -1,5 +1,5 @@
 /**
- * Low-level Telegram Bot API client built on Node 22's global fetch.
+ * Low-level Telegram Bot API client built on the global fetch Node ships.
  *
  * Zero npm dependencies. Every method takes an injectable fetch (defaults to
  * `globalThis.fetch`) so tests can substitute a recorded-fixture fake without

@@ -11,7 +11,7 @@ For one-time setup, the full install-path catalog, and module toggling see
 
 | Tool | Version       | Verify                     |
 | ---- | ------------- | -------------------------- |
-| Node | ≥ 22.19       | `node --version`           |
+| Node | ≥ 24.0        | `node --version`           |
 | npm  | bundled       | `npm --version`            |
 | git  | any           | `git --version`            |
 | pi   | peer-resolved | `which pi && pi --version` |

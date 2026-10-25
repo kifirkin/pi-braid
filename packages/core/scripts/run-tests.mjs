@@ -19,6 +19,8 @@
  *   - ALLOWANCES gives a specific file a longer declared allowance; the
  *     reason is printed in the summary, so an allowance cannot hide
  *   - the environment overrides both without an edit (see readAllowances)
+ *   - FAILURE_OUTPUT_CHARS and FAILURE_OUTPUT_LINES bound how much of a failing
+ *     file's own output the run prints under it
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -31,6 +33,22 @@ const root = resolve(__dirname, "..");
 const testDir = resolve(root, "test/runtime");
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * How much of a failing file's own output the run prints under its line.
+ *
+ * The summary line names the file and, when the file printed one, its totals;
+ * the assertion text - the only place a failure says why - was dropped with the
+ * child's streams. A red run that names a file without its reason costs a second
+ * run to read, and on CI that is a round trip through a container to recover a
+ * message the process had already printed. Both bounds matter: the character
+ * cap keeps a driver that dumps a large payload from burying the totals that
+ * follow it, and the line cap keeps a file that logs every step from turning a
+ * four-line assertion into a page of progress. Node's own uncaught-assertion
+ * dump is about twenty lines, so forty lines carries a failure and its context.
+ */
+const FAILURE_OUTPUT_CHARS = 4_000;
+const FAILURE_OUTPUT_LINES = 40;
 
 /**
  * Per-file wall-clock allowances, keyed by path relative to test/runtime.
@@ -93,6 +111,54 @@ const SKIP = new Set([
 /** Durations as printed: 12000 -> "12s", 1500 -> "1.5s". */
 function formatMs(ms) {
   return ms % 1000 === 0 ? `${ms / 1000}s` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * The end of a file's own output, whole lines, under a line and character budget.
+ *
+ * The end is what carries the failure: a file prints its passes first and the
+ * assertion that died last. Lines are kept whole rather than cut at the budget,
+ * because a half-line is the one line a reader needs, except when a single line
+ * is itself over budget - then its own end is kept and marked. `dropped` counts
+ * the lines the budget left out so the printed block can say so.
+ *
+ * The child's two streams are joined here, since they arrive as separate pipes:
+ * their interleaving is lost, which is the price of capturing either at all.
+ */
+function endOfOutput(output, chars = FAILURE_OUTPUT_CHARS, count = FAILURE_OUTPUT_LINES) {
+  const text = String(output ?? "").replace(/\s+$/, "");
+  if (text === "") return { lines: [], dropped: 0 };
+  const all = text.split("\n");
+  const lines = [];
+  let used = 0;
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    const line = all[i];
+    if (lines.length >= count) break;
+    if (used + line.length + 1 > chars) {
+      if (lines.length === 0) lines.unshift(`...${line.slice(-chars)}`);
+      break;
+    }
+    lines.unshift(line);
+    used += line.length + 1;
+  }
+  return { lines, dropped: all.length - lines.length };
+}
+
+/**
+ * A file's own output under its result line, so the run reads as the failure
+ * rather than as its name. Bounded by endOfOutput, and the note names the one
+ * command that prints the rest.
+ */
+function printFileOutput(file, output) {
+  const { lines, dropped } = endOfOutput(output);
+  if (lines.length === 0) {
+    console.log("     it wrote nothing of its own");
+    return;
+  }
+  const omitted = dropped > 0 ? `, ${dropped} earlier line${dropped === 1 ? "" : "s"} omitted` : "";
+  console.log(`     its own output (${lines.length} line${lines.length === 1 ? "" : "s"}${omitted}):`);
+  for (const line of lines) console.log(`     | ${line}`);
+  console.log(`     (all of it: node test/runtime/${file})`);
 }
 
 /**
@@ -189,6 +255,7 @@ for (const t of tests) {
       ? ` (declared allowance ${formatMs(allowance.ms)}: ${allowance.reason})`
       : "";
     console.log(`  \u23F1 TIMEOUT ${label} ${t} \u2014 killed after ${formatMs(timeout)}${declared}`);
+    printFileOutput(t, `${result.stdout ?? ""}${result.stderr ?? ""}`);
     timedOut++;
     timeouts.push(t);
     continue;
@@ -215,6 +282,7 @@ for (const t of tests) {
       : `spawn failed: ${result.error?.code ?? "unknown"}`;
   }
   console.log(`  \u274C ${label} ${t} \u2014 ${summary || outcome}`);
+  printFileOutput(t, stdout + "\n" + stderr);
   failed++;
   failures.push(t);
 }

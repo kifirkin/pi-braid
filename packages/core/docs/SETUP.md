@@ -26,7 +26,7 @@ Complete reference for installing braid, configuring pi to load it, enabling com
 
 | Tool            | Version       | Verify                     |
 | --------------- | ------------- | -------------------------- |
-| Node.js         | ≥ 22.19       | `node --version`           |
+| Node.js         | ≥ 24.0        | `node --version`           |
 | pi-coding-agent | peer-resolved | `which pi && pi --version` |
 | npm             | bundled       | `npm --version`            |
 | git             | any recent    | `git --version`            |
