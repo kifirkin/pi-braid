@@ -43,6 +43,201 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.0 (2026-10-25: the skills catalog is in the prompt, and work that moves re-points it)
+
+### Core
+
+- **The skills catalog is rendered in the prompt** - the `skills-loading` section
+  now lists every visible skill as one `- name: description` row, with the read
+  path derived from the skills' own file paths, so a domain match is in front of
+  the model instead of behind a tool call it has to decide to make. A thin
+  opening prompt carries no domain vocabulary for the keyword scorer, and the
+  measured consequence on the class of sessions those prompts open is a skill
+  load rate of zero. The section measures 8,903 bytes / 2,226 estimated tokens on
+  this repository's 22-skill pack, and 11,366 bytes / 2,842 tokens on a live
+  27-skill two-pack catalog, against 756 bytes / 189 tokens before it: braid
+  suppresses pi's own catalog, so the floor is an addition of 8,147 to 10,610
+  bytes on every request rather than a swap. The rendered size carries the
+  install path, so the byte count moves with the checkout.
+- **Work that moves re-points the catalog** - a drift trigger in the `tool_result`
+  handler fires one steer line when the session's own read/edit/write calls
+  accumulate entries in a new work area, so a catalog rendered against one
+  directory re-points at itself when the work moves. Its bounds (two entries,
+  twelve calls between fires, three per session, quiet for the same window after
+  a skill surface) sit beside the text they point at.
+- **The floor has an instrument** - `packages/core/test/runtime/core/session-scan.mjs`
+  scans session transcripts and reports the thin-prompt read rate, drift latency,
+  and the bytes of skill surface injected per session; the floor text, the drift
+  sequence, the instrument and its twin labelled cases are each pinned by a test.
+
+## Core — 0.41.2 (2026-10-25: the runtime floor is Node 24, and a red file prints its own output)
+
+### Core
+
+- **The declared runtime floor is Node 24** - `engines` promised `>=22.19.0` in
+  all six manifests while the release ran on the 24 line, so the gate that
+  reports red and the gate that decides a release were never the same runtime.
+  The floor is `>=24.0.0` in the six manifests, the `ci.yml` matrix runs the line
+  `publish.yml` uses, and three requirement tables, two sentences of the telegram
+  README and one comment in its client follow it. `node:sqlite` says it is
+  experimental, once per process at import, on every 24 release before 24.15, so
+  on the floor `fleet status` answered correctly and still wrote a warning nobody
+  documented: `journal.mjs` withholds that one warning for the length of its
+  import, and is now the fleet's only importer of the module. The CI job's
+  timeout goes from 15 to 30 minutes, the allowance the release path already
+  gives the same chain.
+- **A failing test file prints its own output** - the runner named a red file and
+  its totals and dropped the assertion text with the child's streams, so reading
+  a red run meant repeating it, through a container on CI. A failing or timed-out
+  file now prints the end of its own output under its line, bounded to 40 lines
+  and 4,000 characters, with the number of lines it left out and the command that
+  prints the rest.
+
+## Core — 0.41.1 (2026-10-25: delivery by the queue section, a lease column nothing reads, a store version)
+
+### Core
+
+- **A queued message is retired only by the section that carried it** - the
+  carrier tested the body anywhere in the prompt, so a charter that repeated the
+  instruction word for word was read as a delivery even with the queue section
+  dropped. Each prompt builder now returns the section it appended together with
+  that section's ids, and the carrier checks the section's own sentence and each
+  message's line against the prompt. A turn kind that appends nothing carries
+  nothing, and the same plant leaves the row `recorded` with no delivery columns.
+- **The lease keeps `expires_at`, and no code reads it** - `liveLease` filtered on
+  state alone, so a lease a minute past its expiry still kept a second supervisor
+  off the node. Making the column authoritative would hand one node to two
+  drivers, since a legitimate tick ran 32.7s under write contention against the
+  30s the column is written with. It stays nullable and unwritten because the
+  schema-1 build names it in its lease INSERT, so dropping it would leave every
+  store this build writes unopenable by a rollback.
+- **The store records the shape it has and refuses a newer one** - a store
+  carrying a schema version above this build's is refused with one sentence,
+  rather than opened and failing inside a statement.
+- **A deferral is recorded beside the store** - a maintenance pass that met the
+  write lock deferred in memory only, the tick then threw `database is locked`
+  from the sweep after it, and an overdue ask stayed open with nothing an operator
+  could read. Both passes now share a bounded wait and record the deferral in
+  `store-deferred.json`, the one place writable while the journal is not; the
+  first pass that gets through copies it into the journal and removes the file,
+  and `status` prints the deferral it can read and exits non-zero on a store it
+  cannot open, so the reason the fleet is idle survives the state that produced
+  it.
+
+## Core — 0.41.0 / Telegram — 0.1.6 (2026-10-24: the supervisor fleet ships)
+
+### Core
+
+- **The fleet ships as a command** - `packages/core/scripts/fleet` was in the
+  repository and in no tarball: the manifest's allowlist stopped at `dist`,
+  `src`, `docs`, `skills` and four top-level files, so the supervisor and its
+  four operator commands existed only in a checkout. The allowlist now names
+  `scripts/fleet/**`, and a `bin` entry puts them on PATH as `pi-braid-fleet`,
+  named for the package because a bare `fleet` can be shadowed by unrelated
+  tooling. That entry exposed an entry-point test that could only be true in a
+  checkout: npm links a bin as a symlink, so `process.argv[1]` keeps the link's
+  spelling while `import.meta.url` names its target, which had made an installed
+  command load, match nothing and exit 0 in silence. The guide is
+  `packages/core/docs/FLEET.md`.
+- **The duplicated-effect guard refuses before the call runs** - a tool call whose
+  effect may already have applied is refused, within the run being resumed; a
+  queued message is consumed only when a turn's prompt carried it; and tier A is
+  written only from a driver's own delivery event rather than guessed at, so a
+  steer that was not delivered leaves its message to the next turn.
+- **The control channel and the asks** - the control channel keeps its ownership
+  straight in and out, an expired ask is claimed and its default queued in one
+  transaction, a live owner keeps its turn, and an idle supervisor leaves.
+- **A drain waits out the store lock instead of throwing** - the journal installs
+  its busy handler before anything that can block, and the drain records what it
+  did when it gets through.
+- **Packaging is held to a real artifact** - `test-pack-ships.mjs` packs the
+  manifest through `npm pack`, reads the tarball's file list, extracts it outside
+  the repository, and drives the four commands and a supervisor start from there.
+
+### Telegram
+
+- **The owner's reply reaches the envelope** - `IncomingOwnerMessage` carries an
+  optional `replyTo`: the replied message id, whether that message was ours or the
+  owner's, and a one-line excerpt capped at 120 characters, read once from the
+  update the poller already holds and inherited by every delivery variant (plain
+  text, photo, voice, document, and text+document). The envelope renders it
+  directly under the sender line, as prose the agent can quote back rather than a
+  field to parse, and the excerpt comes from `reply_to_message` itself rather than
+  a `getMessage` round trip, so the receive path gains no new failure mode. A
+  missing or malformed reply field degrades the reference and leaves the delivery
+  untouched.
+
+## Core — 0.40.6 (2026-10-23: version truth, post-compaction resume, the journal, fleet v0, self-tooling fixes)
+
+### Core
+
+- **The instance line names the running pi-core** - it read `pi-core vunknown` on
+  every session: the version came from a filesystem walk that resolves the running
+  entrypoint and searches its ancestors, and the managed install keeps that
+  entrypoint as a plain shell shim in `bin/` with the package in a sibling
+  `install/releases/<version>/node_modules` subtree, so the walk always
+  exhausted. It now reads the `VERSION` export, which names the library braid is
+  loaded into; the walk still supplies the binary, the package folder, and a
+  fallback version when the export is absent. The same pass re-derives the
+  extension-API guard's frozen surface from the installed declarations (seven
+  members it lacked) and removes a fabricated `ExtensionContext` augmentation
+  that declared members existing in neither version, inviting calls that would
+  compile and do nothing.
+- **The journal** - an append-only record a replacement seat can act on. The
+  writer owns the sequence number, assigned under the scratchpad's cross-process
+  store lock, the write time and the provenance, and refuses a decision without
+  its reason, a constraint without an expiry, or an evidence list that is empty
+  and not flagged unverified; supersession appends, leaving the earlier line
+  byte-identical. A separate checker with its own parser fails per structural
+  defect, and with `STALE` when a task was closed with no entry for it. The path
+  is derived once, so the writer, the checker and the session-start pointer
+  cannot name different files.
+- **Deferred compaction obeys one turn-boundary rule** - the rule that decides
+  whether a deferred `ctx.compact()` may abort a run at a turn end existed twice,
+  as a local predicate and as an inline copy, and both read a missing stop reason
+  as loop-done. It moves to `lib/events/turn-boundary.ts`, an allow-list over
+  `stopReason`; an unreadable or unrecognized boundary parks, and a caller holding
+  no boundary keeps the prior contract. The heartbeat's hand-off into the arm path
+  had no witness (deleting the argument left the suite green), so a fixture now
+  drives the real scheduler handler and reddens on exactly that deletion.
+- **The post-compaction resume** - `resume.json` is filled from the scratchpad
+  checkpoint log, and the resume wake stays above the whisper cap that had been
+  swallowing it.
+- **Fleet v0** - a journal-backed supervisor with four commands and a crash drill
+  that measures duplication, in `packages/core/scripts/fleet`.
+- **The presend guard joins by normalized id and can cap request bytes** - the
+  guard looked a request's model id up under the catalog's own spelling, so a
+  route sending `deepseek-v4.1-flash` against a catalog id `deepseek-v4-1-flash`
+  resolved to no window, and the arm that exists to stop a doomed send never ran
+  for that model. The index answers exact ids first and a lowercased dash-form key
+  second, dropping a normalized key that two catalog models would answer
+  differently with. A declared `maxRequestBytes` adds a byte arm over the
+  serialized payload, and one warn line per request above `reportBytesAbove`
+  carries the byte count, the model id and whether a cap exists.
+- **One compact instance line** - the line repeated the working directory pi
+  injects natively as `<cwd>` and had lost the fields that made older blocks
+  useful. It carries the loaded braid install root, the session model and
+  provider, the PID, the session id and true skill and memory counts under a
+  320-byte cap. The rule is written at the renderer and pinned by fixtures: the
+  system prompt is a cached prefix, so only process-stable facts belong there, and
+  the volatile statistics stay in the `system_info` tool.
+- **Three self-tooling reports that were untrue** - the heartbeat's verification
+  counter recognised tool names, so a session whose investigation ran through
+  `bash` probes counted as zero; the orchestrator's population-stamp parser
+  accepted one lowercase word as a unit, so a real stamp read as unreadable and a
+  merge ran with no recorded population; and the turn-end hygiene latch re-armed
+  against a 50% bar while the arm that fired was 45%, so one whisper re-injected
+  on every turn and the percent ladder never rendered from 45% upward.
+- **Reach before the read** - `list_skills` rows carry the price of the read they
+  name (lines, bytes, chars, estimated tokens, the file's headings with line
+  numbers, and the section count). The heading parse is fence-aware, because 45
+  of the pack's 293 heading-shaped lines sit inside code blocks, and measurements
+  are memoized on mtime and size, with read failures left uncached.
+- **A local voice path, measured** - `scripts/voice-spike/` holds the recorder,
+  the resident synthesiser and the batch harness that time the speech path end to
+  end on this machine: native throughout (`whisper.cpp`, AudioQueue), because
+  neither torch nor onnxruntime installs on Intel macOS.
+
 ## Core — 0.40.5 (2026-10-20: package discovery metadata)
 
 ### Core

@@ -30,7 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
+      # write, not read: the last step creates the GitHub release that names the
+      # version this run publishes. The publish itself reads no token from here
+      # (it exchanges the OIDC identity below), so this block is not a
+      # widening of the publishing credential.
+      contents: write
       id-token: write
 
     steps:
@@ -183,3 +187,46 @@ jobs:
               } >>"${GITHUB_STEP_SUMMARY}"
             fi
           done
+
+      # Last in the job on purpose: publishing is what the run is for, and this
+      # entry is bookkeeping. A failure here (token scope, API rate limit) must
+      # not sit in front of the npm publish it would otherwise block.
+      #
+      # Tag runs only. An iteration tag never reaches this job (the condition
+      # above refuses it), and a dispatch may publish versions whose tag the run
+      # does not name, so there is nothing to name the entry after.
+      - name: GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          version=$(node -p "require('./packages/core/package.json').version")
+
+          # A re-run, and a hand-made entry, are both harmless: an entry that
+          # already exists is left exactly as it is.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} already exists; leaving it as it is"
+            exit 0
+          fi
+
+          # The changelog section for this version is the notes source. Exit 2
+          # means no section names it, which is not an error: the entry is
+          # created from the commit list instead, so a release is never blocked
+          # on a missing section. Every other outcome (the argument is not a
+          # stable version, the changelog cannot be read) fails the step, since
+          # falling back there would hide a real defect in the run.
+          notes_file="$(mktemp)"
+          notes_status=0
+          node packages/core/scripts/release-notes.mjs "${version}" >"${notes_file}" || notes_status=$?
+          case "${notes_status}" in
+            0) notes=(--notes-file "${notes_file}") ;;
+            2) notes=(--generate-notes) ;;
+            *) echo "release-notes.mjs exited ${notes_status}"; exit 1 ;;
+          esac
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --verify-tag \
+            --title "pi-braid ${version}" \
+            "${notes[@]}"
