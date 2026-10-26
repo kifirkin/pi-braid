@@ -19,14 +19,28 @@
  *      or paths outside the project.
  *   4. Malformed input degrades: an unparseable line is skipped, a file with
  *      no session header is not a session.
- *   5. The instrument is not wired into the product: no file under `src/`
+ *   5. The clock: --since keeps a session by its own recorded start rather
+ *      than by the file's modification time, the two filters compose, a log
+ *      whose start cannot be read is excluded and counted, and every report
+ *      carries the cutoffs it applied.
+ *   6. The instrument is not wired into the product: no file under `src/`
  *      imports it, so a metric can never change behavior.
  *
  * Run: node test/runtime/core/test-session-scan.mjs
  */
 
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +54,7 @@ const {
   formatReport,
   scanSessions,
   sessionMetrics,
+  startInstant,
   workArea,
 } = await import(join(__dirname, "session-scan.mjs"));
 
@@ -65,11 +80,18 @@ const THIN = "let's pick up recent state and continue work here";
 const LONG_PROMPT =
   "Rebuild the pricing page layout so the plan cards line up at every breakpoint and the table headers stay readable on narrow screens.";
 
-const sessionHeader = (id) => ({
+/** Fixtures are placed on the clock relative to now, so no case ages out. */
+const NOW = Date.now();
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const at = (offsetMs) => new Date(NOW + offsetMs).toISOString();
+
+/** Every fixture declares when it began: the start clock reads this field. */
+const sessionHeader = (id, startedAt = at(-2 * DAY_MS)) => ({
   type: "session",
   version: 3,
   id,
-  timestamp: "fixture",
+  timestamp: startedAt,
   cwd: PROJECT,
 });
 const user = (text) => ({ type: "message", message: { role: "user", content: [{ type: "text", text }] } });
@@ -226,6 +248,8 @@ const report = scanSessions(ROOT);
 test("the population names what it counted", () => {
   assert.equal(report.population.sessions, 5, "five session logs under the root");
   assert.equal(report.population.long, 4, "A, B, C, D are long; E is not");
+  assert.equal(report.population.sessionsWithoutStart, 0, "every fixture declares a start");
+  assert.deepEqual(report.window, { since: null, mtimeSince: null, days: null }, "no filter, no cutoff");
 });
 
 test("M1: one of two thin long sessions read a skill", () => {
@@ -251,12 +275,166 @@ test("M3: bytes are per session, and the suggestion rate is over long sessions",
 
 test("the human report names every population it divides", () => {
   const text = formatReport(report);
+  assert.ok(text.startsWith("window: no cutoff, whole sessions root"), text);
   assert.ok(text.includes("M1 thin-prompt read rate: 1/2"), text);
   assert.ok(text.includes("M2 drift latency: 2 sessions"), text);
   assert.ok(text.includes("M3 injected surface:"), text);
 });
 
-// ── 4. the instrument stays an instrument ─────────────────────────────────
+// ── 4. the clock ──────────────────────────────────────────────────────────
+
+// A session file's mtime answers a different question than the session's
+// recorded start: a resumed session is old work in a fresh file. Each case
+// below is built from two instants, one written into the header and one onto
+// the file, so the failure it guards is the one where the scanner reads the
+// wrong one of the two.
+
+const CLOCK = mkdtempSync(join(tmpdir(), "session-scan-clock-"));
+const SCANNER = join(__dirname, "session-scan.mjs");
+const clockCase = (name) => join(CLOCK, name);
+const runScanner = (args) => spawnSync(process.execPath, [SCANNER, ...args], { encoding: "utf8" });
+
+/** A long session whose recorded start and file mtime are both stated. */
+function clockSession(dir, name, startedAt, mtimeMs) {
+  const file = writeSession(dir, `${name}.jsonl`, [
+    sessionHeader(name, startedAt),
+    user(THIN),
+    assistant(Array.from({ length: 21 }, bash)),
+  ]);
+  if (mtimeMs !== undefined) utimesSync(file, new Date(mtimeMs), new Date(mtimeMs));
+  return file;
+}
+
+test("a cutoff with no zone is UTC, and a date the month does not have is not a cutoff", () => {
+  const day = new Date(NOW).toISOString().slice(0, 10);
+  assert.equal(startInstant(`${day}T07:20:00`), Date.parse(`${day}T07:20:00Z`), "no zone reads as UTC");
+  assert.equal(startInstant(`${day}T07:20:00+03:00`), Date.parse(`${day}T04:20:00Z`), "a zone is honoured");
+  assert.equal(startInstant(day), Date.parse(`${day}T00:00:00Z`), "a bare date is midnight UTC");
+  assert.equal(startInstant(`${day.slice(0, 8)}32`), null, "the engine would roll that into next month");
+  assert.equal(startInstant(`${day.slice(0, 5)}13${day.slice(7)}`), null, "there is no month 13");
+  assert.equal(startInstant(day.slice(0, 4)), null, "a bare year is not a cutoff");
+  assert.equal(startInstant("next tuesday"), null);
+  assert.equal(startInstant(undefined), null);
+});
+
+test("--since keeps a session by its recorded start, with both logs in one directory", () => {
+  const dir = clockCase("since");
+  const cutoff = NOW - DAY_MS;
+  const recent = clockSession(dir, "began-after", at(-HOUR_MS));
+  const old = clockSession(dir, "began-before", at(-3 * DAY_MS));
+  const scan = scanSessions(dir, { since: cutoff });
+  assert.equal(scan.population.sessions, 1, "one of the two logs began at or after the cutoff");
+  assert.equal(scan.sessions[0].file, recent);
+  assert.equal(scan.sessions[0].startedAt, at(-HOUR_MS), "the report states the instant it filtered on");
+  assert.ok(!scan.sessions.some((session) => session.file === old));
+  assert.equal(scan.window.since, new Date(cutoff).toISOString());
+});
+
+test("a session that began exactly at the cutoff is kept, one millisecond earlier is not", () => {
+  const dir = clockCase("boundary");
+  const cutoff = NOW - DAY_MS;
+  const onTime = clockSession(dir, "on-time", new Date(cutoff).toISOString());
+  clockSession(dir, "one-ms-early", new Date(cutoff - 1).toISOString());
+  assert.deepEqual(scanSessions(dir, { since: cutoff }).sessions.map((s) => s.file), [onTime]);
+});
+
+test("the clock is the recorded start, not the file's modification time", () => {
+  const dir = clockCase("decoy");
+  const cutoff = NOW - DAY_MS;
+  clockSession(dir, "resumed-today", at(-9 * DAY_MS), NOW);
+  assert.equal(
+    scanSessions(dir, { since: cutoff }).population.sessions,
+    0,
+    "a fresh mtime is not a recent start",
+  );
+  assert.equal(
+    scanSessions(dir, { days: 1 }).population.sessions,
+    1,
+    "the mtime clock still sees the file, which is why the two disagree",
+  );
+});
+
+test("--since and --days are conjunctive: a session must pass both", () => {
+  const dir = clockCase("both");
+  const cutoff = NOW - DAY_MS;
+  const passes = clockSession(dir, "passes", at(-HOUR_MS), NOW);
+  clockSession(dir, "stale-file", at(-HOUR_MS), NOW - 3 * DAY_MS);
+  clockSession(dir, "old-start", at(-9 * DAY_MS), NOW);
+  const both = scanSessions(dir, { since: cutoff, days: 1 });
+  assert.deepEqual(both.sessions.map((s) => s.file), [passes]);
+  const shown = formatReport(both);
+  assert.ok(shown.includes(`recorded start >= ${new Date(cutoff).toISOString()} and file mtime >=`), shown);
+  assert.ok(shown.includes("(a session must pass both)"), shown);
+  assert.equal(both.window.since, new Date(cutoff).toISOString());
+  assert.equal(both.window.days, 1);
+  assert.ok(both.window.mtimeSince !== null, "the days window is reported as the instant it resolved to");
+  // Each filter alone keeps what the pair rejects, so the single session above
+  // is the conjunction and not one filter doing all the work.
+  assert.equal(scanSessions(dir, { since: cutoff }).population.sessions, 2);
+  assert.equal(scanSessions(dir, { days: 1 }).population.sessions, 2);
+});
+
+test("an unparsable --since exits 2, names the value, and scans nothing", () => {
+  const dir = clockCase("refuse");
+  clockSession(dir, "reachable", at(-HOUR_MS));
+  const values = ["next tuesday", "the last release", new Date(NOW).toISOString().slice(0, 4)];
+  for (const value of values) {
+    for (const extra of [[], ["--json"]]) {
+      const result = runScanner(["--dir", dir, ...extra, "--since", value]);
+      assert.equal(result.status, 2, `${value} exited ${result.status}: ${result.stderr}`);
+      assert.equal(result.stdout, "", "no report is printed");
+      assert.ok(result.stderr.includes(value), `the line names the value: ${result.stderr}`);
+      assert.equal(result.stderr.trimEnd().split("\n").length, 1, `one line: ${result.stderr}`);
+    }
+  }
+});
+
+test("a log with no parsable start is excluded and counted, not silently kept", () => {
+  const dir = clockCase("dateless");
+  const cutoff = NOW - DAY_MS;
+  const dateless = clockSession(dir, "dateless", "not a timestamp");
+  const started = clockSession(dir, "started", at(-HOUR_MS));
+  const scan = scanSessions(dir, { since: cutoff });
+  assert.deepEqual(scan.sessions.map((s) => s.file), [started]);
+  assert.equal(scan.population.sessionsWithoutStart, 1, "the excluded log is still counted");
+  assert.ok(formatReport(scan).includes("logs without a parsable start: 1 (excluded)"), formatReport(scan));
+  const unfiltered = scanSessions(dir);
+  assert.equal(unfiltered.population.sessions, 2, "without the start clock the log is kept");
+  assert.equal(unfiltered.population.sessionsWithoutStart, 1);
+  assert.equal(unfiltered.sessions.find((s) => s.file === dateless).startedAtMs, null);
+});
+
+test("a --since in the future is legal and selects nothing", () => {
+  const dir = clockCase("future");
+  clockSession(dir, "started", at(-HOUR_MS));
+  const future = new Date(NOW + 30 * DAY_MS).toISOString();
+  const result = runScanner(["--dir", dir, "--since", future]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes("sessions: 0 read from"), result.stdout);
+  assert.ok(result.stdout.includes(`recorded start >= ${future}`), result.stdout);
+});
+
+test("the printed report carries the cutoff it used, in both output modes", () => {
+  const dir = clockCase("window");
+  clockSession(dir, "started", at(-HOUR_MS));
+  const cutoff = new Date(NOW - DAY_MS).toISOString();
+  const report = scanSessions(dir, { since: cutoff, days: 1 });
+  const text = formatReport(report);
+  assert.ok(text.startsWith(`window: recorded start >= ${cutoff} and file mtime >=`), text);
+  assert.ok(text.includes("(--days 1)"), text);
+  const printed = runScanner(["--dir", dir, "--since", cutoff]);
+  assert.equal(printed.status, 0, printed.stderr);
+  assert.ok(printed.stdout.includes(`recorded start >= ${cutoff}`), printed.stdout);
+  assert.ok(printed.stdout.includes("sessions: 1 read from"), printed.stdout);
+  const machine = JSON.parse(runScanner(["--dir", dir, "--since", cutoff, "--json"]).stdout);
+  assert.equal(machine.window.since, cutoff, "the machine report names the same instant");
+  assert.equal(machine.window.mtimeSince, null, "no mtime cutoff was given");
+  assert.equal(machine.population.sessions, 1);
+  const unfiltered = formatReport(scanSessions(dir));
+  assert.ok(unfiltered.startsWith("window: no cutoff, whole sessions root"), unfiltered);
+});
+
+// ── 5. the instrument stays an instrument ─────────────────────────────────
 
 test("no production file imports the scanner", () => {
   const offenders = [];
@@ -300,6 +478,7 @@ test("the thresholds are the declared constants, not magic numbers", () => {
 
 console.log(`\n  scanner over the fixture root:\n${formatReport(report)}`);
 rmSync(ROOT, { recursive: true, force: true });
+rmSync(CLOCK, { recursive: true, force: true });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

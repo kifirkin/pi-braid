@@ -35,11 +35,24 @@
  *
  * Usage (the instrument acts only when asked, so a test-suite run of this
  * file does nothing):
- *   node test/runtime/core/session-scan.mjs --dir <sessions-root> [--days <n>] [--json]
+ *   node test/runtime/core/session-scan.mjs --dir <sessions-root>
+ *     [--since <ISO-8601 timestamp>] [--days <n>] [--json]
  *
  * --dir defaults to <agent dir>/sessions (~/.pi/agent/sessions) once any flag
- * is given. --days filters on the session file's mtime. --json prints the raw
- *report object instead of the summary lines.
+ * is given. --json prints the raw report object instead of the summary lines.
+ *
+ * Two clocks, and they answer different questions. --since keeps the sessions
+ * whose own recorded start (the top-level timestamp of the session log) is at
+ * or after the instant: it names a population. --days keeps the sessions whose
+ * file was last written within the last n days: it names recent activity, and a
+ * resumed or still-open session moves under it however long ago it began.
+ * Given both, a session must pass both. --since reads a value with no zone as
+ * UTC, and every report prints the cutoffs it applied, so a rate cannot be
+ * quoted without the window that produced it.
+ *
+ * To compare sessions against a release date, use --since: the question is
+ * which sessions began under the released build, and only the recorded start
+ * answers it. A --since in the future is legal and selects nothing.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -55,6 +68,9 @@ export const THIN_PROMPT_CHARS = 120;
 
 /** Tools whose path argument says where the work is. */
 const PATH_TOOLS = new Set(["read", "edit", "write"]);
+
+/** A --days window is this many milliseconds of file modification time. */
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Path-taking tools whose call can name a work area. */
 function textOf(content) {
@@ -124,6 +140,47 @@ function parseSession(filePath) {
   return { entries, session };
 }
 
+/**
+ * Milliseconds of an ISO-8601 instant, or null when the text is not one. Only
+ * the shape pi writes is accepted: a bare year or a spelled month is not a
+ * cutoff. A value carrying no zone is read as UTC, so the instant a report
+ * prints does not depend on the machine that printed it. A calendar date that
+ * does not exist is a typo rather than an instant, and is rejected instead of
+ * being rolled forward by the engine.
+ */
+export function startInstant(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  const shape =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?))?(Z|[+-]\d{2}:?\d{2})?$/.exec(
+      text,
+    );
+  if (!shape) return null;
+  const [, year, month, day, time, zone] = shape;
+  const monthIndex = Number(month) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return null;
+  const daysInMonth = new Date(Date.UTC(Number(year), monthIndex + 1, 0)).getUTCDate();
+  if (Number(day) < 1 || Number(day) > daysInMonth) return null;
+  const ms = Date.parse(zone ? text : `${year}-${month}-${day}T${time ?? "00:00:00"}Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * A filter cutoff in milliseconds from a Date, an epoch number or ISO text.
+ * A cutoff that cannot name an instant throws rather than quietly becoming no
+ * filter: the number it would report is the one this scan exists to stop
+ * quoting.
+ */
+function cutoffOf(value, flag) {
+  if (value === undefined) return undefined;
+  const ms =
+    value instanceof Date ? value.getTime() : typeof value === "number" ? value : startInstant(value);
+  if (!Number.isFinite(ms)) {
+    throw new TypeError(`session-scan: ${flag} ${String(value)} is not an ISO-8601 timestamp`);
+  }
+  return ms;
+}
+
 /** One session's metrics, or undefined when the log is unreadable. */
 export function sessionMetrics(filePath) {
   const parsed = parseSession(filePath);
@@ -180,9 +237,12 @@ export function sessionMetrics(filePath) {
     latency = next === undefined ? null : next - driftCall;
   }
 
+  const startedAt = typeof session.timestamp === "string" ? session.timestamp : "";
+
   return {
     file: filePath,
-    startedAt: typeof session.timestamp === "string" ? session.timestamp : "",
+    startedAt,
+    startedAtMs: startInstant(startedAt),
     cwd,
     promptChars: prompt.length,
     calls,
@@ -252,25 +312,38 @@ function percentile(values, p) {
 
 /**
  * Aggregate the three metrics over a sessions root. Pure given the files:
- * every number below is a count or a share of a population named beside it.
+ * every number below is a count or a share of a population named beside it,
+ * and the cutoffs that produced that population travel in `window`.
  */
 export function scanSessions(root, options = {}) {
   const days = typeof options.days === "number" ? options.days : undefined;
-  const since =
-    days === undefined ? undefined : Date.now() - days * 24 * 60 * 60 * 1000;
+  const mtimeCutoff = days === undefined ? undefined : Date.now() - days * DAY_MS;
+  const startCutoff = cutoffOf(options.since, "--since");
+  const files = sessionFiles(root);
   const sessions = [];
-  for (const file of sessionFiles(root)) {
-    if (since !== undefined) {
+  let sessionsWithoutStart = 0;
+  for (const file of files) {
+    if (mtimeCutoff !== undefined) {
       let stats;
       try {
         stats = statSync(file);
       } catch {
         continue;
       }
-      if (stats.mtimeMs < since) continue;
+      if (stats.mtimeMs < mtimeCutoff) continue;
     }
     const metrics = sessionMetrics(file);
-    if (metrics) sessions.push(metrics);
+    if (!metrics) continue;
+    if (metrics.startedAtMs === null) {
+      // The start clock cannot place this log, so it cannot say whether the log
+      // belongs: it is excluded when that clock is in use, and counted either
+      // way so a reader can see how much of the population the clock misses.
+      sessionsWithoutStart++;
+      if (startCutoff !== undefined) continue;
+    } else if (startCutoff !== undefined && metrics.startedAtMs < startCutoff) {
+      continue;
+    }
+    sessions.push(metrics);
   }
 
   const long = sessions.filter((s) => s.long);
@@ -284,10 +357,18 @@ export function scanSessions(root, options = {}) {
 
   return {
     root,
+    // The window is a field, not only a printed line: a number read out of
+    // --json must not be separable from the cutoff that produced it.
+    window: {
+      since: startCutoff === undefined ? null : new Date(startCutoff).toISOString(),
+      mtimeSince: mtimeCutoff === undefined ? null : new Date(mtimeCutoff).toISOString(),
+      days: days ?? null,
+    },
     population: {
       sessions: sessions.length,
       long: long.length,
-      filesScanned: sessionFiles(root).length,
+      filesScanned: files.length,
+      sessionsWithoutStart,
     },
     m1: {
       thinLong: thinLong.length,
@@ -320,6 +401,18 @@ export function formatReport(report) {
   const pct = (value) => (value === null || value === undefined ? "n/a" : `${(100 * value).toFixed(1)}%`);
   const num = (value) => (value === null || value === undefined ? "n/a" : String(value));
   const lines = [];
+  const cutoffs = [];
+  if (report.window.since !== null) cutoffs.push(`recorded start >= ${report.window.since}`);
+  if (report.window.mtimeSince !== null) {
+    cutoffs.push(`file mtime >= ${report.window.mtimeSince} (--days ${report.window.days})`);
+  }
+  const both = report.window.since !== null && report.window.mtimeSince !== null;
+  lines.push(
+    `window: ${cutoffs.length ? cutoffs.join(" and ") : "no cutoff, whole sessions root"}` +
+      (both ? " (a session must pass both)" : "") +
+      `; logs without a parsable start: ${report.population.sessionsWithoutStart}` +
+      (report.window.since === null ? "" : " (excluded)"),
+  );
   lines.push(`sessions: ${report.population.sessions} read from ${report.root}`);
   lines.push(
     `M1 thin-prompt read rate: ${report.m1.thinLongRead}/${report.m1.thinLong} = ${pct(report.m1.rate)}` +
@@ -348,16 +441,33 @@ function argValue(argv, flag) {
 function main(argv) {
   const dir = argValue(argv, "--dir");
   const daysRaw = argValue(argv, "--days");
+  const sinceRaw = argValue(argv, "--since");
   const json = argv.includes("--json");
-  if (!dir && daysRaw === undefined && !json) {
+  if (!dir && daysRaw === undefined && sinceRaw === undefined && !json) {
     process.stdout.write(
-      "session-scan: pass --dir <sessions-root> or --days <n> to scan (--json for machine output)\n",
+      "session-scan: pass --dir <sessions-root>, --since <ISO-8601> or --days <n> to scan" +
+        " (--json for machine output)\n",
     );
+    return;
+  }
+  let since;
+  try {
+    since = cutoffOf(sinceRaw, "--since");
+  } catch (error) {
+    // A cutoff nobody can read names no population: refuse before the scan
+    // rather than report a number filtered by nothing.
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  if (argv.includes("--since") && since === undefined) {
+    process.stderr.write("session-scan: --since needs an ISO-8601 timestamp, got nothing\n");
+    process.exitCode = 2;
     return;
   }
   const days = daysRaw === undefined ? undefined : Number(daysRaw);
   const root = dir ? resolve(dir) : defaultSessionsRoot();
-  const report = scanSessions(root, { days: Number.isFinite(days) ? days : undefined });
+  const report = scanSessions(root, { days: Number.isFinite(days) ? days : undefined, since });
   if (json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
