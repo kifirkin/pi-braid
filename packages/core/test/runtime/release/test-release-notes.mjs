@@ -12,9 +12,10 @@
  * Each case lays the real script out under a throwaway root at the repository
  * path it expects (`packages/core/scripts/`), and writes the changelog that case
  * needs. Copying the script rather than pointing it at a file is deliberate: the
- * script resolves `CHANGELOG.md` three levels above itself and takes no path, so
- * the fixture moves the script into the tree it should read. The last case runs
- * the script in this checkout, which is what pins that resolution for real.
+ * script takes no path argument, so the fixture moves the script into the tree
+ * it should read. The last two cases pin the two layouts the script resolves
+ * between — this checkout, and a package that carries its changelog beside
+ * `scripts/` — and the order it tries them in.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -174,8 +175,7 @@ test("an argument that is not a stable version is exit 1", () => {
   assert.match(missing.err, /got no argument/);
 });
 
-test("in this checkout the script reads the repository's own changelog", () => {
-  assert.ok(existsSync(REAL_CHANGELOG), `no changelog at ${REAL_CHANGELOG}`);
+test("in this checkout the script reads the repository's own changelog", () => {  assert.ok(existsSync(REAL_CHANGELOG), `no changelog at ${REAL_CHANGELOG}`);
 
   // Resolution: a version no release ever carried has to name this repository's
   // file, not a copy a fixture wrote.
@@ -190,4 +190,61 @@ test("in this checkout the script reads the repository's own changelog", () => {
   assert.equal(landed.code, 0);
   assert.notEqual(landed.out.trim(), "");
   assert.ok(!/^## /m.test(landed.out), "the heading line came back with the body");
+});
+
+/**
+ * A package laid out the way npm ships it: `scripts/` at the package root and
+ * the changelog beside it, with no source tree above. `box` is the directory
+ * the package sits in, so the repository-layout candidate resolves into a file
+ * this test does not write.
+ */
+function packaged(changelog) {
+  const box = mkdtempSync(join(tmpdir(), "release-notes-packaged-"));
+  const root = join(box, "package");
+  const script = join(root, "scripts", "release-notes.mjs");
+  mkdirSync(dirname(script), { recursive: true });
+  copyFileSync(SCRIPT, script);
+  if (changelog !== null) writeFileSync(join(root, "CHANGELOG.md"), changelog);
+  return { box, root, script };
+}
+
+test("a packaged copy answers from the changelog that ships beside it", () => {
+  const { root, script } = packaged(SINGLE);
+
+  const { code, out, err } = run(script, ["0.40.5"]);
+  assert.equal(code, 0, `the packaged copy could not answer: ${err}`);
+  assert.equal(out, "Body line one.\nBody line two.\n");
+
+  // The absent case names the file it read, which is how a caller can tell
+  // which of the two layouts answered.
+  const absent = run(script, ["0.0.0"]);
+  assert.equal(absent.code, 2);
+  assert.ok(
+    absent.err.includes(join(root, "CHANGELOG.md")),
+    `stderr did not name the packaged changelog: ${absent.err}`,
+  );
+});
+
+test("a package with no changelog beside it is still exit 1", () => {
+  const { script } = packaged(null);
+  const { code, err } = run(script, ["0.40.5"]);
+  assert.equal(code, 1);
+  assert.match(err, /cannot read/);
+});
+
+test("the source tree wins over a staged copy beside the script", () => {
+  // A staged copy is derived from the tree's own changelog and is removed after
+  // the pack; if one is still there, reading it instead would build a release
+  // body from a stale file.
+  const box = mkdtempSync(join(tmpdir(), "release-notes-both-"));
+  const script = install(box);
+  writeFileSync(join(box, "CHANGELOG.md"), document([[coreHeading("0.40.5", "the tree"), "Tree body."]]));
+  writeFileSync(
+    join(box, "packages", "core", "CHANGELOG.md"),
+    document([[coreHeading("0.40.5", "the staged copy"), "Staged body."]]),
+  );
+
+  const { code, out } = run(script, ["0.40.5"]);
+  assert.equal(code, 0);
+  assert.equal(out, "Tree body.\n");
 });

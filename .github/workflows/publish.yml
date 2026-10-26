@@ -230,3 +230,89 @@ jobs:
             --verify-tag \
             --title "pi-braid ${version}" \
             "${notes[@]}"
+
+      # Last in the job, and it cannot fail it: this step describes a publish
+      # that already landed, so a red mark here would be a verdict about the
+      # run's own artifact rather than a gate in front of it. A difference is a
+      # warning, an unreadable archive is a warning, and the step still exits 0
+      # — until it has a record of being right on this repository, failing a
+      # published release on its word would cost more than the check returns.
+      #
+      # Tag runs only: a dispatch publishes versions whose tag the run does not
+      # name, so there is no tree to compare the registry artifact against.
+      - name: Registry artifact check
+        if: github.ref_type == 'tag'
+        run: |
+          # No `set -e` and no `set -u`: every path below ends the step with
+          # exit 0 on purpose, and an unguarded variable is a way out of that
+          # promise that reads as a bug in the workflow instead.
+          version=$(node -p "require('./packages/core/package.json').version")
+          if [ -z "${version}" ]; then
+            echo "artifact check: could not read the core version; nothing to compare"
+            exit 0
+          fi
+
+          # The publish loop records every artifact it confirmed in the step
+          # summary. A version that was already on the registry before this run
+          # leaves no such line, and an artifact this run did not produce is not
+          # evidence about this tree, so the comparison would be meaningless.
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if ! grep -qF "### Published pi-braid@${version}" "${summary}" 2>/dev/null; then
+            if grep -qF "### Not confirmed published pi-braid@${version}" "${summary}" 2>/dev/null; then
+              echo "artifact check: the publish step could not confirm pi-braid@${version} on the registry; nothing to compare"
+            else
+              echo "artifact check: pi-braid@${version} was already on the registry before this run; nothing to compare"
+            fi
+            exit 0
+          fi
+
+          work=$(mktemp -d)
+          mkdir -p "${work}/native" "${work}/registry"
+
+          # The tag's own tree, packed the way the publish packed it: the same
+          # prepack/postpack pair, so the provenance record's commit side is
+          # this checkout. Nothing is uploaded — a pack is a read of the tree.
+          if ! (cd packages/core && npm pack --pack-destination "${work}/native" >"${work}/native.log" 2>&1); then
+            echo "artifact check: packing packages/core failed; nothing to compare"
+            sed 's/^/  /' "${work}/native.log" 2>/dev/null
+            exit 0
+          fi
+          native_tgz=$(ls "${work}"/native/pi-braid-*.tgz 2>/dev/null | head -1)
+          if [ -z "${native_tgz}" ]; then
+            echo "artifact check: the local pack produced no tarball; nothing to compare"
+            exit 0
+          fi
+
+          # Read-after-write lag is the one failure this step must not report as
+          # a difference: the registry can accept a publish it is not serving
+          # yet, so the download retries before it concludes anything.
+          registry_tgz=""
+          attempt=1
+          while [ "${attempt}" -le 6 ]; do
+            if (cd "${work}" && npm pack "pi-braid@${version}" --pack-destination "${work}/registry" >"${work}/registry.log" 2>&1); then
+              registry_tgz=$(ls "${work}"/registry/pi-braid-*.tgz 2>/dev/null | head -1)
+            fi
+            if [ -n "${registry_tgz}" ]; then break; fi
+            echo "registry did not serve pi-braid@${version} yet (attempt ${attempt}); retrying"
+            sleep 10
+            attempt=$((attempt + 1))
+          done
+          if [ -z "${registry_tgz}" ]; then
+            echo "artifact check: the registry did not serve pi-braid@${version} to this step; nothing to compare"
+            sed 's/^/  /' "${work}/registry.log" 2>/dev/null
+            exit 0
+          fi
+
+          # Content, not bytes: two packs of one tree differ in gzip framing,
+          # entry order and the provenance record's own timestamp, and the tool
+          # normalises the last of those before comparing.
+          node packages/core/scripts/pack-compare.mjs "${native_tgz}" "${registry_tgz}"
+          status=$?
+          case "${status}" in
+            0) echo "artifact check: the registry artifact unpacks to the tree ${GITHUB_REF_NAME} builds" ;;
+            1) echo "::warning title=Registry artifact differs::pi-braid@${version} unpacks differently from a pack of ${GITHUB_REF_NAME}; see the paths listed above" ;;
+            *) echo "::warning title=Registry artifact unreadable::pack-compare could not read one of the archives (exit ${status}); this is not a verdict about the tree" ;;
+          esac
+
+          rm -rf "${work}"
+          exit 0

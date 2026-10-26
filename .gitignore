@@ -50,3 +50,7 @@ pi-session-*.html
 # Pack-time provenance record (written by publish-local.mjs, removed after the
 # pack); ignored so an interrupted publish cannot leave the checkout dirty
 build-info.json
+
+# Changelog staged into the package for a pack (scripts/stage-changelog.mjs);
+# the repository keeps one copy, at the root, and it is not tracked here twice
+packages/core/CHANGELOG.md

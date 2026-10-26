@@ -54,11 +54,19 @@ reader-facing record; the tag scheme above applies unchanged.
   opening prompt carries no domain vocabulary for the keyword scorer, and the
   measured consequence on the class of sessions those prompts open is a skill
   load rate of zero. The section measures 8,903 bytes / 2,226 estimated tokens on
-  this repository's 22-skill pack, and 11,366 bytes / 2,842 tokens on a live
-  27-skill two-pack catalog, against 756 bytes / 189 tokens before it: braid
-  suppresses pi's own catalog, so the floor is an addition of 8,147 to 10,610
-  bytes on every request rather than a swap. The rendered size carries the
-  install path, so the byte count moves with the checkout.
+  this repository's 22-skill pack at this repository's own 58-character skills
+  path, and 11,366 bytes / 2,842 tokens on a live 27-skill two-pack catalog (a
+  55-character install path plus the user-global skills directory), against 756
+  bytes / 189 tokens before it: braid suppresses pi's own catalog, so the floor is
+  an addition of 8,147 to 10,610 bytes on every request rather than a swap. Both
+  are renders, not constants. The section states the catalog's own read root, so
+  the byte count follows that root one byte per character — the 55-character
+  install path renders 8,900, a 66-character local-packages path 8,911, and a
+  path 43 characters longer renders 43 bytes longer — and the worked examples it
+  derives from the active tool set move it too: a different tool representing a
+  family the section already illustrates is a byte (8,902 with `herdr_agent`
+  where this render names `herdr_layout`), and a family joining or leaving the
+  active set is a whole example.
 - **Work that moves re-points the catalog** - a drift trigger in the `tool_result`
   handler fires one steer line when the session's own read/edit/write calls
   accumulate entries in a new work area, so a catalog rendered against one

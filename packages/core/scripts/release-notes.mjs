@@ -20,15 +20,26 @@
  *      version, or the changelog could not be read. The caller fails here
  *      rather than falling back, because a fallback would hide both.
  *
- * The changelog read is this repository's own, resolved from this script's
- * location. There is deliberately no path argument: the release body cannot
- * then be built from a different copy of the file than the tree being released.
+ * The changelog is this repository's own, resolved from this script's location.
+ * There is deliberately no path argument: the release body cannot then be built
+ * from a different copy of the file than the tree being released. Two locations
+ * are tried because the script runs in two layouts, and the file it must read
+ * follows the layout: a source tree keeps one changelog at its root, three
+ * levels above `packages/core/scripts`, while a packaged copy ships with the
+ * changelog staged beside `scripts/` (npm's `files` allowlist is
+ * package-relative and cannot reach above the package). The source tree wins
+ * when both exist, because the tree being released is the authority and a
+ * staged copy is derived from it.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CHANGELOG = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "CHANGELOG.md");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CHANGELOGS = [
+  resolve(HERE, "..", "..", "..", "CHANGELOG.md"),
+  resolve(HERE, "..", "CHANGELOG.md"),
+];
 
 /** What a release tag names and the registry serves: a stable `x.y.z`. */
 const STABLE = /^\d+\.\d+\.\d+$/;
@@ -60,10 +71,20 @@ if (!version || !STABLE.test(version)) {
 }
 
 let changelog;
-try {
-  changelog = readFileSync(CHANGELOG, "utf8");
-} catch (error) {
-  console.error(`release-notes: cannot read ${CHANGELOG}: ${error.code ?? error.message}`);
+let changelogPath;
+for (const candidate of CHANGELOGS) {
+  try {
+    changelog = readFileSync(candidate, "utf8");
+    changelogPath = candidate;
+    break;
+  } catch {
+    // The next candidate is the other layout; a file that is present but
+    // unreadable is reported below like none at all, because the caller's
+    // decision is the same either way.
+  }
+}
+if (changelog === undefined) {
+  console.error(`release-notes: cannot read ${CHANGELOGS.join(" or ")}`);
   process.exit(1);
 }
 
@@ -71,7 +92,7 @@ const lines = changelog.split("\n");
 const heading = lines.findIndex((line) => coreVersion(line) === version);
 
 if (heading === -1) {
-  console.error(`release-notes: no section for ${version} in ${CHANGELOG}`);
+  console.error(`release-notes: no section for ${version} in ${changelogPath}`);
   process.exit(2);
 }
 
