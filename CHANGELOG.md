@@ -43,6 +43,53 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.6 (2026-10-27: a meter that measures what the provider counts, a drain that waits, a whisper that prints one truth, and a latch that stops feeding a dying route)
+
+Four changes that between them remove the wedges behind a long session killing itself: the meter under-counted its
+own payload, the compaction drain fired into requests of its own making, the whispers printed three ages of one fact,
+and self-started wakes kept spending provider calls into a route that was failing on every turn. Versions 0.42.2 to
+0.42.5 were base bumps carrying these; this is the first tag above 0.42.1.
+
+### Core
+
+- **The context meter measures what the provider counts.** It reported "the tokens that will be sent on the next
+  request" while computing a character walk at four characters per token, over a partial span. A live session read 51%
+  while the wire carried 1,147,002 tokens against a 1,048,576 window, so the arm thresholds, the 0.90W backstop and the
+  emergency offload were all reading a number that could not reach them. The estimate now calibrates against the
+  provider's own usage (median of the last eight pairs, ratio clamped) and every rendered number carries its
+  provenance: `measured` or `estimated`. The measured error was 78.9% of the branch's mass outside the walk, 2.55
+  characters per token against the assumed 4.00, and 14 image blocks counted as zero.
+- **A request that cannot fit is refused before it is sent.** `presend-budget` compares the calibrated payload plus the
+  requested output budget against the resolved window and refuses with one line naming the numbers, the window, the
+  overage and the remedy. It runs the chunked compaction once, re-measures, and only then allows the send. A
+  context-length 400 is classified as request-shape and is never retried as transient.
+- **The compaction queue drains only where the loop cannot dispatch.** The `turn_end` drain and the arm-time fire are
+  gone: arming now only queues, and `agent_settled` is the unconditional drain. Below the 0.90W backstop a queued steer
+  at a turn boundary used to start a request the armed drain then aborted, which the session reported as an API error.
+  The 0.90W backstop survives as the one deliberate exception, because a run kept alive by continuous steers never
+  settles and overflow costs more than the turn the deliberate abort can lose.
+- **A self-started wake stops feeding a failing route.** A monotonic per-session counter of consecutive run-ending
+  provider errors is asked through the existing turn-start predicate; above the threshold, timer wakes, watchdog
+  escalations and waking whispers are demoted to non-waking delivery. The content still arrives and one line announces
+  the episode. Five existing signals re-open the gate, plus a floor that is sparser than the observed retry cadence.
+- **One delivery prints one snapshot.** A heartbeat could print a configured tier boundary (`Context at 30%`) beside a
+  live measurement, and an agent then repeated the contradiction in its own reasoning. A delivery now carries a single
+  measurement taken at delivery, its label is that measurement, percentages carry the meter's provenance word, numbers
+  that change no decision are dropped, and a collapsed family is re-labelled from the newest arrival rather than the
+  first.
+- **The publish step compares the artifact it served.** `pack-compare` unpacks the checkout's pack and the registry
+  tarball for the same version, normalises the one field that cannot be reproducible, and reports what differs. The
+  step reads the registry, never a rendering surface: its first version inferred from the job's step summary and
+  reported success while comparing nothing.
+
+### Also in this line
+
+- **`/vision-model` and `/max-power-model` are removed.** Both warned for one release and two have passed since; image
+  analysis resolves at `model-resolver` through the current model or the merged role's first image-capable entry, so
+  the pin had nothing left to do.
+- **A test fixture no longer hangs instead of reporting.** `fleet/test-drain-atomicity` attached its exit listener after
+  the kill, so a child that finished first left the promise unsettled and node exited 13 with every assertion green.
+
 ## Core — 0.42.1 (2026-10-27: the package carries its changelog, a publish checks what it served, and two measured friction classes lose their cause)
 
 ### Core
