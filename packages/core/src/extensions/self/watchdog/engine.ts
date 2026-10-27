@@ -20,7 +20,8 @@
  *       3. tunnel-down: ≥ tunnelFailures consecutive getUpdates failures
  *                        (telegram emits the transition; this engine hosts the
  *                        confirmation gate + escalation).
- *   - ESCALATE: waking whisper (wakeWhisper) + optional 1-line tg signal
+ *   - ESCALATE: waking whisper (wakeWhisper) + optional 1-line tg signal,
+ *     or the quiet whisper when the session's route latch is open
  *     (tgSignal). The FIRST escalation of an open condition always fires
  *     (threshold crossing). Repeats while the condition stays continuously
  *     open are milestone-throttled so one long outage cannot flood the owner
@@ -228,6 +229,12 @@ export interface WatchdogEngineDeps {
   /** True when a timer/wake is due for this session: a due wake legitimately
    *  keeps a quiet session quiet, so the turn is not classified dead. */
   isWakeDue?: (key: string) => boolean;
+  /** True when a self-started turn would park right now (the session's route
+   *  has failed every attempt since its last successful call). An escalation
+   *  is then delivered through `quietWhisper` while the out-of-band signal
+   *  still fires — the content is not withdrawn, only the turn it would
+   *  start. Absent or throwing ⇒ never parked (fail-open). */
+  isTurnStartBlocked?: () => boolean;
   log?: (level: "debug" | "info" | "warn" | "error", message: string, ...rest: unknown[]) => void;
 }
 
@@ -484,8 +491,29 @@ export function createWatchdogEngine(
     return openConditions().length > 0;
   }
 
+  /**
+   * Fail-open read of the turn-start latch. A broken reader costs the gate,
+   * never the escalation: the bark still fires, it just wakes.
+   */
+  function turnStartBlocked(): boolean {
+    try {
+      return deps.isTurnStartBlocked?.() === true;
+    } catch {
+      return false;
+    }
+  }
+
   function fireEscalation(text: string, tg: string): void {
-    wakeWhisper(text);
+    // While the route latch is open a waking bark would spend the very call
+    // the gate exists to save. The escalation is not dropped: the same text
+    // rides the quiet channel into the session, and the tg line — which costs
+    // no provider call — still fires, so the owner keeps the out-of-band
+    // signal.
+    if (turnStartBlocked()) {
+      quietWhisper(text);
+    } else {
+      wakeWhisper(text);
+    }
     try {
       tgSignal?.(tg);
     } catch {

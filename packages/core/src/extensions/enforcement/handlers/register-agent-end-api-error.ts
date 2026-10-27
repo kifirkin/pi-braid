@@ -13,6 +13,8 @@ import { getState } from "../state.js";
 import { classify } from "../../../lib/ai/text-classifier.js";
 import { CRITICS } from "../../../lib/ai/critic-registry.js";
 import { errorTypeFallback } from "../../../lib/ai/critic-fallbacks.js";
+import { classifyLlmError } from "../../../lib/errors/llm-error.js";
+import { recordRouteFailure } from "../session-health.js";
 
 export function registerAgentEndApiErrorHandler(pi: ExtensionAPI): void {
   pi.on(AGENT_END, async (event: any, ctx: ExtensionContext) => {
@@ -31,6 +33,17 @@ export function registerAgentEndApiErrorHandler(pi: ExtensionAPI): void {
     const finalError: string = lastAssistant.errorMessage ?? "Unknown error";
 
     getState(ctx).validationFailures++;
+
+    // Count the failure for the route-failure latch BEFORE the nudge cooldown
+    // below: the cooldown throttles the message, not the observation. A run
+    // that ends on a provider error is the only evidence the latch has, and
+    // the auxiliary calls classifyRetryError makes are excluded from it by
+    // design (they are what releases the latch, never what feeds it).
+    try {
+      recordRouteFailure(ctx, classifyLlmError(finalError).category);
+    } catch {
+      // A broken counter must never suppress the nudge.
+    }
 
     const now = Date.now();
     if (now - getState(ctx).lastNudgeTime < getState(ctx).nudgeCooldownMs) return;

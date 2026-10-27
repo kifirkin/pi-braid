@@ -159,6 +159,27 @@ interface BraidConfig {
       /** Terminal errors before the gate closes. Default 3. */
       threshold?: number;
     };
+    /**
+     * Route-failure wake breaker: while a session has accumulated
+     * `threshold` provider failures of any class except a context-window
+     * overflow or an abort since its last successful call, timer wakes,
+     * watchdog escalations and explicitly-waking whispers are delivered
+     * without starting a turn. `floorMs` is the one self-started turn the
+     * latch releases after that long with no successful release signal, so a
+     * parked session is never permanently starved of turns. Default
+     * { enabled: true, threshold: 3, floorMs: 3600000 }.
+     *
+     * Example:
+     *   "braid": { "session": { "routeBreaker": { "enabled": false } } }
+     */
+    routeBreaker?: {
+      /** false makes the whole breaker inert (byte-identical to pre-breaker behavior). */
+      enabled?: boolean;
+      /** Provider failures since the last successful call before wakes park. Default 3. */
+      threshold?: number;
+      /** The one released turn's cadence while the latch stays open. Default 3600000 (1h). */
+      floorMs?: number;
+    };
   };
   timers?: {
     /**
@@ -1115,6 +1136,110 @@ export function resolveTerminalBreaker(raw: unknown): TerminalBreakerConfig {
  */
 export function getTerminalBreakerConfig(): TerminalBreakerConfig {
   return resolveTerminalBreaker(readSettings().braid?.session?.terminalBreaker);
+}
+
+// ── route-failure wake breaker (braid.session.routeBreaker) ────────────
+
+/** Default provider-failure count before self-started turns park. */
+export const ROUTE_BREAKER_DEFAULT_THRESHOLD = 3;
+/** Upper bound for a configured threshold (guards a typo'd huge value). */
+export const ROUTE_BREAKER_THRESHOLD_MAX = 20;
+/**
+ * Default cadence of the single released turn while the latch stays open.
+ * One hour: long enough that a parked session does not spend a call per
+ * retry against a route that is failing every time, short enough that an
+ * owner who never touches the session still gets an automatic attempt.
+ */
+export const ROUTE_BREAKER_DEFAULT_FLOOR_MS = 3_600_000;
+/** Bounds on a configured floor: below the slowest retry cadence it would
+ *  release a turn per retry; above a day it stops being a floor at all. */
+export const ROUTE_BREAKER_FLOOR_MIN_MS = 60_000;
+export const ROUTE_BREAKER_FLOOR_MAX_MS = 86_400_000;
+
+export interface RouteBreakerConfig {
+  /** Master gate. Default true. */
+  enabled: boolean;
+  /** Provider failures since the last successful call before wakes park. */
+  threshold: number;
+  /** The one released turn's cadence while the latch stays open. */
+  floorMs: number;
+}
+
+/** Warned once per process about an invalid routeBreaker field. */
+let _warnedInvalidRouteBreaker = false;
+
+/** Once-per-process warning for an ignored routeBreaker value. */
+function _warnInvalidRouteBreaker(field: "threshold" | "floorMs", value: unknown): void {
+  if (_warnedInvalidRouteBreaker) return;
+  _warnedInvalidRouteBreaker = true;
+  const expected =
+    field === "threshold"
+      ? `an integer 1..${ROUTE_BREAKER_THRESHOLD_MAX}`
+      : `an integer ${ROUTE_BREAKER_FLOOR_MIN_MS}..${ROUTE_BREAKER_FLOOR_MAX_MS} (ms)`;
+  const fallback =
+    field === "threshold" ? ROUTE_BREAKER_DEFAULT_THRESHOLD : ROUTE_BREAKER_DEFAULT_FLOOR_MS;
+  _log.warn(
+    `Invalid braid.session.routeBreaker in settings.json - ignoring ${field} and ` +
+      `using the default (${fallback}). Expected ${expected}.`,
+    { field, value },
+  );
+}
+
+/**
+ * Pure resolver for braid.session.routeBreaker. Absent block ⇒ default-on with
+ * threshold 3 and a 1h floor. `enabled: false` ⇒ the breaker is inert. A
+ * threshold or floor that is not a valid integer in range warns once and
+ * falls back to its default; a non-object block counts as absent. Kept pure
+ * so the validation is unit-testable without touching live settings.json.
+ */
+export function resolveRouteBreaker(raw: unknown): RouteBreakerConfig {
+  const defaults: RouteBreakerConfig = {
+    enabled: true,
+    threshold: ROUTE_BREAKER_DEFAULT_THRESHOLD,
+    floorMs: ROUTE_BREAKER_DEFAULT_FLOOR_MS,
+  };
+  if (raw === undefined || raw === null || typeof raw !== "object") return defaults;
+  const block = raw as { enabled?: unknown; threshold?: unknown; floorMs?: unknown };
+  const enabled = block.enabled !== false;
+  let threshold = defaults.threshold;
+  if (block.threshold !== undefined) {
+    const v = block.threshold;
+    if (
+      typeof v === "number" &&
+      Number.isInteger(v) &&
+      v >= 1 &&
+      v <= ROUTE_BREAKER_THRESHOLD_MAX
+    ) {
+      threshold = v;
+    } else {
+      _warnInvalidRouteBreaker("threshold", v);
+    }
+  }
+  let floorMs = defaults.floorMs;
+  if (block.floorMs !== undefined) {
+    const v = block.floorMs;
+    if (
+      typeof v === "number" &&
+      Number.isInteger(v) &&
+      v >= ROUTE_BREAKER_FLOOR_MIN_MS &&
+      v <= ROUTE_BREAKER_FLOOR_MAX_MS
+    ) {
+      floorMs = v;
+    } else {
+      _warnInvalidRouteBreaker("floorMs", v);
+    }
+  }
+  return { enabled, threshold, floorMs };
+}
+
+/**
+ * Read the effective route-failure wake-breaker config from settings.json,
+ * fresh on every call (no caching), like the other readers. The predicate and
+ * the feed read this once per call; the floor's clock leans on it, so a
+ * runtime change takes effect on the next turn-start question.
+ */
+export function getRouteBreakerConfig(): RouteBreakerConfig {
+  return resolveRouteBreaker(readSettings().braid?.session?.routeBreaker);
 }
 
 // ── wake-delivery stall alert (braid.timers.wakeAlert) ───────────────

@@ -68,6 +68,37 @@ allow sub-state modules to be tested in isolation.
 
 See individual handler files in `handlers/` for the per-source policy.
 
+### Route-failure latch (wake demotion)
+
+`session-health.ts` owns a second latch on the same turn-start question. A run
+that ends on a provider error (`agent_end` with an assistant `stopReason:
+"error"`) feeds `recordRouteFailure(ctx, category)` with the category its raw
+error text classifies to; every category counts except `context_window` and
+`abort`, which are not evidence about the route. The counter is read only by
+`isRouteLatchOpen(ctx)` and `isTurnStartBlocked(ctx)`, so the three seams that
+self-start a turn cannot disagree:
+
+- the timer wake path already asks `isTurnStartBlocked` once per fire and
+  demotes through `deliverDemotedFire` (no scheduling change);
+- watchdog escalations ask it once per bark and deliver `quietWhisper` while
+  the tg line still fires;
+- an explicitly-waking whisper (`triggerTurn: true`) in `whisper.ts` is
+  demoted to the ordinary non-waking steer.
+
+The last two ask the route-only half, `isRouteLatchOpen`, deliberately: neither
+seam ever consulted the terminal breaker, and the off switch has to make this
+change inert rather than partially active.
+
+Release signals: any successful provider call (`recordLlmSuccess`), a clean
+wake turn, a route change (`model_select`), an owner recovery
+(`setSessionHealthMode "healthy"`) and a session start. While the latch stays
+open the predicate still releases one self-started turn per
+`braid.session.routeBreaker.floorMs` and restamps the clock, so a parked
+session neither starves nor loops. `braid.session.routeBreaker.enabled =
+false` makes every part of this inert. Fixtures:
+`test/runtime/lib/test-route-latch.mjs` (the six design fixtures and the
+off-switch control family).
+
 ## Over-correction gate setting
 
 | Setting                                     | Default | Effect                                                                                                                                                                                   | Read cadence                                   |

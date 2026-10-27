@@ -79,6 +79,8 @@ const CONST_SOURCES = {
   STALE_TOOL_RESULT_OFFLOAD_DEFAULTS: SETTINGS,
   CONTEXT_EMERGENCY_OFFLOAD_DEFAULTS: SETTINGS,
   TERMINAL_BREAKER_DEFAULT_THRESHOLD: SETTINGS,
+  ROUTE_BREAKER_DEFAULT_THRESHOLD: SETTINGS,
+  ROUTE_BREAKER_DEFAULT_FLOOR_MS: SETTINGS,
   OVER_CORRECTION_GATE_DEFAULTS: SETTINGS,
   CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS: SETTINGS,
   SKILLS_RANKING_DEFAULT: SETTINGS,
@@ -225,6 +227,22 @@ const MECHANICAL_ROWS = [
     description: "Terminal-class errors before timer wakes stop starting turns.",
     read: { file: SETTINGS, line: 1071, evidence: "readSettings().braid?.session?.terminalBreaker" },
     mech: { const: "TERMINAL_BREAKER_DEFAULT_THRESHOLD", prop: null },
+  },
+  {
+    path: "braid.session.routeBreaker.threshold",
+    type: "integer",
+    description:
+      "Provider failures since the last successful call before self-started turns park.",
+    read: { file: SETTINGS, line: 1242, evidence: "readSettings().braid?.session?.routeBreaker" },
+    mech: { const: "ROUTE_BREAKER_DEFAULT_THRESHOLD", prop: null },
+  },
+  {
+    path: "braid.session.routeBreaker.floorMs",
+    type: "number",
+    description:
+      "Cadence of the one self-started turn released while the route latch stays open (ms).",
+    read: { file: SETTINGS, line: 1242, evidence: "readSettings().braid?.session?.routeBreaker" },
+    mech: { const: "ROUTE_BREAKER_DEFAULT_FLOOR_MS", prop: null },
   },
   {
     path: "braid.skills.ranking",
@@ -461,6 +479,13 @@ const OVERLAY_ROWS = [
     default: true,
     description: "Terminal-error wake breaker; false disables the gate entirely.",
     read: { file: SETTINGS, line: 1071, evidence: "readSettings().braid?.session?.terminalBreaker" },
+  },
+  {
+    path: "braid.session.routeBreaker.enabled",
+    type: "boolean",
+    default: true,
+    description: "Route-failure wake breaker; false makes the whole breaker inert.",
+    read: { file: SETTINGS, line: 1242, evidence: "readSettings().braid?.session?.routeBreaker" },
   },
   {
     path: "braid.providers.fallback",

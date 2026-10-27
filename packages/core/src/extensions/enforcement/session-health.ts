@@ -26,6 +26,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../../lib/state/extension-state.js";
 import type { ClassifiedLlmError, LlmErrorCategory } from "../../lib/errors/llm-error.js";
+import { getRouteBreakerConfig } from "../../lib/config/braid-settings.js";
 
 export type SessionHealthMode =
   | "healthy"
@@ -68,6 +69,26 @@ export interface SessionHealthState {
    * the current episode. Diagnostic; cleared together with the counter.
    */
   breakerOpenedAt?: number;
+  /**
+   * Provider failures of any class except context_window/abort since the last
+   * successful LLM call. The route-failure latch reads this; only an explicit
+   * reset (clean turn, provider success, route change, owner recovery,
+   * session start) lowers it.
+   */
+  routeErrorsSinceHealthyTurn: number;
+  /**
+   * ms timestamp of the first time routeErrorsSinceHealthyTurn reached the
+   * configured threshold in the current episode. One half of the floor's
+   * clock; undefined while the latch has never opened.
+   */
+  routeLatchOpenedAt?: number;
+  /**
+   * ms timestamp of the last turn the floor released while the latch stayed
+   * open. The other half of the floor's clock: the predicate allows exactly
+   * one self-started turn per `floorMs`, then this stamp closes the gate for
+   * the next window.
+   */
+  routeLatchLastReleaseAt?: number;
 }
 
 function emptyCategoryCounts(): Record<LlmErrorCategory, number> {
@@ -90,6 +111,7 @@ const DEFAULT_STATE: SessionHealthState = {
   providerSuccessCount: 0,
   consolidationSkipsByMode: {},
   terminalErrorsSinceHealthyTurn: 0,
+  routeErrorsSinceHealthyTurn: 0,
 };
 
 /**
@@ -119,6 +141,9 @@ export function getSessionHealth(ctx: ExtensionContext): SessionHealthState {
   if (typeof s.terminalErrorsSinceHealthyTurn !== "number") {
     s.terminalErrorsSinceHealthyTurn = 0;
   }
+  if (typeof s.routeErrorsSinceHealthyTurn !== "number") {
+    s.routeErrorsSinceHealthyTurn = 0;
+  }
   return s;
 }
 
@@ -127,17 +152,71 @@ export function getSessionHealth(ctx: ExtensionContext): SessionHealthState {
  * terminally? Latch state only — no provider/model/error names, so callers in
  * generic layers (the timer wake path) cannot learn a domain fact from it.
  *
- * `threshold` lets a caller pass the configured bound; the default keeps the
- * built-in N. Open-ness is derived from the monotonic counter, which only the
- * explicit reset signals (session_start, owner recovery, route change) and a
- * clean wake turn lower — hence "latch".
+ * `threshold` lets a caller pass the configured bound for the terminal
+ * counter; the default keeps the built-in N. Open-ness is derived from the
+ * monotonic counter, which only the explicit reset signals (session_start,
+ * owner recovery, route change) and a clean wake turn lower — hence "latch".
+ *
+ * The route disjunct is the second latch on the same question: a route that
+ * fails every self-started turn parks them too, on its own configured
+ * threshold and floor. It is asked here, once, so the three seams that
+ * self-start turns cannot each keep their own answer.
  */
 export function isTurnStartBlocked(
   ctx: ExtensionContext,
   threshold: number = TERMINAL_BREAKER_N,
 ): boolean {
   const s = getSessionHealth(ctx);
-  return s.terminalErrorsSinceHealthyTurn >= threshold;
+  return s.terminalErrorsSinceHealthyTurn >= threshold || isRouteLatchOpen(ctx);
+}
+
+/**
+ * Is the route-failure latch open right now? The route-only half of
+ * `isTurnStartBlocked`, for the two seams that must not inherit the terminal
+ * wake policy: a watchdog escalation and an explicitly-waking whisper never
+ * consulted the terminal breaker, so their demotion has to key on the route
+ * fact alone. `braid.session.routeBreaker.enabled = false` answers false
+ * unconditionally, which is what makes the off switch inert rather than
+ * partial.
+ *
+ * The floor is a release, not a bypass: while the latch stays open the
+ * predicate lets exactly one self-started turn through per `floorMs` and
+ * stamps the release, so a parked session cannot starve and cannot loop.
+ */
+export function isRouteLatchOpen(ctx: ExtensionContext): boolean {
+  const cfg = getRouteBreakerConfig();
+  if (!cfg.enabled) return false;
+  const s = getSessionHealth(ctx);
+  if (s.routeErrorsSinceHealthyTurn < cfg.threshold) return false;
+  const anchor = Math.max(s.routeLatchOpenedAt ?? 0, s.routeLatchLastReleaseAt ?? 0);
+  if (Date.now() - anchor < cfg.floorMs) return true;
+  s.routeLatchLastReleaseAt = Date.now();
+  return false;
+}
+
+/**
+ * Count one provider failure for the route latch. The category decides
+ * whether it counts: a context-window overflow and an operator abort are not
+ * evidence about the route, and counting them would park the very wakes a
+ * recovery needs. Read by `isRouteLatchOpen` only — deliberately not folded
+ * into `recordLlmError`, whose consumers (mode, terminal counter, degraded
+ * rows) must keep their own semantics.
+ */
+export function recordRouteFailure(ctx: ExtensionContext, category: LlmErrorCategory): void {
+  if (category === "context_window" || category === "abort") return;
+  const s = getSessionHealth(ctx);
+  s.routeErrorsSinceHealthyTurn++;
+  if (s.routeLatchOpenedAt === undefined) {
+    const cfg = getRouteBreakerConfig();
+    if (s.routeErrorsSinceHealthyTurn >= cfg.threshold) s.routeLatchOpenedAt = Date.now();
+  }
+}
+
+/** Drop the route latch and every stamp the floor reads. */
+function clearRouteLatch(s: SessionHealthState): void {
+  s.routeErrorsSinceHealthyTurn = 0;
+  s.routeLatchOpenedAt = undefined;
+  s.routeLatchLastReleaseAt = undefined;
 }
 
 /** Clear the latch and its counter (the reset signals share this). */
@@ -145,6 +224,10 @@ export function clearTerminalBreaker(ctx: ExtensionContext): void {
   const s = getSessionHealth(ctx);
   s.terminalErrorsSinceHealthyTurn = 0;
   s.breakerOpenedAt = undefined;
+  // A clean turn, a route change, an owner recovery and a session start all
+  // mean the route is being retried from a fresh premise: the route latch
+  // releases on the same signals.
+  clearRouteLatch(s);
 }
 
 export function recordLlmError(ctx: ExtensionContext, err: ClassifiedLlmError): void {
@@ -202,6 +285,12 @@ export function recordLlmSuccess(ctx: ExtensionContext): void {
   s.providerSuccessCount++;
   s.consecutiveErrors = 0;
   s.consecutiveHealthyTurns++;
+
+  // Any successful provider call is a release signal for the route latch: the
+  // route just answered, so the premise the latch parks on ("every attempt on
+  // this route fails") is false. Deliberately not gated on a run outcome — a
+  // parked session makes no self-started call, so this is how it re-opens.
+  clearRouteLatch(s);
 
   // Recover from degraded/aborted after enough healthy turns.
   if (s.mode === "degraded" || s.mode === "aborted" || s.mode === "context_overflow") {
