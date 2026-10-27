@@ -20,7 +20,7 @@ without it the agent guesses again.
   the per-path set is keyed on the session id and bounded.
 - **No new event registration.** The emitter rides pi's existing `tool_result`
   event, the only seat that carries both the failure text and the call's own
-  arguments — the call's `path` is stronger evidence than a parse of the
+  arguments - the call's `path` is stronger evidence than a parse of the
   message.
 - **Delivered as a live steer** (`delivery: "live"`), so it reaches a running
   loop and never wakes one by itself.
@@ -33,7 +33,7 @@ without it the agent guesses again.
 
 ## Related modules
 
-- `lib/utils/injection-tracker.ts` — `sendTrackedMessage`, the delivery trunk
+- `lib/utils/injection-tracker.ts` - `sendTrackedMessage`, the delivery trunk
   (envelope, flood cap, delivery class).
-- `extensions/self/auto-recovery/` and `extensions/self/watchdog/` — the
+- `extensions/self/auto-recovery/` and `extensions/self/watchdog/` - the
   neighbouring whisper emitters.
