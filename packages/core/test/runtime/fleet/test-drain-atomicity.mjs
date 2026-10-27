@@ -98,6 +98,86 @@ function check(name, body) {
   }
 }
 
+/**
+ * Resolve with the child's exit, whether or not it is still running.
+ *
+ * A listener attached to a child that has already exited never fires: the event
+ * is behind it, so the promise never settles and node reports an unsettled
+ * top-level await by exiting 13. Reading the child's own terminal state before
+ * the listener goes on makes the wait resolve in both cases, which is what lets
+ * a caller attach it whenever it likes and still get an answer.
+ */
+function waitForExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
+  return new Promise((resolve) => {
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+}
+
+// ── coarse and realistic, and labelled as coarse ────────────────────────────
+// A SIGKILL from another process is the failure this subsystem is built around.
+// It is kept because it exercises SQLite's own recovery rather than JavaScript
+// control flow, but the window it can hit is per ask and microseconds wide, so a
+// pass here is not evidence the transaction is in place. The seam arm below is.
+//
+// A kill sent after the child has finished is that window being missed: the arm
+// has measured nothing, so it says so on stdout rather than staying silent, and
+// its assertions run anyway, because the store has to be consistent however late
+// the kill lands. Waiting longer would not help; settling the wait either way is
+// what the wait is for, and `drainBeforeKill` lets a control force the ordering.
+async function killArm({ drainBeforeKill = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "fleet-drain-kill-"));
+  seed(root, ASK_COUNT);
+  const child = spawn(process.execPath, [SELF, "--drain", root], { stdio: ["ignore", "pipe", "inherit"] });
+  // Owned from the spawn, never from the kill: attaching it afterwards is how the
+  // event is lost when the child has already gone.
+  const exited = waitForExit(child);
+  let markReady;
+  const ready = new Promise((resolveReady) => {
+    markReady = resolveReady;
+  });
+  child.stdout.on("data", (chunk) => {
+    if (chunk.toString("utf8").includes("ready")) markReady();
+  });
+  await Promise.race([ready, exited]);
+  if (drainBeforeKill) await exited;
+  else await new Promise((resolveWait) => setTimeout(resolveWait, 5));
+  const aliveAtKill = child.exitCode === null && child.signalCode === null;
+  const killed = child.kill("SIGKILL"); // false, not an error, when the process is already gone
+  const missedWindow = !aliveAtKill || killed === false;
+  const ended = await exited;
+  const state = audit(root);
+  console.log(
+    missedWindow
+      ? `  SIGKILL mid-drain: the child had already exited (code ${ended.code ?? ended.signal}) when the kill was sent, so this arm measured nothing (answered=${state.answered} open=${state.open})`
+      : `  SIGKILL mid-drain: answered=${state.answered} open=${state.open}`,
+  );
+  check("a SIGKILL mid-drain leaves no ask half-done", () => {
+    assert.deepEqual(state.orphaned, []);
+    assert.equal(state.answered + state.open, ASK_COUNT);
+  });
+  check("the store is recoverable after the kill: a fresh drain completes", () => {
+    const retry = new Supervisor({ root, cap: 0, log: () => {} });
+    retry.drainExpiredAsks();
+    retry.journal.close();
+    const after = audit(root);
+    assert.equal(after.answered, ASK_COUNT);
+    assert.deepEqual(after.orphaned, []);
+  });
+  rmSync(root, { recursive: true, force: true });
+}
+
+// The kill arm runs alone on request, so a control can drive it into the ordering
+// its own timing only sometimes reaches: `--child-finished-before-kill` lets the
+// drain complete before the signal is sent.
+if (process.argv[2] === "--kill-arm") {
+  await killArm({ drainBeforeKill: process.argv.includes("--child-finished-before-kill") });
+  console.log(failures === 0 ? "\nThe kill arm passed." : `\n${failures} assertion(s) failed.`);
+  process.exit(failures === 0 ? 0 : 1);
+}
+
 // ── control: an undisturbed drain answers every ask and queues one message ──
 {
   const root = mkdtempSync(join(tmpdir(), "fleet-drain-control-"));
@@ -175,40 +255,8 @@ function check(name, body) {
   rmSync(root, { recursive: true, force: true });
 }
 
-// ── coarse and realistic, and labelled as coarse ────────────────────────────
-// A SIGKILL from another process is the failure this subsystem is built around.
-// It is kept because it exercises SQLite's own recovery rather than JavaScript
-// control flow, but the window it can hit is per ask and microseconds wide, so a
-// pass here is not evidence the transaction is in place. The seam arm above is.
-{
-  const root = mkdtempSync(join(tmpdir(), "fleet-drain-kill-"));
-  seed(root, ASK_COUNT);
-  const child = spawn(process.execPath, [SELF, "--drain", root], { stdio: ["ignore", "pipe", "inherit"] });
-  await new Promise((resolveReady) => {
-    child.stdout.on("data", (chunk) => {
-      if (chunk.toString("utf8").includes("ready")) resolveReady();
-    });
-    child.once("exit", resolveReady);
-  });
-  await new Promise((resolveWait) => setTimeout(resolveWait, 5));
-  child.kill("SIGKILL");
-  await new Promise((resolveExit) => child.once("exit", () => resolveExit()));
-  const state = audit(root);
-  console.log(`  SIGKILL mid-drain: answered=${state.answered} open=${state.open}`);
-  check("a SIGKILL mid-drain leaves no ask half-done", () => {
-    assert.deepEqual(state.orphaned, []);
-    assert.equal(state.answered + state.open, ASK_COUNT);
-  });
-  check("the store is recoverable after the kill: a fresh drain completes", () => {
-    const retry = new Supervisor({ root, cap: 0, log: () => {} });
-    retry.drainExpiredAsks();
-    retry.journal.close();
-    const after = audit(root);
-    assert.equal(after.answered, ASK_COUNT);
-    assert.deepEqual(after.orphaned, []);
-  });
-  rmSync(root, { recursive: true, force: true });
-}
+// ── the coarse arm, defined above so the control can drive it ───────────────
+await killArm();
 
 console.log(failures === 0 ? "\nAll drain-atomicity assertions passed." : `\n${failures} assertion(s) failed.`);
 process.exitCode = failures > 0 ? 1 : 0;
