@@ -9,6 +9,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sendTrackedMessage } from "../../lib/utils/injection-tracker.js";
 import { recordNudgeSent } from "../../lib/reasoning/nudge-analytics.js";
 import { areCognitiveNudgesDisabled } from "../../lib/config/braid-settings.js";
+import { isRouteLatchOpen } from "./session-health.js";
 
 const log = createLogger("enforcement");
 
@@ -116,7 +117,20 @@ export function sendEnforcementWhisper(
   // mid-turn compaction (context_compress tool). Undefined `deliverAs` falls
   // through to the triggerTurn branch and calls agent.prompt(), the same wake
   // path the timer extension uses.
-  const triggerTurn = options?.triggerTurn ?? false;
+  const requestedTriggerTurn = options?.triggerTurn ?? false;
+  // Route-failure latch: a whisper that asked to wake the agent must not
+  // start a turn into a route that has failed every attempt since the last
+  // successful call. The advisory is not withdrawn — the same text still
+  // reaches the session as the ordinary non-waking steer; only the wake is
+  // withheld, so the next self-started call is not a doomed one. Only the
+  // route half of the turn-start question applies here: an explicitly-waking
+  // whisper never consulted the terminal breaker, and making it do so now
+  // would park the post-compaction resume on a signal it never used to read.
+  const demoted = requestedTriggerTurn && isRouteLatchOpen(ctx);
+  if (demoted) {
+    log.info("[whisper] waking whisper demoted to non-waking (route latch open)");
+  }
+  const triggerTurn = requestedTriggerTurn && !demoted;
   const deliverAs = options?.deliverAs ?? (triggerTurn ? undefined : "steer");
   // Default class for a non-waking enforcement whisper: live. An enforcement
   // advisory's value is read during the run it fires in (see the delivery

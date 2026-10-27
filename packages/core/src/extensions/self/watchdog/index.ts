@@ -56,7 +56,7 @@ import {
 import { loadWatchdogConfig } from "./config.js";
 import { createWatchdogEngine, type WatchdogEngine } from "./engine.js";
 import { appendContextHeartbeatLine } from "../../../lib/telemetry/context-heartbeat.js";
-import { getSessionHealth } from "../../enforcement/session-health.js";
+import { getSessionHealth, isRouteLatchOpen } from "../../enforcement/session-health.js";
 
 const log = createLogger("watchdog");
 
@@ -306,6 +306,18 @@ export default function (pi: ExtensionAPI) {
         isWakeDue: () => {
           try {
             return getWatchdogWakeDueProvider()?.() === true;
+          } catch {
+            return false;
+          }
+        },
+        // Route-failure latch: the engine asks the health layer, once per
+        // escalation, whether a self-started turn would park. While it is
+        // open the bark rides the quiet channel and the tg line below still
+        // fires (see fireEscalation). Read-only, fail-open: a broken reader
+        // must never silence an escalation.
+        isTurnStartBlocked: () => {
+          try {
+            return isRouteLatchOpen(ctx);
           } catch {
             return false;
           }
