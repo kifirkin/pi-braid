@@ -43,6 +43,41 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.1 (2026-10-27: the package carries its changelog, a publish checks what it served, and two measured friction classes lose their cause)
+
+### Core
+
+- **The changelog ships with the package.** `npm`'s `files` allowlist is package-relative and the repository keeps
+  one changelog at its root, above `packages/core`, so no allowlist entry could name it and an installed `pi-braid`
+  carried no changelog at all. A `prepack` step now stages that file at the package root and a `postpack` step removes
+  it, so the artifact carries the released tree's own notes rather than a second copy that can drift. The staged path
+  is gitignored, so an interrupted pack cannot leave a checkout reading as dirty, and the bytes in the tarball are the
+  bytes of the root file.
+- **A publish now compares what it served.** `pack-compare.mjs` unpacks two tarballs, normalises the one field that
+  cannot be reproducible (`build-info.json`'s `packedAt`) and reports what else differs, with three exit codes so
+  "equal", "different" and "could not read" stay distinguishable. `publish.yml` runs it after the publish and after
+  the release entry, tag runs only, and **warns** rather than fails: a byte comparison would be permanently red here
+  (two packs of one tree differ in hash and size), while the content comparison is exact. The step becomes blocking
+  when it has a record of being right on this repository.
+- **The provenance writer must be last.** A lifecycle step of the package's own (the changelog staging above) may now
+  run before the writer, and the checker identifies the writer by the script that reaches the shared generator rather
+  than by whichever `node` script the body runs first. A body that still leaves a command after the writer is refused,
+  because anything after it can mutate the record it computed.
+- **A missed path names the cheaper instrument.** One steer line per turn, in the whisper family that already
+  carries error bursts, when a tool result shows the path did not exist: it names the path and the instrument that
+  would have found it (`ls`, `find`, `explore_paths`). Measured before this change: missing-path failures were the
+  largest single tool class in this machine's transcripts, two thirds of them in sessions that never listed a tree.
+- **Two schemas stop making the model guess.** `list_skills` treats a paging-only call as `action: "list"` instead of
+  failing, and argument validation now names the values it would have accepted (the `think` tool's enum and its
+  required `decision` field were the two most frequent victims) instead of only saying validation failed.
+
+### Also in this line
+
+- **The session scanner can name its window.** `session-scan.mjs` gained `--since <ISO>`, filtering on each session's
+  own recorded start rather than the file's modification time, and every report now prints the cutoff it applied. A
+  resumed session's mtime moves while its first prompt does not, which is why a release-window measurement could not
+  be re-cut to the same population before this.
+
 ## Core — 0.42.0 (2026-10-25: the skills catalog is in the prompt, and work that moves re-points it)
 
 ### Core
