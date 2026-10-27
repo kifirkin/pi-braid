@@ -15,7 +15,11 @@
  *
  * A `prepack` body that keeps running commands after the writer call is
  * refused: a later command can mutate the artifact after the record was
- * computed.
+ * computed. The writer call is the one whose script reaches the shared
+ * generator, not whichever node script the body happens to run first: a body
+ * may run a lifecycle step of its own (staging the changelog this package
+ * ships is one), and a step that does not reach the generator cannot compute
+ * the record, so nothing that follows it follows the record either.
  *
  * The writer is also executed once, in a throwaway package directory, because
  * a manifest that names a script which writes nothing would pass a purely
@@ -113,27 +117,44 @@ function commandWords(body) {
     .filter((words) => words.length > 0);
 }
 
+/** The specifier the writer imports the shared generator through. */
+const GENERATOR_IMPORT = /from\s+["']([^"']*build-info\.mjs)["']/;
+
 /**
- * The invocation of the shared writer inside a lifecycle script: the path it
- * is called with, the verb it is given, and how many commands the body runs
- * after it. `null` when the body carries no `node <path>.mjs <verb>` call at
- * all — the caller reports that as a miss.
+ * The specifier a script reaches the shared generator by, or null when it does
+ * not reach it. The source is the instrument because reaching the generator is
+ * what makes a call the writer: the ordering rule turns on which call computes
+ * the record, and only a script that imports the generator can.
  */
-function writerCall(body, pkgDir) {
+function generatorSpecifier(script) {
+  try {
+    return GENERATOR_IMPORT.exec(readFileSync(script, "utf8"))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The node calls a lifecycle body runs, in order: the path each names, the verb
+ * it is given, and how many commands the body runs after it. Empty when the
+ * body calls no node script at all — the caller reports that as a miss.
+ */
+function nodeCalls(body, pkgDir) {
   const segments = commandWords(body);
+  const calls = [];
   for (const [index, words] of segments.entries()) {
-    const call = words.findIndex(
+    const at = words.findIndex(
       (word, i) => word === "node" && typeof words[i + 1] === "string" && words[i + 1].endsWith(".mjs"),
     );
-    if (call === -1) continue;
-    return {
-      script: resolve(pkgDir, words[call + 1]),
-      verb: words[call + 2] ?? null,
-      text: words.slice(call, call + 3).join(" "),
+    if (at === -1) continue;
+    calls.push({
+      script: resolve(pkgDir, words[at + 1]),
+      verb: words[at + 2] ?? null,
+      text: words.slice(at, at + 3).join(" "),
       commandsAfter: segments.length - 1 - index,
-    };
+    });
   }
-  return null;
+  return calls;
 }
 
 /** Single-quote a path for a POSIX shell command body. */
@@ -310,17 +331,24 @@ for (const { dir, rel, manifest } of packages) {
       fail(`${rel}: no ${hook} script, so ${BUILD_INFO_FILE} is not ${verb === "write" ? "generated" : "removed"}`);
       continue;
     }
-    const call = writerCall(body, dir);
+    const calls = nodeCalls(body, dir);
+    const call = calls.find((candidate) => generatorSpecifier(candidate.script) !== null);
     if (!call) {
-      fail(`${rel}: ${hook} ("${body}") does not call a node script`);
+      const missing = calls.find((candidate) => !existsSync(candidate.script));
+      if (calls.length === 0) {
+        fail(`${rel}: ${hook} ("${body}") does not call a node script`);
+      } else if (missing) {
+        fail(`${rel}: ${hook} calls ${missing.text}, and ${relative(root, missing.script)} does not exist`);
+      } else {
+        fail(
+          `${rel}: ${hook} ("${body}") calls ${calls.map((candidate) => `"${candidate.text}"`).join(", ")}, ` +
+            `and none of them reaches the shared ${BUILD_INFO_FILE} generator`,
+        );
+      }
       continue;
     }
     if (call.verb !== verb) {
       fail(`${rel}: ${hook} ("${body}") does not give the writer the "${verb}" verb (read: "${call.text}")`);
-      continue;
-    }
-    if (!existsSync(call.script)) {
-      fail(`${rel}: ${hook} calls ${call.text}, and ${relative(root, call.script)} does not exist`);
       continue;
     }
     if (hook === "prepack" && call.commandsAfter > 0) {
@@ -348,8 +376,7 @@ if (distinct.length > 1) {
 // passing the field checks below while the two could drift apart.
 if (distinct.length === 1) {
   const [writer] = distinct;
-  const source = readFileSync(writer, "utf8");
-  const specifier = /from\s+["']([^"']*build-info\.mjs)["']/.exec(source)?.[1] ?? null;
+  const specifier = generatorSpecifier(writer);
   if (!specifier) {
     fail(`${relative(root, writer)} does not import the shared build-info.mjs generator`);
   } else {

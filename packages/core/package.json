@@ -67,7 +67,7 @@
     "release:local": "node scripts/publish-local.mjs",
     "publish:local": "node scripts/publish-local.mjs",
     "dev:link": "npm link && cd ~/.pi/agent/local-packages && npm link pi-braid",
-    "prepack": "npm run build && node scripts/pack-provenance.mjs write && node scripts/stage-changelog.mjs write",
+    "prepack": "npm run build && node scripts/stage-changelog.mjs write && node scripts/pack-provenance.mjs write",
     "postpack": "node scripts/pack-provenance.mjs remove && node scripts/stage-changelog.mjs remove"
   },
   "devDependencies": {
