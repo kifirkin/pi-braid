@@ -66,6 +66,138 @@ export function estimateMessagesTokens(messages: readonly unknown[]): number {
   return tokens;
 }
 
+/**
+ * Tokens an OUTGOING REQUEST carries: system prompt, tool definitions and
+ * messages. The session-tree walk sees only the messages, so anything that
+ * compares a request against a window has to start here - the system prompt
+ * and the tool schemas never appear in the tree at all.
+ */
+export function estimatePayloadTokens(parts: {
+  systemPrompt?: string;
+  messages?: readonly unknown[];
+  tools?: unknown;
+}): number {
+  let tokens = 0;
+  if (parts.systemPrompt) tokens += Math.ceil(parts.systemPrompt.length / 4);
+  if (parts.messages) tokens += estimateMessagesTokens(parts.messages);
+  if (parts.tools !== undefined) {
+    try {
+      tokens += Math.ceil(JSON.stringify(parts.tools).length / 4);
+    } catch {
+      /* non-serializable tool definitions: leave them out rather than throw */
+    }
+  }
+  return tokens;
+}
+
+// ── Calibration against the provider's own count ──────────────────────
+//
+// chars/4 is not a tokenizer. It is a guess about a distribution, and the
+// distribution moves with the content: prose runs near 4 chars/token, dense
+// tool-call JSON and base64 payloads run near 2, and characters the encoder
+// spends several tokens on (non-Latin scripts) sit lower still. A single
+// divisor therefore cannot be right everywhere, and the guard that reads it
+// is wrong by the same factor in the same direction.
+//
+// Every successful call returns usage. Pairing that count with the estimate
+// for the SAME span yields the one number that can correct the guess without
+// a tokenizer: the ratio. It is kept as the median of the last few pairs
+// because the ratio is content-dependent - a single oversized tool result
+// moves one sample, not the level - and applied to the estimated part of the
+// live number.
+
+export type UsageSource = "measured" | "estimated";
+
+/** Paired observations kept for the ratio. */
+const CALIBRATION_SAMPLES = 8;
+/**
+ * A pair smaller than this measures nothing: below it the fixed part of the
+ * request (system prompt, tool schemas) dominates the measured count, so the
+ * ratio would describe the harness rather than the tokenizer's view of content.
+ */
+const CALIBRATION_MIN_ESTIMATE_TOKENS = 2_000;
+/**
+ * Clamp. Below 0.5 the estimate would over-count by more than half (a span
+ * whose shape changed under the pair, not a tokenizer effect); above 6 the
+ * correction exceeds anything a character-count can explain for text, so the
+ * pair is not describing the tokenizer either.
+ */
+const CALIBRATION_MIN_RATIO = 0.5;
+const CALIBRATION_MAX_RATIO = 6;
+
+let _calibrationRatios: number[] = [];
+let _lastCalibrationKey: string | null = null;
+let _calibrationSession: string | null = null;
+
+/**
+ * Ratios belong to one session: a new session has its own content mix, and a
+ * process that outlives sessions must not apply yesterday's ratio to today's
+ * tree. Called from the measure path with whatever session key the context
+ * exposes; a context without one leaves the store alone.
+ */
+function scopeCalibrationToSession(sessionKey: string | undefined): void {
+  if (!sessionKey) return;
+  if (_calibrationSession === sessionKey) return;
+  _calibrationRatios = [];
+  _lastCalibrationKey = null;
+  _calibrationSession = sessionKey;
+}
+
+/**
+ * Record one paired observation: the chars/4 estimate for a request span and
+ * the provider's own count for that same span. Returns the median ratio after
+ * the insert, or null when the pair measures nothing (a span under the harness
+ * floor, or a non-positive measured count).
+ *
+ * `key` dedupes: callers re-measure the same span many times per turn, and the
+ * same pair must not weight the median more than once.
+ */
+export function recordCalibrationSample(
+  estimatedTokens: number,
+  measuredTokens: number,
+  key?: string,
+): number | null {
+  if (estimatedTokens < CALIBRATION_MIN_ESTIMATE_TOKENS || measuredTokens <= 0) return null;
+  if (key && key === _lastCalibrationKey) return calibrationRatio();
+  const raw = measuredTokens / estimatedTokens;
+  const ratio = Math.min(CALIBRATION_MAX_RATIO, Math.max(CALIBRATION_MIN_RATIO, raw));
+  _calibrationRatios.push(ratio);
+  if (_calibrationRatios.length > CALIBRATION_SAMPLES) _calibrationRatios.shift();
+  _lastCalibrationKey = key ?? null;
+  return calibrationRatio();
+}
+
+/** Median of the retained ratios; null before the first usable pair. */
+export function calibrationRatio(): number | null {
+  if (_calibrationRatios.length === 0) return null;
+  const sorted = [..._calibrationRatios].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Apply the session's ratio to a chars-based estimate. No ratio (first call of
+ * a session) leaves the number as the plain estimate - it never pretends to be
+ * measured, and it never invents a correction it has not observed.
+ */
+export function calibrateEstimate(rawTokens: number): {
+  tokens: number;
+  ratio: number | null;
+  calibrated: boolean;
+} {
+  const ratio = calibrationRatio();
+  if (ratio === null || rawTokens <= 0)
+    return { tokens: rawTokens, ratio: null, calibrated: false };
+  return { tokens: Math.round(rawTokens * ratio), ratio, calibrated: true };
+}
+
+/** Test hook: clear the retained pairs (also clears the dedupe key). */
+export function resetCalibrationForTests(): void {
+  _calibrationRatios = [];
+  _lastCalibrationKey = null;
+  _calibrationSession = null;
+}
+
 /** Tokens carried by one session entry (message, compaction summary, etc.). */
 function entryTokens(entry: any): number {
   if (!entry || typeof entry !== "object") return 0;
@@ -107,8 +239,19 @@ export function resolveWindow(modelWindow?: number | null): ResolvedWindow {
 }
 
 export interface LiveUsage {
-  /** Estimated tokens of the next request payload. */
+  /**
+   * Tokens of the next request payload, calibrated. This is the number guards
+   * read: a measured base plus a calibrated estimate of the trailing entries.
+   */
   tokens: number;
+  /** Where `tokens` came from: an API response, or the chars-based estimate. */
+  source: UsageSource;
+  /** The uncalibrated chars/4 walk over the same span (never rendered as the total). */
+  estimatedTokens: number;
+  /** The trailing part that only the estimate covers, after calibration. 0 when measured. */
+  estimatedTrailingTokens: number;
+  /** The session ratio applied, when one was observed. */
+  calibrationRatio?: number;
   contextWindow: number;
   percent: number;
   windowSource: "configured" | "provider";
@@ -139,6 +282,15 @@ export function measureLiveUsage(ctx: unknown): LiveUsage | undefined {
 
   const modelWindow = (ctx as { model?: { contextWindow?: number } })?.model?.contextWindow;
   const window = resolveWindow(modelWindow);
+  try {
+    scopeCalibrationToSession(
+      (
+        ctx as { sessionManager?: { getSessionId?: () => string } }
+      ).sessionManager?.getSessionId?.(),
+    );
+  } catch {
+    /* no session key: keep the store as it is */
+  }
 
   // Latest compaction boundary: entries strictly before it are compacted
   // away and are not part of the live payload.
@@ -188,14 +340,43 @@ export function measureLiveUsage(ctx: unknown): LiveUsage | undefined {
       break;
     }
   }
+  const estimatedTokens = liveTokens;
+  let source: UsageSource = "estimated";
+  let estimatedTrailingTokens: number;
+  let calibrationRatioApplied: number | undefined;
+
   if (usageBacked) {
+    // The provider's count covers exactly the entries from the boundary through
+    // the message that carries the usage; pair that count with the walk over
+    // the same slice. This is the only place both numbers describe one request.
+    let rawUpToUsage = 0;
+    for (let i = liveStart; i <= usageBacked.index; i++) rawUpToUsage += entryTokens(branch[i]);
+    recordCalibrationSample(
+      rawUpToUsage,
+      usageBacked.usageTokens,
+      `${liveStart}:${usageBacked.index}:${usageBacked.usageTokens}`,
+    );
+
     let trailing = 0;
     for (let i = usageBacked.index + 1; i < branch.length; i++) trailing += entryTokens(branch[i]);
-    liveTokens = usageBacked.usageTokens + trailing;
+    const calibratedTrailing = calibrateEstimate(trailing);
+    liveTokens = usageBacked.usageTokens + calibratedTrailing.tokens;
+    source = "measured";
+    estimatedTrailingTokens = calibratedTrailing.tokens;
+    if (calibratedTrailing.ratio !== null) calibrationRatioApplied = calibratedTrailing.ratio;
+  } else {
+    const calibrated = calibrateEstimate(liveTokens);
+    liveTokens = calibrated.tokens;
+    estimatedTrailingTokens = calibrated.tokens;
+    if (calibrated.ratio !== null) calibrationRatioApplied = calibrated.ratio;
   }
 
   return {
     tokens: liveTokens,
+    source,
+    estimatedTokens,
+    estimatedTrailingTokens,
+    calibrationRatio: calibrationRatioApplied,
     contextWindow: window.contextWindow,
     percent: window.contextWindow > 0 ? (liveTokens / window.contextWindow) * 100 : 0,
     windowSource: window.windowSource,
@@ -267,4 +448,32 @@ export function tokenArms(providerWindow?: number | null): TokenArms {
  */
 export function formatTokensK(tokens: number): string {
   return `${Math.round(tokens / 1000)}K`;
+}
+
+/**
+ * One label for any rendered usage number, naming its provenance. The word is
+ * `measured` only when an API response supplied the anchor; everything else is
+ * `estimated`, with the calibration factor shown when one was applied. A
+ * trailing estimate behind a measured anchor is named rather than folded in -
+ * rounding it away is how the number stops meaning anything.
+ */
+export function describeUsage(usage: {
+  source: UsageSource;
+  estimatedTrailingTokens?: number;
+  calibrationRatio?: number;
+}): string {
+  const ratio =
+    usage.calibrationRatio !== undefined ? ` x${usage.calibrationRatio.toFixed(2)}` : "";
+  if (usage.source === "measured") {
+    const trailing = usage.estimatedTrailingTokens ?? 0;
+    return trailing > 0
+      ? `measured + ${formatTokensK(trailing)} estimated${ratio}`
+      : `measured${ratio}`;
+  }
+  return `estimated${ratio}`;
+}
+
+/** `<pct>% <provenance>` - the percent form used wherever a percentage renders. */
+export function describeUsagePercent(usage: LiveUsage): string {
+  return `${usage.percent.toFixed(1)}% ${describeUsage(usage)}`;
 }

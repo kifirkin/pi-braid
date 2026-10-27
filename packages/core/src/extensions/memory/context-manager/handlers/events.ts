@@ -28,6 +28,11 @@ import { semanticCompress } from "../semantic-compress.js";
 import { updateContextDensity } from "../../../heartbeat/analytics/index.js";
 import { AGENT_END } from "../../../../lib/core/event-names.js";
 import {
+  clearRequestShapeFailure,
+  noteRequestShapeFailure,
+} from "../../../../lib/utils/wake-gate.js";
+import { isContextLengthRequestShape } from "../../../../lib/errors/llm-error.js";
+import {
   log,
   getCmState,
   compactionRetryState,
@@ -167,8 +172,20 @@ export function registerAgentEndApiErrorHandler(pi: ExtensionAPI): void {
           break;
         }
       }
-      if (!lastAssistant || lastAssistant.stopReason !== "error") return;
+      if (!lastAssistant || lastAssistant.stopReason !== "error") {
+        // A turn that ended without an error means a request fit and came back:
+        // the shape verdict from an earlier refusal no longer applies.
+        clearRequestShapeFailure();
+        return;
+      }
       const finalError: string = lastAssistant.errorMessage ?? "Unknown error";
+
+      // A context-length refusal is the request's shape, not the provider's
+      // mood. Record it here so the wake gate can keep failed-open wakes from
+      // re-firing a request that cannot succeed.
+      if (isContextLengthRequestShape(finalError)) {
+        noteRequestShapeFailure(finalError.slice(0, 200));
+      }
 
       sendTrackedMessage(
         pi,

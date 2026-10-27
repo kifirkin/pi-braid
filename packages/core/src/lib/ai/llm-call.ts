@@ -55,6 +55,12 @@ import { isRateLimitText } from "../errors/llm-error.js";
 import { isContextWindowErrorText } from "../errors/llm-error.js";
 import { sanitizeLlmErrorForLog, sanitizeLlmRequestText } from "./payload-hygiene.js";
 import {
+  calibrateEstimate,
+  estimatePayloadTokens,
+  resolveWindow,
+} from "../detection/context-usage.js";
+import { guardAgainstDoomedSend } from "./presend-budget.js";
+import {
   getContextEmergencyOffloadRunner,
   getExtensionCtxProvider,
   hasWarnedAuxDegradedTransport,
@@ -420,6 +426,30 @@ export async function callLlm(
     systemPrompt: systemSafe.text,
     messages: [{ role: "user", content: userSafe.text, timestamp: Date.now() }],
   };
+
+  // ── pre-send budget ──
+  // A request over the window cannot succeed, and a provider 400 is a late,
+  // expensive way to learn it. Measure the payload the provider would receive
+  // (system + messages, calibrated against this session's own measured ratio),
+  // add the output budget, and compare against the resolved window - a
+  // configured cap binding below the model's window counts, because the
+  // provider will refuse what the cap already refused.
+  const resolvedWindow = resolveWindow((model as { contextWindow?: number }).contextWindow);
+  const budget = await guardAgainstDoomedSend({
+    measure: () =>
+      calibrateEstimate(
+        estimatePayloadTokens({ systemPrompt: context.systemPrompt, messages: context.messages }),
+      ).tokens,
+    outputTokens: maxTokens,
+    contextWindow: resolvedWindow.contextWindow,
+    // The only compaction available to an auxiliary call is the published
+    // offload: it shrinks the session's largest toolResults, which is where an
+    // oversized prompt came from. One attempt; nothing freed means still over.
+    compact: async () => (await runEmergencyOffloadForCall()) > 0,
+    onRefusal: (line) => log.error(line),
+    subject: "LLM call",
+  });
+  if (!budget.allowed) return { error: budget.line };
 
   // ── per-model concurrency limiter: acquire ONCE at function entry, release in finally ──
   // (One slot per callLlm invocation, not per retry - otherwise retries could

@@ -134,7 +134,7 @@ export async function handleOverflowFailure(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (overflow)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% ${analysis.usageSourceKind} - triggering emergency rotation (overflow)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;
@@ -222,7 +222,7 @@ export async function handleTransientError(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (transient)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% ${analysis.usageSourceKind} - triggering emergency rotation (transient)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;
@@ -360,7 +360,7 @@ export async function handleThresholdFailure(
     const analysis = await analyzeSession(ctx);
     if (analysis.usage.percent >= 75) {
       log.warn(
-        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% - triggering emergency rotation (threshold)`,
+        `[Critical] Context at ${analysis.usage.percent.toFixed(1)}% ${analysis.usageSourceKind} - triggering emergency rotation (threshold)`,
       );
       triggerEmergencyRotation(pi, ctx);
       return;

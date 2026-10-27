@@ -43,6 +43,13 @@ export interface ClassifiedLlmError {
   fallbackToNonLlm: boolean;
   /** Does the user need to do something (top up balance, fix key)? */
   userActionRequired: boolean;
+  /**
+   * Set when the failure is about the SHAPE of the request rather than its
+   * timing: the same request will be refused the same way, so the retry path
+   * and any wake that would start a fresh turn are both wrong. The ring
+   * records the same class as a request-shape death.
+   */
+  requestShape?: "context_length";
   /** Plain-text hint for the user. Empty for transient/unknown. */
   userMessage?: string;
   /** Hint from Retry-After header or computed backoff (ms). */
@@ -116,6 +123,47 @@ const CONTEXT_WINDOW_PATTERNS = [
   /maximum[_ ]context/i,
   /prompt[_ ]is[_ ]too[_ ]long/i,
 ];
+
+/**
+ * Context-length refusals in their 400-shaped wordings. A provider that
+ * rejects an oversized body with `400 invalid_request_error` is naming a
+ * request-shape problem: the numbers change, the verdict does not. Kept apart
+ * from CONTEXT_WINDOW_PATTERNS so the bare `413` arm keeps its meaning and a
+ * 5xx body cannot be pulled in by a phrase like "too many tokens".
+ */
+const REQUEST_SHAPE_CONTEXT_PATTERNS = [
+  /maximum[_ ]context[_ ]length/i,
+  /context[_ ]length/i,
+  /reduce[ _]the[ _]length[ _]of[ _]the/i,
+  /(input|prompt|request|messages?)[ _]is[ _]too[ _]long/i,
+  /too[ _]many[ _](input[ _])?tokens/i,
+  /exceeds?[ _]the[ _](model'?s?[ _])?(maximum|max)/i,
+];
+
+/**
+ * True when the text names a context-length refusal. Used by consumers that
+ * only have text (pi-core surfaces session failures as the assistant's
+ * errorMessage string) and must tell "the request must change" apart from
+ * "try again later" without re-deriving the pattern list.
+ */
+export function isContextLengthRequestShape(err: unknown): boolean {
+  const text =
+    typeof err === "string"
+      ? err
+      : typeof err === "object" && err !== null
+        ? String((err as { message?: unknown }).message ?? "")
+        : "";
+  if (!text) return false;
+  return (
+    matchesAny(text, [
+      /context[_ ]length[_ ]exceeded/i,
+      /context[_ ]window/i,
+      /maximum[_ ]context/i,
+      /prompt[_ ]is[_ ]too[_ ]long/i,
+      ...REQUEST_SHAPE_CONTEXT_PATTERNS,
+    ]) && !matchesAny(text, TRANSIENT_PATTERNS)
+  );
+}
 
 const TRANSIENT_PATTERNS = [
   /500/,
@@ -276,7 +324,13 @@ export function classifyLlmError(err: unknown): ClassifiedLlmError {
     return makeError("auth", err);
   }
   if (status === 413 || matchesAny(text, CONTEXT_WINDOW_PATTERNS)) {
-    return makeError("context_window", err);
+    return makeError("context_window", err, { requestShape: "context_length" });
+  }
+  // A 400 whose body names a context-length refusal is the same class as a
+  // 413: the request shape is wrong, so it must never fall through to
+  // `unknown` (which is retryable, and retrying it unchanged cannot work).
+  if (status === 400 && matchesAny(text, REQUEST_SHAPE_CONTEXT_PATTERNS)) {
+    return makeError("context_window", err, { requestShape: "context_length" });
   }
   if (status === 500 || status === 502 || status === 503 || status === 504 || status === 529) {
     return makeError("transient", err);

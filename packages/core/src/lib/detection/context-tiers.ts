@@ -246,6 +246,12 @@ export function resolveContextNudge(
   usagePercent: number,
   usageTokens: number,
   window?: number | null,
+  /**
+   * How the number was produced (measured / estimated). Rendered with the
+   * message so a reader can tell a large context from a badly counted one;
+   * the ladder itself is unchanged, since a rung is a bar, not a label.
+   */
+  provenance?: string,
 ): ContextNudge | null {
   let best: RungSpec | null = null;
   for (const rung of nudgeRungs(window)) {
@@ -259,7 +265,9 @@ export function resolveContextNudge(
     unit: best.unit,
     threshold: best.threshold,
     position: best.position,
-    message: best.render(usagePercent, usageTokens),
+    message: provenance
+      ? `${best.render(usagePercent, usageTokens)} (${provenance})`
+      : best.render(usagePercent, usageTokens),
   };
 }
 

@@ -63,6 +63,7 @@ import {
   contextNudgeCrossed,
 } from "../../../lib/detection/context-tiers.js";
 import {
+  describeUsage,
   measureLiveUsage,
   tokenArms,
   formatTokensK,
@@ -205,12 +206,14 @@ async function checkContextUsage(
   let usagePercent = 0;
   let usageTokens = 0;
   let usageWindow: number | undefined;
+  let usageProvenance: string | undefined;
   try {
     const live = measureLiveUsage(ctx);
     if (live) {
       usagePercent = live.percent;
       usageTokens = live.tokens;
       usageWindow = live.contextWindow;
+      usageProvenance = describeUsage(live);
     }
   } catch {
     /* live measurement unavailable - the skip below records it */
@@ -336,7 +339,7 @@ async function checkContextUsage(
   // token warning 0.45W, advisory 50%, warning 65%, critical 75%, compact
   // 80%. The strongest rung reached wins, so no token arm can shadow a
   // percent tier above it (see lib/detection/context-tiers.ts).
-  const nudge = resolveContextNudge(usagePercent, usageTokens, usageWindow);
+  const nudge = resolveContextNudge(usagePercent, usageTokens, usageWindow, usageProvenance);
   if (nudge) {
     const lastFired = findContextNudgeRung(state.contextNudgeRung, usageWindow);
     if (state.contextNudgeSent) {

@@ -155,6 +155,30 @@ let _failSafeHandle: ReturnType<typeof setTimeout> | null = null;
 // Test hook: override the fail-safe bound (null restores the default).
 let _failSafeMsOverride: number | null = null;
 
+/**
+ * Why the last turn could not be sent at all, when the reason is the SHAPE of
+ * the request rather than the state of the provider. A context-length refusal
+ * is permanent for a given context: every later turn carrying the same payload
+ * is refused the same way, so an ungated wake that starts one is not a retry,
+ * it is the same failure under a fresh request id.
+ */
+let _requestShapeFailure: string | null = null;
+
+/** Record that the last turn failed on request shape (a context-length refusal). */
+export function noteRequestShapeFailure(detail: string): void {
+  _requestShapeFailure = detail;
+}
+
+/** The recorded request-shape failure, or null. */
+export function requestShapeFailure(): string | null {
+  return _requestShapeFailure;
+}
+
+/** Clear the record (a request that fits went through, or a new session). */
+export function clearRequestShapeFailure(): void {
+  _requestShapeFailure = null;
+}
+
 function failSafeMs(): number {
   return _failSafeMsOverride ?? RUN_REGION_MAX_MS;
 }
@@ -170,18 +194,47 @@ function clearFailSafe(): void {
 function armRunRegion(): void {
   _runRegionActive = true;
   clearFailSafe();
+  scheduleFailSafe();
+  // Do not keep the process alive for a stuck gate.
+  unrefFailSafe();
+}
+
+/** Let the process exit while a fail-safe window is pending. */
+function unrefFailSafe(): void {
+  const handle = _failSafeHandle as { unref?: () => void } | null;
+  if (typeof handle?.unref === "function") handle.unref();
+}
+
+/**
+ * One fail-safe window. Normally the gate opens here: a gate stuck closed by a
+ * pre-flight abort rewrites every wake into a queued steer that never starts a
+ * turn, which is its own failure.
+ *
+ * The exception is a recorded request-shape failure. There, opening the gate
+ * buys no safety - it starts the same doomed request again, and again. So the
+ * gate stays closed and the window re-arms: wakes keep arriving as steers into
+ * the session (the shape that reads them when a run does start) without
+ * starting one.
+ */
+function scheduleFailSafe(): void {
   _failSafeHandle = setTimeout(() => {
     _failSafeHandle = null;
+    if (_requestShapeFailure) {
+      log.warn(
+        `[wake-gate] fail-safe: keeping triggerTurn wakes gated - the last turn was refused on ` +
+          `request shape (context length), so the request it would start cannot succeed. ` +
+          `Remedy: compact the session. Detail: ${_requestShapeFailure}`,
+      );
+      scheduleFailSafe();
+      unrefFailSafe();
+      return;
+    }
     _runRegionActive = false;
     log.warn(
       `[wake-gate] fail-safe: run region auto-cleared after ${failSafeMs()}ms without a release event ` +
         `(pre-flight abort?) — triggerTurn wakes ungated again`,
     );
   }, failSafeMs());
-  // Do not keep the process alive for a stuck gate.
-  if (typeof (_failSafeHandle as { unref?: () => void } | null)?.unref === "function") {
-    (_failSafeHandle as { unref: () => void }).unref();
-  }
 }
 
 /** Release the gate and cancel the fail-safe timer. */
@@ -200,6 +253,7 @@ export function resetWakeGateForTests(): void {
   releaseRunRegion();
   _lastAgentCtx = null;
   _failSafeMsOverride = null;
+  _requestShapeFailure = null;
 }
 
 /** Test hook: shorten/extend the fail-safe bound (null restores the default). */
@@ -274,6 +328,7 @@ export function registerWakeGate(pi: {
   );
   (pi.on as (event: string, handler: (...args: any[]) => any) => void)(SESSION_SHUTDOWN, () => {
     releaseRunRegion();
+    _requestShapeFailure = null; // a new session starts without a shape verdict
     _lastAgentCtx = null; // no live session after shutdown: fail open until the next capture
   });
 }

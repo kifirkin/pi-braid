@@ -479,6 +479,13 @@ export function collectAndEmitContextHeartbeat(
 export interface SelfStateSample {
   /** Current context size in tokens (live read, not the last-tick snapshot). */
   contextTokens: number | null;
+  /**
+   * Where `contextTokens` came from: "measured" (an API response anchors it)
+   * or "estimated" (chars-based walk). Null when no reading was available.
+   * A telemetry reader that cannot tell the two apart cannot tell a large
+   * context from a badly counted one.
+   */
+  contextTokensSource: "measured" | "estimated" | null;
   /** Cache-hit share, percent 0-100 (last assistant message). */
   cacheHitShare: number | null;
   /** Near-duplicate message count from the context-density evaluator. */
@@ -498,6 +505,7 @@ export interface SelfStateSample {
 export function getSelfStateSample(ctx: ExtensionContext): SelfStateSample {
   const sample: SelfStateSample = {
     contextTokens: null,
+    contextTokensSource: null,
     cacheHitShare: null,
     nearDupCount: null,
     tpsEma: null,
@@ -509,8 +517,16 @@ export function getSelfStateSample(ctx: ExtensionContext): SelfStateSample {
     // must not report the pre-slide size. Falls back to the duck-typed
     // accessor when the session tree is unavailable.
     const live = measureLiveUsage(ctx);
-    const usage = live ?? getContextUsage(ctx);
-    if (usage && typeof usage.tokens === "number") sample.contextTokens = usage.tokens;
+    if (live) {
+      sample.contextTokens = live.tokens;
+      sample.contextTokensSource = live.source;
+    } else {
+      const usage = getContextUsage(ctx);
+      if (usage && typeof usage.tokens === "number") {
+        sample.contextTokens = usage.tokens;
+        sample.contextTokensSource = "estimated";
+      }
+    }
   } catch {
     /* keep null */
   }

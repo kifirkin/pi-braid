@@ -1,6 +1,7 @@
 import { getContextUsage } from "../../../lib/detection/context-tiers.js";
 import { formatTokensK } from "../../../lib/detection/context-usage.js";
 import {
+  describeUsage,
   measureLiveUsage,
   tokenArms,
   resolveWindow,
@@ -27,6 +28,8 @@ export interface AuditResult {
   usage: { percent: number; tokens: number; contextWindow: number };
   /** How the usage number was produced (live working set vs fallback). */
   usageSource: string;
+  /** The short provenance word for the number: measured or estimated. */
+  usageSourceKind: "measured" | "estimated" | "unavailable";
   /** Whole-branch token sum - labeled "not sent" wherever displayed. */
   branchTokens: number;
   branchLength: number;
@@ -81,6 +84,7 @@ export function analyzeSession(ctx: any): AuditResult {
 
   let usage = { percent: 0, tokens: 0, contextWindow: 0 };
   let usageSource = "unavailable";
+  let usageSourceKind: "measured" | "estimated" | "unavailable" = "unavailable";
   let branchTokens = 0;
   try {
     const live = measureLiveUsage(ctx);
@@ -90,7 +94,8 @@ export function analyzeSession(ctx: any): AuditResult {
         tokens: live.tokens,
         contextWindow: live.contextWindow,
       };
-      usageSource = `session tree (${live.windowSource} window)`;
+      usageSource = `session tree, ${live.windowSource} window, ${describeUsage(live)}`;
+      usageSourceKind = live.source;
       branchTokens = live.branchTokens;
     } else {
       // No session tree available - fall back to the duck-typed accessor,
@@ -103,6 +108,7 @@ export function analyzeSession(ctx: any): AuditResult {
         contextWindow: ctxUsage?.contextWindow ?? window.contextWindow,
       };
       usageSource = "ctx.getContextUsage fallback";
+      usageSourceKind = "estimated";
       branchTokens = usage.tokens;
     }
   } catch {
@@ -309,6 +315,7 @@ export function analyzeSession(ctx: any): AuditResult {
   return {
     usage,
     usageSource,
+    usageSourceKind,
     branchTokens,
     branchLength: branch.length,
     treeDepth: tree.length,
