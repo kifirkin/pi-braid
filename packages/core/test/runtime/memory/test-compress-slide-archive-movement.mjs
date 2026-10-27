@@ -228,6 +228,8 @@ await test("slide: steering yields a deterministic extension compaction (no LLM 
     undefined,
     ctx,
   );
+  // Arming only queues; the settle drain lands the compaction.
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "slide arms the batch-settle compact");
   assert.equal(
@@ -301,6 +303,7 @@ await test("slide: after the compaction lands, the live usage metric drops", asy
   assert.ok(before && before.percent > 50, `pre-slide live usage is high, got ${before?.percent}`);
 
   await tool.execute("s-2", { action: "slide", keep: 20 }, undefined, undefined, ctx);
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   const outcome = await pi._emit(
     {
@@ -352,6 +355,7 @@ await test("archive: keepRecentTurns resolves the span from real user entries", 
     undefined,
     ctx,
   );
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(150);
   assert.equal(ctx.compactCalls.length, 1, "compact armed (usage >= 30%)");
   const rangeMode = getCmState(ctx).rangeMode;

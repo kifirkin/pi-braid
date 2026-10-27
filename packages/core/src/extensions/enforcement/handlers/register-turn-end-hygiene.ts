@@ -358,7 +358,10 @@ async function checkContextUsage(
     }
     state.contextNudgeSent = true;
     state.contextNudgeRung = nudge.id;
-    sendEnforcementWhisper(pi, ctx, nudge.message);
+    // Queued for the next user prompt, never steered into the run: the line is
+    // advice about a run that may still dispatch, and a steer at this boundary
+    // is exactly the delivery that kept a compaction-armed loop alive.
+    sendEnforcementWhisper(pi, ctx, nudge.message, false, { deliverAs: "nextTurn" });
   }
 }
 

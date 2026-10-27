@@ -1,12 +1,11 @@
 /**
- * One token formatter across surfaces (R5 display honesty).
+ * One token formatter, one owner for the number.
  *
- * Whispers (enforcement cascade) and context_inspect must render the SAME
- * K-number for the same state: the ONE formatter is formatTokensK (1000
- * tokens = "1K"). The fixture drives the REAL context_inspect tool (quick
- * and detailed views) and the REAL enforcement cascade over the same
- * synthetic branch, then asserts the token strings agree, and that an
- * armed-but-unfired compaction is surfaced as pending state.
+ * context_inspect renders the count with the ONE formatter (formatTokensK:
+ * 1000 tokens = "1K"). The context whisper does not restate it: the bars live
+ * in context-thresholds.ts and the meter in context-usage.ts, and a number
+ * copied into prose drifts from both. The whisper names the state, the
+ * deadline (an armed compaction fires when the run settles) and the action.
  *
  * Old behavior (regression guarded here): context_inspect divided by 1024
  * while every whisper divided by 1000 — the same 160,000-token window
@@ -131,7 +130,7 @@ function makePi() {
   };
 }
 
-await test("whisper and context_inspect render identical K-numbers for the same state", async () => {
+await test("context_inspect renders the K-number; the whisper does not restate it", async () => {
   const { ctx } = makeWorld();
   const pi = makePi();
   registerContextInspect(pi);
@@ -140,8 +139,7 @@ await test("whisper and context_inspect render identical K-numbers for the same 
   const result = await tool.execute("ci-1", { detail: "quick" }, undefined, undefined, ctx);
   const text = result.content[0].text;
 
-  // The whisper cascade for the same numbers:
-  const whisper = contextUsageTokenMessage("warning", (TOKENS / WINDOW) * 100, TOKENS);
+  const whisper = contextUsageTokenMessage("warning");
 
   const want = `${Math.round(TOKENS / 1000)}K`;
   assert.ok(
@@ -151,10 +149,24 @@ await test("whisper and context_inspect render identical K-numbers for the same 
   assert.ok(!text.includes("78K"), "the /1024 artifact (78K) must not appear");
   assert.ok(!text.includes("195K"), "the /1024 window artifact (195K) must not appear");
   assert.ok(
-    whisper.includes(`${want} tokens`),
-    `whisper cascade (${whisper}) uses the same K rendering (${want}) as inspect`,
+    !/\d+K\b/.test(whisper) && !/%/.test(whisper),
+    `the whisper must not restate the meter's number: ${whisper}`,
   );
-  void contextUsageTierMessage;
+  assert.match(
+    whisper,
+    /an armed compaction fires when the run settles/,
+    `the whisper names the deadline: ${whisper}`,
+  );
+  assert.match(
+    whisper,
+    /context_compress\(action="archive"\)/,
+    `the whisper names the action: ${whisper}`,
+  );
+  assert.equal(
+    contextUsageTokenMessage("warning"),
+    contextUsageTierMessage("warning"),
+    "the token and percent warning rungs share one copy (the rung, not the unit, selects it)",
+  );
 });
 
 await test("detailed view uses the same formatter", async () => {
@@ -197,7 +209,7 @@ await test("armed compaction surfaces as pending state in context_inspect", asyn
   const after = await inspect.execute("ci-4", { detail: "quick" }, undefined, undefined, ctx);
   const text = after.content[0].text;
   assert.ok(text.includes("Pending:"), `pending line present after arming:\n${text}`);
-  assert.match(text, /slide armed .+ — fires at the next turn boundary \(turn end or run settle\)/);
+  assert.match(text, /slide armed .+ — fires when the run settles \(or at the 0\.90W backstop\)/);
   const details = after.details;
   assert.ok(
     Array.isArray(details.pendingCompactions) && details.pendingCompactions.length === 1,

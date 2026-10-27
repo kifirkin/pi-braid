@@ -190,6 +190,8 @@ await test("mid context: compact fires even when the old linear estimate would p
     undefined,
     ctx,
   );
+  // Arming only queues; the run settles and the drain lands the compaction.
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
 
   // The real usage is 45% → the compact MUST be triggered (not skipped on an estimate).

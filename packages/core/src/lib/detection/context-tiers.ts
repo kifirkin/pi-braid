@@ -34,7 +34,7 @@ import {
   USAGE_COMPACT_MEDIUM,
   USAGE_FIRED_RESET_BELOW,
 } from "./context-thresholds.js";
-import { tokenArms, formatTokensK } from "./context-usage.js";
+import { tokenArms } from "./context-usage.js";
 import { getResolvedContextWindow } from "../config/braid-settings.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -80,34 +80,52 @@ export function contextUsageTier(usagePercent: number): ContextUsageTierInfo | n
 // ENFORCEMENT NUDGE MESSAGES (byte-identical across all enforcement sites)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Percent-tier nudge message text (identical at every enforcement site). */
-export function contextUsageTierMessage(tier: ContextUsageTier, usagePercent: number): string {
-  const pct = Math.round(usagePercent);
+/**
+ * The deadline every whisper states instead of restating its number. The bars
+ * live in context-thresholds.ts and the meter in context-usage.ts; a
+ * percentage copied into prose is a second copy that drifts from the one
+ * owner. What the reader cannot derive from the bar is WHEN the cost lands:
+ * the compaction the advice leads to is armed, not immediate.
+ */
+const SETTLE_DEADLINE = "an armed compaction fires when the run settles";
+
+/**
+ * Percent-tier nudge message text (identical at every enforcement site).
+ * One sentence names the state and the deadline, then the action. No number
+ * is restated: the rung's bar selected this message, and the meter rendered
+ * the count where a count belongs (context_inspect, the tool result).
+ */
+export function contextUsageTierMessage(tier: ContextUsageTier): string {
   switch (tier) {
     case "compact":
       return (
-        `Context at ${pct}%. Pipeline: context_navigate(action="tag") -> ` +
-        `context_compress(action="archive") -> context_compress(action="slide"). Tag your position first.`
+        `Context is at the compaction arm; ${SETTLE_DEADLINE}. ` +
+        `Tag with context_navigate(action="tag") and archive with ` +
+        `context_compress(action="archive") before starting the next task.`
       );
     case "critical":
       return (
-        `Context at ${pct}%. Tag with context_navigate(action="tag"), then ` +
-        `context_compress(action="archive") to branch with a summary.`
+        `Context is above the critical arm; ${SETTLE_DEADLINE}. ` +
+        `Tag with context_navigate(action="tag") and archive with ` +
+        `context_compress(action="archive") before starting the next task.`
       );
     case "warning":
       return (
-        `Context at ${pct}%. Warning — tag with context_navigate(action="tag"), then ` +
-        `context_compress(action="archive") to branch with a summary.`
+        `Context is above the warning arm; ${SETTLE_DEADLINE}. ` +
+        `Tag with context_navigate(action="tag") and archive with ` +
+        `context_compress(action="archive") before starting the next task.`
       );
     case "advisory":
       return (
-        `Context at ${pct}%. Advisory — consider context_compress(action="archive") for completed tasks. ` +
-        `context_navigate(action="tag") to mark your position first.`
+        `Context is above the advisory arm; ${SETTLE_DEADLINE}. ` +
+        `Archive completed work with context_compress(action="archive") and tag with ` +
+        `context_navigate(action="tag") before starting the next task.`
       );
     case "soft":
       return (
-        `Context at ${pct}%. Soft whisper — consider context_inspect(detail="prune") ` +
-        `to see candidates for archival.`
+        `Context is above the soft arm; ${SETTLE_DEADLINE}. ` +
+        `Consider context_inspect(detail="prune") for candidates, or tag with ` +
+        `context_navigate(action="tag") before starting the next task.`
       );
   }
 }
@@ -115,25 +133,12 @@ export function contextUsageTierMessage(tier: ContextUsageTier, usagePercent: nu
 /**
  * Token-tier nudge message text (identical at every enforcement site).
  * `level` mirrors the tier reached by the token-count check; arms are
- * fractions of the resolved window (0.45W warning, 0.18W soft).
+ * fractions of the resolved window (0.45W warning, 0.18W soft). The text is
+ * the tier's: a rung is a threshold, not a label, and the whisper no longer
+ * renders the count that selected it.
  */
-export function contextUsageTokenMessage(
-  level: "warning" | "soft",
-  usagePercent: number,
-  usageTokens: number,
-): string {
-  const tokensK = formatTokensK(usageTokens);
-  const pct = Math.round(usagePercent);
-  if (level === "warning") {
-    return (
-      `Context at ${tokensK} tokens (${pct}%). ` +
-      `Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> context_compress(action="slide").`
-    );
-  }
-  return (
-    `Context at ${tokensK} tokens. ` +
-    `Consider context_inspect(detail="prune") to see candidates, or tag position with context_navigate(action="tag").`
-  );
+export function contextUsageTokenMessage(level: "warning" | "soft"): string {
+  return contextUsageTierMessage(level === "warning" ? "warning" : "soft");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -180,7 +185,7 @@ export interface ContextNudge extends ContextNudgeRung {
 }
 
 interface RungSpec extends ContextNudgeRung {
-  render: (usagePercent: number, usageTokens: number) => string;
+  render: () => string;
 }
 
 /**
@@ -198,39 +203,39 @@ function nudgeRungs(window?: number | null): RungSpec[] {
       unit: "tokens",
       threshold: arms.soft,
       position: positionOf(arms.soft),
-      render: (p, t) => contextUsageTokenMessage("soft", p, t),
+      render: () => contextUsageTokenMessage("soft"),
     },
     {
       id: "percent:soft",
       ...pct(USAGE_WHISPER_SOFT),
-      render: (p) => contextUsageTierMessage("soft", p),
+      render: () => contextUsageTierMessage("soft"),
     },
     {
       id: "tokens:warning",
       unit: "tokens",
       threshold: arms.warning,
       position: positionOf(arms.warning),
-      render: (p, t) => contextUsageTokenMessage("warning", p, t),
+      render: () => contextUsageTokenMessage("warning"),
     },
     {
       id: "percent:advisory",
       ...pct(USAGE_WHISPER_ADVISORY),
-      render: (p) => contextUsageTierMessage("advisory", p),
+      render: () => contextUsageTierMessage("advisory"),
     },
     {
       id: "percent:warning",
       ...pct(USAGE_WHISPER_WARNING),
-      render: (p) => contextUsageTierMessage("warning", p),
+      render: () => contextUsageTierMessage("warning"),
     },
     {
       id: "percent:critical",
       ...pct(USAGE_WHISPER_CRITICAL),
-      render: (p) => contextUsageTierMessage("critical", p),
+      render: () => contextUsageTierMessage("critical"),
     },
     {
       id: "percent:compact",
       ...pct(USAGE_COMPACT_MEDIUM),
-      render: (p) => contextUsageTierMessage("compact", p),
+      render: () => contextUsageTierMessage("compact"),
     },
   ];
 }
@@ -265,9 +270,7 @@ export function resolveContextNudge(
     unit: best.unit,
     threshold: best.threshold,
     position: best.position,
-    message: provenance
-      ? `${best.render(usagePercent, usageTokens)} (${provenance})`
-      : best.render(usagePercent, usageTokens),
+    message: provenance ? `${best.render()} (${provenance})` : best.render(),
   };
 }
 

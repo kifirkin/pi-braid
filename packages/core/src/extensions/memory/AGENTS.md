@@ -47,53 +47,52 @@ The `cancelTimersByTag` helper from `extensions/scheduling/timer/index.ts` is th
 ## Parallel-tool-call constraint
 
 `context_compress` returns its result immediately and defers the actual
-`ctx.compact()` to the next safe boundary (batch-settle scheduler in
-`context-manager/handlers/tools/context-compress.ts`): the first `turn_end`
-whose persisted `toolResults` account for every active tool call AND whose
-assistant message reads as loop-done under the shared boundary rule, or
-`agent_settled`, whichever comes first. Active calls are tracked by
-`toolCallId`, registered at `tool_execution_start` and released by its own
-`tool_execution_end` or by a boundary event whose `toolResults` carry that
-id; `agent_settled` clears whatever is left. The earlier in-flight COUNT was
-decremented only by the exact end event it waited for, so one missed
-`tool_execution_end` left it positive and every later boundary returned
-before the armed compaction could drain; identity cannot drift that way, and
-an id with no result stays protective. This removes the old
-mid-batch abort race: a still-executing parallel sibling's tool result is
-delivered BEFORE the aborting compact fires and is no longer discarded
-(pinned by `test/runtime/memory/test-compress-batch-settle.mjs` and
-`test/runtime/memory/test-compress-drain-boundaries.mjs`). The
+`ctx.compact()` to `agent_settled` (batch-settle scheduler in
+`context-manager/handlers/tools/context-compress.ts`), the one drain where the
+run cannot dispatch: pi-core emits it after the run-active flag is cleared, so
+`compact()`'s abort is a no-op. A `turn_end` is not a safe drain: the loop
+polls its steering queue AFTER the boundary handlers return, and a single
+queued steer dispatches a request that the deferred compaction would abort
+mid-stream. The single exception is the 0.90W hard backstop, which cuts a run
+that would otherwise reach overflow with the queue still armed. Active calls
+are tracked by `toolCallId`, registered at `tool_execution_start` and released
+by its own `tool_execution_end` or by a boundary event whose `toolResults`
+carry that id; `agent_settled` clears whatever is left. The earlier in-flight
+COUNT was decremented only by the exact end event it waited for, so one missed
+`tool_execution_end` left it positive and every later boundary returned before
+the armed compaction could drain; identity cannot drift that way, and an id
+with no result stays protective. This removes the old mid-batch abort race: a
+still-executing parallel sibling's tool result is delivered BEFORE the aborting
+compact fires and is no longer discarded (pinned by
+`test/runtime/memory/test-compress-batch-settle.mjs`,
+`test/runtime/memory/test-compress-drain-boundaries.mjs` and
+`test/runtime/memory/test-armed-compaction-steer-abort.mjs`). The
 degraded path (batch-settle bookkeeping unavailable) uses a bounded
 `DEGRADED_DEFERRAL_MS` (150ms) deferral - never a raw `setTimeout(0)`.
 
 The agent-facing guidance in the tool description still warns against
 parallel batches ("Never in a parallel batch (it aborts the turn)"): the
-deferred `ctx.compact()` still aborts the run at the settle point, so
-compaction remains a turn-boundary action, not a mid-batch one. The
-mechanism is loss-preserving; the boundary discipline stands.
+deferred `ctx.compact()` fires when the run settles (or at the 0.90W
+backstop), so compaction remains a boundary action, not a mid-batch one. The
+mechanism is loss-preserving; the batch discipline stands.
 
 ### The turn-boundary rule
 
-Which boundaries may abort a run is one rule in one home,
-`lib/events/turn-boundary.ts`, read by the drain above and by the enforcement
-hygiene act (`enforcement/handlers/register-turn-end-hygiene.ts`). It is an
-allow-list over `message.stopReason`: the reasons that end a turn's work
-(`stop`, `length`, `error`, `aborted`) fire, `toolUse` parks, and so does any
-boundary it cannot read or does not recognize (`pending`, `deferred`, a
-missing or misspelled reason, an empty object). A caller holding no boundary
-at all (`undefined`) keeps the prior contract and fires, because the tool path
-is parked by its own tool call id instead. The 0.90W hard backstop cuts a live
-loop anyway.
+Which turn boundaries may abort a run is one rule in one home,
+`lib/events/turn-boundary.ts`, read by the enforcement hygiene act
+(`enforcement/handlers/register-turn-end-hygiene.ts`). It is an allow-list over
+`message.stopReason`: the reasons that end a turn's work (`stop`, `length`,
+`error`, `aborted`) fire, `toolUse` parks, and so does any boundary it cannot
+read or does not recognize (`pending`, `deferred`, a missing or misspelled
+reason, an empty object). The 0.90W hard backstop cuts a live loop anyway.
 
-The rule is narrower than the safety property it stands for. The loop still
+The rule is narrower than the safety property it stands for: the loop still
 dispatches when a tool call rides a non-`toolUse` stop reason, and when a steer
-is queued at any boundary (pi polls steering after the `turn_end` emit), so a
-boundary this rule accepts can still reach the abort it exists to avoid.
-Reading "is anything left to dispatch" from the loop itself would close that
-gap; the rule does not, and the drain inherits the residual. Its truth table is
-pinned in `test/runtime/memory/test-compress-drain-boundaries.mjs`, and the
-heartbeat's forwarding of the boundary into the arm path end to end in
-`test/runtime/heartbeat/test-turn-boundary-arm-wiring.mjs`.
+is queued at any boundary (pi polls steering after the `turn_end` emit). That
+is why the compaction queue does not read it: the queue waits for
+`agent_settled`, where no request can be in flight, and the rule governs only
+the hygiene act. Its truth table is pinned in
+`test/runtime/memory/test-compress-drain-boundaries.mjs`.
 
 ## Whisper wake-up policy in this module
 

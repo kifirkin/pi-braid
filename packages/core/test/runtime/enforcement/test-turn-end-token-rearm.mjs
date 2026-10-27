@@ -205,14 +205,12 @@ function nudgeTexts(sent) {
 /** Soft-band deliveries: the percent soft rung (30%) is the strongest rung
  * reached in the band, so its copy is what the ladder renders there. */
 function softNudges(sent) {
-  return nudgeTexts(sent).filter((t) => t.includes("Soft whisper"));
+  return nudgeTexts(sent).filter((t) => t.includes("above the soft arm"));
 }
 
 /** Warning token tier deliveries (0.45W arm). */
 function warningNudges(sent) {
-  return nudgeTexts(sent).filter(
-    (t) => t.includes("tokens (") && t.includes("Pipeline: context_navigate"),
-  );
+  return nudgeTexts(sent).filter((t) => t.includes("above the warning arm"));
 }
 
 await test("token re-arm: compacts at >=act with 3-turn spacing", async () => {
@@ -291,7 +289,7 @@ await test("below act tokens and below 90%: no auto-compact ever; nudge cascade 
       (s.params?.content ?? []).filter((c) => c?.type === "text").map((c) => c.text ?? ""),
     );
     assert.ok(
-      nudgeTexts.some((t) => t.includes("Soft whisper")),
+      nudgeTexts.some((t) => t.includes("above the soft arm")),
       "the nudge is the percent soft tier (30%)",
     );
   } finally {

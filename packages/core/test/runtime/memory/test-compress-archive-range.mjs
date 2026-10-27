@@ -200,7 +200,9 @@ await test("archive honors declared range: boundary after span + summary anchor"
   assert.equal(rangeMode.boundaryIsBranchEnd, false);
   assert.equal(rangeMode.summary, summary);
 
-  // The compaction is triggered (real usage 45% >= 30%, not skipped on an estimate).
+  // The compaction is triggered (real usage 45% >= 30%, not skipped on an
+  // estimate). Arming only queues; the settle drain lands it.
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "compact fires for mid-context archive");
   assert.ok(result.details.honorRange === true, "details mark honorRange");
@@ -255,6 +257,7 @@ await test("rangeMode does not leak into a later normal compaction", async () =>
     undefined,
     ctx,
   );
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1);
 
@@ -307,6 +310,7 @@ await test("blank optional selectors fall through to keepRecentTurns", async () 
   const rangeMode = getCmState(ctx).rangeMode;
   assert.ok(rangeMode?.active, "rangeMode persisted for the keepRecentTurns span");
   assert.equal(rangeMode.endIndex, 9, "keepRecentTurns=1 keeps the last user turn (cut at e10)");
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
 });
@@ -344,6 +348,7 @@ await test("blank optional selectors fall through to an explicit numeric span", 
   const rangeMode = getCmState(ctx).rangeMode;
   assert.ok(rangeMode?.active, "rangeMode persisted");
   assert.equal(rangeMode.endIndex, 7, "the explicit numeric span is honored");
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
 });
@@ -380,6 +385,7 @@ await test("blank numeric selectors plus a real keepRecentTurns use the turn spa
   );
   const rangeMode = getCmState(ctx).rangeMode;
   assert.equal(rangeMode.endIndex, 7, "keepRecentTurns=2 cuts before the second-to-last user turn");
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
   assert.equal(ctx.compactCalls.length, 1, "compaction armed once");
 });

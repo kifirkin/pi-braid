@@ -26,13 +26,9 @@ import { analyzeSession } from "../../analysis.js";
 import * as timerMod from "../../../../scheduling/timer/index.js";
 import { getState } from "../../../../enforcement/state.js";
 import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/context-thresholds.js";
-import {
-  turnBoundaryMayAbortRun,
-  type TurnBoundary,
-} from "../../../../../lib/events/turn-boundary.js";
 import { getCmState, isCompactionActive, log, recordNavigationAction } from "../shared.js";
 import { snapBoundaryOutsideToolBatch } from "../tool-batch-boundary.js";
-import { formatTokensK } from "../../../../../lib/detection/context-usage.js";
+import { formatTokensK, tokenArms } from "../../../../../lib/detection/context-usage.js";
 import { formatLocalTime } from "../../../../../lib/utils/local-time.js";
 import {
   getAutoCompactConfig,
@@ -95,30 +91,29 @@ function optionalNumber(v: unknown): number | undefined {
 // Batch-settle compaction scheduler.
 // Contract: the tool returns its result FIRST (execute() resolves before a
 // compaction is armed), but ctx.compact() — which aborts the turn — fires only
-// at a boundary where the abort cannot tear live work: agent_settled (the run
-// fully settled, abort a clean no-op), or a turn_end that reads as loop-done.
-// The rule that decides the second case lives in one place
-// (lib/events/turn-boundary.ts) and is shared with the hygiene act, because a
-// copy of it drifts silently. Read the residual there too: a loop-done stop
-// reason is necessary, not sufficient. The loop still dispatches when a tool
-// call rides a non-"toolUse" stop reason, and when a steer is queued at any
-// boundary (pi polls steering after the turn_end emit), so a boundary this
-// rule accepts can still reach the abort it exists to avoid. The 0.90W hard
-// backstop is the one deliberate mid-loop cut, kept for a loop whose usage must
-// not be allowed to overflow. A boundary with a tool call still active is
-// unsafe for a further reason: a parallel sibling's result has not been
-// delivered, so the abort drops it while the agent is still streaming its
-// response to the context_compress result, surfacing a spurious "This operation
-// was aborted" error in the TUI and tearing the finishing turn. agent_settled
-// alone never drains a run kept alive by continuous steers, so the armed
-// compaction stalls behind live work while usage keeps climbing, hence the
-// turn_end boundary. The arm side asks the same question, from the one arm site
-// that can see a boundary: the heartbeat's usage-driven auto-arm runs inside a
-// turn_end dispatch and hands that event in, so a live-loop boundary below the
-// 0.90W backstop leaves its entry queued for the next loop-done boundary (pinned
-// end to end by test/runtime/heartbeat/test-turn-boundary-arm-wiring.mjs).
-// Arming inside a tool call has no boundary to read, and its own call id parks
-// the queue there anyway.
+// where no request can be in flight. `agent_settled` is that place: pi-core
+// emits it after the run-active flag is cleared, so the abort is a clean no-op
+// and the post-compaction resume wake lands on an idle session.
+//
+// `turn_end` is not that place. Its handlers return before the loop polls its
+// STEERING QUEUE, and a non-empty poll dispatches another request in the same
+// tick; a queued steer is enough. The loop's dispatch decision lives in that
+// queue, not in the assistant message's stop reason, so no reading of the
+// boundary can prove the run has nothing left to do. A drain here fires
+// `ctx.compact()` into the request the steer created, and `AgentSession.compact()`
+// aborts it first: the run ends with "This operation was aborted", not with
+// the answer the steer asked for.
+//
+// The one deliberate exception is the 0.90W hard backstop. A run that never
+// settles (continuous steers, a long tool loop) would otherwise reach overflow
+// with the queue still armed, and an overflow costs more than the turn this
+// abort can lose. Above that arm the queue drains at a turn boundary.
+//
+// A batch with a tool call still active is unsafe for a further reason: a
+// parallel sibling's result has not been delivered, so the abort drops it
+// while the agent is still streaming its response to the context_compress
+// result. The backstop refuses to fire while the active set is non-empty;
+// `agent_settled` clears whatever is left and then drains.
 //
 // Active work is tracked by TOOL CALL ID, never by a count: tool_execution_start
 // registers an id, tool_execution_end deletes its own, and a turn boundary
@@ -184,8 +179,8 @@ function getBatchSettleState(ctx: any): BatchSettleState {
 /**
  * Release the call ids a turn's persisted tool results account for. A result
  * with no usable id is ignored: an unmatched active id stays protective, so a
- * malformed event can only delay a drain to a later boundary or the settle
- * backstop, never release a sibling that is still executing.
+ * malformed event can only delay a drain to the settle backstop, never
+ * release a sibling that is still executing.
  */
 function releaseSettledToolCallIds(st: BatchSettleState, toolResults: unknown): void {
   if (!Array.isArray(toolResults)) return;
@@ -226,8 +221,8 @@ export function hasPendingLlmCompaction(ctx: any): boolean {
 
 /**
  * One pending-state line for the armed-but-unfired compaction queue
- * ("slide armed 17:28 — fires at the next turn boundary; live usage drops
- * when it lands"). Null when nothing is pending: no surface may fabricate an
+ * ("slide armed 17:28 — fires when the run settles; live usage drops when it
+ * lands"). Null when nothing is pending: no surface may fabricate an
  * expectation of a drop that is not armed. Shared by context_inspect and the
  * heartbeat advisory so both state the same fact the same way.
  */
@@ -238,7 +233,7 @@ export function formatPendingCompactionsLine(ctx: any): string | null {
   const kinds = [...new Set(pending.map((p) => p.kind))].join("+");
   const armedClock = formatLocalTime(new Date(newest.armedAt));
   return (
-    `${kinds} armed ${armedClock} — fires at the next turn boundary (turn end or run settle); ` +
+    `${kinds} armed ${armedClock} — fires when the run settles (or at the 0.90W backstop); ` +
     `until then live usage reads pre-compaction state`
   );
 }
@@ -336,21 +331,7 @@ export function scheduleDegradedCompact(trigger: () => void): void {
 }
 
 /**
- * Whether an arm may fire its own entry. Firing a compact aborts whatever run
- * is live, so an arm that happens inside a turn boundary dispatch hands that
- * boundary in and is judged by the same rule the TURN_END handler applies
- * (the rule lives in lib/events/turn-boundary.ts; it owns the "no boundary
- * known" case, which fires). Every other arm site runs inside a tool call,
- * where there is no boundary to read and the prior contract stands: the arm
- * drains unless a batch is still active (the arm's own call id keeps it
- * parked, so it does not fire there).
- */
-function armMayDrainNow(boundary: TurnBoundary | undefined, ctx: any): boolean {
-  return turnBoundaryMayAbortRun(boundary, () => captureUsage(ctx));
-}
-
-/**
- * Arm a one-shot compaction at a safe boundary (next turn end or run settle).
+ * Arm a one-shot compaction for the settle drain (or the 0.90W backstop).
  * Returns "pending-exists" when an LLM-class compaction is already armed: the
  * caller must NOT have written its own range/anchor state in that case (the
  * drain fires the first-armed trigger with the FIRST declaration's state).
@@ -367,7 +348,6 @@ function scheduleCompactionAtBatchSettle(
   meta: { kind: PendingCompaction["kind"]; cutEntryId?: string; firstKeptEntryId?: string } = {
     kind: "compact",
   },
-  boundary?: TurnBoundary,
 ): "queued" | "pending-exists" {
   const trigger = () => {
     try {
@@ -389,7 +369,7 @@ function scheduleCompactionAtBatchSettle(
     if (isLlmClass(meta.kind) && st.pending.some((p) => isLlmClass(p.kind))) {
       log.info(
         `[context-compress] ${meta.kind} arm refused: an LLM-class compaction is ` +
-          `already armed and will fire at the next boundary.`,
+          `already armed and will fire when the run settles.`,
       );
       return "pending-exists";
     }
@@ -401,13 +381,11 @@ function scheduleCompactionAtBatchSettle(
           ` (cap ${PENDING_COMPACT_QUEUE_MAX}); the first-armed entry still fires.`,
       );
     }
-    // Arming fires only where that is safe. Firing a compaction aborts whatever
-    // run is live, and an arm site is not in a position to tell: the tool path
-    // arms inside its own call (whose id parks the queue anyway), and the
-    // heartbeat's arm runs inside a turn_end dispatch, where whether the loop
-    // still has work to dispatch is a fact the event carries. That caller hands
-    // its boundary in; every other caller keeps the prior contract.
-    if (armMayDrainNow(boundary, ctx)) firePendingCompactionsIfSettled(ctx, st);
+    // Arming never fires. Every arm site runs while the run is live - inside
+    // the tool call that asked for it, or inside the heartbeat's turn_end
+    // dispatch - and no arm site can see the steering queue that decides
+    // whether another request follows. The entry waits for the settle drain or
+    // the 0.90W backstop.
     return "queued";
   } catch {
     // Degraded path: batch-settle bookkeeping is unavailable (extension state
@@ -429,14 +407,13 @@ function scheduleCompactionAtBatchSettle(
  * and the usage-driven auto-arm, so both produce the same cut shape: the
  * boundary is snapped out of any tool batch, the slide state is persisted for
  * the SLIDE_MODE compaction branch, an audit entry is appended, and the
- * trigger is queued for the next safe boundary. Returns null when the branch
- * is not longer than the keep window (nothing to slide).
+ * trigger is queued for the settle drain. Returns null when the branch is not
+ * longer than the keep window (nothing to slide).
  */
 function armSlideCompaction(
   pi: ExtensionAPI,
   ctx: any,
   keepCount: number,
-  boundary?: TurnBoundary,
 ): { cutEntryId: string; keptCount: number; droppedCount: number } | null {
   const sm = ctx.sessionManager;
   if (!sm || typeof sm.getBranch !== "function") return null;
@@ -493,7 +470,6 @@ function armSlideCompaction(
     ctx,
     { customInstructions: "SLIDE_MODE:true" },
     { kind: "slide", cutEntryId },
-    boundary,
   );
   return { cutEntryId, keptCount, droppedCount };
 }
@@ -523,23 +499,19 @@ function getAutoArmState(ctx: any): AutoArmState {
  * Usage-driven auto-arm: when live usage sits above the configured threshold
  * for `confirmTicks` consecutive observations, arm ONE deterministic slide so
  * a session that never gets a manual cleanup still gets relief. Reuses the
- * accounting context_inspect computes (analyzeSession), the same pending
- * queue the tool arms drain through, and the same boundary discipline: arming
- * only queues; the compaction itself still fires at the next turn boundary or
- * settle, never mid-run.
+ * accounting context_inspect computes (analyzeSession) and the same pending
+ * queue the tool arms drain through: arming only queues; the compaction itself
+ * fires when the run settles (or at the 0.90W backstop), never mid-run.
  *
  * Called from the heartbeat tick — the only cadence that runs while a session
- * works, and the only arm site that runs inside a turn boundary dispatch. It
- * hands that boundary in, so the arm is judged by the same rule the drain
- * applies: a "toolUse" boundary below the 0.90W backstop leaves the entry
- * queued for the next loop-done boundary instead of aborting the request the
- * loop is about to dispatch. Returns what happened and why, so the caller can
- * log it.
+ * works. Arming only queues: the entry waits for `agent_settled`, because the
+ * tick runs while the run is live and nothing at that point can prove the loop
+ * has no request left to dispatch. Returns what happened and why, so the
+ * caller can log it.
  */
 export function maybeArmAutoCompaction(
   pi: ExtensionAPI,
   ctx: any,
-  boundary?: TurnBoundary,
 ): { armed: boolean; reason: string } {
   const config: ResolvedAutoCompactConfig = getAutoCompactConfig();
   if (!config.enabled) return { armed: false, reason: "disabled" };
@@ -560,13 +532,13 @@ export function maybeArmAutoCompaction(
   }
   const branchLength = ctx?.sessionManager?.getBranch?.().length ?? 0;
   const keep = resolveAutoSlideKeep(branchLength);
-  const armed = armSlideCompaction(pi, ctx, keep, boundary);
+  const armed = armSlideCompaction(pi, ctx, keep);
   st.aboveCount = 0;
   if (!armed) return { armed: false, reason: "branch-too-short" };
   log.info(
     `[context-compress] Auto-arm: usage sustained at ${usage.percent.toFixed(1)}% ` +
       `(>= ${config.armPercent}% for ${config.confirmTicks} observations) — slide armed ` +
-      `(${armed.droppedCount} entries before the cut), fires at the next boundary.`,
+      `(${armed.droppedCount} entries before the cut), fires when the run settles.`,
   );
   return { armed: true, reason: `usage ${usage.percent.toFixed(1)}% sustained` };
 }
@@ -653,9 +625,9 @@ export const contextCompressSchema = Type.Object({
 
 export function registerContextCompress(pi: ExtensionAPI): void {
   // Batch-settle scheduling: track the ACTIVE tool calls of every running
-  // batch by call id and fire the deferred compaction only at a safe boundary
-  // (a loop-done turn_end or agent_settled). Never mid-batch (would drop a
-  // parallel sibling's result) and never at tool_execution_end (the run is
+  // batch by call id and fire the deferred compaction when the run settles
+  // (plus the 0.90W backstop at a turn boundary). Never mid-batch (would drop
+  // a parallel sibling's result) and never at tool_execution_end (the run is
   // still live there — an aborting compact would surface a spurious "This
   // operation was aborted" error and tear the finishing turn).
   onEvent(pi, TOOL_EXECUTION_START, (event: any, ctx: any) => {
@@ -663,7 +635,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       const st = getBatchSettleState(ctx);
       st.activeToolCallIds.add(toolCallIdOf(event) ?? UNIDENTIFIED_TOOL_CALL);
     } catch {
-      // Settle tracking is unavailable — the pending compact then only fires
+      // Settle tracking is unavailable — the pending compact then fires only
       // via AGENT_SETTLED below, which is the conservative path.
     }
   });
@@ -676,53 +648,47 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       // NOTE: do NOT fire here. The run is still active (the agent is
       // processing this tool's result and streaming its next response); an
       // aborting compact now would surface a spurious "This operation was
-      // aborted" error and tear the finishing turn. Safe boundaries are
-      // turn_end (below) and agent_settled.
+      // aborted" error and tear the finishing turn. The settle drain owns the
+      // fire.
     } catch {
       // Settle tracking unavailable — see TOOL_EXECUTION_START above; the
       // AGENT_SETTLED handler remains the conservative trigger.
     }
   });
   onEvent(pi, TURN_END, (event: any, ctx: any) => {
-    // Turn boundary. The turn's assistant message and tool results are already
-    // persisted here, but that alone does not make the run safe to abort: a
-    // "toolUse" stop means the loop dispatches its next request the moment the
-    // handlers return, so the deferred ctx.compact() tears that request
-    // mid-stream and the compaction replaces the work it was about to do (the
-    // rule is lib/events/turn-boundary.ts, and its residual section lists the
-    // two cases a loop-done stop reason does not rule out). Only a loop-done
-    // boundary drains, except at the 0.90W hard backstop, which exists
-    // precisely to stop a runaway live loop before it overflows.
+    // The 0.90W hard backstop, the ONLY drain that fires while the run may
+    // still dispatch. Below it the queue waits for `agent_settled`: the loop
+    // polls its steering queue after this dispatch and a single queued steer
+    // starts another request, which the deferred ctx.compact() would abort.
+    // Above it the overflow is the worse failure: a run kept alive by
+    // continuous steers never settles, and without this cut the queue stays
+    // armed until the context is gone.
     //
     // The persisted results carry the toolCallIds of the calls they answer,
     // which releases a call whose tool_execution_end never arrived; an active
     // id with NO result in this event is kept (it may still be executing, and
-    // a count could not tell which sibling completed). A run kept alive by
-    // continuous steers never reaches agent_settled — this boundary keeps an
-    // armed compaction from stalling behind live work. Ids are never blanket-
-    // reset here (only agent_settled owns that backstop, which is what keeps a
-    // missed end event from parking the queue forever).
+    // a count could not tell which sibling completed). The active set is never
+    // blanket-reset here; agent_settled owns that release.
     try {
       const st = getBatchSettleState(ctx);
       releaseSettledToolCallIds(st, event?.toolResults);
       if (st.pending.length === 0 || st.activeToolCallIds.size > 0) return;
       if (isCompactionActive(ctx)) return;
-      if (!turnBoundaryMayAbortRun(event, () => captureUsage(ctx))) return;
+      const usage = captureUsage(ctx);
+      if (!usage || usage.tokens < tokenArms(usage.contextWindow).backstop) return;
       firePendingCompactionsIfSettled(ctx, st);
     } catch {
-      // A failed boundary drain must not tear the turn_end event pipeline;
-      // the pending compactions retry on the next boundary.
+      // A failed backstop check must not tear the turn_end event pipeline;
+      // the queue stays armed for the settle drain.
     }
   });
   onEvent(pi, AGENT_SETTLED, (_event: any, ctx: any) => {
-    // Backstop boundary: the run has fully settled, so ctx.compact()'s
-    // abort() is a clean no-op — no spurious abort error, no torn turn, and
-    // the post-compaction resume wake lands when the session is
-    // idle/promptable. The whole pending queue drains here (coalesced); the
-    // active set is cleared so parked compactions always fire even when a
-    // start never saw its end and no turn boundary ever accounted for it.
-    // Turn boundaries drain first when a run stays alive; this handler catches
-    // everything they cannot reach.
+    // The one unconditional drain: `agent_settled` is emitted after the run
+    // is no longer active, so ctx.compact()'s abort() is a clean no-op — no
+    // torn request, and the post-compaction resume wake lands when the
+    // session is idle/promptable. The whole pending queue drains here
+    // (coalesced), and the active set is cleared first so a parked compaction
+    // always fires even when a start never saw its end.
     try {
       const st = getBatchSettleState(ctx);
       st.activeToolCallIds.clear();
@@ -804,7 +770,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `  Before: ${usageLine2}`,
                   `  Keep recent: ${params?.keep ?? "auto"}`,
                   ``,
-                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
                   `Run context_inspect(detail='quick') after resume to verify.`,
                 ].join("\n"),
@@ -886,7 +852,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         // LLM-class dedup: refuse BEFORE any state write. An already-armed
-        // compaction fires at the next boundary with the FIRST declaration's
+        // compaction fires when the run settles with the FIRST declaration's
         // range; a second arm here would overwrite rangeMode (clobber-class
         // loss) and queue an entry that can never fire.
         if (hasPendingLlmCompaction(ctx)) {
@@ -895,7 +861,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               {
                 type: "text" as const,
                 text: [
-                  `**Archive skipped — a compaction is already armed and will fire at the next turn boundary.**`,
+                  `**Archive skipped — a compaction is already armed and will fire when the run settles.**`,
                   `Nothing was recorded for "${topic}"; the pending compaction covers the cleanup.`,
                   `After it lands, re-run this archive if the range still needs a record.`,
                 ].join("\n"),
@@ -1193,8 +1159,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
         feedbackLines.push(
           "",
-          "Compaction is armed and fires at the next turn boundary (turn end or run settle) — it may " +
-            "land while the run stays alive; live usage will NOT drop until it fires.",
+          "Compaction is armed and fires when the run settles — live usage " +
+            "will NOT drop until it fires.",
           "Verify after it lands: context_inspect(detail='quick') shows the drop and any still-pending arm.",
         );
 
@@ -1283,7 +1249,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
         }
 
         // LLM-class dedup (same contract as archive): an armed compaction
-        // fires at the next boundary; refuse before writing the tag or the
+        // fires when the run settles; refuse before writing the tag or the
         // archive anchor so the first declaration stands unmodified.
         if (hasPendingLlmCompaction(ctx)) {
           return {
@@ -1291,7 +1257,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               {
                 type: "text" as const,
                 text: [
-                  `**Deep clean skipped — a compaction is already armed and will fire at the next turn boundary.**`,
+                  `**Deep clean skipped — a compaction is already armed and will fire when the run settles.**`,
                   `Nothing was tagged for "${topic}"; the pending compaction covers the cleanup.`,
                 ].join("\n"),
               },
@@ -1349,7 +1315,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `  2. ~${count} entries before the tag point, estimated`,
                   `  3. Compaction scheduled${usageLine}`,
                   "",
-                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
                   `Run context_inspect(detail='quick') after resume to verify.`,
                   "",
@@ -1482,7 +1448,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   `  ~${droppedCount} entries before the slide point, estimated`,
                   `  Before: ${usageLine}`,
                   ``,
-                  `Compaction armed; it fires at the next turn boundary (turn end or run settle) — live usage will NOT drop until it lands.`,
+                  `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
                   `Run context_inspect(detail='quick') after resume to verify.`,
                 ].join("\n"),

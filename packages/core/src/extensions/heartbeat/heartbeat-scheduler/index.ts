@@ -126,7 +126,6 @@ import {
   maybeArmAutoCompaction,
 } from "../../memory/context-manager/handlers/tools/context-compress.js";
 import { pushBounded } from "../../../lib/utils/bounded.js";
-import type { TurnBoundary } from "../../../lib/events/turn-boundary.js";
 import { RSS_RING_CAP } from "../../../lib/telemetry/rss-telemetry.js";
 import { recallerModule } from "./modules/recaller.js";
 import { reflectionConsolidatorModule } from "./modules/reflection-consolidator.js";
@@ -323,7 +322,6 @@ function tick(
   state: import("./types.js").HeartbeatState,
   config: import("./types.js").HeartbeatConfig,
   ctx: ExtensionContext,
-  turnEvent?: TurnBoundary,
 ): void {
   state.stats.totalTicks++;
 
@@ -414,7 +412,7 @@ function tick(
     log.warn(`[heartbeat] pending-compaction advisory failed: ${err}`);
   }
   try {
-    maybeArmAutoCompaction(pi, ctx, turnEvent);
+    maybeArmAutoCompaction(pi, ctx);
   } catch (err) {
     log.warn(`[heartbeat] context auto-arm check failed: ${err}`);
   }
@@ -644,12 +642,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     const interval = getAdaptiveInterval(state);
     if (state.turnCount % interval !== 0) return;
 
-    // The boundary travels with the tick: the usage-driven auto-arm arms inside
-    // this dispatch, and a drain there can only be judged from the event that
-    // named the boundary. Dropping this argument is invisible to every other
-    // fixture, so one drives the real handler end to end:
-    // test/runtime/heartbeat/test-turn-boundary-arm-wiring.mjs.
-    tick(pi, state, config, ctx, event);
+    // The tick arms the usage-driven auto compaction on its own cadence. The
+    // arm only queues; the queue drains at settle (or the 0.90W backstop).
+    tick(pi, state, config, ctx);
   });
 
   // Event: before_agent_start - flush delayed whispers

@@ -189,24 +189,22 @@ function nudgeTexts(sent) {
 
 /** The cascade bodies alone (each whisper carries a body and an end marker). */
 function bodies(sent) {
-  return nudgeTexts(sent).filter((t) => t.includes("Context at ") && !t.includes("-end]"));
+  return nudgeTexts(sent).filter((t) => t.includes("Context is ") && !t.includes("-end]"));
 }
 
-/** The token-warning rung's copy (0.45W): names the count and the pipeline. */
+/** The token-warning rung's copy (0.45W): names the arm, not the count. */
 function tokenWarningTexts(sent) {
-  return nudgeTexts(sent).filter(
-    (t) => t.includes("tokens (") && t.includes("Pipeline: context_navigate"),
-  );
+  return nudgeTexts(sent).filter((t) => t.includes("above the warning arm"));
 }
 
 /** The percent soft tier's copy (30%). */
 function percentSoftTexts(sent) {
-  return nudgeTexts(sent).filter((t) => t.includes("Soft whisper"));
+  return nudgeTexts(sent).filter((t) => t.includes("above the soft arm"));
 }
 
 /** The percent advisory tier's copy (50%). */
 function advisoryTexts(sent) {
-  return nudgeTexts(sent).filter((t) => t.includes("Advisory"));
+  return nudgeTexts(sent).filter((t) => t.includes("above the advisory arm"));
 }
 
 const pct = (p) => Math.round((W * p) / 100);
@@ -274,10 +272,12 @@ await test("latch: a drop below the 0.45W arm re-arms, the next crossing fires a
     await endTurn(ctx, Math.round(W * 0.46), 1);
     assert.equal(tokenWarningTexts(sent).length, 1, "first crossing fires");
     // Below the arm that fired (0.45W), so the latch clears in the unit that
-    // armed it rather than against the 50% percent bar. The re-crossing turn
-    // carries a distinct count: an identical body would be suppressed by the
-    // whisper pipeline's exact-repeat layer, which is not the latch under test.
+    // armed it rather than against the 50% percent bar. The same rung's body
+    // is byte-identical (the copy carries no number), so move past the
+    // whisper pipeline's 20-minute exact-repeat window: that layer is not the
+    // latch under test.
     await endTurn(ctx, Math.round(W * 0.4), 2);
+    _setReprimeClockForTests(Date.now() + REPRIME_COOLDOWN_MS + 1000);
     await endTurn(ctx, Math.round(W * 0.465), 3);
     assert.equal(
       tokenWarningTexts(sent).length,
@@ -285,6 +285,7 @@ await test("latch: a drop below the 0.45W arm re-arms, the next crossing fires a
       "a genuine drop below the token arm re-arms the rung",
     );
   } finally {
+    _setReprimeClockForTests(null);
     clearHandlers();
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -323,8 +324,8 @@ await test("ladder: 60% reads the advisory tier, not the 0.45W line", async () =
     await endTurn(ctx, pct(61), 2);
     assert.equal(advisoryTexts(sent).length, 1, "unchanged usage does not repeat");
     // The whisper funnel has a 20-minute cross-call de-bloat keyed on the
-    // digit-normalized body ("Context at #%"), which is a separate layer from
-    // the ladder. Move past that window so this case measures the latch.
+    // digit-normalized body, which is a separate layer from the ladder. Move
+    // past that window so this case measures the latch.
     _setReprimeClockForTests(Date.now() + REPRIME_COOLDOWN_MS + 1000);
     await endTurn(ctx, pct(49), 3);
     await endTurn(ctx, pct(51), 4);
@@ -345,10 +346,34 @@ await test("ladder: the climb 46% -> 60% -> 80% -> 95% delivers three tiers, the
     await endTurn(ctx, pct(95), 4);
     const texts = bodies(sent);
     assert.equal(texts.length, 3, `three rungs crossed, three deliveries (got ${texts.length})`);
-    assert.match(texts[0], /tokens \(46%\)/, "46%: the 0.45W token rung");
-    assert.match(texts[1], /Advisory/, "60%: the advisory tier");
-    assert.match(texts[2], /Tag your position first/, "80%: the compact tier");
+    assert.match(texts[0], /above the warning arm/, "46%: the 0.45W token rung");
+    assert.match(texts[1], /above the advisory arm/, "60%: the advisory tier");
+    assert.match(texts[2], /at the compaction arm/, "80%: the compact tier");
     assert.equal(compactCalls.length, 0, "nudge-only mode: the act never runs");
+  } finally {
+    clearHandlers();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── 3b. the delivery class (a human turn, never the steering queue) ───────
+
+await test("delivery: the context line is queued for the next user prompt, not steered", async () => {
+  const { ctx, tmp, sent } = makeWorld();
+  try {
+    await endTurn(ctx, pct(60), 1);
+    const delivery = sent.at(-1)?.options ?? {};
+    // pi-core's sendCustomMessage branch 1: deliverAs "nextTurn" is queued for
+    // the next user prompt. It never reaches agent.steer() (branch 2), so it
+    // cannot keep a run alive across a turn boundary, and no triggerTurn wake
+    // starts a run of its own. The owner's next turn is what reads it.
+    assert.equal(
+      delivery.deliverAs,
+      "nextTurn",
+      "the context line must be queued for the next user prompt",
+    );
+    assert.notEqual(delivery.deliverAs, "steer", "it must never enter the steering queue");
+    assert.ok(!delivery.triggerTurn, "it must not wake or extend a run");
   } finally {
     clearHandlers();
     rmSync(tmp, { recursive: true, force: true });
@@ -366,10 +391,10 @@ for (const p of [45, 60, 80, 95]) {
 console.log("");
 
 await test("observations: 45/60/80/95 render four distinct, escalating signals", async () => {
-  assert.match(observations[45], /tokens \(45%\)/, "45%: token rung");
-  assert.match(observations[60], /Advisory/, "60%: advisory tier");
-  assert.match(observations[80], /Tag your position first/, "80%: compact tier");
-  assert.match(observations[95], /Tag your position first/, "95%: compact tier (top rung)");
+  assert.match(observations[45], /above the warning arm/, "45%: token rung");
+  assert.match(observations[60], /above the advisory arm/, "60%: advisory tier");
+  assert.match(observations[80], /at the compaction arm/, "80%: compact tier");
+  assert.match(observations[95], /at the compaction arm/, "95%: compact tier (top rung)");
   assert.notEqual(observations[45], observations[60], "45% and 60% must not read alike");
   assert.notEqual(observations[60], observations[80], "60% and 80% must not read alike");
 });

@@ -1,8 +1,8 @@
 /**
  * Heartbeat pending-compaction advisory.
  *
- * A compaction armed by context_compress fires at the next turn boundary (or
- * at run settle). While it sits armed, live usage reads pre-compaction state,
+ * A compaction armed by context_compress fires when the run settles (or at
+ * the 0.90W backstop). While it sits armed, live usage reads pre-compaction state,
  * so the heartbeat summary must STATE the pending compaction every tick until
  * it lands — a once-per-tier advisory goes quiet exactly while nothing is
  * landing, which is how an armed cleanup stalled invisibly behind a run kept
@@ -11,10 +11,11 @@
  * Pinned here through the REAL heartbeat extension:
  *   (a) queue non-empty → the tick buffers the pending line and the
  *       before_agent_start flush delivers it inside the heartbeat summary,
- *       naming the armed kind and the turn-boundary landing;
+ *       naming the armed kind and the settle landing;
  *   (b) queue empty → no pending line is fabricated;
  *   (c) the in-flight guard holds across ticks: a turn boundary with a tool
- *       still executing does not drain the queue behind the heartbeat's back.
+ *       still executing does not drain the queue behind the heartbeat's back,
+ *       and no turn boundary below the backstop drains it at all.
  *
  * Run: node test/runtime/heartbeat/test-pending-compaction-advisory.mjs
  * (built first: npm run build)
@@ -168,7 +169,7 @@ await test("pending compaction is delivered in the heartbeat summary until it la
   assert.match(delivered, /slide armed/, "the summary must name the armed compaction");
   assert.match(
     delivered,
-    /next turn boundary/,
+    /when the run settles/,
     "the summary must state the landing boundary",
   );
   assert.equal(ctx.compactCalls.length, 0, "advisory ticks never drain the queue themselves");
@@ -186,7 +187,7 @@ await test("empty queue delivers no pending line (no fabricated relief)", async 
   const delivered = pi.sent.join("\n---\n");
   assert.doesNotMatch(
     delivered,
-    /armed .* next turn boundary/,
+    /armed .* when the run settles/,
     "no pending state may be fabricated when the queue is empty",
   );
 });

@@ -52,7 +52,7 @@ allow sub-state modules to be tested in isolation.
 
 - **Wake (`triggerTurn: true`)**: enforcement-critical, turn-outcome,
   reasoning, metacognition, auto-recovery, analytics-degrade,
-  threshold-exhausted, emergency-rotation, navigation-checkout, context-80%+,
+  threshold-exhausted, emergency-rotation, navigation-checkout,
   three-memory-reliability, compaction-retry errors.
 - **No wake**: everything else. The delivery class decides how the message
   reaches the run (see the delivery contract in `lib/utils/injection-tracker.ts`):
@@ -65,6 +65,12 @@ allow sub-state modules to be tested in isolation.
   re-orientation after a natural stop, cycle hygiene, discoverability, and
   API-error guidance. Memory/hint/SOP channels park - they provide context
   for the agent's natural flow.
+
+The context line from `register-turn-end-hygiene.ts` is `deliverAs:
+"nextTurn"`: it is queued for the next user prompt, never steered into the
+run it describes. A steer at a turn boundary is what kept a
+compaction-armed loop alive, and the line names the deadline (an armed
+compaction fires when the run settles) rather than restating a percentage.
 
 See individual handler files in `handlers/` for the per-source policy.
 

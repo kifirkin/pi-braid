@@ -25,7 +25,6 @@ import { Type, type Static } from "typebox";
 
 import { createLogger } from "../../../lib/core/logger.js";
 import { applyWhisperEnvelope } from "../../../lib/utils/whisper-format.js";
-import { formatTokensK } from "../../../lib/detection/context-usage.js";
 import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { braidDir, tagsSlugFromCwd } from "../../../lib/config/braid-paths.js";
@@ -204,14 +203,15 @@ function sendCompactNudge(
   //   >= USAGE_TOKENS_ESCALATE (0.85W)          escalated wording (archive-or-handoff)
   //   >= HARD_BACKSTOP (0.90W) or usage >= 80   full pipeline message
   //   else                                     light tag/checkout message
-  // Percent stays as the secondary trigger (sub-1M windows).
-  const tokensK = formatTokensK(tokens);
+  // Percent stays as the secondary trigger (sub-1M windows). The text names
+  // the deadline and the action, never the number: the bars own the number,
+  // and a percentage copied into prose drifts from the meter.
   const pipelineMsg =
     tokens >= USAGE_TOKENS_ESCALATE()
-      ? `Context at ${Math.round(usage)}% (~${tokensK} tokens). Escalated: archive the current phase with context_compress(action="archive"), or hand off to a fresh session (write a handoff note first).`
+      ? `Escalated: an armed compaction fires when the run settles. Archive the current phase with context_compress(action="archive"), or hand off to a fresh session (write a handoff note first).`
       : usage >= 80 || tokens >= HYGIENE_AUTO_COMPACT_HARD_BACKSTOP()
-        ? `Context at ${Math.round(usage)}% (~${tokensK} tokens). Pipeline: context_navigate(action="tag") -> context_navigate(action="checkout") -> context_compress(action="archive") -> context_compress(action="slide").`
-        : `Context at ${Math.round(usage)}% (~${tokensK} tokens). Tag with context_navigate(action="tag"), then context_navigate(action="checkout") to branch with a summary.`;
+        ? `An armed compaction fires when the run settles. Pipeline: context_navigate(action="tag") -> context_navigate(action="checkout") -> context_compress(action="archive") -> context_compress(action="slide").`
+        : `An armed compaction fires when the run settles. Tag with context_navigate(action="tag"), then context_navigate(action="checkout") to branch with a summary before the next task.`;
 
   sendTrackedMessage(
     pi,
@@ -226,7 +226,7 @@ function sendCompactNudge(
       display: true,
       details: { [BRAID_INJECTED]: true, [BRAID_SOURCE]: "context-lifecycle/compact-suggestion" },
     },
-    { delivery: "park", deliverAs: "steer" },
+    { deliverAs: "nextTurn" },
     { type: "context" as const, source: "context-lifecycle/compact-suggestion" },
   );
   log.info(
@@ -332,7 +332,7 @@ function executeAction(
             content: [{ type: "text" as const, text: msg }],
             display: true,
           },
-          { delivery: "park", deliverAs: "steer" },
+          { deliverAs: "nextTurn" },
           { type: "context", source: "context-lifecycle/nudge" },
         );
       }
@@ -360,7 +360,8 @@ function hasConcreteCompressionSignal(evaluated: EvaluatedAction): boolean {
 /**
  * Proposals triggered by PERSISTENT conditions - usage %, token counts,
  * density - stay true across turns, so the policy re-fires every cooldown
- * with a fresh copy of the SAME advice ("Context at 55%. Consider archive").
+ * with a fresh copy of the SAME advice ("an armed compaction fires when the
+ * run settles").
  * This is the measured 33% exact-repeat class. Event-triggered proposals
  * (topic_shift, task_boundary, task_complexity, decision_density,
  * task_completion_candidate) fire on discrete moments and are NOT this class
@@ -659,7 +660,7 @@ async function queueProposal(
         content: [{ type: "text" as const, text: msg }],
         display: true,
       },
-      { deliverAs: "steer", triggerTurn: true },
+      { deliverAs: "nextTurn" },
       { type: "context", source: "context-lifecycle/phase-boundary-enforcement" },
     );
 

@@ -198,6 +198,8 @@ await test("(2b) archive feedback: estimated cut, no specific-range claims, mech
     undefined,
     ctx,
   );
+  // Arming only queues; the settle drain lands the compaction.
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
 
   const text = result.content[0].text;
@@ -232,6 +234,7 @@ await test("(2b) slide feedback: estimated cut instead of a specific dropped cla
   const tool = pi.tools.get("context_compress");
 
   const result = await tool.execute("s-1", { action: "slide", keep: 3 }, undefined, undefined, ctx);
+  await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
 
   const text = result.content[0].text;

@@ -1,24 +1,20 @@
 /**
- * The heartbeat's turn-boundary wiring.
+ * The heartbeat's arm wiring.
  *
- * The usage-driven auto-arm fires inside a `turn_end` dispatch. The scheduler's
- * handler forwards its event into `tick()`, and `tick()` forwards it to the
- * arm, which is the only reason an arm reached there can know the loop is
- * still dispatching: what the boundary says decides whether the armed
- * compaction may fire now or must wait for the next loop-done boundary.
+ * The usage-driven auto-arm fires inside a `turn_end` dispatch. Arming there
+ * only queues: the loop polls its steering queue after the handlers return, so
+ * no boundary can prove that nothing will be dispatched, and firing the
+ * compaction in that dispatch would abort the request a queued steer creates.
+ * This fixture drives the real scheduler handler end to end:
  *
- * That forwarding is one line with no other witness. The fixture next door
- * pins the arm side by calling `maybeArmAutoCompaction` itself, so deleting
- * the forwarding left every file in the suite green. This one drives the real
- * scheduler handler end to end:
- *
- *   1. sustained usage arms THROUGH the handler and the arm parks at a live
- *      loop boundary (no compaction fired, one entry queued);
- *   2. the next loop-done boundary lands exactly that arm and empties the
- *      queue;
- *   3. a boundary that carries no readable stop reason parks the arm the same
- *      way, because an unreadable boundary is not evidence that the loop is
- *      done.
+ *   1. sustained usage arms THROUGH the handler inside a live-loop boundary
+ *      (no compaction fired, one entry queued);
+ *   2. no later turn boundary lands it below the 0.90W backstop; the settle
+ *      drain does;
+ *   3. a boundary that carries no readable stop reason changes nothing, and
+ *      the settle drain still lands the queue;
+ *   4. at the 0.90W backstop the arm still does not fire in its own dispatch -
+ *      the NEXT boundary does, which is the deliberate mid-run cut.
  *
  * Run: node test/runtime/heartbeat/test-turn-boundary-arm-wiring.mjs
  * (built first: npm run build)
@@ -81,9 +77,9 @@ const ENTRY_TEXT = "x".repeat(31_993);
 const ENTRIES = 18;
 
 let worldSeq = 0;
-function makeWorld() {
+function makeWorld(entryCount = ENTRIES) {
   const branch = [];
-  for (let i = 0; i < ENTRIES; i++) {
+  for (let i = 0; i < entryCount; i++) {
     branch.push({
       id: `e${i}`,
       type: "message",
@@ -147,9 +143,8 @@ function makeAgent() {
 }
 
 /**
- * One turn boundary. The assistant message is what the boundary rule reads:
- * `stopReason` "toolUse" means the loop dispatches next, any other string ends
- * the turn's work, and an absent one is unreadable.
+ * One turn boundary. The assistant message carries the stop reason; the drain
+ * below the 0.90W backstop ignores it, and the backstop drain reads usage.
  */
 async function endTurn(pi, ctx, turnIndex, stopReason) {
   const message = { role: "assistant", content: [] };
@@ -202,21 +197,24 @@ await test("the real turn_end handler arms inside a live-loop boundary and parks
   assert.ok(armedAt > 0, "the arm was reached through a real turn_end dispatch");
 });
 
-await test("the next loop-done boundary lands the parked arm exactly once", async () => {
+await test("no turn boundary lands the parked arm; agent_settled does", async () => {
   const pi = makeAgent();
   const { ctx } = makeWorld();
 
   const armedAt = await armAtLiveLoopBoundary(pi, ctx);
   assert.equal(ctx.compactCalls.length, 0, "parked while the loop was live");
 
-  // The next turn ends with a loop-done stop: a tick turn is two turns away at
-  // the fastest, so this boundary cannot re-arm in the same dispatch.
   await endTurn(pi, ctx, armedAt + 1, "stop");
   assert.equal(
     ctx.compactCalls.length,
-    1,
-    "the loop-done boundary lands the parked compaction",
+    0,
+    "a loop-done boundary does not drain below the backstop (a steer can still dispatch)",
   );
+  assert.equal(readPendingCompactions(ctx).length, 1, "the arm stays queued");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(40);
+  assert.equal(ctx.compactCalls.length, 1, "the settle drain lands exactly one");
   assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
   assert.match(
     String(ctx.compactCalls[0]?.customInstructions ?? ""),
@@ -225,27 +223,38 @@ await test("the next loop-done boundary lands the parked arm exactly once", asyn
   );
 });
 
-await test("a boundary with no readable stop reason parks the arm too", async () => {
+await test("an unreadable boundary changes nothing; the settle drain lands the arm", async () => {
   const pi = makeAgent();
   const { ctx } = makeWorld();
 
   const armedAt = await armAtLiveLoopBoundary(pi, ctx);
   assert.equal(ctx.compactCalls.length, 0, "parked at live-loop boundaries");
 
-  // Same turn, an unreadable boundary: the scheduler still ticks, and an arm
-  // that cannot read the boundary must not assume the loop is done.
   await endTurn(pi, ctx, armedAt + 1, undefined);
+  assert.equal(ctx.compactCalls.length, 0, "no boundary drain below the backstop");
+  assert.equal(readPendingCompactions(ctx).length, 1, "the arm stays queued");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(40);
+  assert.equal(ctx.compactCalls.length, 1, "agent_settled lands the queued arm");
+});
+
+await test("at the 0.90W backstop the arm waits for the next boundary", async () => {
+  const pi = makeAgent();
+  // 23 entries = 184,000 tokens = 92% of the pinned 200k window, above the
+  // 180,000 hard backstop.
+  const { ctx } = makeWorld(23);
+
+  const armedAt = await armAtLiveLoopBoundary(pi, ctx);
   assert.equal(
     ctx.compactCalls.length,
     0,
-    "a boundary with no stop reason is not evidence that the loop is done",
+    "the arm dispatch must not fire the compaction it just queued, even at the backstop",
   );
-  assert.equal(readPendingCompactions(ctx).length, 1, "the arm stays queued for a readable boundary");
 
-  // Settle is the backstop that needs no boundary reading.
-  await pi._emit({ type: "agent_settled" }, ctx);
-  await sleep(40);
-  assert.equal(ctx.compactCalls.length, 1, "agent_settled still lands the queued arm");
+  // The next boundary is the backstop drain: the runaway live loop is cut.
+  await endTurn(pi, ctx, armedAt + 1, "toolUse");
+  assert.equal(ctx.compactCalls.length, 1, "the next boundary cuts the runaway run (backstop)");
 });
 
 try {

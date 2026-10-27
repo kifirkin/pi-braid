@@ -180,6 +180,12 @@ function makeFakeCtx({ percent = 50, branchLength = 10 } = {}) {
   return ctx;
 }
 
+/** Land the queue between compression actions: arming only queues now. */
+async function settleCompactions(ctx) {
+  await piComp._emit({ type: "agent_settled" }, ctx);
+  await new Promise((r) => setTimeout(r, 30));
+}
+
 // Nil the session counter block so each test starts (and ends) clean.
 function resetNavigationBlock(ctx) {
   getCmState(ctx).navigationAdoption = undefined;
@@ -271,12 +277,15 @@ await test("(b) archive/slide/compact/deep_clean each increment on success", asy
   );
   assert.ok(!ar.details.error, `archive should succeed, got: ${JSON.stringify(ar.details)}`);
   assert.equal(ar.details.compressed, 10, "archive auto-range on a 10-entry branch");
+  await settleCompactions(ctx);
 
   const sl = await compTool.execute("c2", { action: "slide", keep: 5 }, null, null, ctx);
   assert.ok(sl.details?.slideTriggered, `slide should trigger, got: ${JSON.stringify(sl.details)}`);
+  await settleCompactions(ctx);
 
   const cp = await compTool.execute("c3", { action: "compact" }, null, null, ctx);
   assert.ok(!cp.details.error, `compact should succeed, got: ${JSON.stringify(cp.details)}`);
+  await settleCompactions(ctx);
 
   const dc = await compTool.execute(
     "c4",
@@ -414,8 +423,11 @@ await test("(d) detail=detailed surfaces the navigation line with accumulated co
     null,
     ctx,
   );
+  await settleCompactions(ctx);
   await compTool.execute("c5", { action: "slide", keep: 5 }, null, null, ctx);
+  await settleCompactions(ctx);
   await compTool.execute("c6", { action: "compact" }, null, null, ctx);
+  await settleCompactions(ctx);
   await compTool.execute(
     "c7",
     { action: "deep_clean", topic: "old", summary: "archived" },
@@ -423,6 +435,7 @@ await test("(d) detail=detailed surfaces the navigation line with accumulated co
     null,
     ctx,
   );
+  await settleCompactions(ctx);
 
   const res = await inspTool.execute("d1", { detail: "detailed" }, null, null, ctx);
   const text = res.content[0].text;

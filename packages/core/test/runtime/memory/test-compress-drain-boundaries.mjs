@@ -1,25 +1,26 @@
 /**
  * context_compress armed-compaction drain boundaries.
  *
- * Defect: the batch-settle scheduler drained the pending queue ONLY at
- * agent_settled. A run kept alive by continuous steers never settles, so an
- * armed compaction stalled behind live work while usage kept climbing: the
- * queue drains at the first turn boundary instead.
+ * The queue drains when the run settles. `turn_end` carries no proof that the
+ * loop will dispatch nothing: the loop polls its steering queue after the
+ * boundary handlers return, and one queued steer starts another request that
+ * the deferred ctx.compact() would abort. The single exception is the 0.90W
+ * hard backstop, which cuts a run that would otherwise reach overflow with
+ * the queue still armed.
  *
  * Pinned here:
- *   1. The never-lands reproduction: armed mid-batch, steered turns keep the
- *      run alive, agent_settled never fires — the compaction must land at the
- *      FIRST turn boundary and never re-fire on later boundaries.
- *   2. Never mid-batch: turn_end with a sibling still in-flight must not drain
- *      (the tool-batch safety contract extends to the new boundary). The
- *      batch's completion is read from tool-call IDENTITY: a sibling whose
- *      tool_execution_end was missed but whose result is persisted in the
- *      boundary event's toolResults releases the batch there, while an id
- *      absent from those results (and a malformed result entry) keeps it
- *      parked. An unidentifiable start carries a symbol marker, so no
- *      persisted call id can release it early.
- *   3. Settle path preserved: agent_settled still drains (backstop), and a
- *      queue already drained at turn_end does not double-fire at settle.
+ *   1. A turn boundary does not drain below the backstop: a run kept alive by
+ *      steers keeps its armed compaction queued across every boundary, and
+ *      agent_settled lands it exactly once.
+ *   2. The backstop boundary still respects the batch: a sibling tool call
+ *      still in-flight parks the drain. The batch's completion is read from
+ *      tool-call IDENTITY: a sibling whose tool_execution_end was missed but
+ *      whose result is persisted in the boundary event's toolResults releases
+ *      the batch there, while an id absent from those results (and a malformed
+ *      result entry) keeps it parked. An unidentifiable start carries a symbol
+ *      marker, so no persisted call id can release it early.
+ *   3. Settle path preserved: agent_settled drains, and a queue already
+ *      drained at a backstop boundary does not double-fire at settle.
  *   4. No drain while a compaction cycle is already active.
  *   5. Queue integrity: a second LLM-class arm while one is pending is refused
  *      honestly (the first-armed trigger fires with the FIRST declaration's
@@ -28,22 +29,17 @@
  *   6. Usage-driven auto-arm: sustained usage above the configured threshold
  *      arms ONE deterministic slide; the knob can disable it.
  *   7. The pending-state advisory line (shared by context_inspect and the
- *      heartbeat) names the armed state and the turn-boundary landing.
- *   8. A live loop is not a drain boundary: a turn_end whose assistant message
- *      carries stopReason "toolUse" leaves the queue armed (the deferred
- *      compact would abort the request the loop is dispatching), the 0.90W
- *      hard backstop cuts anyway, and agent_settled still lands it.
- *   9. Arming is not a drain boundary either: an arm made inside a turn
- *      boundary dispatch (the heartbeat's usage-driven auto-arm hands that
- *      event in) drains only where that boundary is safe to abort on, so a
- *      "toolUse" stop below the 0.90W backstop queues instead of tearing the
- *      dispatch. The 0.90W exception still cuts at the arm, the next loop-done
- *      boundary lands a parked entry, and agent_settled catches the rest.
- *  10. The rule itself is an allow-list: a boundary carrying no readable stop
- *      reason parks, and so does one carrying a reason the rule does not
- *      recognize. `undefined` (no boundary knowledge at all) keeps the prior
- *      contract and fires. The heartbeat's fixture drives the same rule
- *      through the real scheduler handler.
+ *      heartbeat) names the armed state and the settle landing.
+ *   8. The 0.90W backstop is the one boundary drain: a "toolUse" turn_end at
+ *      the arm cuts the live loop (by design); below it the queue stays armed
+ *      and agent_settled lands it.
+ *   9. Arming never fires. The heartbeat's usage-driven auto-arm runs inside a
+ *      turn_end dispatch and only queues; the next boundary at the backstop (or
+ *      the settle drain) lands it.
+ *  10. The boundary rule itself is an allow-list over stop reasons: a boundary
+ *      carrying no readable reason parks, and so does one carrying a reason the
+ *      rule does not recognize. The hygiene act still reads it; the drain does
+ *      not.
  *
  * Run: node test/runtime/memory/test-compress-drain-boundaries.mjs
  * (built first: npm run build)
@@ -197,9 +193,9 @@ async function emitTurnEnd(pi, ctx, turnIndex, toolResults = [], stopReason = "s
   await sleep(30);
 }
 
-// ── 1. The never-lands reproduction ─────────────────────────────────────────
+// ── 1. A turn boundary is not a drain boundary below the backstop ───────────
 
-await test("armed drain lands at the FIRST turn boundary of a run that never settles", async () => {
+await test("an armed compaction waits for settle across every turn boundary", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
@@ -211,36 +207,32 @@ await test("armed drain lands at the FIRST turn boundary of a run that never set
   await sleep(20);
   assert.equal(ctx.compactCalls.length, 0, "parked at arm time (mid-batch)");
 
-  // The run stays alive: steered turns complete one after another and
-  // agent_settled NEVER fires. The compaction must land at the first one.
+  // The run stays alive: steered turns complete one after another. A loop-done
+  // stop reason does not prove the loop has nothing to dispatch, so no boundary
+  // may fire the queue here.
   await emitTurnEnd(pi, ctx, 0);
-  assert.equal(
-    ctx.compactCalls.length,
-    1,
-    "the armed compaction must land at the first turn boundary (steered-run defect)",
-  );
-
   await emitTurnEnd(pi, ctx, 1);
   await emitTurnEnd(pi, ctx, 2);
   assert.equal(
     ctx.compactCalls.length,
-    1,
-    "drained boundaries must not re-fire on later turn ends",
+    0,
+    "no turn boundary may drain below the 0.90W backstop (the steering poll may still dispatch)",
   );
+  assert.equal(readPendingCompactions(ctx).length, 1, "the slide stays armed across the boundaries");
 
-  // The settle backstop finds the queue empty: no second compaction.
   await pi._emit({ type: "agent_settled" }, ctx);
   await sleep(30);
-  assert.equal(ctx.compactCalls.length, 1, "settle after a turn_end drain must not double-fire");
+  assert.equal(ctx.compactCalls.length, 1, "agent_settled lands it exactly once");
+  assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
 });
 
 // ── 2. Never mid-batch at the new boundary ──────────────────────────────────
 
-await test("turn_end with a sibling tool still in-flight does not drain", async () => {
+await test("a backstop boundary with a sibling tool still in-flight does not drain", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -270,11 +262,11 @@ await test("turn_end with a sibling tool still in-flight does not drain", async 
   assert.equal(ctx.compactCalls.length, 1, "drains once the batch has fully landed");
 });
 
-await test("a persisted result releases its call id at turn_end when the end event is missed", async () => {
+await test("a persisted result releases its call id at the backstop boundary when the end event is missed", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -309,7 +301,7 @@ await test("results that name no active call id keep the batch parked", async ()
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -344,7 +336,7 @@ await test("a start event with no call id keeps every boundary parked until sett
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -376,7 +368,7 @@ await test("a persisted result cannot release an unidentifiable start", async ()
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -424,11 +416,11 @@ await test("agent_settled still drains a queue that no turn boundary reached", a
 
 // ── 4. No drain while a compaction cycle is active ──────────────────────────
 
-await test("turn_end does not drain while a compaction cycle is already active", async () => {
+await test("a backstop boundary does not drain while a compaction cycle is already active", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
-  const world = makeWorld();
+  const world = makeWorld(23);
   const ctx = world.ctx;
   pi.appendEntry = (type, data) => ctx.sessionManager.appendCustomEntry(type, data);
 
@@ -549,17 +541,21 @@ await test("sustained usage above the threshold arms exactly one slide", async (
 
   const second = compressMod.maybeArmAutoCompaction(pi, ctx);
   assert.equal(second.armed, true, "sustained high usage arms the auto compaction");
-  await sleep(30); // the drain is a deferred macrotask, as for every boundary
-  assert.equal(ctx.compactCalls.length, 1, "one auto-armed compaction queued");
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 0, "arming only queues; nothing fires while the run is live");
+  assert.equal(readPendingCompactions(ctx).length, 1, "the auto-armed slide is queued");
+
+  const third = compressMod.maybeArmAutoCompaction(pi, ctx);
+  assert.equal(third.armed, false, "a pending compaction suppresses re-arming");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "the settle drain lands the auto-armed slide");
   assert.match(
     String(ctx.compactCalls[0]?.customInstructions ?? ""),
     /SLIDE_MODE/,
     "the auto arm is the deterministic slide path",
   );
-
-  const third = compressMod.maybeArmAutoCompaction(pi, ctx);
-  assert.equal(third.armed, false, "a pending compaction suppresses re-arming");
-  assert.equal(ctx.compactCalls.length, 1, "no second compaction queued");
 });
 
 await test("usage below the threshold never arms and resets the hysteresis counter", async () => {
@@ -598,7 +594,7 @@ await test("usage below the threshold never arms and resets the hysteresis count
 
 // ── 7. Pending-state advisory line ──────────────────────────────────────────
 
-await test("pending advisory names the armed state and the turn-boundary landing", async () => {
+await test("pending advisory names the armed state and the settle landing", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
@@ -618,8 +614,8 @@ await test("pending advisory names the armed state and the turn-boundary landing
   assert.match(line, /slide armed/, "the line names the armed kind");
   assert.match(
     line,
-    /next turn boundary/,
-    "the line states the landing boundary (not settle-only)",
+    /when the run settles/,
+    "the line states the landing boundary (a turn boundary is not one below the backstop)",
   );
 });
 
@@ -629,7 +625,7 @@ await test("pending advisory names the armed state and the turn-boundary landing
 // the shared chars/4 estimator reads as 8,000 tokens - 4% of the pinned 200k
 // window. The hard backstop is 0.90W = 180,000 tokens.
 
-await test("a toolUse turn_end leaves an armed slide parked; the next loop-done boundary lands it", async () => {
+await test("no turn boundary lands an armed slide below the backstop; agent_settled does", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const tool = pi.tools.get("context_compress");
@@ -666,10 +662,15 @@ await test("a toolUse turn_end leaves an armed slide parked; the next loop-done 
     "the armed slide stays armed across a live-loop boundary",
   );
 
-  // The next assistant message ends the turn with a done stop reason: the loop
-  // has nothing left to dispatch, so the abort lands between turns.
+  // A loop-done stop reason is still not proof that the steering poll will
+  // return empty: the queue stays armed until the run settles.
   await emitTurnEnd(pi, ctx, 1, [], "stop");
-  assert.equal(ctx.compactCalls.length, 1, "a loop-done boundary lands the armed compaction");
+  assert.equal(ctx.compactCalls.length, 0, "a loop-done boundary does not drain below the backstop");
+  assert.equal(readPendingCompactions(ctx).length, 1, "the armed slide stays queued");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "agent_settled lands the armed compaction");
   assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
 });
 
@@ -738,19 +739,19 @@ await test("agent_settled drains a compaction that a toolUse turn_end left armed
 
 /**
  * The heartbeat's arm site: its scheduler ticks on every Nth turn_end and arms
- * inside that dispatch, handing the boundary it is handling in. Registered
- * after the context-compress handlers, so the arm lands after the boundary
- * those handlers already judged - the shape that aborted the live loop.
+ * inside that dispatch. Registered after the context-compress handlers, so the
+ * arm lands after the boundary those handlers already judged: arming only
+ * queues, and nothing may fire in the dispatch it ran in.
  */
 function tickArmingOnTurnEnd(pi) {
   const reports = [];
   pi.on("turn_end", (event, c) => {
-    reports.push(compressMod.maybeArmAutoCompaction(pi, c, event));
+    reports.push(compressMod.maybeArmAutoCompaction(pi, c));
   });
   return reports;
 }
 
-await test("an auto-arm inside a toolUse boundary parks; the next loop-done boundary lands it", async () => {
+await test("an auto-arm inside a toolUse boundary parks; settle lands it", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const world = makeWorld(18);
@@ -784,11 +785,15 @@ await test("an auto-arm inside a toolUse boundary parks; the next loop-done boun
   assert.equal(readPendingCompactions(ctx).length, 1, "the armed slide stays queued");
 
   await emitTurnEnd(pi, ctx, 1, [], "stop");
-  assert.equal(ctx.compactCalls.length, 1, "the next loop-done boundary lands exactly one");
+  assert.equal(ctx.compactCalls.length, 0, "no turn boundary lands it below the backstop");
+
+  await pi._emit({ type: "agent_settled" }, ctx);
+  await sleep(30);
+  assert.equal(ctx.compactCalls.length, 1, "the settle drain lands exactly one");
   assert.equal(readPendingCompactions(ctx).length, 0, "the landed compaction leaves the queue empty");
 });
 
-await test("an auto-arm at the 0.90W backstop cuts the live loop anyway", async () => {
+await test("an auto-arm at the 0.90W backstop arms without cutting its own dispatch", async () => {
   const pi = makeFakePi();
   registerContextCompress(pi);
   const world = makeWorld(23);
@@ -809,8 +814,17 @@ await test("an auto-arm at the 0.90W backstop cuts the live loop anyway", async 
   assert.equal(reports.at(-1)?.armed, true, "the tick inside the boundary arms the slide");
   assert.equal(
     ctx.compactCalls.length,
+    0,
+    "arming inside a dispatch never aborts that dispatch, even at the backstop",
+  );
+  assert.equal(readPendingCompactions(ctx).length, 1, "the slide stays queued");
+
+  // The next boundary is a drain boundary at 0.90W: the runaway live loop is cut.
+  await emitTurnEnd(pi, ctx, 1, [], "toolUse");
+  assert.equal(
+    ctx.compactCalls.length,
     1,
-    "at 184,000 tokens of a 200,000 window the arm cuts the runaway live loop (backstop exception)",
+    "at 184,000 tokens of a 200,000 window the next boundary cuts the runaway live loop (backstop exception)",
   );
 });
 
