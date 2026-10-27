@@ -1,6 +1,6 @@
 {
   "name": "pi-braid",
-  "version": "0.42.5",
+  "version": "0.42.6",
   "description": "Braid 🥨 Metacognitive extension suite for Pi coding agent: enforcement, memory, reasoning, self-improvement, and structured cognitive signals.",
   "type": "module",
   "main": "./dist/index.js",
