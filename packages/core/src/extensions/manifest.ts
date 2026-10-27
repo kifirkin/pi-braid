@@ -49,6 +49,7 @@ import errorCaptureFn from "./self/error-tracking/index.js";
 import watchdogFn from "./self/watchdog/index.js";
 import autoRecoveryFn from "./self/auto-recovery/index.js";
 import latentActivatorFn from "./self/latent-activator/index.js";
+import pathMissFn from "./self/path-miss/index.js";
 
 // enforcement (turn pipeline: handlers, detection, substate)
 import enforcementFn from "./enforcement/index.js";
@@ -223,6 +224,11 @@ export const MANIFEST: ManifestEntry[] = [
     id: "latent-activator",
     fn: latentActivatorFn,
     desc: "Latent behavior activator",
+  },
+  {
+    id: "path-miss",
+    fn: pathMissFn,
+    desc: "Path-miss steer — name the listing that answers a missing path",
   },
 
   // Watchdog (default-ON — liveness/stall state machine)

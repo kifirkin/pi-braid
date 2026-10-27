@@ -23,6 +23,7 @@ export const MESSAGE_START = "message_start" as const;
 export const MESSAGE_END = "message_end" as const;
 export const TOOL_EXECUTION_START = "tool_execution_start" as const;
 export const TOOL_EXECUTION_END = "tool_execution_end" as const;
+export const TOOL_RESULT = "tool_result" as const;
 export const AGENT_SETTLED = "agent_settled" as const;
 
 // ── Extension Communication ─────────────────────────────────────────────────

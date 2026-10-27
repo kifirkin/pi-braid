@@ -16,6 +16,7 @@ import {
   DEPTH_LEVELS,
 } from "./think-budget.js";
 import { criticGate } from "../../../../lib/ai/critic-gate.js";
+import { checkArgumentValues } from "../../../../lib/utils/argument-report.js";
 import { getExtensionState } from "../../../../lib/state/extension-state.js";
 import { createLogger } from "../../../../lib/core/logger.js";
 
@@ -213,6 +214,14 @@ export function createThinkTool(): ToolDefinition<any, any, any> {
     description: "Think deeply with structured reasoning before making high-stakes decisions.",
     promptSnippet: "Think deeply with structured reasoning before decisions",
     parameters: thinkSchema,
+    // pi validates arguments before `execute` is reached, and its own refusal
+    // for a guessed enum or a missing field names neither. This hook runs
+    // first, inside the same guarded block, and refuses with the values the
+    // schema above already declares.
+    prepareArguments: (args: unknown) => {
+      checkArgumentValues("think", thinkSchema, args);
+      return args;
+    },
     execute: async (
       _toolCallId: string,
       params: any,

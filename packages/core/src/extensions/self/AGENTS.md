@@ -14,11 +14,12 @@ because they're specialized tools the user enables when they want them.
 | `watchdog/`           | (TUI command)                            | Passive session monitor: uptime, idle time, message count. No LLM tool. |
 | `auto-recovery/`      | (whisper-only)                           | On turn_start, checks for system degradation and suggests recovery.     |
 | `latent-activator/`   | `behavior`                               | Activates atomic behavior modes (planner, executor, reviewer, etc).     |
+| `path-miss/`          | (whisper-only)                           | On a tool result that missed a path, names the listing that finds it.   |
 
 ## Local Contracts
 
 - Most are **opt-in** (`disabledByDefault: true` in the manifest).
-- `auto-recovery` and `latent-activator` are always-on.
+- `auto-recovery`, `latent-activator` and `path-miss` are always-on.
 - These extensions manipulate the agent's own state, not external state.
 
 ## Distinction from related categories

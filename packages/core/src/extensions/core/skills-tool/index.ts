@@ -34,6 +34,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { Static } from "typebox";
 import { createLogger } from "../../../lib/core/logger.js";
 import { getSkillsRankingMode } from "../../../lib/config/braid-settings.js";
 import type { SkillsRankingMode } from "../../../lib/config/braid-settings.js";
@@ -55,6 +56,7 @@ import {
   readSkillReach,
 } from "./reach.js";
 import { getMonthlyAdoptionRollup } from "./session-records.js";
+import { checkArgumentValues } from "../../../lib/utils/argument-report.js";
 
 const log = createLogger("skills-tool");
 
@@ -252,6 +254,52 @@ function rowOf(row: RankedSkill): RowRelevance {
 
 // Extension factory:
 
+/**
+ * `list_skills` arguments: one action, one page of the catalog.
+ *
+ * The action is named here rather than inferred, because a pager call and a
+ * full-catalog call are the same call and the schema is what the model reads
+ * before choosing. The tool fills it when the call omits it (`prepareArguments`
+ * below), so a bare pager call behaves as the listing it obviously is while an
+ * unknown action is still refused.
+ */
+const listSkillsSchema = Type.Object({
+  action: Type.Literal("list", {
+    description:
+      "list = paginated catalog with per-skill reach (reachable, lines, bytes, chars, estTokens, sectionCount, sections)",
+  }),
+  page: Type.Optional(
+    Type.Number({
+      minimum: 1,
+      default: 1,
+      description: "Page number for list (1-based)",
+    }),
+  ),
+  pageSize: Type.Optional(
+    Type.Number({
+      minimum: 1,
+      maximum: 50,
+      default: 10,
+      description: "Entries per page for list",
+    }),
+  ),
+  sectionsMax: Type.Optional(
+    Type.Number({
+      minimum: 0,
+      maximum: SECTIONS_MAX_LIMIT,
+      default: DEFAULT_SECTIONS_MAX,
+      description: "Headings reported per skill; 0 omits the section list and keeps sectionCount",
+    }),
+  ),
+  rank: Type.Optional(
+    Type.Union([Type.Literal("relevance"), Type.Literal("catalog")], {
+      default: "relevance",
+      description:
+        "relevance (default) = order by fit to the current task; catalog = the plain catalog order, with no ranking fields",
+    }),
+  ),
+});
+
 export default function skillsToolExtension(pi: ExtensionAPI): void {
   registerAutoInject(pi);
 
@@ -260,43 +308,18 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
     label: "List Skills",
     description:
       "Discover skills on demand: paginated catalog (name, filePath, description, source) plus each skill's reach (reachable, lines, bytes, chars, estTokens, sectionCount, section headings with line numbers), so the price of a read is visible before the read. Rows are ordered by relevance to the current task; a row with match evidence carries relevance {score, reason}, and the response carries ranking {tier, basis, policy}. Pass rank: 'catalog' for the plain catalog order. `read` a SKILL.md to load it.",
-    parameters: Type.Object({
-      action: Type.Literal("list", {
-        description:
-          "list = paginated catalog with per-skill reach (reachable, lines, bytes, chars, estTokens, sectionCount, sections)",
-      }),
-      page: Type.Optional(
-        Type.Number({
-          minimum: 1,
-          default: 1,
-          description: "Page number for list (1-based)",
-        }),
-      ),
-      pageSize: Type.Optional(
-        Type.Number({
-          minimum: 1,
-          maximum: 50,
-          default: 10,
-          description: "Entries per page for list",
-        }),
-      ),
-      sectionsMax: Type.Optional(
-        Type.Number({
-          minimum: 0,
-          maximum: SECTIONS_MAX_LIMIT,
-          default: DEFAULT_SECTIONS_MAX,
-          description:
-            "Headings reported per skill; 0 omits the section list and keeps sectionCount",
-        }),
-      ),
-      rank: Type.Optional(
-        Type.Union([Type.Literal("relevance"), Type.Literal("catalog")], {
-          default: "relevance",
-          description:
-            "relevance (default) = order by fit to the current task; catalog = the plain catalog order, with no ranking fields",
-        }),
-      ),
-    }),
+    parameters: listSkillsSchema,
+    // Paging without an action is a listing call: fill the action the call
+    // implies before pi validates, and refuse a guessed value with the accepted
+    // one named. The schema above stays the only description of the contract.
+    prepareArguments: (args: unknown) => {
+      const prepared =
+        args && typeof args === "object" && (args as { action?: unknown }).action == null
+          ? { ...args, action: "list" }
+          : args;
+      checkArgumentValues("list_skills", listSkillsSchema, prepared);
+      return prepared as Static<typeof listSkillsSchema>;
+    },
     execute: async (_id, params, signal, _onUpdate, ctx) => {
       const page = (params.page as number) ?? 1;
       const pageSize = (params.pageSize as number) ?? 10;
