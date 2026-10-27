@@ -131,8 +131,13 @@ await test("context-monitor fires the steer callback ONLY at the USAGE_WHISPER_C
   await monitor.action(makePolicyContext(USAGE_WHISPER_CRITICAL + 1));
   assert.equal(steers.length, 1, "auto-finalize steer fired at the critical crossing");
   assert.ok(
-    steers[0].includes("Context critical"),
-    `steer text is the finalize directive — got: ${steers[0]}`,
+    steers[0].includes("critical arm"),
+    `steer text names the crossed arm - got: ${steers[0]}`,
+  );
+  assert.doesNotMatch(
+    steers[0],
+    /\d+(\.\d+)?%/,
+    `steer text prints no threshold as a reading - got: ${steers[0]}`,
   );
   assert.ok(steers[0].includes("context_navigate"), "steer text carries the tag-first pipeline");
 });

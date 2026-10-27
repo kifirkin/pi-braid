@@ -1,20 +1,22 @@
 /**
  * Part 2 + Part 4: heartbeat self-state line.
  *
- * Owner Refine-2 directive: every heartbeat summary makes the agent
- * self-aware of its own context health. Both summary builders (the tick
- * batcher in whisper-batcher.ts and the delayed-flush builder in
- * heartbeat-scheduler/index.ts) append ONE <=40-token self-state line:
+ * Every heartbeat delivery carries ONE self-state line so the agent knows the
+ * size of its own context. The line's contract is deliberately small:
  *
- * self-state: ctx 213K tok · cache 96% · dup 39 · tps-ema 87
+ * 1. one meter reading - token count and percent from the same snapshot;
+ * 2. the meter's own provenance word beside the percent, because a percentage
+ *    with no provenance cannot be told from a badly counted one;
+ * 3. no metric that names no action (cache-hit share, near-duplicate count,
+ *    tok/s trend, hygiene acts live in the telemetry JSONL and the tools an
+ *    agent calls while diagnosing);
+ * 4. n/a tolerance - a missing reading renders "n/a", NEVER zero;
+ * 5. summary integration - the line lands after the clock line in both
+ *    single-message and batched forms; absent sample = no line (compat).
  *
- * Pinned here:
- * 1. line format (tokens K / cache % / dup count / tps-ema);
- * 2. n/a tolerance — a missing metric renders "n/a", NEVER zero;
- * 3. summary integration — the line lands after the clock line in both
- * single-message and batched forms; absent sample = no line (compat);
- * 4. telemetry: cache-hit share capture (usage.cacheRead) + the JSONL
- * entry field + the getSelfStateSample accessor (n/a on empty state).
+ * The sample is also pinned for the one-instrument rule: size, percent and
+ * provenance come from the meter, and when the meter has nothing the line says
+ * n/a rather than borrowing the provider accessor's number.
  *
  * Run: node test/runtime/heartbeat/test-heartbeat-self-state.mjs
  * (built first: npm run build)
@@ -53,11 +55,42 @@ function test(name, fn) {
     });
 }
 
+/**
+ * A context whose session tree carries one assistant message with provider
+ * usage, so the meter has a real anchor to measure.
+ */
 function makeCtx(sessionId) {
   return {
     sessionManager: {
       getSessionFile: () => `fake-${sessionId}.jsonl`,
       getSessionId: () => sessionId,
+      getEntries: () => [],
+      getBranch: () => [
+        // The turn's prompt first: the meter walks from the compaction
+        // boundary (or index 0) and anchors on the assistant message after it.
+        { type: "message", message: { role: "user", content: "go" } },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: "ok",
+            stopReason: "end_turn",
+            usage: { totalTokens: 237_785, input: 237_000, output: 785 },
+          },
+        },
+      ],
+    },
+    model: { contextWindow: 1_000_000 },
+    getContextUsage: () => ({ percent: 23, tokens: 237_785, contextWindow: 1_000_000 }),
+  };
+}
+
+/** A context with no session tree at all: the meter has nothing to measure. */
+function makeEmptyTreeCtx() {
+  return {
+    sessionManager: {
+      getSessionFile: () => "fake-empty.jsonl",
+      getSessionId: () => "empty-tree",
       getEntries: () => [],
       getBranch: () => [],
     },
@@ -67,57 +100,74 @@ function makeCtx(sessionId) {
 
 // ── 1. Line format ───────────────────────────────────────────────────────────
 
-await test("1. full sample renders the four metrics", () => {
+await test("1. renders the count with the percent and the meter's provenance word", () => {
   const line = buildSelfStateLine({
     contextTokens: 237_785,
-    cacheHitShare: 96.4,
-    nearDupCount: 39,
-    tpsEma: 87.2,
+    contextPercent: 23.7785,
+    contextProvenance: "measured",
   });
-  assert.match(line, /^self-state: ctx 238K tok · cache 96% · dup 39 · tps-ema 87 tok\/s$/, line);
+  assert.equal(line, "self-state: ctx 238K tok (23.8% measured)");
 });
 
-await test("2. missing metrics render n/a, never zero", () => {
+await test("2. a percent without a provenance word is not rendered at all", () => {
+  // The guard is structural: an unlabelled percentage is the class that cost a
+  // session its window, so the renderer refuses to print one.
+  const line = buildSelfStateLine({ contextTokens: 237_785, contextPercent: 23.7785 });
+  assert.equal(line, "self-state: ctx 238K tok");
+  assert.doesNotMatch(line, /%/, "no percentage without provenance");
+});
+
+await test("3. an unavailable reading renders n/a, never zero", () => {
   const line = buildSelfStateLine({});
-  assert.ok(line.includes("ctx n/a"), "context n/a");
-  assert.ok(line.includes("cache n/a"), "cache n/a");
-  assert.ok(line.includes("dup n/a"), "dup n/a");
-  assert.ok(line.includes("tps-ema n/a"), "tps n/a");
+  assert.equal(line, "self-state: ctx n/a");
   assert.doesNotMatch(line, /ctx 0K/, "no zero masquerading as a healthy reading");
   const nullLine = buildSelfStateLine({
     contextTokens: null,
-    cacheHitShare: null,
-    nearDupCount: null,
-    tpsEma: null,
+    contextPercent: null,
+    contextProvenance: null,
   });
   assert.equal(nullLine, line, "null and missing behave identically");
 });
 
-await test("3. self-state line is compact (<= 40 tokens)", () => {
+await test("4. the line carries no metric a reader cannot act on", () => {
   const line = buildSelfStateLine({
     contextTokens: 237_785,
+    contextPercent: 23.7785,
+    contextProvenance: "estimated",
     cacheHitShare: 96.4,
     nearDupCount: 39,
     tpsEma: 87.2,
+    hygieneActs: 0,
   });
-  // 40 tokens ≈ 160 chars; the line must stay comfortably under.
-  assert.ok(line.length <= 80, `line too long (${line.length} chars): ${line}`);
+  for (const dropped of ["cache", "dup", "tps", "acts"]) {
+    assert.ok(!line.includes(dropped), `"${dropped}" names no action: ${line}`);
+  }
 });
 
-// ── 2. Summary integration (both builders' shared flusher) ──────────────────
+await test("5. the line is compact (one line, bounded length)", () => {
+  const line = buildSelfStateLine({
+    contextTokens: 237_785,
+    contextPercent: 23.7785,
+    contextProvenance: "measured + 12K estimated x1.05",
+  });
+  assert.ok(!line.includes("\n"), `one line: ${line}`);
+  assert.ok(line.length <= 90, `line too long (${line.length} chars): ${line}`);
+});
 
-await test("4. single-message summary gains the self-state line after the clock", () => {
+// ── 2. Summary integration (both builders' shared renderer) ──────────────────
+
+await test("6. single-message summary gains the self-state line after the clock", () => {
   const sent = [];
   flushWhisperBuffer(
     [{ message: "m1", priority: "low" }],
     (text) => sent.push(text),
-    "self-state: ctx 1K tok · cache n/a · dup 0 · tps n/a",
+    "self-state: ctx 1K tok (1.0% measured)",
   );
   assert.equal(sent.length, 1);
   assert.match(sent[0], /^now: .+\nself-state: .+\nm1$/s);
 });
 
-await test("5. batched summary: line between clock and numbered items", () => {
+await test("7. batched summary: line between clock and numbered items", () => {
   const sent = [];
   flushWhisperBuffer(
     [
@@ -125,75 +175,73 @@ await test("5. batched summary: line between clock and numbered items", () => {
       { message: "m2", priority: "low" },
     ],
     (text) => sent.push(text),
-    "self-state: ctx 1K tok · cache 1% · dup 0 · tps 1 tok/s",
+    "self-state: ctx 1K tok (1.0% measured)",
   );
   assert.equal(sent.length, 1);
   assert.match(sent[0], /\[Heartbeat Summary\]\nnow: .+\nself-state: .+\n1\. m1\n2\. m2/);
 });
 
-await test("6. absent sample: no self-state line (backward compatible)", () => {
+await test("8. absent sample: no self-state line (backward compatible)", () => {
   const sent = [];
   flushWhisperBuffer([{ message: "m1", priority: "low" }], (text) => sent.push(text));
   assert.equal(sent.length, 1);
   assert.doesNotMatch(sent[0], /self-state:/);
 });
 
-// ── 3. Telemetry: cache capture + accessor ──────────────────────────────────
+// ── 3. The sample: one instrument, telemetry preserved ──────────────────────
 
-await test("7. cache-hit share captured from usage.cacheRead (w10 signature 94-98%)", () => {
-  const ctx = makeCtx("self-state-7");
+await test("9. size, percent and provenance come from one meter reading", () => {
+  const ctx = makeCtx("self-state-9");
   noteAssistantMessageEnd(ctx, {
     role: "assistant",
     timestamp: Date.now() - 5000,
     usage: { input: 1000, output: 500, cacheRead: 24_000, cacheWrite: 0 },
   });
   const sample = getSelfStateSample(ctx);
-  // 24000/(24000+1000) = 96%
+  assert.equal(sample.contextTokens, 237_785, "the usage anchor is the count");
+  assert.ok(
+    sample.contextPercent !== null && Math.abs(sample.contextPercent - 23.7785) < 0.01,
+    `percent derived from the same reading: ${sample.contextPercent}`,
+  );
+  assert.equal(sample.contextProvenance, "measured", "an API count anchors it");
+  // Cache-hit share is no longer rendered, but it is still sampled: the
+  // telemetry JSONL and the diagnosing tools read it.
   assert.ok(
     sample.cacheHitShare !== null && Math.abs(sample.cacheHitShare - 96) < 0.1,
     `cacheHitShare=${sample.cacheHitShare}`,
   );
-  assert.equal(sample.contextTokens, 237_785, "context tokens are a live read");
-  assert.ok(sample.tpsEma !== null, "tps EMA captured from the same message");
 });
 
-await test("8. provider without cacheRead -> cache n/a (null, not zero)", () => {
-  const ctx = makeCtx("self-state-8");
-  noteAssistantMessageEnd(ctx, {
-    role: "assistant",
-    timestamp: Date.now() - 5000,
-    usage: { input: 1000, output: 500 },
-  });
-  const sample = getSelfStateSample(ctx);
-  assert.equal(sample.cacheHitShare, null, "no cacheRead reported -> n/a");
-  const line = buildSelfStateLine(sample);
-  assert.match(line, /cache n\/a/);
+await test("10. no session tree: n/a rather than a second instrument's number", () => {
+  const sample = getSelfStateSample(makeEmptyTreeCtx());
+  assert.equal(sample.contextTokens, null, "the meter has nothing to measure");
+  assert.equal(sample.contextPercent, null);
+  assert.equal(sample.contextProvenance, null);
+  assert.match(buildSelfStateLine(sample), /ctx n\/a/);
 });
 
-await test("9. near-dup count flows from the density evaluator state", () => {
-  const ctx = makeCtx("self-state-9");
+await test("11. near-dup count still flows from the density evaluator state", () => {
+  const ctx = makeCtx("self-state-11");
   let sample = getSelfStateSample(ctx);
   assert.equal(sample.nearDupCount, null, "no density state yet -> n/a");
-  // Simulate the context-lifecycle density evaluator having run.
   getExtensionState(ctx, "context-density", () => ({ duplicates: 0 })).duplicates = 39;
   sample = getSelfStateSample(ctx);
-  assert.equal(sample.nearDupCount, 39);
+  assert.equal(sample.nearDupCount, 39, "sampled even though the line no longer prints it");
 });
 
-await test("10. empty ctx: every field n/a, line renders, never throws", () => {
+await test("12. empty ctx: every field n/a, line renders, never throws", () => {
   const sample = getSelfStateSample({});
   assert.equal(sample.contextTokens, null);
   assert.equal(sample.cacheHitShare, null);
   assert.equal(sample.tpsEma, null);
-  const line = buildSelfStateLine(sample);
-  assert.match(line, /self-state: ctx n\/a/);
+  assert.match(buildSelfStateLine(sample), /self-state: ctx n\/a/);
 });
 
-await test("11. JSONL telemetry entry carries cacheHitShare (scalar, bounded)", () => {
-  const dir = mkdtempSync(join(tmpdir(), "w11-selfstate-"));
+await test("13. JSONL telemetry entry carries cacheHitShare (scalar, bounded)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "selfstate-"));
   const sink = join(dir, "hb.jsonl");
   try {
-    const ctx = makeCtx("self-state-11");
+    const ctx = makeCtx("self-state-13");
     noteAssistantMessageEnd(ctx, {
       role: "assistant",
       timestamp: Date.now() - 5000,

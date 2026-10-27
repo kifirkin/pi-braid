@@ -72,14 +72,26 @@ test("flushWhisperBuffer prepends the now: line inside the Heartbeat Summary", (
   );
 });
 
-test("heartbeat delayed-flush builder uses the ONE formatter for the now: line", () => {
-  const text = readFileSync(
+test("delayed delivery renders the now: line through the ONE formatter, read through the seam", () => {
+  // The text owner builds the clock line; the flush site must not format a
+  // clock of its own (a `new Date()` there is the defect this pins).
+  const renderer = readFileSync(
+    join(ROOT, "src/extensions/heartbeat/heartbeat-scheduler/whisper-batcher.ts"),
+    "utf8",
+  );
+  assert.match(
+    renderer,
+    /formatLocalTime\(opts\.at \?\? nowOrOverride\(\), true\)/,
+    "the clock line is formatLocalTime over the seam's instant",
+  );
+  const flushSite = readFileSync(
     join(ROOT, "src/extensions/heartbeat/heartbeat-scheduler/index.ts"),
     "utf8",
   );
-  assert.ok(
-    text.includes("formatLocalTime"),
-    "the delayed whisper flush renders the now: line through formatLocalTime",
+  assert.doesNotMatch(
+    flushSite,
+    /new Date\(/,
+    "the flush site reads no clock of its own",
   );
 });
 

@@ -10,17 +10,17 @@ import type { Policy, PolicyContext, BeliefStore } from "../../../lib/store/beli
 import type { ToolTracking } from "./types.js";
 import { createLogger } from "../../../lib/core/logger.js";
 import {
-  USAGE_WHISPER_SOFT,
-  USAGE_WHISPER_ADVISORY,
-  USAGE_WHISPER_WARNING,
   USAGE_WHISPER_CRITICAL,
   USAGE_FIRED_RESET_BELOW,
 } from "../../../lib/detection/context-thresholds.js";
 import {
   CONTEXT_USAGE_TIERS,
+  contextUsageTierMessage,
   getContextUsage,
+  type ContextUsageTier,
   type ContextUsageTierInfo,
 } from "../../../lib/detection/context-tiers.js";
+import type { WhisperFamily } from "./whisper-batcher.js";
 
 const log = createLogger("heartbeat:policies");
 
@@ -417,7 +417,7 @@ export function isVerificationToolCall(toolName: string, input: unknown): boolea
 export function createDefaultPolicies(
   getToolTracking: () => ToolTracking,
   onSignal: (type: string, data: Record<string, unknown>) => void,
-  sendWhisper: (msg: string) => void,
+  sendWhisper: (msg: string, family?: WhisperFamily) => void,
   sendSteerMessage: (msg: string) => void,
 ): Policy[] {
   return [
@@ -435,10 +435,11 @@ export function createDefaultPolicies(
         return turnsSince >= 10 && t.totalToolsUsed > 3;
       },
       action: async (ctx: PolicyContext) => {
+        // One instruction, not a menu. The agent does not need to be asked
+        // whether it is sure; it needs the step that would settle it.
         sendWhisper(
           "No verification (grep/read/search) in 10+ turns. " +
-            "Consider: Are you sure the implementation is correct? " +
-            "Verify with grep or read to confirm.",
+            "Verify with grep or read before continuing.",
         );
         onSignal("verification_reminder", {
           turn: ctx.turnNumber,
@@ -510,48 +511,38 @@ export function createDefaultPolicies(
         // subset). Values are always present per the wiring (heartbeat-scheduler
         // index.ts), so these defaults never fire — preserved from the original
         // required-typed destructure.
-        const { percent = 0, tokens = 0, contextWindow = 0 } = usage;
+        const { percent = 0 } = usage;
 
         if (percent < USAGE_FIRED_RESET_BELOW && _firedThresholds.size > 0) {
           _firedThresholds.clear();
         }
 
-        // Threshold ladder: soft -> advisory -> warning -> critical
-        // Each threshold fires ONCE until usage resets below USAGE_FIRED_RESET_BELOW.
-        // Pipeline taught fully at critical level; lighter hints below that.
-        // Tier→(threshold, priority) mapping shared from
-        // lib/detection/context-tiers.ts (CONTEXT_USAGE_TIERS); this policy
-        // keeps its own per-tier message copy (different copy from the
-        // enforcement nudge text).
-        const TIER_MESSAGES: Record<"soft" | "advisory" | "warning" | "critical", string> = {
-          soft: `Context at ${USAGE_WHISPER_SOFT}%. Inspect and track: context_inspect(detail="quick"). Tag with context_navigate(action="tag") to mark progress.`,
-          advisory: `Context at ${USAGE_WHISPER_ADVISORY}%. Light pruning: context_inspect(detail="prune") then context_compress(action="archive") or context_navigate(action="tag") + context_compress(action="archive").`,
-          warning: `Context at ${USAGE_WHISPER_WARNING}%. Deep compaction: tag + archive now. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> compact if needed.`,
-          critical: `CRITICAL: Context at ${USAGE_WHISPER_CRITICAL}%. FORCE IMMEDIATE HYGIENE. Pipeline: context_navigate(action="tag") -> context_compress(action="archive") -> context_compress(action="slide"). Do not continue work until done.`,
-        };
+        // Threshold ladder: soft -> advisory -> warning -> critical, each
+        // firing ONCE until usage resets below USAGE_FIRED_RESET_BELOW.
+        //
+        // A rung decides WHETHER a whisper fires; it is never what the
+        // whisper prints. A threshold is a configuration value, and a delivery
+        // that prints it puts a number where a reader expects a reading. The
+        // wording lives with the meter in lib/detection/context-tiers.ts (one
+        // owner for both the enforcement ladder and this one), and the number
+        // the reader acts on is the measurement sampled at delivery, carrying
+        // its own provenance word.
+        const thresholds = CONTEXT_USAGE_TIERS.filter(
+          (t): t is ContextUsageTierInfo & { tier: Exclude<ContextUsageTier, "compact"> } =>
+            t.tier !== "compact",
+        )
+          .slice()
+          .reverse();
 
-        const thresholds: Array<{ pct: number; priority: "low" | "medium" | "high"; msg: string }> =
-          CONTEXT_USAGE_TIERS.filter(
-            (
-              t,
-            ): t is ContextUsageTierInfo & { tier: "soft" | "advisory" | "warning" | "critical" } =>
-              t.tier !== "compact",
-          )
-            .slice()
-            .reverse()
-            .map((t) => ({ pct: t.threshold, priority: t.priority, msg: TIER_MESSAGES[t.tier] }));
-
-        for (const { pct, msg } of thresholds) {
-          if (percent >= pct && !_firedThresholds.has(pct)) {
-            _firedThresholds.add(pct);
-            sendWhisper(
-              `${msg} (${tokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens, ${percent?.toFixed(1)}%)`,
-            );
-            if (pct === USAGE_WHISPER_CRITICAL) {
-              const finalizationMessage =
-                `[heartbeat] Context critical at ${percent?.toFixed(1)}%. ` +
-                `Tag your position with context_navigate(action="tag") now and archive with context_compress(action="archive").`;
-              sendSteerMessage(finalizationMessage);
+        for (const { tier, threshold } of thresholds) {
+          if (percent >= threshold && !_firedThresholds.has(threshold)) {
+            _firedThresholds.add(threshold);
+            // The family marker lets the batcher re-render this instruction
+            // from the measurement taken at delivery, so the arm named here and
+            // the percent printed beside it are one snapshot.
+            sendWhisper(contextUsageTierMessage(tier), "context-tier");
+            if (threshold === USAGE_WHISPER_CRITICAL) {
+              sendSteerMessage(contextUsageTierMessage("critical"));
               log.warn(`Auto-finalize triggered at ${USAGE_WHISPER_CRITICAL}%`);
             }
             break;

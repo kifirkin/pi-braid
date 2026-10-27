@@ -46,7 +46,7 @@ import {
   safeSessionManagerTyped,
 } from "../state/extension-state.js";
 import { getContextUsage } from "../detection/context-tiers.js";
-import { measureLiveUsage } from "../detection/context-usage.js";
+import { measureLiveUsage, describeUsage } from "../detection/context-usage.js";
 
 const log = createLogger("context-heartbeat");
 
@@ -479,13 +479,15 @@ export function collectAndEmitContextHeartbeat(
 export interface SelfStateSample {
   /** Current context size in tokens (live read, not the last-tick snapshot). */
   contextTokens: number | null;
+  /** Percent of the resolved window the same reading fills; null when unmeasured. */
+  contextPercent: number | null;
   /**
-   * Where `contextTokens` came from: "measured" (an API response anchors it)
-   * or "estimated" (chars-based walk). Null when no reading was available.
-   * A telemetry reader that cannot tell the two apart cannot tell a large
-   * context from a badly counted one.
+   * The meter's own provenance word for the two fields above (`measured`,
+   * `estimated`, or a measured anchor plus its estimated trailing part). Null
+   * when no reading was available. A reader that cannot tell the two apart
+   * cannot tell a large context from a badly counted one.
    */
-  contextTokensSource: "measured" | "estimated" | null;
+  contextProvenance: string | null;
   /** Cache-hit share, percent 0-100 (last assistant message). */
   cacheHitShare: number | null;
   /** Near-duplicate message count from the context-density evaluator. */
@@ -505,27 +507,29 @@ export interface SelfStateSample {
 export function getSelfStateSample(ctx: ExtensionContext): SelfStateSample {
   const sample: SelfStateSample = {
     contextTokens: null,
-    contextTokensSource: null,
+    contextPercent: null,
+    contextProvenance: null,
     cacheHitShare: null,
     nearDupCount: null,
     tpsEma: null,
     hygieneActs: null,
   };
   try {
-    // Context tokens: live read (compaction-aware session-tree measure),
-    // not the last-tick snapshot — a summary rendered right after a slide
-    // must not report the pre-slide size. Falls back to the duck-typed
-    // accessor when the session tree is unavailable.
+    // Context size: live read (compaction-aware session-tree measure), not the
+    // last-tick snapshot - a summary rendered right after a slide must not
+    // report the pre-slide size.
+    //
+    // One instrument, and it is this one. Size, percent and provenance come
+    // from a single reading here; the provider accessor answers a different
+    // question over a different tree (session projection vs branch), and a
+    // delivery that prints both is two ages of one fact. When this meter has
+    // no reading, the line says n/a rather than borrowing a second opinion:
+    // the reader cannot act on a number whose instrument it cannot name.
     const live = measureLiveUsage(ctx);
     if (live) {
       sample.contextTokens = live.tokens;
-      sample.contextTokensSource = live.source;
-    } else {
-      const usage = getContextUsage(ctx);
-      if (usage && typeof usage.tokens === "number") {
-        sample.contextTokens = usage.tokens;
-        sample.contextTokensSource = "estimated";
-      }
+      sample.contextPercent = live.percent;
+      sample.contextProvenance = describeUsage(live);
     }
   } catch {
     /* keep null */

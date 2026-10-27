@@ -62,7 +62,7 @@ import { getSessionIdSafe } from "../../../lib/state/extension-state.js";
 import { deriveProjectIdFromCwd } from "../../../lib/memory/past-insights.js";
 import { shouldWriteOutcomeEpisode } from "../../../lib/memory/write-quality.js";
 import { getMemoryWriteGateConfig } from "../../../lib/config/braid-settings.js";
-import { formatLocalTime } from "../../../lib/utils/local-time.js";
+import { nowOrOverride } from "../../../lib/utils/local-time.js";
 
 /** Derive a short project id from the current working directory. */
 function deriveProject(ctx: ExtensionContext): string {
@@ -154,12 +154,10 @@ const log = createLogger("heartbeat");
 // standalone messages that could be confused with user input.
 //
 // Keyed by sessionId (from getSessionIdSafe). Cleaned up on session_shutdown.
-interface WhisperBufferEntry {
-  message: string;
-  priority: string;
+interface DelayedWhisperEntry extends WhisperBufferEntry {
   source: string;
 }
-const _heartbeatWhisperBuffer = new Map<string, WhisperBufferEntry[]>();
+const _heartbeatWhisperBuffer = new Map<string, DelayedWhisperEntry[]>();
 
 // Outcome-episode write gate.
 // Review-before-write quality gate on the session_outcome sender. The hasSignal
@@ -168,11 +166,17 @@ const _heartbeatWhisperBuffer = new Map<string, WhisperBufferEntry[]>();
 // process) so the cooldown actually throttles back-to-back session ends.
 let _lastOutcomeWriteAt = 0;
 
-function bufferHeartbeatWhisper(
+/**
+ * Buffer one whisper for the next delivery. Exported because it and
+ * flushDelayedWhispers are the delivery boundary a fixture must drive to
+ * assert on the text that ships (the same pair before_agent_start calls).
+ */
+export function bufferHeartbeatWhisper(
   sessionId: string,
   message: string,
   priority: string,
   source: string,
+  family?: WhisperFamily,
 ): void {
   let buffer = _heartbeatWhisperBuffer.get(sessionId);
   if (!buffer) {
@@ -183,69 +187,33 @@ function bufferHeartbeatWhisper(
   // ticks can pile up while the session is idle (no before_agent_start to
   // flush). Cap at 100 entries per session, drop-oldest — stale heartbeat
   // messages past 100 are noise by definition.
-  pushBounded(buffer, { message, priority, source }, 100);
+  pushBounded(buffer, { message, priority, source, family }, 100);
 }
 
-function flushDelayedWhispers(sessionId: string, pi: ExtensionAPI, selfState?: string): void {
+/**
+ * Drain the delayed buffer as one delivery per priority tier.
+ *
+ * The sample is taken here, at delivery, and is the only source of the
+ * numbers and of the tier the context family is re-labelled with: a family
+ * rendered from an older reading is what printed a label beside numbers it
+ * never measured.
+ */
+export function flushDelayedWhispers(
+  sessionId: string,
+  pi: ExtensionAPI,
+  sample?: SelfStateSample,
+): void {
   const buffer = _heartbeatWhisperBuffer.get(sessionId);
   if (!buffer || buffer.length === 0) return;
   const batch = buffer.splice(0);
 
-  // Deduplicate near-duplicate messages: extract a semantic type key from
-  // each message. Messages of the same type (e.g., "Context at 40%..." and
-  // "Context at 50%...") collapse to one, so the Heartbeat Summary never
-  // lists 9 near-identical context-percentage messages with slightly
-  // different token counts.
-  function dedupKey(message: string): string {
-    // Context percentage messages: "Context at 40%. context_tag..."
-    if (/^Context at \d+%/.test(message)) return "context-percentage";
-    // Duplicate count messages: "39 near-duplicate messages..."
-    if (/^\d+ near-duplicate messages/.test(message)) return "duplicate-count";
-    // Context density messages
-    if (/^Low context density/.test(message)) return "density-low";
-    if (/^High density/.test(message)) return "density-high";
-    if (/^Context density still low/.test(message)) return "density-low-persistent";
-    // Proactive projection messages
-    if (/^\[proactive\]/.test(message)) return "proactive-projection";
-    // Degradation messages
-    if (/^Degradation detected/.test(message)) return "degradation";
-    // Fallback: use first 80 chars
-    return message.slice(0, 80);
-  }
-  interface DedupEntry {
-    message: string;
-    priority: string;
-  }
-  const deduped: DedupEntry[] = [];
-  const seen = new Set<string>();
-  for (const entry of batch) {
-    const key = dedupKey(entry.message);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push({ message: entry.message, priority: entry.priority });
-  }
+  const deliveries = renderDelayedDelivery(batch, {
+    at: nowOrOverride(),
+    contextPercent: sample?.contextPercent ?? null,
+    selfState: buildSelfStateLine(sample),
+  });
 
-  // Aggregate by priority tier
-  const groups = new Map<string, string[]>();
-  for (const entry of deduped) {
-    const p = entry.priority;
-    if (!groups.has(p)) groups.set(p, []);
-    groups.get(p)!.push(entry.message);
-  }
-
-  for (const [, messages] of groups) {
-    // Fresh clock: every Heartbeat Summary carries a `now:` line (date +
-    // owner-TZ time via the ONE formatter) so a long session never reasons on
-    // a stale clock — the heartbeat is the only mid-session channel guaranteed
-    // to re-fire. One context-health line follows the clock (tokens /
-    // cache-hit / near-dups / tok-s trend), so every heartbeat delivery is
-    // also a self-state checkpoint.
-    const nowLine = `now: ${formatLocalTime(new Date(), true)}`;
-    const selfStateSuffix = selfState ? `\n${selfState}` : "";
-    const text =
-      messages.length === 1
-        ? `${nowLine}${selfStateSuffix}\n${messages[0]}`
-        : `[Heartbeat Summary]\n${nowLine}${selfStateSuffix}\n${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
+  for (const text of deliveries) {
     try {
       sendTrackedMessage(
         pi,
@@ -309,11 +277,19 @@ export function sendSopCoachWhisper(pi: ExtensionAPI, message: string): void {
 }
 
 // Whisper Batching
-// flushWhisperBuffer lives in ./whisper-batcher.ts. The tick function
-// imports it to flush module whispers as aggregated messages.
-import { flushWhisperBuffer } from "./whisper-batcher.js";
-import { buildSelfStateLine } from "./whisper-batcher.js";
+// flushWhisperBuffer and the delayed-delivery renderer live in
+// ./whisper-batcher.ts. This file owns the buffer and the send channel; the
+// batcher owns the text, so the shipped delivery and the tested delivery are
+// the same function.
+import {
+  flushWhisperBuffer,
+  buildSelfStateLine,
+  renderDelayedDelivery,
+  type WhisperBufferEntry,
+  type WhisperFamily,
+} from "./whisper-batcher.js";
 import { getSelfStateSample } from "../../../lib/telemetry/context-heartbeat.js";
+import type { SelfStateSample } from "../../../lib/telemetry/context-heartbeat.js";
 
 // Tick Engine
 
@@ -663,9 +639,11 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     if (typeof prompt === "string" && prompt.length > 0) {
       getTurnStartPrompt(ctx).prompt = prompt;
     }
-    // Self-state (Refine-2): every heartbeat-family delivery carries the
-    // self-state line. Sampling never throws; missing telemetry -> "n/a".
-    flushDelayedWhispers(sid, pi, buildSelfStateLine(getSelfStateSample(ctx)));
+    // The sample is taken here, at delivery: the self-state line and the
+    // context family's arm are both rendered from it, so one delivery never
+    // prints two ages of one fact. Sampling never throws; missing telemetry
+    // renders "n/a".
+    flushDelayedWhispers(sid, pi, getSelfStateSample(ctx));
   });
 
   // Event: tool_call
@@ -805,9 +783,9 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
         // (below) still delivers immediately because it uses
         // deliverAs:"steer" and is time-critical (at ≥90% context the
         // whisper may never get a next turn — steer it into the current run).
-        (msg: string) => {
+        (msg: string, family?: WhisperFamily) => {
           const sid = getSessionIdSafe(ctx) ?? "anonymous";
-          bufferHeartbeatWhisper(sid, msg, "medium", "heartbeat/policy");
+          bufferHeartbeatWhisper(sid, msg, "medium", "heartbeat/policy", family);
         },
         (msg: string) => {
           sendTrackedMessage(

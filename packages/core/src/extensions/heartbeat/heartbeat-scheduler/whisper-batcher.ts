@@ -1,24 +1,41 @@
 /**
- * Whisper batcher for heartbeat ticks.
+ * Whisper batcher: the ONE place the shape of a heartbeat delivery is built.
  *
- * During a heartbeat tick, multiple cognitive modules may want to
- * whisper to the agent. If we just forward them through ctx.whisper,
- * the agent gets N separate messages -- which is both noisy and
- * expensive (each message becomes a turn boundary in the agent's
- * context).
+ * Two buffers feed it. The tick batcher collects module whispers and flushes
+ * them once per tick; the delayed buffer collects policy whispers and flushes
+ * them on the next before_agent_start. Both deliver the same shape: one
+ * clock line, one self-state line, numbered bodies. The shape has one
+ * owner here instead of a copy per flush site.
  *
- * The batcher intercepts the whisper call during the tick, buffers
- * messages grouped by priority, and flushes them as aggregated
- * messages per priority tier. High-priority messages flush first.
+ * Two rules make the delivered text trustworthy, and each is enforced by the
+ * way this module is written rather than by the emitter remembering it:
+ *
+ *   1. One snapshot per delivery. The clock comes from the seam, and a
+ *      family that renders a measurement is re-rendered from the sample
+ *      taken at delivery, so a label cannot outlive the number beside it.
+ *   2. Last arrival wins in a collapse. Keeping the first arrival per
+ *      family is what printed the oldest label beside the newest numbers:
+ *      the newest instruction is the only one whose advice can still apply.
  */
 
-import { formatLocalTime } from "../../../lib/utils/local-time.js";
+import { formatLocalTime, nowOrOverride } from "../../../lib/utils/local-time.js";
 import { formatTokensK } from "../../../lib/detection/context-usage.js";
+import { contextUsageTier, contextUsageTierMessage } from "../../../lib/detection/context-tiers.js";
 import type { SelfStateSample } from "../../../lib/telemetry/context-heartbeat.js";
+
+/**
+ * Families whose body is a rendering of a live measurement. The emitter
+ * declares the family so the batcher can re-render it from the delivery
+ * sample; a family sniffed from the prose silently stops collapsing the day
+ * the prose changes.
+ */
+export type WhisperFamily = "context-tier";
 
 export interface WhisperBufferEntry {
   message: string;
   priority: string;
+  /** Set by the emitter for a family the batcher must own at delivery. */
+  family?: WhisperFamily;
 }
 
 export type WhisperSendFn = (msg: string, opts?: { category?: string; priority?: string }) => void;
@@ -29,70 +46,155 @@ function renderTokensK(tokens: number): string {
 }
 
 /**
- * Self-state line (2 directive): every heartbeat
- * summary makes the agent self-aware of its own context health. ONE line,
- * <= 40 tokens, appended to every heartbeat summary:
+ * Self-state line: ONE line, appended to every heartbeat delivery.
  *
- *   self-state: ctx 213K tok · cache 96% · dup 39 · tps-ema 87
+ *   self-state: ctx 413K tok (41.3% measured)
  *
- * An unavailable metric renders "n/a" — never zero (a zero looks like a
- * healthy reading; "n/a" honestly says the telemetry is missing).
+ * The count and the percent are one meter reading from one snapshot, and the
+ * provenance word is the meter's own (context-usage describeUsage), so the two
+ * cannot disagree and a reader can tell a large context from a badly counted
+ * one. A percent whose provenance is missing is not rendered at all: an
+ * unlabelled percentage is the class that cost a session its window.
+ *
+ * Metrics this line no longer carries (cache-hit share, near-duplicate count,
+ * tok/s trend, hygiene acts) name no action at the moment they are read. They
+ * stay in the telemetry JSONL and in the tools an agent calls while
+ * diagnosing, where a reader has already decided to look. An unavailable
+ * metric renders "n/a", never zero: a zero looks like a healthy reading.
  */
 export function buildSelfStateLine(sample: Partial<SelfStateSample> | null | undefined): string {
   const s = sample ?? {};
   const ctxTok =
     typeof s.contextTokens === "number" ? `${renderTokensK(s.contextTokens)} tok` : "n/a";
-  const cache = typeof s.cacheHitShare === "number" ? `${Math.round(s.cacheHitShare)}%` : "n/a";
-  const dup = typeof s.nearDupCount === "number" ? String(s.nearDupCount) : "n/a";
-  const tps = typeof s.tpsEma === "number" ? `${Math.round(s.tpsEma)} tok/s` : "n/a";
-  const acts = typeof s.hygieneActs === "number" ? String(s.hygieneActs) : null;
-  const actPart = acts ? ` · acts ${acts}` : "";
-  return `self-state: ctx ${ctxTok} · cache ${cache} · dup ${dup} · tps-ema ${tps}${actPart}`;
+  const percent =
+    typeof s.contextPercent === "number" &&
+    typeof s.contextProvenance === "string" &&
+    s.contextProvenance.length > 0
+      ? ` (${s.contextPercent.toFixed(1)}% ${s.contextProvenance})`
+      : "";
+  return `self-state: ctx ${ctxTok}${percent}`;
+}
+
+export interface DeliveryRenderOptions {
+  /** Self-state line, rendered from the same sample as the rest of the delivery. */
+  selfState?: string;
+  /** Clock instant for the `now:` line; the clock seam applies when omitted. */
+  at?: Date;
 }
 
 /**
- * Flush batched whispers: group by priority tier, concatenate per tier,
- * and send as aggregated messages. This prevents N separate injected
- * messages per heartbeat tick when multiple modules activate.
- *
- * Fresh clock: every batched summary
- * (and its single-message form) prepends a `now:` line rendered by the
- * ONE local-time formatter (lib/utils/local-time.ts) so the agent never
- * reasons on a stale clock mid-session.
- *
- * Self-state (Refine-2): when `selfState` is provided (the caller
- * samples context tokens / cache-hit share / near-duplicates / tok/s trend
- * via lib/telemetry/context-heartbeat.ts getSelfStateSample), the summary
- * gains ONE self-state line right after the `now:` line — every heartbeat
- * summary makes the agent aware of its own context health. Absent sample =
- * no line (callers opt in).
+ * Render one batched delivery. The clock is read through the seam the envelope
+ * formatter uses, never from a fresh `Date` at flush time: a delivery that was
+ * delayed must not claim an instant it never observed.
+ */
+export function renderHeartbeatDelivery(
+  bodies: readonly string[],
+  opts: DeliveryRenderOptions = {},
+): string {
+  const nowLine = `now: ${formatLocalTime(opts.at ?? nowOrOverride(), true)}`;
+  const selfStateSuffix = opts.selfState ? `\n${opts.selfState}` : "";
+  const head = `${nowLine}${selfStateSuffix}`;
+  if (bodies.length === 1) return `${head}\n${bodies[0]}`;
+  return `[Heartbeat Summary]\n${head}\n${bodies.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
+}
+
+/**
+ * Flush the tick buffer: group by priority tier, render one delivery per tier.
+ * Self-state (when a sample was taken) lands right after the clock line, so
+ * every heartbeat summary is also a self-state checkpoint.
  */
 export function flushWhisperBuffer(
   buffer: WhisperBufferEntry[],
   send: WhisperSendFn | undefined,
   selfState?: string,
+  at?: Date,
 ): void {
   if (buffer.length === 0 || !send) return;
 
   const groups = new Map<string, string[]>();
   for (const entry of buffer) {
-    const p = entry.priority;
-    if (!groups.has(p)) groups.set(p, []);
-    groups.get(p)!.push(entry.message);
+    const group = groups.get(entry.priority) ?? [];
+    group.push(entry.message);
+    groups.set(entry.priority, group);
   }
 
-  // Flush one message per priority tier
   for (const [priority, messages] of groups) {
-    const nowLine = `now: ${formatLocalTime(new Date(), true)}`;
-    const selfStateSuffix = selfState ? `\n${selfState}` : "";
-    if (messages.length === 1) {
-      send(`${nowLine}${selfStateSuffix}\n${messages[0]}`, {
-        category: "cognitive",
-        priority: priority,
-      });
-    } else {
-      const combined = `[Heartbeat Summary]\n${nowLine}${selfStateSuffix}\n${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}`;
-      send(combined, { category: "cognitive", priority: priority });
-    }
+    send(renderHeartbeatDelivery(messages, { selfState, at }), {
+      category: "cognitive",
+      priority,
+    });
   }
+}
+
+/**
+ * Collapse key for the delayed buffer. A declared family is its own key (the
+ * emitter knows what it measured). The prose rules below cover emitters that
+ * still describe themselves by their first line: each one is a coupling, so a
+ * copy change there must come with a look at this list.
+ */
+function dedupKey(entry: WhisperBufferEntry): string {
+  if (entry.family) return `family:${entry.family}`;
+  const message = entry.message;
+  // Duplicate count messages: "39 near-duplicate messages..."
+  if (/^\d+ near-duplicate messages/.test(message)) return "duplicate-count";
+  // Context density messages
+  if (/^Low context density/.test(message)) return "density-low";
+  if (/^High density/.test(message)) return "density-high";
+  if (/^Context density still low/.test(message)) return "density-low-persistent";
+  // Proactive projection messages
+  if (/^\[proactive\]/.test(message)) return "proactive-projection";
+  // Degradation messages
+  if (/^Degradation detected/.test(message)) return "degradation";
+  // Fallback: use first 80 chars
+  return message.slice(0, 80);
+}
+
+/**
+ * The body to deliver for one entry.
+ *
+ * A declared family is re-rendered from the delivery sample, so the
+ * instruction and the number beside it describe one measurement. When the
+ * measured state no longer reaches the family's first arm, the entry is
+ * silence: advice about a condition that has passed is worse than none.
+ * With no measurement in hand the emitter's own wording stands: it carries no
+ * number, so it cannot contradict one.
+ */
+function deliveryBody(entry: WhisperBufferEntry, contextPercent: number | null): string | null {
+  if (entry.family !== "context-tier") return entry.message;
+  if (contextPercent === null) return entry.message;
+  const tier = contextUsageTier(contextPercent);
+  return tier ? contextUsageTierMessage(tier.tier) : null;
+}
+
+export interface DelayedRenderOptions extends DeliveryRenderOptions {
+  /** Context percent measured at delivery, or null when nothing was measured. */
+  contextPercent?: number | null;
+}
+
+/**
+ * Collapse the delayed buffer and render its deliveries: last arrival wins per
+ * key, then one delivery per priority tier.
+ */
+export function renderDelayedDelivery(
+  batch: readonly WhisperBufferEntry[],
+  opts: DelayedRenderOptions = {},
+): string[] {
+  const collapsed = new Map<string, WhisperBufferEntry>();
+  for (const entry of batch) {
+    // Last arrival wins: the newest instruction is the only one whose advice
+    // can still be right, and the keystroke of keying on the first arrival is
+    // what printed the oldest label beside the newest numbers.
+    collapsed.set(dedupKey(entry), entry);
+  }
+
+  const groups = new Map<string, string[]>();
+  for (const entry of collapsed.values()) {
+    const body = deliveryBody(entry, opts.contextPercent ?? null);
+    if (body === null) continue;
+    const group = groups.get(entry.priority) ?? [];
+    group.push(body);
+    groups.set(entry.priority, group);
+  }
+
+  return [...groups.values()].map((bodies) => renderHeartbeatDelivery(bodies, opts));
 }

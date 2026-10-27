@@ -124,7 +124,7 @@ export function contextUsageTierMessage(tier: ContextUsageTier): string {
     case "soft":
       return (
         `Context is above the soft arm; ${SETTLE_DEADLINE}. ` +
-        `Consider context_inspect(detail="prune") for candidates, or tag with ` +
+        `Inspect with context_inspect(detail="prune") for candidates, then tag with ` +
         `context_navigate(action="tag") before starting the next task.`
       );
   }
