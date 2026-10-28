@@ -43,6 +43,27 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.5 (2026-10-28: the runtime suite runs eight files at once, and a planted hang still dies at its cap)
+
+- **The core suite stopped waiting on one file at a time.** Its 320 files ran serially in 640s; eight in flight measured
+  157s here, a 3.9x drop, with every file's own result unchanged: 320 passed either way. Results print in fixture
+  order, so two runs of the same tree still diff line for line and a failing file's own output stays under its line.
+- **Width sixteen is past the knee, and the numbers say why.** It bought 8 to 14 seconds of makespan over eight and
+  cost 82% more total work, 2,490s against 1,364s, doubling the median file's duration from 3.5s to 7.3s and turning
+  eight files red. The default is the machine's own parallelism capped at eight, and `--jobs 1` restores the serial
+  order a bisect needs.
+- **The default cap moved from 30s to 60s because the cap was making the verdict.** A file's own duration grows by
+  1.03x to 2.5x beside seven others, and the slowest file without an allowance of its own takes 21.5s alone; in the
+  pooled run measured for this release `fleet/test-drain-contention.mjs` took 33.9s, which a 30s cap kills as a
+  timeout the code did not earn. The three declared allowances stay: they bound wedges, not durations.
+- **The pool cleans up after itself.** SIGINT and SIGTERM kill every live file group before the runner exits, so a
+  cancelled run leaves no detached children; a `PI_TEST_ROOT` that resolves to nothing is a failure instead of a
+  green run of zero files; `--timings` and `--timings-json` expose the durations a width has to be argued from.
+- **The new fixture pins the contract, and it was made to fail before it was trusted.** It checks the three outcome
+  classes, the exit code, that a hang is killed at its cap rather than awaited, and that two one-second files at
+  width two overlap. At width one the two pool assertions redden and print the numbers that explain it: 2,278ms for
+  the pair, and 2,188ms of summed file duration inside a 2,192ms run.
+
 ## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
 
 - **The skill about panes is named for what it teaches.** Workspaces, tabs, panes, opaque ids, read sources and the
