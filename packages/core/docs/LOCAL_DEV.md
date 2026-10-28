@@ -68,13 +68,34 @@ node packages/core/scripts/run-tests.mjs --timings-json=/tmp/timings.json
 ```
 
 `PI_TEST_JOBS` sets the width without the flag. Results always print in
-fixture order, so two runs of the same tree diff line for line.
+fixture order, so two runs of the same tree diff line for line. The cost of that
+order is that a slow file at the head of the walk holds every later line, so a
+run that has printed nothing for 30 seconds says once which file it is waiting
+on.
 
 Per-workspace variants use the workspace flag, e.g.
 `npm run build -w packages/core`, `npm test -w packages/providers`.
 
 The combined gate is `npm run ci:check` (docs, drift, deps, format,
 typecheck, tests).
+
+### Fixtures and process groups
+
+The runner starts each file in its own process group and signals the group: at
+the file's cap with `SIGKILL`, and the same on `SIGINT`/`SIGTERM`. A fixture's
+own helpers therefore stay in that group, so a helper spawned normally is killed
+and reaped with the file and nothing it started outlives the run.
+
+A helper spawned with `detached: true` calls `setsid()`, leaves the group, and
+outlives the run that started it: no group signal reaches it. One fixture needs
+that escape - `test/runtime/fleet/test-supervisor-recovery.mjs` fabricates an
+owner and an orphaned turn, and `detached: true` is what keeps those processes
+from being the fixture's own children, since a zombie child keeps its group
+answering a liveness check long after the kernel killed the process. It reaps
+each of them by pid when it is done, and an interrupt caught while that file is
+in flight leaves nothing longer-lived than its own `sleep 30`, which ends
+itself. Any other fixture that escapes the group owes an explicit cleanup on
+every exit path, the interrupt one included.
 
 ## Two install modes
 
