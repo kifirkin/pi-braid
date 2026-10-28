@@ -1,14 +1,14 @@
 /**
  * Model resolution helpers for pi-braid extensions.
  *
- * Resolves the merged auxiliary role (utilityModel) and the deprecated vision
- * alias: a setting may hold one model pattern or an ordered list, and the
+ * Resolves the merged auxiliary role (utilityModel) and the model a vision call
+ * needs: a setting may hold one model pattern or an ordered list, and the
  * resolver walks the list with the provider layer deciding per entry.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Model, Api } from "@earendil-works/pi-ai";
-import { getCustomModelKey, UTILITY_MODEL_KEY, VISION_MODEL_KEY } from "../state/global-state.js";
+import { getCustomModelKey, UTILITY_MODEL_KEY } from "../state/global-state.js";
 import { callLlm, isModelRouteUsable } from "./llm-call.js";
 import type { LlmCallOptions } from "./llm-call.js";
 
@@ -95,30 +95,27 @@ export function resolveUtilityModels(ctx: ExtensionContext): Model<Api>[] {
 }
 
 /**
- * Get the best vision model.
+ * The model a vision call should use.
+ *
  * Priority:
- *   1. Custom visionModel setting (deprecated alias, honored this release);
- *      when it is an ordered list, the first entry that accepts image input
- *      and whose route the provider layer reports usable
- *   2. Current model if vision-capable
- *   3. The merged role's first image-capable entry whose route the provider
- *      layer reports usable (same ordered-list semantics as any role)
- *   4. First available vision model
+ *   1. The current model when it accepts images: the image stays in the call
+ *      that already carries the prompt and the conversation
+ *   2. The merged role's first image-capable entry whose route the provider
+ *      layer reports usable (the same ordered-list semantics as any role)
+ *   3. The first available model that accepts images
+ *
+ * A text-only entry is never selected for an image call.
  */
 export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefined {
-  // 1. Deprecated role key; still priority 1 for one release
-  const custom = resolveRoleModel(ctx, VISION_MODEL_KEY, true);
-  if (custom) return custom;
-
-  // 2. Current model if vision-capable
+  // 1. Current model if vision-capable
   if (ctx.model?.input?.includes("image")) return ctx.model;
 
-  // 3. The merged role supplies an image-capable entry, so the vision pin is
-  // redundant after this release except as a determinism override.
+  // 2. The merged role supplies an image-capable entry; a text-only entry in
+  // the list is skipped rather than sent an image.
   const role = resolveRoleModel(ctx, UTILITY_MODEL_KEY, true);
   if (role) return role;
 
-  // 4. First available vision model
+  // 3. First available vision model
   const available = ctx.modelRegistry.getAvailable();
   return available.find((m) => m?.input?.includes("image"));
 }

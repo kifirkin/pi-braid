@@ -4,7 +4,7 @@
  * WHY THIS TEST EXISTS:
  *   Two writers rewriting the whole file from their own async
  *   read-modify-write can interleave: the later write replaces the file with
- *   its own read snapshot and drops the other's key - a `/vision-model` set
+ *   its own read snapshot and drops the other's key - a `/utility-model` set
  *   lost to a concurrent toggle.
  *
  * FIX:

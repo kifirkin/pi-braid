@@ -2,9 +2,9 @@
  * Role settings accept an ordered list of models.
  *
  * WHY THIS TEST EXISTS:
- *   A role setting (utilityModel / visionModel / maxPowerModel) named a single
- *   pattern, so a role pinned to one provider was pinned to that provider's key
- *   ring. With the ring spent, a direct-call consumer attempted the spent
+ *   A role setting (the merged utilityModel, which image analysis also falls
+ *   back to) named a single pattern, so a role pinned to one provider was
+ *   pinned to that provider's key ring. With the ring spent, a direct-call consumer attempted the spent
  *   provider anyway (one wasted request per call), and a chain consumer's whole
  *   role tier collapsed past the role to the session model — never to another
  *   model that could serve the same role.
@@ -55,7 +55,6 @@ const {
   setKeyRingFeedbackHandler,
   resetKeyRingFeedbackHandler,
   UTILITY_MODEL_KEY,
-  VISION_MODEL_KEY,
 } = await import(join(ROOT, "dist", "lib", "state", "global-state.js"));
 
 const ROLE_ID = "role-model";
@@ -68,7 +67,7 @@ const TEXT_ONLY = {
   input: ["text"],
 };
 const VISION = {
-  id: "vision-model",
+  id: "vision-look",
   provider: "route-b",
   api: "anthropic-messages",
   input: ["text", "image"],
@@ -309,22 +308,9 @@ await test("with no role configured the chain still ends at the session model", 
   assert.deepEqual(requests, [{ id: "session-model-x", provider: "opencode-go" }]);
 });
 
-await test("a legacy vision setting still wins while the key is a deprecated alias", async () => {
+await test("the merged role supplies the image-capable entry", async () => {
   const ctx = makeCtx();
-  getCustomModelKeys().set(VISION_MODEL_KEY, "route-b/vision-model");
-  getCustomModelKeys().set(UTILITY_MODEL_KEY, ["route-c/fallback-vision"]);
-  setKeyRingFeedbackHandler(ring(() => true));
-
-  assert.equal(
-    resolveVisionModel(ctx),
-    VISION,
-    "the deprecated key keeps priority over the merged role while it is honored",
-  );
-});
-
-await test("without the legacy key, the merged role supplies the image-capable entry", async () => {
-  const ctx = makeCtx();
-  getCustomModelKeys().set(UTILITY_MODEL_KEY, ["route-a/text-only", "route-b/vision-model"]);
+  getCustomModelKeys().set(UTILITY_MODEL_KEY, ["route-a/text-only", "route-b/vision-look"]);
   setKeyRingFeedbackHandler(ring(() => true));
 
   assert.equal(
@@ -337,7 +323,7 @@ await test("without the legacy key, the merged role supplies the image-capable e
 await test("a spent utility route falls to the next usable image-capable entry", async () => {
   const ctx = makeCtx();
   getCustomModelKeys().set(UTILITY_MODEL_KEY, [
-    "route-b/vision-model",
+    "route-b/vision-look",
     "route-c/fallback-vision",
   ]);
   setKeyRingFeedbackHandler(ring((_id, provider) => provider !== "route-b"));
@@ -349,7 +335,7 @@ await test("a spent utility route falls to the next usable image-capable entry",
   );
 });
 
-await test("with neither key, the session model decides, then the first available", async () => {
+await test("with no role configured, the session model decides, then the first available", async () => {
   const imageSession = { ...SESSION, input: ["text", "image"] };
   const visionCtx = { ...makeCtx(), model: imageSession };
   setKeyRingFeedbackHandler(ring(() => true));

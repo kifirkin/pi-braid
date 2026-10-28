@@ -152,11 +152,11 @@ test("the wrapper still forwards the two report methods direct extension calls u
   // Extension LLM callers reach the same slot for their ring bookkeeping;
   // the wrap must keep those two calls reaching the handler.
   forwardedReports.length = 0;
-  slot().reportFailure("vision-model", "vision-provider", "403 quota exceeded");
-  slot().reportSuccess("vision-model", "vision-provider");
+  slot().reportFailure("probe-model", "probe-provider", "403 quota exceeded");
+  slot().reportSuccess("probe-model", "probe-provider");
   assert.deepEqual(forwardedReports, [
-    ["failure", "vision-model", "vision-provider", "403 quota exceeded"],
-    ["success", "vision-model", "vision-provider"],
+    ["failure", "probe-model", "probe-provider", "403 quota exceeded"],
+    ["success", "probe-model", "probe-provider"],
   ]);
 });
 

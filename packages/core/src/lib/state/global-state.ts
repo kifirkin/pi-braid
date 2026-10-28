@@ -17,9 +17,10 @@
 // compiled DIST (dist/lib/state/global-state.js via the pi-braid/lib export).
 // That yields TWO module instances of this file in one process; a module-level
 // Map would be populated by the src instance and read (empty) by the dist
-// instance — the visionModel custom key would fall through to priority-3
-// first-available (MiniMax 429). Same cross-bundle hazard as
-// KEY_RING_FEEDBACK_KEY above; the slot must also survive /reload.
+// instance, so the role setting would read as unset and resolution would fall
+// away from it (first-available is where the MiniMax 429 lived). Same
+// cross-bundle hazard as KEY_RING_FEEDBACK_KEY above; the slot must also
+// survive /reload.
 export const CUSTOM_MODEL_KEYS_KEY = "__braid_custom_model_keys";
 
 /**
@@ -31,7 +32,7 @@ export type CustomModelKeyValue = string | string[];
 
 /**
  * Get the shared custom model keys map.
- * polyfill writes to it (/vision-model command).
+ * polyfill writes to it (/utility-model command).
  * model-resolver reads from it (model resolution).
  */
 export function getCustomModelKeys(): Map<string, CustomModelKeyValue> {
@@ -43,8 +44,8 @@ export function getCustomModelKeys(): Map<string, CustomModelKeyValue> {
 }
 
 /**
- * Read a custom model key (e.g. "utilityModel", "visionModel"): a pattern or an
- * ordered list of them.
+ * Read a custom model key (e.g. "utilityModel"): a pattern or an ordered list
+ * of them.
  */
 export function getCustomModelKey(key: string): CustomModelKeyValue | undefined {
   return getCustomModelKeys().get(key);
@@ -52,35 +53,16 @@ export function getCustomModelKey(key: string): CustomModelKeyValue | undefined 
 
 /**
  * Set a custom model key: one pattern or an ordered list. Used by polyfill for
- * /utility-model and /vision-model.
+ * /utility-model.
  */
 export function setCustomModelKey(key: string, value: CustomModelKeyValue): void {
   getCustomModelKeys().set(key, value);
 }
 
-// The vision role is deprecated: the key keeps priority-1 status as an alias
-// for one release, after which the merged role supplies image-capable models.
-export const VISION_MODEL_KEY = "visionModel";
+// The auxiliary role's key. Both the polyfill (which writes it) and the
+// resolver (which reads it) address the one merged role: vision analysis falls
+// back to its first image-capable entry, so there is no separate vision key.
 export const UTILITY_MODEL_KEY = "utilityModel";
-// The max-power role is folded into utility; the constant survives so the
-// polyfill can recognize and clean the legacy key from settings.json; nothing
-// resolves it as a live role.
-export const MAX_POWER_MODEL_KEY = "maxPowerModel";
-
-/**
- * One-shot latch for the maxPowerModel deprecation notice. Process-global for
- * the same reason as the keys above: a src-loaded and a dist-loaded instance
- * of this module must agree on whether the notice already fired.
- */
-const MAX_POWER_NOTICE_KEY = "__braid_max_power_deprecation_notice";
-
-/** True the first time it is called in this process, false afterwards. */
-export function consumeMaxPowerDeprecationNotice(): boolean {
-  const slot = globalThis as Record<string, unknown>;
-  if (slot[MAX_POWER_NOTICE_KEY]) return false;
-  slot[MAX_POWER_NOTICE_KEY] = true;
-  return true;
-}
 
 export interface RotationState {
   lastRotationTimestamp: number;

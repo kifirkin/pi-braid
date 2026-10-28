@@ -48,8 +48,8 @@ registry model. The call is key-ring-backed: the API key comes from
 `ctx.modelRegistry.getApiKeyForProvider(provider)`, which
 pi-braid-providers wires to the key-ring (`ring-lifecycle.ts` auth.resolve →
 `getActiveKey`) - never the bot token.
-Note: core's `/utility-model` role key (`/max-power-model` is a deprecated
-alias of it) lives in core's global-state (unreachable from the standalone
+Note: core's `/utility-model` role key lives in core's global-state
+(unreachable from the standalone
 telegram package without a cross-package import). The env override is the
 telegram-native equivalent.
 Owner call: if honoring the /utility-model role key is required, that needs the

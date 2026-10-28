@@ -58,6 +58,15 @@ reader-facing record; the tag scheme above applies unchanged.
 - **Internal material left the public pages.** Contracts, release mechanics and monorepo relationships moved to
   developer sections or out, instead of being softened in place.
 
+### Removed
+
+- **`/vision-model` and `/max-power-model` are removed.** Both shipped with a one-release warning, and two have passed
+  since. What replaces them is the settings they wrote: image analysis resolves at `model-resolver` through the
+  current model when it accepts images, else the merged role's first image-capable entry, so the vision pin had
+  nothing left to decide; the max-power role merged into utility, and `/utility-model` has been the canonical command
+  since. The legacy `maxPowerModel` settings key is no longer read or cleaned, so a file that carries only it falls
+  back to the session model.
+
 ## Core — 0.42.6 (2026-10-27: a meter that measures what the provider counts, a drain that waits, a whisper that prints one truth, and a latch that stops feeding a dying route)
 
 Four changes that between them remove the wedges behind a long session killing itself: the meter under-counted its
@@ -99,9 +108,6 @@ and self-started wakes kept spending provider calls into a route that was failin
 
 ### Also in this line
 
-- **`/vision-model` and `/max-power-model` are removed.** Both warned for one release and two have passed since; image
-  analysis resolves at `model-resolver` through the current model or the merged role's first image-capable entry, so
-  the pin had nothing left to do.
 - **A test fixture no longer hangs instead of reporting.** `fleet/test-drain-atomicity` attached its exit listener after
   the kill, so a child that finished first left the promise unsettled and node exited 13 with every assertion green.
 

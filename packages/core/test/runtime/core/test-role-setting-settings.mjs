@@ -2,11 +2,11 @@
  * A role setting survives the settings.json round trip as a string or a list.
  *
  * WHY THIS TEST EXISTS:
- *   The role settings (utilityModel / visionModel / maxPowerModel) are written
- *   to pi's settings.json by the model polyfill and read back at startup. The
- *   read path accepted `typeof value === "string"` only, so an ordered list
- *   written by hand (the way a role is pinned to several providers) was dropped
- *   on load and the role silently fell back to the session model.
+ *   The utility role setting (utilityModel) is written to pi's settings.json by
+ *   the model polyfill and read back at startup. The read path accepted
+ *   `typeof value === "string"` only, so an ordered list written by hand (the
+ *   way a role is pinned to several providers) was dropped on load and the role
+ *   silently fell back to the session model.
  *
  * WHAT IS PINNED HERE:
  *   1. Read: a list in settings.json lands in the in-memory map as that list; a
@@ -45,8 +45,6 @@ const {
   getCustomModelKey,
   getCustomModelKeys,
   UTILITY_MODEL_KEY,
-  VISION_MODEL_KEY,
-  MAX_POWER_MODEL_KEY,
 } = await import(join(ROOT, "dist", "lib", "state", "global-state.js"));
 
 const CATALOG = [
@@ -200,8 +198,8 @@ await test("clear: the key leaves settings.json, not only memory", async () => {
   );
 });
 
-await test("clear: a scalar key is removed too, and other role keys survive", async () => {
-  writeSettings({ [UTILITY_MODEL_KEY]: "route-a/a-model", [VISION_MODEL_KEY]: "route-b/b-model" });
+await test("clear: a scalar key is removed too, and unrelated settings survive", async () => {
+  writeSettings({ [UTILITY_MODEL_KEY]: "route-a/a-model", theme: "dark" });
   const commands = loadExtension();
   const ctx = makeCtx();
 
@@ -209,44 +207,7 @@ await test("clear: a scalar key is removed too, and other role keys survive", as
 
   const settings = readSettings();
   assert.equal(UTILITY_MODEL_KEY in settings, false);
-  assert.equal(settings[VISION_MODEL_KEY], "route-b/b-model", "an unrelated role key must survive");
-});
-
-await test("read: a legacy maxPowerModel loads as the canonical utility key", async () => {
-  writeSettings({ [MAX_POWER_MODEL_KEY]: "route-a/a-model" });
-  loadExtension();
-
-  assert.equal(
-    getCustomModelKey(UTILITY_MODEL_KEY),
-    "route-a/a-model",
-    "the deprecated key must load under the canonical key",
-  );
-});
-
-await test("read: canonical utilityModel wins over the legacy key", async () => {
-  writeSettings({
-    [UTILITY_MODEL_KEY]: "route-a/a-model",
-    [MAX_POWER_MODEL_KEY]: "route-b/b-model",
-  });
-  loadExtension();
-
-  assert.equal(getCustomModelKey(UTILITY_MODEL_KEY), "route-a/a-model");
-});
-
-await test("write: a role write removes the legacy key from disk", async () => {
-  writeSettings({ [MAX_POWER_MODEL_KEY]: "route-a/a-model" });
-  const commands = loadExtension();
-  const ctx = makeCtx();
-
-  await commands.get("utility-model").handler("route-b/b-model", ctx);
-
-  const settings = readSettings();
-  assert.equal(settings[UTILITY_MODEL_KEY], "route-b/b-model");
-  assert.equal(
-    MAX_POWER_MODEL_KEY in settings,
-    false,
-    "a legacy key left on disk is resurrected by the next start",
-  );
+  assert.equal(settings.theme, "dark", "an unrelated setting must survive");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

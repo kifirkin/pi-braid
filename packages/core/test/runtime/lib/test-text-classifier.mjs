@@ -341,8 +341,9 @@ console.log(" [ok] budget-exhausted retry verified (recovery, bound, no-retry bo
 console.log("\n[5] classify() - merged role tier order (call-count probe)...");
 
 {
-  const { getCustomModelKeys, setCustomModelKey, UTILITY_MODEL_KEY, MAX_POWER_MODEL_KEY } =
-    await import(join(ROOT, "dist", "lib", "state", "global-state.js"));
+  const { getCustomModelKeys, setCustomModelKey, UTILITY_MODEL_KEY } = await import(
+    join(ROOT, "dist", "lib", "state", "global-state.js")
+  );
   const { classify: classifyForTiers } = await import(
     join(ROOT, "dist", "lib", "ai", "text-classifier.js")
   );
@@ -404,11 +405,9 @@ console.log("\n[5] classify() - merged role tier order (call-count probe)...");
     return calls;
   }
 
-  // The merged role is configured once; the legacy maxPowerModel key is also
-  // set to prove it no longer contributes a second tier. An unparseable
-  // answer fails every tier, so the probe observes the full order.
+  // The merged role is configured once; an unparseable answer fails every
+  // tier, so the probe observes the full order.
   setCustomModelKey(UTILITY_MODEL_KEY, "route-a/role-model");
-  setCustomModelKey(MAX_POWER_MODEL_KEY, "route-a/role-model");
 
   const balancedCalls = await probeTierOrder("balanced");
   assert.deepEqual(

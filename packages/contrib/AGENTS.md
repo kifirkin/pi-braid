@@ -35,7 +35,7 @@ all 12 are listed individually in `package.json` → `pi.extensions` for native 
 
 - When adding a new dep, add it to `package.json` AND symlink it from `../pi-braid/node_modules/<pkg>` into `contrib/node_modules/<pkg>`.
 - Tool `content` arrays are what the model sees. Keep large payloads (base64 images, raw file contents) out of `content` and in `details` instead - `details` is session metadata, not conversation history.
-- The `details` field is the right place for: file paths, base64 previews for TUI rendering, classification metadata, vision-model id, error context.
+- The `details` field is the right place for: file paths, base64 previews for TUI rendering, classification metadata, the model id a vision call used, error context.
 
 ## Verification
 

@@ -3,10 +3,9 @@
  *
  * Three concerns:
  * 1. Model selection: /utility-model (the merged role) opens the
- *    ModelSelectorComponent UI; /max-power-model is a deprecated alias of it
- *    and /vision-model is a deprecated alias kept for one release. Model
- *    resolution is handled by src/lib/ai/model-resolver.ts (used by
- *    vision/metacognition tools directly).
+ *    ModelSelectorComponent UI. Model resolution is handled by
+ *    src/lib/ai/model-resolver.ts (used by vision/metacognition tools
+ *    directly).
  * 2. Session manager patches: context_navigate and context_compress tools
  *    need SessionManager methods in --no-session mode.
  * 3. Context window plumb: the session model reports braid's configured
@@ -31,11 +30,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { ModelSelectorComponent, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { Model, Api } from "@earendil-works/pi-ai";
-import {
-  resolveUtilityModel,
-  resolveVisionModel,
-  normaliseRoleSetting,
-} from "../../../lib/ai/model-resolver.js";
+import { resolveUtilityModel, normaliseRoleSetting } from "../../../lib/ai/model-resolver.js";
 import {
   applyCompactionReserveTokens,
   applyConfiguredContextWindow,
@@ -52,10 +47,7 @@ const log = createLogger("polyfill");
 import {
   getCustomModelKey,
   getCustomModelKeys,
-  consumeMaxPowerDeprecationNotice,
   UTILITY_MODEL_KEY,
-  VISION_MODEL_KEY,
-  MAX_POWER_MODEL_KEY,
 } from "../../../lib/state/global-state.js";
 import type { CustomModelKeyValue } from "../../../lib/state/global-state.js";
 
@@ -78,12 +70,6 @@ interface SessionManagerLike {
   navigateTree?(targetId: string): void;
   abort?(reason?: string): void;
   getContextUsage?(): unknown;
-}
-
-// Type guard for checking if a model has image input capability
-function hasImageInput(model: { input?: unknown }): boolean {
-  const input = model.input;
-  return Array.isArray(input) && (input as unknown[]).includes("image");
 }
 
 /** Shared sessionManager reference - used by patchSessionManagerMethods */
@@ -153,26 +139,13 @@ async function setRoleSettingFromArgs(
 }
 
 /**
- * The /utility-model command body. The deprecated /max-power-model alias
- * drives the same function: the roles merged, so both commands write the one
- * canonical key and differ only in the deprecation notice.
+ * The /utility-model command body. The role it configures is also the one
+ * vision analysis falls back to, so there is no separate vision command.
  */
-async function runUtilityModelCommand(
-  args: string,
-  ctx: ExtensionCommandContext,
-  viaDeprecatedAlias: boolean,
-): Promise<void> {
-  if (viaDeprecatedAlias) {
-    ctx.ui.notify(
-      "/max-power-model is deprecated: the max-power role merged into the utility role. " +
-        "Use /utility-model; the alias is removed next release.",
-      "warning",
-    );
-  }
-
+async function runUtilityModelCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
   if (!args || args.trim() === "") {
     if (ctx.hasUI) {
-      await openModelSelectorUI(ctx, UTILITY_MODEL_KEY, "Utility", null, resolveUtilityModel);
+      await openModelSelectorUI(ctx, UTILITY_MODEL_KEY, "Utility", resolveUtilityModel);
     } else {
       const model = resolveUtilityModel(ctx);
       const patterns = configuredRolePatterns(UTILITY_MODEL_KEY);
@@ -215,9 +188,6 @@ function persistCustomKeys(): void {
       for (const [key, value] of map) {
         settings[key] = value;
       }
-      // Any role write retires the legacy key in the same transaction: a
-      // stale alias left on disk is resurrected by the next load.
-      delete settings[MAX_POWER_MODEL_KEY];
     });
   } catch {
     // Non-fatal: settings won't persist but everything else still works
@@ -225,39 +195,16 @@ function persistCustomKeys(): void {
 }
 
 /**
- * Load custom keys from pi's settings.json into the in-memory map.
- * A role key carries either one pattern or an ordered list; both land in the
- * map in the list form the resolver walks. A value with no usable pattern is
+ * Load the utility role from pi's settings.json into the in-memory map.
+ * The key carries either one pattern or an ordered list; both land in the map
+ * in the list form the resolver walks. A value with no usable pattern is
  * treated as unset rather than stored as something that resolves to nothing.
  */
 function loadCustomKeysFromDisk(): void {
   try {
     const settings = readSettingsFile();
-    const map = getCustomModelKeys();
-    for (const key of [VISION_MODEL_KEY, UTILITY_MODEL_KEY]) {
-      const value = toRoleSettingValue(normaliseRoleSetting(settings[key]));
-      if (value !== undefined) map.set(key, value);
-    }
-
-    // Deprecated alias: a legacy maxPowerModel value loads under the canonical
-    // key when that key carries no usable value on disk (canonical wins when
-    // both are present). The legacy key is never stored under its own name;
-    // one process-global notice tells the user to move the value before the
-    // alias is removed.
-    const canonical = toRoleSettingValue(normaliseRoleSetting(settings[UTILITY_MODEL_KEY]));
-    if (canonical === undefined) {
-      const legacy = toRoleSettingValue(normaliseRoleSetting(settings[MAX_POWER_MODEL_KEY]));
-      if (legacy !== undefined) {
-        map.set(UTILITY_MODEL_KEY, legacy);
-        if (consumeMaxPowerDeprecationNotice()) {
-          log.warn(
-            `${MAX_POWER_MODEL_KEY} is deprecated and now loads as ${UTILITY_MODEL_KEY}. ` +
-              `Move the value to ${UTILITY_MODEL_KEY} (for example /utility-model <pattern>); ` +
-              "the legacy key is removed next release.",
-          );
-        }
-      }
-    }
+    const value = toRoleSettingValue(normaliseRoleSetting(settings[UTILITY_MODEL_KEY]));
+    if (value !== undefined) getCustomModelKeys().set(UTILITY_MODEL_KEY, value);
   } catch {
     // Non-fatal: no prior settings or parse error
   }
@@ -347,59 +294,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
       "No args = show current setting. Smaller/faster models preferred. " +
       "Examples: /utility-model provider/model-id, /utility-model a/b,c/d, " +
       "/utility-model clear",
-    handler: (args, ctx) => runUtilityModelCommand(args, ctx, false),
-  });
-
-  pi.registerCommand("vision-model", {
-    description:
-      "Set or show the vision model. Accepts one model or an ordered list " +
-      "(comma-separated); every entry must accept image input. " +
-      "No args opens the (vision-filtered) selector UI. " +
-      "Examples: /vision-model provider/model-id, /vision-model a/b,c/d, /vision-model clear",
-    handler: async (args, ctx) => {
-      ctx.ui.notify(
-        "/vision-model is deprecated: image analysis falls back to the utility list's first " +
-          "image-capable model. The setting keeps priority this release; the command is removed next release.",
-        "warning",
-      );
-      if (!args || args.trim() === "") {
-        if (ctx.hasUI) {
-          const visionFilter = (m: Model<Api>) => hasImageInput(m as { input?: unknown });
-          await openModelSelectorUI(ctx, VISION_MODEL_KEY, "Vision", visionFilter);
-        } else {
-          const model = resolveVisionModel(ctx);
-          const patterns = configuredRolePatterns(VISION_MODEL_KEY);
-          ctx.ui.notify(
-            patterns.length === 0
-              ? `Vision model: ${model?.id ?? "none"} (auto-detected)`
-              : `Vision model${patterns.length > 1 ? "s" : ""}: ${patterns.join(" -> ")}` +
-                  ` (using: ${model?.id ?? "none"})`,
-            "info",
-          );
-        }
-        return;
-      }
-
-      const text = args.trim();
-      if (text === "clear" || text === "reset") {
-        await clearModelSetting(VISION_MODEL_KEY);
-        ctx.ui.notify("Vision model cleared (will auto-detect)", "info");
-        return;
-      }
-
-      await setRoleSettingFromArgs(ctx, VISION_MODEL_KEY, "Vision", "", text);
-    },
-  });
-
-  // Max-power model command (deprecated alias)
-  pi.registerCommand("max-power-model", {
-    description:
-      "Deprecated alias of /utility-model: the max-power role merged into the " +
-      "utility role. Set/show/clear operate on the canonical utility setting; " +
-      "the alias is removed next release. " +
-      "Examples: /max-power-model provider/model-id, /max-power-model a/b,c/d, " +
-      "/max-power-model clear",
-    handler: (args, ctx) => runUtilityModelCommand(args, ctx, true),
+    handler: (args, ctx) => runUtilityModelCommand(args, ctx),
   });
 }
 
@@ -416,11 +311,9 @@ async function clearModelSetting(key: string): Promise<void> {
   getCustomModelKeys().delete(key);
   // persistCustomKeys writes only the keys still in the map, so deleting from
   // the map alone left the old value in settings.json and the next session
-  // resurrected it. "Clear" has to clear the stored setting as well, and a
-  // clear is a role write: it retires the deprecated legacy key too.
+  // resurrected it. "Clear" has to clear the stored setting as well.
   updateSettings((settings) => {
     delete settings[key];
-    delete settings[MAX_POWER_MODEL_KEY];
   });
 }
 
@@ -454,8 +347,7 @@ async function openModelSelectorUI(
   ctx: ExtensionCommandContext,
   settingKey: string,
   roleLabel: string,
-  scopeFilter: ((m: Model<Api>) => boolean) | null,
-  resolveFn: (ctx: ExtensionContext) => Model<Api> | undefined = resolveVisionModel,
+  resolveFn: (ctx: ExtensionContext) => Model<Api> | undefined,
 ): Promise<void> {
   const modelRegistry = ctx.modelRegistry;
 
@@ -478,28 +370,17 @@ async function openModelSelectorUI(
   const prefProvider = currentRoleModel?.provider ?? mainModel?.provider;
 
   const allModels = modelRegistry.getAvailable();
-  let scopedModels: { model: Model<Api>; thinkingLevel?: string }[];
 
-  if (scopeFilter) {
-    const filtered = allModels.filter(scopeFilter);
-    filtered.sort((a, b) => {
-      if (currentRoleModel && a.id === currentRoleModel.id) return -1;
-      if (currentRoleModel && b.id === currentRoleModel.id) return 1;
-      if (prefProvider && a.provider === prefProvider) return -1;
-      if (prefProvider && b.provider === prefProvider) return 1;
-      return a.id.localeCompare(b.id);
-    });
-    scopedModels = filtered.map((m) => ({ model: m }));
-  } else {
-    allModels.sort((a, b) => {
-      if (currentRoleModel && a.id === currentRoleModel.id) return -1;
-      if (currentRoleModel && b.id === currentRoleModel.id) return 1;
-      if (prefProvider && a.provider === prefProvider) return -1;
-      if (prefProvider && b.provider === prefProvider) return 1;
-      return a.id.localeCompare(b.id);
-    });
-    scopedModels = allModels.map((m) => ({ model: m }));
-  }
+  allModels.sort((a, b) => {
+    if (currentRoleModel && a.id === currentRoleModel.id) return -1;
+    if (currentRoleModel && b.id === currentRoleModel.id) return 1;
+    if (prefProvider && a.provider === prefProvider) return -1;
+    if (prefProvider && b.provider === prefProvider) return 1;
+    return a.id.localeCompare(b.id);
+  });
+  const scopedModels: { model: Model<Api>; thinkingLevel?: string }[] = allModels.map((m) => ({
+    model: m,
+  }));
 
   // Capture selected model from the dialog
   let selectedModel: Model<Api> | undefined;
@@ -507,15 +388,6 @@ async function openModelSelectorUI(
   await ctx.ui.custom(async (tui, _theme, _keybindings, done) => {
     const onSelect = async (model: Model<Api>) => {
       selectedModel = model;
-
-      // Warn if a non-vision model was picked for the vision role
-      if (scopeFilter && !hasImageInput(model as { input?: unknown })) {
-        ctx.ui.notify(
-          `[warn] ${model.id} does not support image input. Vision analysis may fail.`,
-          "warning",
-        );
-      }
-
       done(model);
     };
     const onCancel = () => done(undefined as unknown);
@@ -561,8 +433,8 @@ async function openModelSelectorUI(
   if (!selectedModel) return;
 
   // Store the role-specific key only. Do NOT call pi.setModel() - that would change
-  // the default model, which is NOT what we want for utility/vision role selection.
-  // model-resolver.ts reads these custom keys and uses them directly.
+  // the default model, which is NOT what we want for utility role selection.
+  // model-resolver.ts reads this custom key and uses it directly.
   const pattern = `${selectedModel.provider}/${selectedModel.id}`;
   await setModelSetting(settingKey, pattern);
 

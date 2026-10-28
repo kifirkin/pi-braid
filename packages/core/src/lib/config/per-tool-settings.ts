@@ -10,10 +10,10 @@
  *
  * This module is the one writer for settings.json. Every write goes through
  * `updateSettings`, which keeps read-modify-write in a single synchronous
- * transaction and installs the result with temp-file-plus-rename. The model
- * Two writers rewriting the whole file from their own async read-modify-write
- * can interleave: the later write replaces the file with its own read snapshot
- * and drops the other's key (a `/vision-model` key lost to a concurrent
+ * transaction and installs the result with temp-file-plus-rename. Two writers
+ * rewriting the whole file from their own async read-modify-write can
+ * interleave: the later write replaces the file with its own read snapshot
+ * and drops the other's key (a `/utility-model` key lost to a concurrent
  * toggle).
  *
  * A refused write is reported as a return value, not a thrown exception. The
