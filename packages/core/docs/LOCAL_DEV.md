@@ -83,8 +83,14 @@ typecheck, tests).
 
 The runner starts each file in its own process group and signals the group: at
 the file's cap with `SIGKILL`, and the same on `SIGINT`/`SIGTERM`. A fixture's
-own helpers therefore stay in that group, so a helper spawned normally is killed
-and reaped with the file and nothing it started outlives the run.
+own helpers therefore stay in that group, so nothing a helper starts outlives
+the run: the group is killed when the file settles or reaches its cap.
+
+The file settles when its output pipes close, not when its process exits. A
+helper that inherits the file's stdout keeps that pipe open after the file
+exits, so the runner still counts the file as running; if the helper outlives
+the cap, the file is reported as a timeout even though its own exit code was 0.
+Give a helper its own stdio, or wait for it to exit, before the fixture exits.
 
 A helper spawned with `detached: true` calls `setsid()`, leaves the group, and
 outlives the run that started it: no group signal reaches it. One fixture needs

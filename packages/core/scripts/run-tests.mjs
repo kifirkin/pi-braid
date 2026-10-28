@@ -19,9 +19,16 @@
  *
  * Reports three categories:
  *
- *   passed     the file exited 0
+ *   passed     the file exited 0 and its output pipes closed
  *   failed     the file exited non-zero, or died on a signal
- *   timed out  the file outlived its allowance and was killed
+ *   timed out  the file's process group held its output open past the
+ *              allowance, so the group was killed
+ *
+ * The verdict settles on stdio close rather than on exit: the captured output
+ * is part of the file's result, and a helper that inherits the pipe can still
+ * write to it after the file's process exits. A file that exits 0 with a
+ * helper still holding its stdout therefore finishes only when that helper
+ * lets go; if it never does, the file is a timeout, not a pass.
  *
  * A killed file is not a failure: a hang and a broken assertion call for
  * different reactions, and reporting one as the other is what made a slow
@@ -142,9 +149,9 @@ const ALLOWANCES = new Map([
   [
     "loader/test-module-config.mjs",
     {
-      ms: 150_000,
+      ms: 200_000,
       reason:
-        "spawns nine child drivers two waves deep; worst case (every driver wedged, 2 x the driver's own 60s cap) has to land inside this allowance, so the file reports the stuck driver by name instead of being killed here as an opaque timeout",
+        "twelve child drivers, five at a time, each bounded by the fixture's own driver cap: the worst case is three waves, so the allowance has to clear three driver caps, and the file names every stuck driver instead of being killed here as an opaque timeout",
     },
   ],
   [
@@ -198,16 +205,21 @@ function readJobs() {
   return value;
 }
 
-/** Recursively find all .mjs test files in subdirectories too. */
+/**
+ * Find .mjs files here and under each real subdirectory. A symlink to a
+ * directory is not a directory entry, so it is never entered; a symlink to an
+ * .mjs file is one, so it runs in addition to its target.
+ */
 function findTests(dir) {
   const results = [];
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
+      const rel = relative(testDir, full);
       if (entry.isDirectory()) {
         results.push(...findTests(full));
-      } else if (entry.name.endsWith(".mjs") && !SKIP.has(entry.name)) {
-        results.push(relative(testDir, full));
+      } else if (entry.name.endsWith(".mjs") && !SKIP.has(rel)) {
+        results.push(rel);
       }
     }
   } catch {
@@ -216,9 +228,13 @@ function findTests(dir) {
   return results;
 }
 
+/**
+ * Test files the walk leaves out, keyed by path relative to the test root -
+ * the same coordinate ALLOWANCES uses, so a skip names one file rather than
+ * every file with that name.
+ */
 const SKIP = new Set([
-  "test-all.mjs", // aggregator, duplicates individual
-  "test-br1-trap-tasks.mjs", // SLOW - requires API calls, run separately with 300s timeout
+  "test-all.mjs", // the root aggregator; duplicates the files beside it
 ]);
 
 /** Durations as printed: 12000 -> "12s", 1500 -> "1.5s". */
@@ -299,11 +315,17 @@ function readAllowances() {
     }
     table.set(file, { ms: value, reason: "PI_TEST_ALLOWANCE" });
   }
-  const fallback = Number(process.env.PI_TEST_TIMEOUT_MS);
-  return {
-    table,
-    fallback: Number.isFinite(fallback) && fallback > 0 ? fallback : DEFAULT_TIMEOUT_MS,
-  };
+  const rawTimeout = process.env.PI_TEST_TIMEOUT_MS ?? "";
+  let fallback = DEFAULT_TIMEOUT_MS;
+  if (rawTimeout !== "") {
+    const value = Number(rawTimeout);
+    if (!Number.isFinite(value) || value <= 0) {
+      console.error(`ignoring timeout="${rawTimeout}" - expected a positive number of milliseconds`);
+    } else {
+      fallback = value;
+    }
+  }
+  return { table, fallback };
 }
 
 /**
@@ -418,6 +440,9 @@ function runFile(file) {
     child.stdout.on("data", (chunk) => out.push(chunk));
     child.stderr.on("data", (chunk) => err.push(chunk));
     child.on("error", (error) => finish({ code: null, signal: null, error }));
+    // Settle on close, not exit: the captured output is part of the file's
+    // result, and a helper holding the inherited pipe can still write to it
+    // after the file's process exits. The cap bounds that wait.
     child.on("close", (code, signal) => finish({ code, signal }));
 
     capTimer = setTimeout(() => {

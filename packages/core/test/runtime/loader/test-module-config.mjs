@@ -62,7 +62,7 @@ const CASE_CONCURRENCY = 5;
 // while the same drivers passed at load 9. 60s is over five times the highest
 // loaded wall time measured here (11.3s), so the machine would have to be an
 // order of magnitude busier to trip it, and a wedged driver still dies at the
-// cap. The runner carries the matching allowance for this file (two waves of
+// cap. The runner carries the matching allowance for this file (three waves of
 // the worst case, see scripts/run-tests.mjs), so a stuck driver is reported
 // here, by name, instead of becoming an opaque runner timeout.
 const DRIVER_CAP_MS = 60_000;

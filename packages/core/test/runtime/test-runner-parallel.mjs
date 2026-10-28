@@ -15,6 +15,9 @@
  *   - the run exits non-zero on either red class, and zero on a green tree;
  *   - a file that hangs is killed at its cap: the run returns in about the
  *     cap, not in the file's own lifetime, and the file's process is gone;
+ *   - a file that exits 0 while a helper it spawned still holds the inherited
+ *     stdout is a timeout at the cap, not a pass: the verdict waits for the
+ *     output pipe to close;
  *   - two one-second files at width 2 finish in about one second, while the
  *     timings artifact shows their durations overlapping instead of adding
  *     up. That last pair is what makes this a test of the pool rather than a
@@ -84,6 +87,17 @@ assert.equal("got", "wanted", "the reason a red run has to carry");
 const HANG = `import { writeFileSync } from "node:fs";
 writeFileSync(process.env.PROBE_PID_FILE, String(process.pid));
 setTimeout(() => {}, ${HANG_MS});
+`;
+
+/**
+ * A file that reaches its end and exits 0 while a helper it spawned with
+ * inherited stdio still holds the file's stdout. The runner settles on that
+ * pipe, so the file stays open for the runner until the cap, and the cap's
+ * group kill is what ends the helper.
+ */
+const PIPE_HOLDER = `import { spawn } from "node:child_process";
+spawn(process.execPath, ["-e", "setTimeout(() => {}, ${HANG_MS})"], { stdio: "inherit" }).unref();
+process.exitCode = 0;
 `;
 
 const SLEEP = `setTimeout(() => console.log("slept"), ${SLEEP_MS});
@@ -238,6 +252,15 @@ try {
     SLOT_STAMP_FILE: stampFile,
   });
 
+  // ── The pipe a file leaves behind ─────────────────────────────────────────
+  const pipeDir = tree(
+    { "test-pipe-holder.mjs": PIPE_HOLDER, "test-pass.mjs": PASS },
+    "pipe-",
+  );
+  const pipeRun = runRunner(pipeDir, ["--jobs", "2"], {
+    PI_TEST_TIMEOUT_MS: String(CLASSIFICATION_CAP_MS),
+  });
+
   check("a passing, a failing and a hanging file are classified apart", () => {
     assert.equal(
       run.error?.code,
@@ -276,6 +299,21 @@ try {
       () => process.kill(pid, 0),
       /ESRCH/,
       `process ${pid} outlived the run, so nothing killed its group`,
+    );
+  });
+
+  check("a zero exit behind a helper-held stdout is a timeout at the cap", () => {
+    assert.equal(pipeRun.error?.code, undefined, "the nested run returned on its own");
+    assert.equal(pipeRun.status, 1, "a timeout is red");
+    assert.match(
+      pipeRun.output,
+      /1 passed, 0 failed, 1 timed out/,
+      `the pipe holder is a timeout, not a pass: ${pipeRun.output.slice(-400)}`,
+    );
+    assert.match(pipeRun.output, /Timed out: test-pipe-holder\.mjs/, "the pipe holder is named");
+    assert.ok(
+      pipeRun.wallMs >= CLASSIFICATION_CAP_MS && pipeRun.wallMs < 10_000,
+      `the run waited ${pipeRun.wallMs}ms: the verdict waits for the pipe, and the cap bounds it`,
     );
   });
 
