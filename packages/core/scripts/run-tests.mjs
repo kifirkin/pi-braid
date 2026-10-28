@@ -565,20 +565,25 @@ function flush() {
  *
  * The file to name is tests[printed]: it is the one whose result the next line
  * waits on, and because slots take files in order it is always in flight while
- * results are outstanding. Unref'd, so an idle runner's exit is never delayed by
- * this timer, and cleared once the pool is done.
+ * results are outstanding. Each tick re-arms itself rather than running on an
+ * interval, so it stops once the last result is in, and every timer is unref'd
+ * so an idle runner's exit is never delayed by the watch.
  */
-const stallTimer = setInterval(() => {
-  if (stallReported || printed >= tests.length) return;
+let stallTimer = null;
+function watchForStall() {
+  if (printed >= tests.length) return;
   const silence = Date.now() - lastResultAt;
-  if (silence < STALL_NOTICE_MS) return;
-  stallReported = true;
-  console.log(
-    `\n  no result for ${formatMs(silence)}: ${tests[printed]} has not finished, ` +
-      `and every later line prints after it`,
-  );
-}, STALL_POLL_MS);
-stallTimer.unref();
+  if (!stallReported && silence >= STALL_NOTICE_MS) {
+    stallReported = true;
+    console.log(
+      `\n  no result for ${formatMs(silence)}: ${tests[printed]} has not finished, ` +
+        `and every later line prints after it`,
+    );
+  }
+  stallTimer = setTimeout(watchForStall, STALL_POLL_MS);
+  stallTimer.unref();
+}
+watchForStall();
 
 /**
  * One pool slot: take the next file, run it to completion, print what is now
@@ -596,7 +601,7 @@ async function slot() {
 }
 
 await Promise.all(Array.from({ length: Math.min(jobs, tests.length) }, () => slot()));
-clearInterval(stallTimer);
+clearTimeout(stallTimer);
 const totalMs = Number(process.hrtime.bigint() - runStartedAt) / 1e6;
 
 console.log(
