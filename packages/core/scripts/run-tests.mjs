@@ -11,7 +11,11 @@
  * Results print in fixture order, never as they finish: a reader diffing two
  * runs must see the same shape, and a file's own output must stay under its own
  * line. Ordering also means the counts keep their meaning - the `[n/total]`
- * label is the file's position, as it always was.
+ * label is the file's position, as it always was. The cost of that order is a
+ * slow file at the head: every later line waits behind it, and a run in that
+ * state looks exactly like a wedged one from the outside. So a run that has
+ * printed no result for STALL_NOTICE_MS says once which file is holding the
+ * line, naming it rather than leaving the wait to be guessed at.
  *
  * Reports three categories:
  *
@@ -110,6 +114,23 @@ const FAILURE_OUTPUT_LINES = 40;
 const DRAIN_MS = 2_000;
 
 /**
+ * How long a run may print nothing before it says which file it is waiting on.
+ *
+ * Printing in fixture order is what makes two runs comparable, and the price is
+ * that one slow file at the head stops every line behind it. The threshold sits
+ * under the slowest file's own duration (34s at the default width), so a run
+ * that reaches that file early does print this line - once, naming it. That is
+ * the case the line is for, not an accident: the alternative is a terminal with
+ * nothing arriving, which is also what a real wedge looks like. One line per
+ * stall rather than a repeating report, because the file's name and the fact
+ * that the wait is real are the whole of what it has to say.
+ */
+const STALL_NOTICE_MS = 30_000;
+
+/** How often the stall check runs, so the notice lands within this of the threshold. */
+const STALL_POLL_MS = 2_000;
+
+/**
  * Per-file wall-clock allowances, keyed by path relative to the test root.
  *
  * An entry declares that this file is legitimately slower than the default
@@ -131,7 +152,7 @@ const ALLOWANCES = new Map([
     {
       ms: 120_000,
       reason:
-        "drives real publish/install swaps at ~10s each on a warm machine; on a busy one it crosses the 30s default cap and reads as a timeout even though every subtest passes",
+        "drives four real publishes, each one an npm pack plus its install and rollback path: 11.2s with the box to itself and 24.6s beside seven other files, so the pool's inflation of this work is already 2x; the allowance is what keeps a loaded box reporting the swap that failed instead of killing the file at the 60s default",
     },
   ],
   [
@@ -139,7 +160,7 @@ const ALLOWANCES = new Map([
     {
       ms: 90_000,
       reason:
-        "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s), and one of them waits out that 13s from a status command, so the file spends about half a minute waiting on locks it holds itself and a loaded box can push it past the 30s default",
+        "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s) and one of them waits out that 13s from a status command, so the file spends half a minute waiting on locks it holds itself: 34.1s beside seven other files, the suite's slowest file and the one a loaded box would push past the 60s default first",
     },
   ],
 ]);
@@ -519,13 +540,45 @@ const results = new Array(tests.length);
 let cursor = 0;
 let printed = 0;
 
+/**
+ * The stall notice's state: when a result line last printed, and whether this
+ * silence has already been reported. Both are written by flush(), below.
+ */
+let lastResultAt = Date.now();
+let stallReported = false;
+
 /** Print every finished file whose turn has come; a later one waits its turn. */
 function flush() {
+  const before = printed;
   while (printed < tests.length && results[printed]) {
     report(printed, results[printed]);
     printed += 1;
   }
+  if (printed > before) {
+    lastResultAt = Date.now();
+    stallReported = false;
+  }
 }
+
+/**
+ * Say which file is holding the line when nothing has printed for a while.
+ *
+ * The file to name is tests[printed]: it is the one whose result the next line
+ * waits on, and because slots take files in order it is always in flight while
+ * results are outstanding. Unref'd, so an idle runner's exit is never delayed by
+ * this timer, and cleared once the pool is done.
+ */
+const stallTimer = setInterval(() => {
+  if (stallReported || printed >= tests.length) return;
+  const silence = Date.now() - lastResultAt;
+  if (silence < STALL_NOTICE_MS) return;
+  stallReported = true;
+  console.log(
+    `\n  no result for ${formatMs(silence)}: ${tests[printed]} has not finished, ` +
+      `and every later line prints after it`,
+  );
+}, STALL_POLL_MS);
+stallTimer.unref();
 
 /**
  * One pool slot: take the next file, run it to completion, print what is now
@@ -543,6 +596,7 @@ async function slot() {
 }
 
 await Promise.all(Array.from({ length: Math.min(jobs, tests.length) }, () => slot()));
+clearInterval(stallTimer);
 const totalMs = Number(process.hrtime.bigint() - runStartedAt) / 1e6;
 
 console.log(
