@@ -37,9 +37,9 @@ workspace manifest); if this table and `engines` ever disagree, trust
 from npm needs no checkout at all.
 
 **How the pi version resolves.** braid declares the `@earendil-works/pi-*`
-packages as peer dependencies with unconstrained (`*`) ranges. npm resolves
-peers at install time: against a compatible pi installation already in your
-tree when one exists, otherwise by auto-installing the current release. The
+packages as peer dependencies in the `^1.2.0` range. npm resolves peers at
+install time: against a compatible pi installation already in your tree when one
+exists, otherwise by auto-installing a release that satisfies the range. The
 result is pinned in `package-lock.json`, so braid runs against whatever pi
 version your install resolved to rather than pinning its own;
 `npm ls @earendil-works/pi-coding-agent` shows what you got.
@@ -481,14 +481,14 @@ If the failure persists, open an issue with the full error from `npm run build`.
 
 ### TypeScript errors after upgrade
 
-braid declares `@earendil-works/pi-*` as peer dependencies with unconstrained
-(`*`) ranges, resolved at install time (see [Prerequisites](#prerequisites)).
+braid declares `@earendil-works/pi-*` as peer dependencies in the `^1.2.0`
+range, resolved at install time (see [Prerequisites](#prerequisites)).
 Make sure the pi packages are in this repo's dependency tree:
 
 ```bash
 ls node_modules/@earendil-works/ 2>/dev/null
 # If empty, the pi packages aren't in this repo's dependency tree.
-# Run `npm install` (npm auto-installs unconstrained peer dependencies),
+# Run `npm install` (npm auto-installs peer dependencies inside the range),
 # or run pi from outside this repo.
 ```
 
