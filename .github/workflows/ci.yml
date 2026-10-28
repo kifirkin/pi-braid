@@ -12,7 +12,9 @@ jobs:
     # The same chain publish.yml runs, with the same allowance: a budget tighter
     # than the release path's can only ever produce a false red, and a file the
     # runner declares slow (three of them hold allowances of 90s to 150s) is
-    # legitimate work, not a hang. The suite is 301 files walked one at a time.
+    # legitimate work, not a hang. The suite's files are walked in a bounded
+    # pool (the runner's default width, at most eight), so the wall clock is
+    # the slowest lane rather than the sum of the files.
     timeout-minutes: 30
 
     strategy:
