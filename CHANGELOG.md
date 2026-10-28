@@ -43,6 +43,27 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.1 (2026-10-28: the artifact check says what it ignored instead of failing silently)
+
+- **A step that cannot fail the job can no longer fail it silently.** The runner invokes the artifact-check body as
+  `bash -e`, and the body read the comparison's exit status on the line after the comparison. A difference returned 1,
+  `-e` ended the step there, and the `::warning::` the step exists to print was never reached: the `0.43.0` run went
+  red with no output at all. The body now opts out of the runner's shell options explicitly and captures every status
+  it inspects inside an `if`. A fixture drives the body extracted from `.github/workflows/publish.yml` itself under
+  `bash -e`, so a copy of the body cannot pass while the workflow runs something else.
+- **The comparison ignores three environment-derived fields, and names each with its reason.** `branch` says how the
+  packer checked the tree out (a tag is detached in CI), `packedAt` is a clock, and `shaShort` is git's abbreviation
+  length, which is a property of the clone's object database: 8 characters here, 7 in a fresh checkout of one commit.
+  The equality line now prints the fields it replaced and why, so an equality reached by normalising reads differently
+  from one reached by comparing everything. A field present on only one side stays a difference, which keeps "delete a
+  field to make a pair compare equal" itself a difference. `name`, `version`, `sha` and `dirty` are still substance.
+- **The short sha has a stated length.** The provenance writer asks git for exactly eight characters instead of
+  inheriting whatever abbreviation the clone needed. The comparison normalises the field anyway, because artifacts
+  packed before this release carry seven.
+- Three other places read bare `git rev-parse --short` for a version suffix, a prerelease tag and a placement stamp.
+  None of them is compared against another environment's value, so they are left alone and named here rather than
+  changed in passing.
+
 ## Core — 0.43.0 (2026-10-28: a long session stops killing itself, and the pages stop describing what is not there)
 
 One release for everything after `0.42.1`. The versions between were base bumps: they were never tagged, so no reader
