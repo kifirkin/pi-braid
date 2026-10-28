@@ -23,6 +23,13 @@
  * commented. An unresolvable in-repo reference fails the run with file:line
  * and the reference.
  *
+ * The run prints the population it vouches for: the markdown files it read
+ * against the markdown set it enumerated, the same number on both sides. A
+ * reader transcribing that line into gate evidence is recording what the run
+ * covered, so a second number above the first would claim a coverage the run
+ * never had. This gate's own file is not markdown, so it never enters that
+ * population and needs no exemption from it.
+ *
  * Exit 0 clean, 1 on any unresolvable reference:
  *   node packages/core/scripts/check-doc-links.mjs
  */
@@ -124,9 +131,17 @@ function scanFile(relFile) {
   }
 }
 
-for (const file of trackedMarkdown(root)) {
+// The count is measured in the loop, not restated from the enumeration: a skip
+// added here (the tool's own file, an unreadable one) would print a low number
+// instead of hiding behind a copy of the population.
+const markdownFiles = trackedMarkdown(root);
+let scanned = 0;
+for (const file of markdownFiles) {
   scanFile(file);
+  scanned++;
 }
+
+console.log(`check-doc-links: ${scanned} of ${markdownFiles.length} tracked markdown files scanned`);
 
 if (problems.length > 0) {
   console.error(`check-doc-links: ${problems.length} unresolvable reference(s)`);

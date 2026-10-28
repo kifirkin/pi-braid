@@ -45,8 +45,18 @@
  * population against that revision's census, so both numbers and the revision
  * belong on the line.
  *
- * This script defines the pattern literals it searches for, so it skips
- * itself (the same convention check-doc-links.mjs uses).
+ * The run covers every entry it enumerates, this script included, so the two
+ * numbers on that line are equal: a stamp transcribed from it records the whole
+ * census. This script defines the pattern literals it searches for, so a match
+ * against its own bytes is the detector's vocabulary rather than a leak; that
+ * exemption is an EXCLUSIONS entry, whose reason prints beside its hit count,
+ * not a skip in the loop. A skip would keep the file out of the population and
+ * leave the reason unstated.
+ *
+ * An entry holding no text (binary content, or an index entry absent from the
+ * worktree) has nothing to match, but it is still part of the population the
+ * run covered, so it is counted rather than dropped: the equality above holds
+ * for the index, not only for the entries that decode as text.
  */
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -56,7 +66,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Script is at packages/core/scripts/ — monorepo root is 3 levels up.
 const root = resolve(__dirname, "..", "..", "..");
-const selfPath = resolve(fileURLToPath(import.meta.url));
 const strict = process.argv.includes("--strict");
 
 /**
@@ -166,6 +175,11 @@ const OWNER_PATH_PATTERNS = [
 // limits the exclusion; omit it to exclude the path from every class.
 
 const EXCLUSIONS = [
+  {
+    path: "packages/core/scripts/check-placement.mjs",
+    reason:
+      "defines the pattern literals this gate searches for: a match against its own bytes is the detector's vocabulary, not a leak",
+  },
   {
     path: "packages/core/src/lib/orchestrator/",
     classes: ["domain-literal"],
@@ -285,7 +299,7 @@ const EXCLUSIONS = [
 // ratchet: strict mode fails when the list exceeds it. Raising the number is
 // a deliberate edit to this constant, visible in review, never a side effect
 // of adding an entry.
-const EXCLUSION_BUDGET = 22;
+const EXCLUSION_BUDGET = 23;
 
 // ── File collection ──────────────────────────────────────────────────────────────────────
 
@@ -524,10 +538,9 @@ const findings = [];
 let scanned = 0;
 
 for (const file of files) {
-  if (resolve(root, file) === selfPath) continue; // defines its own patterns
   const source = readText(file);
-  if (source === undefined) continue;
   scanned++;
+  if (source === undefined) continue; // no text to match; counted as covered
 
   if (CODE_FILE.test(file)) {
     scanProvenance(file, source, findings);

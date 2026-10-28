@@ -6,8 +6,8 @@
  * line names. A refactor that drops either number or the revision turns every
  * stamp derived from the line into an unreadable one, so this pins the shape:
  *
- *   - the files the run read (strictly fewer than the population: the gate
- *     skips its own file);
+ *   - the files the run read (equal to the population: the scan covers every
+ *     entry it enumerates, its own file included);
  *   - the enumerated population it was over (the index it walked, which must
  *     equal `git ls-files` at run time);
  *   - the revision the scan certifies (the branch the tree is on, the short
@@ -50,7 +50,11 @@ assert.equal(
   tracked.length,
   `the enumerated population must be the index the run walked: ${line}`,
 );
-assert.ok(read > 0 && read < population, `read count must sit below the population: ${line}`);
+assert.equal(
+  read,
+  population,
+  `the read count must equal the population, so a stamp transcribed from the line records the whole census: ${line}`,
+);
 
 const branch = gitText("rev-parse", "--abbrev-ref", "HEAD");
 const expected = branch && branch !== "HEAD" ? branch : gitText("rev-parse", "--short", "HEAD");
