@@ -1,7 +1,7 @@
 {
   "name": "pi-braid-telegram",
   "version": "0.1.6",
-  "description": "Bidirectional Telegram channel for pi-braid: telegram_send tool (outbound) + inbound long-poll injector (backward channel)",
+  "description": "Talk to your pi coding agent from Telegram: send text or voice, get the answer back, and tap a button to decide.",
   "type": "module",
   "files": [
     "src/",
@@ -15,13 +15,11 @@
   },
   "keywords": [
     "pi-package",
-    "pi",
     "pi-coding-agent",
-    "bot",
-    "extension",
     "telegram",
-    "channel",
-    "messaging"
+    "telegram-bot",
+    "remote-control",
+    "voice"
   ],
   "pi": {
     "extensions": [

@@ -1,121 +1,121 @@
-<!-- status: current -->
+# pi-braid
 
-# pi-braid 🥨
+Extension pack for [pi](https://github.com/earendil-works/pi), the coding agent: memory, enforcement
+and context management in the core suite, plus a skills pack, a set of tool extensions, and two
+channels of their own.
 
-Extension pack for [pi-coding-agent](https://github.com/earendil-works/pi): enforcement, three-store memory, reasoning, self-improvement, and structured cognitive signals on top of the pi agent session.
+pi is a coding agent with a small built-in toolset. Extensions are how pi gains capability: they
+register tools, listen for session events, and shape the system prompt. pi-braid is a monorepo of
+five npm workspaces, each declaring what it adds through the `pi.extensions` / `pi.skills` fields in
+its `package.json`. pi does not auto-discover workspaces, so you register the packages you want.
 
-pi is a coding agent with a small built-in toolset. **Extensions** are how pi gains capability: they register tools, listen for session events, and shape the system prompt. pi-braid is a monorepo of five npm workspaces that plug into pi through the `pi.extensions` / `pi.skills` fields in each package's `package.json` - pi does not auto-discover workspaces, so you register the paths you want.
-
-> **⚠️ Early-stage software.** Entry points and settings keys track pi's extension API; expect changes before 1.0. Not production-hardened.
-
----
+> **Early-stage software.** Entry points and settings keys track pi's extension API, so expect
+> changes before 1.0. Not production-hardened.
 
 ## Packages
 
-| Workspace     | Path                 | One-line purpose                                                                                                           |
-| ------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **core**      | `packages/core`      | The metacognitive suite - enforcement, three-store memory, reasoning, self-improvement, context lifecycle. The main event. |
-| **skills**    | `packages/skills`    | Content-only skill pack - one `SKILL.md` per skill, no runtime code.                                                       |
-| **contrib**   | `packages/contrib`   | Standalone tool extensions - browser, codebase, diff, repl, healthcheck, system monitor, and more.                         |
-| **providers** | `packages/providers` | Venice (agent-zero proxy) provider plus the multi-key API key ring.                                                        |
-| **telegram**  | `packages/telegram`  | Bidirectional Telegram channel - send, inbound, photo/voice, pause control.                                                |
+| Package   | What you get                                                                                                    | npm name             |
+| --------- | --------------------------------------------------------------------------------------------------------------- | -------------------- |
+| core      | The agent's memory and work discipline: three-store memory, working memory across compaction, completion checks | `pi-braid`           |
+| skills    | Eight skill files the agent reads on demand: papers, brand systems, visuals, critique                           | `pi-braid-skills`    |
+| contrib   | Twelve tool extensions: browser, repo analysis, diffs, tunnel and system monitors, tool toggles                 | `pi-braid-contrib`   |
+| providers | Multi-key rotation, provider failover, route health                                                             | `pi-braid-providers` |
+| telegram  | A Telegram channel: answers out, messages and decisions in                                                      | `pi-braid-telegram`  |
 
-Core alone gives you the metacognitive layer. Add `skills` for the agent skill library, `contrib` for extra tool extensions, `providers` for alternative LLM providers, and `telegram` for a Telegram channel.
+Core alone is the suite: memory, work discipline and context management. Add `skills` for more
+procedures, `contrib` for more tools, `providers` for key rotation and failover, and `telegram` to
+reach a session from a phone.
 
-## Prerequisites
+## Requirements
 
-| Tool            | Version    | Verify                     |
-| --------------- | ---------- | -------------------------- |
-| Node.js         | ≥ 24.0     | `node --version`           |
-| pi-coding-agent | installed  | `which pi && pi --version` |
-| npm             | bundled    | `npm --version`            |
-| git             | any recent | `git --version`            |
+| Tool | Version   | Verify                     |
+| ---- | --------- | -------------------------- |
+| Node | >= 24.0   | `node --version`           |
+| pi   | installed | `which pi && pi --version` |
+| git  | any       | `git --version`            |
 
-braid declares the pi packages as peer dependencies with unconstrained ranges; `npm install` resolves them (see [SETUP § Prerequisites](packages/core/docs/SETUP.md#prerequisites) for how the pi version resolves). git is only needed for the checkout install path below.
+Node's floor and the pi peer ranges are declared in each package's `package.json`. git is needed
+only for the checkout path below.
 
 ## Install
 
-braid is published on npm. The core package is the one most readers want - one command, no clone, no build:
-
 ```bash
-pi install npm:pi-braid
+pi install npm:pi-braid            # the core suite
+pi install npm:pi-braid-skills     # the skill pack, usually per project
+pi install npm:pi-braid-contrib    # the tool extensions
+pi install npm:pi-braid-providers  # key rotation and failover
+pi install npm:pi-braid-telegram   # the Telegram channel
 ```
 
-`pi install` registers the package in your user settings and installs it under pi's npm directory; the next `pi` start loads the metacognitive suite and the core skill set that ships with it.
+Each install registers the package in your user settings and unpacks it under pi's npm directory.
+The next `pi` start loads it. To enable a package for one project only, use `--local`, which writes
+the declaration to that project's `.pi/settings.json`.
 
-The other packages are add-ons, each its own install:
-
-```bash
-pi install npm:pi-braid-skills     # the on-demand skill pack (usually registered per project)
-pi install npm:pi-braid-contrib    # standalone tool extensions (browser, codebase, diff, ...)
-pi install npm:pi-braid-providers  # extra LLM providers + the multi-key ring
-pi install npm:pi-braid-telegram   # bidirectional Telegram channel
-```
-
-### From a checkout (working on braid)
-
-To run braid from source - to modify it, or to track `main` - clone a checkout and build it:
+## From a checkout
 
 ```bash
-# 1. Clone and build
 git clone https://github.com/kifirkin/pi-braid.git ~/pi-braid
 cd ~/pi-braid && npm install && npm run build
+```
 
-# 2. Register core + skills with pi (user-global, once)
-cat > ~/.pi/agent/settings.json <<'JSON'
+Then add the packages you want to the `packages` array in `~/.pi/agent/settings.json`:
+
+```json
 {
   "packages": [
     "file:~/pi-braid/packages/core",
     "file:~/pi-braid/packages/skills"
   ]
 }
-JSON
 ```
 
-Then use pi as normal - braid loads automatically. It worked when the system prompt lists the bundled skills under `<available_skills>`. Register `packages/core` + `packages/skills`, not the repo root: the root `package.json` has no `pi` field, so `file:~/pi-braid` loads nothing.
-
-Copy-ready configuration lives in [`examples/`](examples): the full `braid.*` settings surface, provider/Telegram environment variables, and cwd-routed session profiles. More install paths (local-packages, project-scoped, once-per-session flag) in [SETUP § Install paths](packages/core/docs/SETUP.md#install-paths). New to pi and braid? Start with [`packages/core/docs/BEGINNERS.md`](packages/core/docs/BEGINNERS.md).
-
----
+Add those entries to the array your settings already have; the file holds more than this one key.
+Register `packages/core` and `packages/skills`, not the repo root: the root `package.json` has no
+`pi` field, so `file:~/pi-braid` loads nothing. [SETUP](packages/core/docs/SETUP.md) covers the
+other install shapes (local-packages, project-scoped, once-per-session).
 
 ## Documentation
 
-| Doc                                                | Covers                                                                       |
-| -------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [`SETUP.md`](packages/core/docs/SETUP.md)          | All install paths, configuration reference, module toggling, troubleshooting |
-| [`LOCAL_DEV.md`](packages/core/docs/LOCAL_DEV.md)  | Maintainer flow: publish/link into `~/.pi/agent/local-packages`              |
-| [`BEGINNERS.md`](packages/core/docs/BEGINNERS.md)  | Guided walkthrough: install → how agents use braid → first extension         |
-| [`CHANGELOG.md`](CHANGELOG.md)                     | Release notes, newest first, per workspace                                   |
-| [`HISTORY.md`](packages/core/docs/HISTORY.md)      | Narrative history and milestone summaries                                    |
-| [`CONTRIBUTING.md`](packages/core/CONTRIBUTING.md) | Contributor contract: commands, style, testing, releases                     |
-| [`SECURITY.md`](SECURITY.md)                       | Security policy                                                              |
+| Doc                                                         | Covers                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------ |
+| [`SETUP.md`](packages/core/docs/SETUP.md)                   | Install paths, configuration reference, troubleshooting      |
+| [`BEGINNERS.md`](packages/core/docs/BEGINNERS.md)           | Guided walkthrough: install, first session, first extension  |
+| [`CONTEXT-POLICY.md`](packages/core/docs/CONTEXT-POLICY.md) | Window, usage bands, compaction reserve, offload             |
+| [`FLEET.md`](packages/core/docs/FLEET.md)                   | The `pi-braid-fleet` supervisor command                      |
+| [`TOOLS.md`](packages/core/TOOLS.md)                        | Every tool the core package registers, plus pi's own         |
+| [`CHANGELOG.md`](CHANGELOG.md)                              | Release notes, newest first, per workspace                   |
+| [`HISTORY.md`](packages/core/docs/HISTORY.md)               | Narrative history and milestone summaries                    |
+| [`CONTRIBUTING.md`](packages/core/CONTRIBUTING.md)          | Commands, style, testing, releases                           |
+| [`SECURITY.md`](SECURITY.md)                                | Security policy                                              |
+| [`examples/`](examples)                                     | Copy-ready settings, environment variables, session profiles |
 
-Each workspace also carries its own README with quick-start and config notes: [`core`](packages/core/README.md), [`skills`](packages/skills/README.md), [`contrib`](packages/contrib/README.md), [`providers`](packages/providers/README.md), [`telegram`](packages/telegram/README.md).
+Each workspace carries its own README: [`core`](packages/core/README.md),
+[`skills`](packages/skills/README.md), [`contrib`](packages/contrib/README.md),
+[`providers`](packages/providers/README.md), [`telegram`](packages/telegram/README.md).
 
 ## Development
 
 ```bash
 npm install
-npm run typecheck   # all code packages (core, providers, contrib, telegram)
-npm run build       # compile core to dist/
-npm test            # runtime test suite
-npm run lint        # ESLint (all code packages)
-npm run check:docs  # doc status markers
-npm run check:deps  # dependency hygiene
-npm run check:placement  # placement leaks (provenance, domain literals, home paths)
+npm run typecheck      # all four code packages
+npm run build          # compile core to dist/
+npm test               # runtime test suite
+npm run lint           # ESLint
+npm run format:check   # Prettier
+npm run check:docs     # doc status markers
+npm run check:deps     # dependency and layer hygiene
 ```
 
-See [`packages/core/CONTRIBUTING.md`](packages/core/CONTRIBUTING.md) and [`packages/core/AGENTS.md`](packages/core/AGENTS.md) for the contributor contract.
+`.github/workflows/ci.yml` runs the same checks on every pull request. The doc gates live in
+`packages/core/scripts`: they fail on a broken in-repo link, an em dash in prose, a status marker
+that went missing, a domain literal in a shared layer, and a count that no longer matches its
+source. Contributor conventions are in [CONTRIBUTING.md](packages/core/CONTRIBUTING.md) and
+[AGENTS.md](AGENTS.md).
 
-## Repo hygiene
+## Status and support
 
-- The [`.github/workflows/ci.yml`](.github/workflows/ci.yml) gate runs format check, typecheck, build, tests, and the doc/dep checks on every PR.
-- Docs name product paths only: a repository file may refer to `~/.pi/agent/…` or `~/pi-braid/…`, and never to the maintainer's private directory layout. [`check-doc-links.mjs`](packages/core/scripts/check-doc-links.mjs) enforces this alongside link resolution, so a private home path fails the build rather than shipping.
-- Culled/archived content stays in **git history** - never re-add `node_modules`, `dist/`, `.braid/`, or session files.
-
-## Support & status
-
-Single-maintainer project in active development; no support channel. Bugs and feature requests go to the [issue tracker](https://github.com/kifirkin/pi-braid/issues). Expect API and settings-key changes before 1.0.
+Single-maintainer project in active development; no support channel. Bugs and requests go to the
+[issue tracker](https://github.com/kifirkin/pi-braid/issues).
 
 ## License
 

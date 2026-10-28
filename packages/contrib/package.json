@@ -1,7 +1,7 @@
 {
   "name": "pi-braid-contrib",
   "version": "0.1.2",
-  "description": "Standalone contrib extensions for pi — browser, codebase, diff, healthcheck, network-monitor, observatory, path-security, rate-limiter, repl, sleep, system-monitor, tool-config",
+  "description": "Twelve pi extensions that give your agent a real browser, repo analysis, guarded tool calls, and live system metrics.",
   "type": "module",
   "files": [
     "index.ts",
@@ -37,11 +37,11 @@
   },
   "keywords": [
     "pi-package",
-    "pi",
-    "pi-extension",
     "pi-coding-agent",
-    "tools",
-    "extensions"
+    "pi-extension",
+    "browser-automation",
+    "code-analysis",
+    "monitoring"
   ],
   "dependencies": {
     "acorn": "^8.0.0"

@@ -1,7 +1,7 @@
 {
   "name": "pi-braid-providers",
   "version": "1.0.6",
-  "description": "LLM provider for pi-coding-agent: Venice models via the agent-zero gateway, with a multi-key ring",
+  "description": "Key rotation, provider failover, and route health for the pi coding agent, so one dead key or provider does not end the session.",
   "type": "module",
   "files": [
     "*.ts",
@@ -14,12 +14,11 @@
   },
   "keywords": [
     "pi-package",
-    "pi",
     "pi-coding-agent",
-    "extension",
-    "providers",
-    "llm",
-    "venice.ai"
+    "llm-provider",
+    "api-key-rotation",
+    "failover",
+    "venice"
   ],
   "pi": {
     "extensions": [

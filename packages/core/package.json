@@ -1,7 +1,7 @@
 {
   "name": "pi-braid",
   "version": "0.42.6",
-  "description": "Braid 🥨 Metacognitive extension suite for Pi coding agent: enforcement, memory, reasoning, self-improvement, and structured cognitive signals.",
+  "description": "Adds memory, plan tracking, and completion checks to the pi coding agent, so long sessions keep their context and stop claiming unfinished work.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -89,16 +89,13 @@
   },
   "keywords": [
     "pi-package",
-    "pi",
-    "pi-extension",
     "pi-coding-agent",
-    "llm-agent",
-    "cognitive-systems",
-    "enforcement",
-    "planning",
-    "metacognition",
-    "self-improvement",
-    "memory-management"
+    "pi-extension",
+    "coding-agent",
+    "agent-memory",
+    "context-management",
+    "subagents",
+    "skills"
   ],
   "author": "kifirkin",
   "license": "MIT",

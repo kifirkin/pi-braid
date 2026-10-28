@@ -1,13 +1,14 @@
 {
   "name": "pi-braid-skills",
   "version": "0.2.2",
-  "description": "Standalone skill pack for pi — markdown-only, no runtime dependencies",
+  "description": "Skills for research papers, brand systems, illustrations, and design critique that load straight into the pi coding agent.",
   "keywords": [
     "pi-package",
-    "skills",
-    "pi",
     "pi-coding-agent",
-    "agent-skills"
+    "agent-skills",
+    "skills",
+    "writing",
+    "design"
   ],
   "type": "module",
   "scripts": {
