@@ -257,16 +257,36 @@ jobs:
           # a human to read: this step consults no rendering surface, so a run
           # that carries none of an earlier attempt's lines still compares the
           # artifact it serves. The only skip is an artifact that cannot be
-          # obtained, and each of those prints which fact stopped it.
+          # obtained, and each of those prints which fact stopped it and
+          # annotates the run as not verified.
           #
           # A status this body inspects is captured where `-e` cannot reach it
           # first — never `cmd` followed by `status=$?` on the next line, which
           # is the shape that ended this step silently once.
           REGISTRY=https://registry.npmjs.org
 
+          # One line on the run page names the verdict. The write is skipped
+          # when the runner supplied no summary file, and the text is always a
+          # fact this step measured after the measurement that decides it.
+          summary() {
+            [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+            printf '%s\n' "$1" >>"${GITHUB_STEP_SUMMARY}" 2>/dev/null || true
+          }
+
+          # An artifact the step could not obtain is not a verified one. Every
+          # such branch emits this annotation, so a green run without an
+          # equality line cannot be read as a release whose artifact was
+          # compared.
+          not_verified() {
+            echo "::warning title=Registry artifact not verified::$1"
+            summary "- artifact check: not verified: $1"
+          }
+
           version=$(node -p "require('./packages/core/package.json').version" 2>/dev/null) || version=""
           if [ -z "${version}" ]; then
-            echo "artifact check: could not read the core version; nothing to compare"
+            reason="could not read the core version"
+            echo "artifact check: ${reason}; nothing to compare"
+            not_verified "${reason}"
             exit 0
           fi
 
@@ -278,52 +298,101 @@ jobs:
           # prepack/postpack pair, so the provenance record's commit side is
           # this checkout. Nothing is uploaded — a pack is a read of the tree.
           if ! (cd packages/core && npm pack --pack-destination "${work}/native" >"${work}/native.log" 2>&1); then
-            echo "artifact check: packing packages/core failed; nothing to compare"
+            reason="packing packages/core failed"
+            echo "artifact check: ${reason}; nothing to compare"
             sed 's/^/  /' "${work}/native.log" 2>/dev/null
+            not_verified "${reason}"
             exit 0
           fi
           native_tgz=$(ls "${work}"/native/pi-braid-*.tgz 2>/dev/null | head -1) || native_tgz=""
           if [ -z "${native_tgz}" ]; then
-            echo "artifact check: the local pack produced no tarball; nothing to compare"
+            reason="the local pack produced no tarball"
+            echo "artifact check: ${reason}; nothing to compare"
+            not_verified "${reason}"
             exit 0
           fi
 
           # The registry's own pointer to the artifact, for this exact version.
-          # A failing read says why on stderr, and that line is quoted by the
-          # two skip lines below: "this version is not published" and "this
-          # read did not complete" are different facts, and only the first one
-          # means there is nothing to compare.
+          #
+          # The registry accepts a publish before it serves it: on the release
+          # this step last observed, npm acknowledged the publish, a read 40s
+          # later answered 404, and the version became servable 4m46s after the
+          # acknowledgement. The packument is served with
+          # `cache-control: public, max-age=300`, so that lag is a cache refresh
+          # and not a broken publish. A 404 for this exact version is therefore
+          # the lag, not absence, and the read is retried inside a bounded
+          # window.
+          #
+          # A failure that is not a 404 is not retried: it is news about the
+          # registry, and waiting five minutes only moves the honest line five
+          # minutes later.
+          #
+          # The window is elapsed by the sleeps between reads, so the bound is
+          # window / interval + 1 reads: the default 360s / 15s is 25 reads and
+          # 24 x 15s = 360s of waiting, one read's latency per attempt on top.
+          # The job's timeout is 30 minutes, so the worst case leaves most of
+          # the budget intact while covering a full 300s cache period.
+          grace_seconds=${ARTIFACT_CHECK_GRACE_SECONDS:-360}
+          grace_interval=${ARTIFACT_CHECK_GRACE_INTERVAL_SECONDS:-15}
+          case "${grace_seconds}" in
+            *[!0-9]*)
+              echo "artifact check: ARTIFACT_CHECK_GRACE_SECONDS='${grace_seconds}' is not a whole number of seconds; using 360"
+              grace_seconds=360
+              ;;
+          esac
+          case "${grace_interval}" in
+            0 | *[!0-9]*)
+              echo "artifact check: ARTIFACT_CHECK_GRACE_INTERVAL_SECONDS='${grace_interval}' is not a positive whole number of seconds; using 15"
+              grace_interval=15
+              ;;
+          esac
+          max_reads=$((grace_seconds / grace_interval + 1))
+
           url=""
-          if url=$(npm view "pi-braid@${version}" dist.tarball --registry="${REGISTRY}" 2>"${work}/view.err"); then
-            view_status=0
-          else
-            view_status=$?
-          fi
-          if [ "${view_status}" -ne 0 ]; then
+          read_number=0
+          while :; do
+            read_number=$((read_number + 1))
+            if url=$(npm view "pi-braid@${version}" dist.tarball --registry="${REGISTRY}" 2>"${work}/view.err"); then
+              view_status=0
+            else
+              view_status=$?
+            fi
+            if [ "${view_status}" -eq 0 ]; then
+              break
+            fi
+
             said=$(grep -m1 . "${work}/view.err" 2>/dev/null)
             [ -n "${said}" ] || said="(the command printed nothing)"
             # The conjunction is the publish step's: a 404 is the only reading
-            # of a failed read that means "absent", and both edges bind. A read
-            # that failed another way is news about the registry, not about the
-            # version.
-            if [ "${view_status}" -eq 1 ] && grep -qF 'E404' "${work}/view.err" 2>/dev/null; then
-              echo "artifact check: pi-braid@${version} is not on the registry (404): ${said}; nothing to compare"
-            else
-              echo "artifact check: the registry read for pi-braid@${version} failed (exit ${view_status}): ${said}; nothing to compare"
+            # of a failed read that means "not served yet", and both edges bind.
+            # A read that failed another way is reported at once.
+            if ! { [ "${view_status}" -eq 1 ] && grep -qF 'E404' "${work}/view.err" 2>/dev/null; }; then
+              reason="the registry read for pi-braid@${version} failed (exit ${view_status}): ${said}"
+              echo "artifact check: ${reason}; nothing to compare"
+              not_verified "${reason}"
+              exit 0
             fi
-            exit 0
-          fi
+            if [ "${read_number}" -ge "${max_reads}" ]; then
+              reason="pi-braid@${version} was not served by the registry within the ${grace_seconds}s grace window (${read_number} reads, 404): ${said}"
+              echo "artifact check: ${reason}; nothing to compare"
+              not_verified "${reason}"
+              exit 0
+            fi
+            sleep "${grace_interval}"
+          done
 
-          # curl retries the one lag this step must not report as a difference:
-          # the registry can accept a publish it is not serving yet. A 404 is
-          # not retried, because absence is a fact about the version rather than
-          # a delay in serving it.
+          # curl retries the same lag on the download side: the packument can
+          # name a tarball the registry is not serving yet. Its 3 retries at 5s
+          # each cover the short tail after the pointer appears; the window
+          # above covers the wait before the pointer does.
           download_status=0
           curl -fsSL --retry 3 --retry-delay 5 "${url}" -o "${work}/registry.tgz" >"${work}/curl.log" 2>&1 || download_status=$?
           if [ "${download_status}" -ne 0 ]; then
             said=$(grep -m1 . "${work}/curl.log" 2>/dev/null)
             [ -n "${said}" ] || said="(the command printed nothing)"
-            echo "artifact check: the registry served no tarball for pi-braid@${version} (curl exit ${download_status}): ${said}; nothing to compare"
+            reason="the registry served no tarball for pi-braid@${version} (curl exit ${download_status}): ${said}"
+            echo "artifact check: ${reason}; nothing to compare"
+            not_verified "${reason}"
             exit 0
           fi
 
@@ -338,14 +407,19 @@ jobs:
             compare_status=$?
           fi
           case "${compare_status}" in
-            0) echo "artifact check: the registry artifact for pi-braid@${version} unpacks to the tree ${GITHUB_REF_NAME} builds" ;;
+            0)
+              echo "artifact check: the registry artifact for pi-braid@${version} unpacks to the tree ${GITHUB_REF_NAME} builds"
+              summary "- artifact check: verified equal: pi-braid@${version} unpacks to the tree ${GITHUB_REF_NAME} builds"
+              ;;
             1)
               sed 's/^/  /' "${work}/compare.log"
               echo "::warning title=Registry artifact differs::pi-braid@${version} unpacks differently from a pack of ${GITHUB_REF_NAME}; the paths above are the difference"
+              summary "- artifact check: differs: pi-braid@${version} unpacks differently from a pack of ${GITHUB_REF_NAME}"
               ;;
             *)
               sed 's/^/  /' "${work}/compare.log"
               echo "::warning title=Registry artifact unreadable::pack-compare could not read one of the archives (exit ${compare_status}); this is not a verdict about the tree"
+              summary "- artifact check: unreadable: pack-compare could not read one of the archives (exit ${compare_status}); not a verdict about the tree"
               ;;
           esac
 
