@@ -4,14 +4,19 @@
  *
  * A release makes one claim: the registry serves the tree this commit builds.
  * Comparing the two tarballs byte for byte cannot test it, because two packs of
- * one tree differ in gzip framing, entry order and the provenance record's own
- * timestamp. Unpacked, they differ in nothing — so the comparison runs on the
- * unpacked content, with the one field no pack can hold still replaced before
- * the trees are read.
+ * one tree differ in gzip framing, entry order and the three fields of the
+ * provenance record that describe the machine a pack ran on rather than the
+ * tree it packed. Unpacked, they differ in nothing — so the comparison runs on
+ * the unpacked content, with those fields replaced before the trees are read.
+ *
+ * The record's `name`, `version`, `sha` and `dirty` are not among them: they
+ * describe the artifact and the commit it was packed from, and a difference in
+ * any of those is the difference this tool exists to report.
  *
  * Three outcomes, three exit codes, because the caller acts on the difference:
  *
- *   0  the trees are identical apart from the provenance record's timestamp
+ *   0  the trees are identical apart from the provenance fields a pack writes
+ *      from its environment
  *   1  something else differs; the differing paths are printed, bounded
  *   2  the comparison could not be made: an argument is not a path, a file is
  *      not a gzipped tar, an archive carries an entry type this reader does
@@ -51,9 +56,19 @@ const USAGE = "usage: node packages/core/scripts/pack-compare.mjs <tarball-a> <t
 /** How many differing paths are printed before the rest are counted. */
 const MAX_REPORTED = 20;
 
-/** The record whose timestamp a pack writes from the clock, not the tree. */
+/** The record whose fields describe the machine that packed, not the tree. */
 const PROVENANCE = /(^|\/)build-info\.json$/;
-const NORMALISED_FIELD = "packedAt";
+
+/**
+ * The record's environment-derived fields: replaced before the trees are read,
+ * each with the reason two packs of one commit disagree on it. Every other
+ * field is compared as content.
+ */
+const ENVIRONMENT_FIELDS = [
+  { field: "packedAt", why: "the clock of the machine that packs" },
+  { field: "branch", why: "a release tag is checked out detached in CI" },
+  { field: "shaShort", why: "git shortens to the length its own object database needs" },
+];
 
 /** A failure to read, which is exit 2 and never a verdict about the trees. */
 class Unreadable extends Error {}
@@ -251,17 +266,21 @@ function walkTree(dir) {
 }
 
 /**
- * Replace the timestamp a packer writes from its clock. Everything else in the
- * record — the commit, the version, the dirty flag — is compared, because it
- * is the tree's own provenance and a change to it is a real difference.
+ * Replace the fields a packer writes from its environment. Everything else in
+ * the record — the package, the version, the commit, the dirty flag — is
+ * compared, because it is the artifact's own provenance and a change to it is
+ * a real difference.
  *
  * A record is compared as data, not as text: key order and whitespace are a
- * writer's choice, and the fields are the record. The field's presence is not
- * normalised either — a record that lost the stamp is a different record, and
- * reporting it as content is the honest answer.
+ * writer's choice, and the fields are the record. A field's presence is not
+ * normalised either — a record that lost the field is a different record, and
+ * reporting it as content is the honest answer. That is also what keeps the
+ * normalisation from being a hole to pack through: deleting a field to make a
+ * pair compare equal is itself the difference.
  *
- * Returns the names whose stamps actually differed, so an identical pair says
- * so instead of reporting a normalisation that changed nothing.
+ * Returns the paths whose environment fields actually differed, with those
+ * fields, so an identical pair says so instead of reporting a normalisation
+ * that changed nothing.
  */
 function normaliseProvenance(left, right) {
   const normalised = [];
@@ -274,11 +293,15 @@ function normaliseProvenance(left, right) {
     const first = parseRecord(a.data);
     const second = parseRecord(b.data);
     if (first === null || second === null) continue; // not records: compare them as content
-    if (!(NORMALISED_FIELD in first) || !(NORMALISED_FIELD in second)) continue;
 
-    if (first[NORMALISED_FIELD] !== second[NORMALISED_FIELD]) normalised.push(name);
-    delete first[NORMALISED_FIELD];
-    delete second[NORMALISED_FIELD];
+    const replaced = [];
+    for (const { field } of ENVIRONMENT_FIELDS) {
+      if (!(field in first) || !(field in second)) continue;
+      if (first[field] !== second[field]) replaced.push(field);
+      delete first[field];
+      delete second[field];
+    }
+    if (replaced.length > 0) normalised.push({ path: name, fields: replaced });
     a.data = canonicalRecord(first);
     b.data = canonicalRecord(second);
   }
@@ -331,11 +354,19 @@ function compare(first, second) {
 
     const differences = diffTrees(left, right);
     if (differences.length === 0) {
-      console.log(
-        normalised.length === 0
-          ? "trees identical"
-          : `trees identical apart from ${normalised.map((name) => `${name} ${NORMALISED_FIELD}`).join(", ")}`,
-      );
+      if (normalised.length === 0) {
+        console.log("trees identical");
+        return 0;
+      }
+      // Name what was ignored and why: an equality this tool reached by
+      // replacing something is a weaker statement than one it reached by
+      // comparing everything, and a reader has to be able to tell them apart.
+      const paths = [...new Set(normalised.map((entry) => entry.path))];
+      const fields = new Set(normalised.flatMap((entry) => entry.fields));
+      console.log(`trees identical apart from ${paths.join(", ")}: ${[...fields].join(", ")}`);
+      for (const { field, why } of ENVIRONMENT_FIELDS) {
+        if (fields.has(field)) console.log(`  ${field.padEnd(9)} environment-derived: ${why}`);
+      }
       return 0;
     }
 

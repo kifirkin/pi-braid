@@ -26,7 +26,12 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PROVENANCE_DEFER_ENV, readGitProvenance, writeBuildInfo } from "../../../scripts/build-info.mjs";
+import {
+  PROVENANCE_DEFER_ENV,
+  SHA_SHORT_LENGTH,
+  readGitProvenance,
+  writeBuildInfo,
+} from "../../../scripts/build-info.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // This file sits in packages/core/test/runtime/release/.
@@ -151,7 +156,19 @@ test("write records the manifest it runs in, from git", () => {
     assert.equal(info.name, fx.name, "the record must name the package it sits in");
     assert.equal(info.version, fx.version, "the record must carry the version being packed");
     assert.equal(info.sha, head, "the record must carry the commit being packed");
-    assert.equal(info.shaShort, head.slice(0, 7), "the short sha must be the short form of that commit");
+    assert.equal(
+      info.shaShort,
+      head.slice(0, SHA_SHORT_LENGTH),
+      "the short sha must be that commit's prefix, at the pinned length",
+    );
+    // The length is the record's, not the clone's: `git rev-parse --short`
+    // abbreviates to whatever the local object database needs, so two packs of
+    // one commit answered 7 and 8 and the record is compared across that pair.
+    assert.equal(
+      info.shaShort.length,
+      SHA_SHORT_LENGTH,
+      `a short sha of another length cannot be compared across checkouts: ${info.shaShort}`,
+    );
     assert.equal(info.branch, branch, "the record must carry the branch");
     assert.equal(info.dirty, false, "a clean tree must not be recorded as dirty");
     assert.match(info.packedAt, /^\d{4}-\d{2}-\d{2}T/, "the record must carry a timestamp");

@@ -42,20 +42,30 @@ process.on("exit", () => {
 });
 
 /**
- * One provenance record, with the field the comparison must normalise.
+ * One provenance record: every field written the same way on both sides, so a
+ * case states only the fields it changes.
  *
  * The stamp is computed rather than written out: what the field holds is the
  * packer's business, and a reader that only replaces the value must not be
  * able to depend on its format.
  */
-const record = (name, stamp) =>
-  `${JSON.stringify({ name, version: "1.0.0", sha: "0000000", dirty: false, packedAt: stamp }, null, 2)}\n`;
-
 const STAMP_A = new Date(0).toISOString();
 const STAMP_B = new Date(1_000_000_000).toISOString();
 
+const RECORD = {
+  name: "fixture",
+  version: "1.0.0",
+  sha: "0000000",
+  shaShort: "0000000",
+  branch: "main",
+  dirty: false,
+  packedAt: STAMP_A,
+};
+
+const record = (overrides = {}) => `${JSON.stringify({ ...RECORD, ...overrides }, null, 2)}\n`;
+
 const TREE = {
-  "build-info.json": record("fixture", STAMP_A),
+  "build-info.json": record(),
   "index.js": "export const answer = 42;\n",
   "nested/leaf.txt": "a leaf\n",
 };
@@ -103,7 +113,7 @@ const compare = (a, b) => run([a, b]);
 
 test("two packs of one tree are equal, and the one normalised field is named", () => {
   const a = pack(TREE);
-  const b = pack({ ...TREE, "build-info.json": record("fixture", STAMP_B) });
+  const b = pack({ ...TREE, "build-info.json": record({ packedAt: STAMP_B }) });
 
   const { code, out } = compare(a, b);
   assert.equal(code, 0, `expected equality, got exit ${code}: ${out}`);
@@ -112,6 +122,53 @@ test("two packs of one tree are equal, and the one normalised field is named", (
   // accounted for; an unqualified "identical" would hide the normalisation.
   assert.match(out, /packedAt/);
   assert.match(out, /build-info\.json/);
+});
+
+test("the fields a pack writes from its environment are equal, and each is named with why", () => {
+  const a = pack(TREE);
+  const b = pack({
+    ...TREE,
+    "build-info.json": record({ packedAt: STAMP_B, branch: "detached", shaShort: "0000001" }),
+  });
+
+  const { code, out } = compare(a, b);
+  assert.equal(code, 0, `two packs of one tree differ only in these fields: exit ${code}: ${out}`);
+  for (const field of ["packedAt", "branch", "shaShort"]) {
+    assert.match(out, new RegExp(field), `the normalised field ${field} must be named: ${out}`);
+  }
+  // A reader can only weigh the equality if the report says the fields describe
+  // the packer rather than the tree.
+  assert.match(out, /environment-derived/, `the report must say why the fields were ignored: ${out}`);
+  assert.match(out, /pkg\/build-info\.json/);
+});
+
+test("the artifact's own provenance stays substance", () => {
+  const a = pack(TREE);
+  const cases = {
+    "a different commit": record({ sha: "1111111" }),
+    "a dirty tree": record({ dirty: true }),
+    "a different package": record({ name: "other" }),
+    "a different version": record({ version: "1.0.1" }),
+  };
+
+  for (const [what, other] of Object.entries(cases)) {
+    const { code, out } = compare(a, pack({ ...TREE, "build-info.json": other }));
+    assert.equal(code, 1, `${what} is a real difference, got exit ${code}: ${out}`);
+    assert.match(out, /pkg\/build-info\.json/, `${what} must name the record: ${out}`);
+  }
+});
+
+test("a record that lost an environment field is a difference, not a normalisation", () => {
+  const a = pack(TREE);
+  const withoutBranch = { ...RECORD };
+  delete withoutBranch.branch;
+  const b = pack({ ...TREE, "build-info.json": `${JSON.stringify(withoutBranch, null, 2)}\n` });
+
+  const { code, out } = compare(a, b);
+  // Otherwise the way to make two different artifacts compare equal would be to
+  // delete the field that says so.
+  assert.equal(code, 1, `a record missing a field must not compare equal: exit ${code}: ${out}`);
+  assert.match(out, /pkg\/build-info\.json/);
 });
 
 test("the same archive twice is equal, byte for byte", () => {
@@ -149,7 +206,7 @@ test("a surviving difference is reported even when the provenance stamps differ 
   const a = pack(TREE);
   const b = pack({
     ...TREE,
-    "build-info.json": record("fixture", STAMP_B),
+    "build-info.json": record({ packedAt: STAMP_B, branch: "detached", shaShort: "0000001" }),
     "nested/leaf.txt": "a different leaf\n",
   });
 
@@ -215,7 +272,7 @@ test("a large difference is bounded and says how much it left out", () => {
 
 test("the comparison does not write into either archive's directory", () => {
   const a = pack(TREE);
-  const b = pack({ ...TREE, "build-info.json": record("fixture", STAMP_B) });
+  const b = pack({ ...TREE, "build-info.json": record({ packedAt: STAMP_B }) });
   const before = readdirSync(dirname(a)).sort();
 
   compare(a, b);

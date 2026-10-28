@@ -243,18 +243,28 @@ jobs:
       - name: Registry artifact check
         if: github.ref_type == 'tag'
         run: |
-          # No `set -e` and no `set -u`: every path below ends the step with
-          # exit 0 on purpose, and an unguarded variable is a way out of that
-          # promise that reads as a bug in the workflow instead.
+          # The runner runs this body with `bash -e` (the job log's `shell:`
+          # line is that contract), which ends the step at the first non-zero
+          # status — before the line that reads it. Every branch below is a
+          # report, so the body opts out of that rather than promising
+          # something about `-e` a comment cannot enforce. `+u` for the same
+          # reason: the reads that may be empty are tested for emptiness, not
+          # for definition.
+          set +e
+          set +u
           #
           # Whether to compare is the registry's answer, not a line written for
           # a human to read: this step consults no rendering surface, so a run
           # that carries none of an earlier attempt's lines still compares the
           # artifact it serves. The only skip is an artifact that cannot be
           # obtained, and each of those prints which fact stopped it.
+          #
+          # A status this body inspects is captured where `-e` cannot reach it
+          # first — never `cmd` followed by `status=$?` on the next line, which
+          # is the shape that ended this step silently once.
           REGISTRY=https://registry.npmjs.org
 
-          version=$(node -p "require('./packages/core/package.json').version" 2>/dev/null)
+          version=$(node -p "require('./packages/core/package.json').version" 2>/dev/null) || version=""
           if [ -z "${version}" ]; then
             echo "artifact check: could not read the core version; nothing to compare"
             exit 0
@@ -272,7 +282,7 @@ jobs:
             sed 's/^/  /' "${work}/native.log" 2>/dev/null
             exit 0
           fi
-          native_tgz=$(ls "${work}"/native/pi-braid-*.tgz 2>/dev/null | head -1)
+          native_tgz=$(ls "${work}"/native/pi-braid-*.tgz 2>/dev/null | head -1) || native_tgz=""
           if [ -z "${native_tgz}" ]; then
             echo "artifact check: the local pack produced no tarball; nothing to compare"
             exit 0
@@ -283,8 +293,12 @@ jobs:
           # two skip lines below: "this version is not published" and "this
           # read did not complete" are different facts, and only the first one
           # means there is nothing to compare.
-          url=$(npm view "pi-braid@${version}" dist.tarball --registry="${REGISTRY}" 2>"${work}/view.err")
-          view_status=$?
+          url=""
+          if url=$(npm view "pi-braid@${version}" dist.tarball --registry="${REGISTRY}" 2>"${work}/view.err"); then
+            view_status=0
+          else
+            view_status=$?
+          fi
           if [ "${view_status}" -ne 0 ]; then
             said=$(grep -m1 . "${work}/view.err" 2>/dev/null)
             [ -n "${said}" ] || said="(the command printed nothing)"
@@ -314,12 +328,15 @@ jobs:
           fi
 
           # Content, not bytes: two packs of one tree differ in gzip framing,
-          # entry order and the provenance record's own timestamp, and the tool
-          # normalises the last of those before comparing. It also owns the
-          # verdict word and the bound on the paths it lists, so the paths are
-          # reprinted here rather than restated.
-          node packages/core/scripts/pack-compare.mjs "${native_tgz}" "${work}/registry.tgz" >"${work}/compare.log" 2>&1
-          compare_status=$?
+          # entry order and the provenance fields that describe the machine the
+          # pack ran on, and the tool normalises those before comparing. It also
+          # owns the verdict word and the bound on the paths it lists, so the
+          # paths are reprinted here rather than restated.
+          if node packages/core/scripts/pack-compare.mjs "${native_tgz}" "${work}/registry.tgz" >"${work}/compare.log" 2>&1; then
+            compare_status=0
+          else
+            compare_status=$?
+          fi
           case "${compare_status}" in
             0) echo "artifact check: the registry artifact for pi-braid@${version} unpacks to the tree ${GITHUB_REF_NAME} builds" ;;
             1)

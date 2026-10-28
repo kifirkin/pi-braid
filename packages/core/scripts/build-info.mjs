@@ -14,7 +14,7 @@
  *     "name":     "<package.json name>",
  *     "version":  "<version string packed into the manifest>",
  *     "sha":      "<full commit sha>" | null,   // null outside a git work tree
- *     "shaShort": "<short commit sha>" | null,
+ *     "shaShort": "<short commit sha, SHA_SHORT_LENGTH characters>" | null,
  *     "branch":   "<branch name>" | "detached",
  *     "dirty":    true | false | null,          // null when git cannot answer
  *     "packedAt": "<ISO-8601 timestamp>"
@@ -41,6 +41,16 @@ export const BUILD_INFO_FILE = "build-info.json";
  */
 export const PROVENANCE_DEFER_ENV = "BRAID_PROVENANCE_DEFER";
 
+/**
+ * How many characters `shaShort` carries. Pinned because `git rev-parse
+ * --short` abbreviates to the shortest prefix unique in the object database it
+ * is asked about, so the length is a property of the clone rather than of the
+ * commit: a depth-1 CI checkout and a developer's clone of one commit answered
+ * 7 and 8. The record is compared across exactly that pair, so its length is
+ * stated here instead of inherited from whichever clone wrote it.
+ */
+export const SHA_SHORT_LENGTH = 8;
+
 function git(args, cwd) {
   try {
     return execSync(`git ${args}`, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
@@ -62,7 +72,7 @@ export function readGitProvenance(pkgDir) {
   const status = git("status --porcelain", pkgDir);
   return {
     sha: git("rev-parse HEAD", pkgDir),
-    shaShort: git("rev-parse --short HEAD", pkgDir),
+    shaShort: git(`rev-parse --short=${SHA_SHORT_LENGTH} HEAD`, pkgDir),
     branch: !ref || ref === "HEAD" ? "detached" : ref,
     dirty: status === null ? null : status !== "",
   };
