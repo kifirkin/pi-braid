@@ -43,6 +43,21 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
+
+- **The skill about panes is named for what it teaches.** Workspaces, tabs, panes, opaque ids, read sources and the
+  agent lifecycle are not Herdr's inventions, so a skill named after Herdr read as a product scope rather than a
+  model. It is `pane-topology` now: the containment model leads, every fact that is Herdr's stays named as Herdr's,
+  and the triggers include the three tool names, so a model that has the tools but not the product word still finds
+  it. Three trimmed tool descriptions, the prompt-builder table row and the six fixtures that pin the shipped name
+  follow the rename.
+- **`subagent-orchestration` carries the self-transfer procedure**: what opens a handover (a newer build, changed
+  settings, an exhausted seat), the ordered steps, which side closes which pane, and the `wait:false` trap with what
+  it costs, since a blocked predecessor holds the channel after it has already handed over.
+- **`test-skills-floor` no longer requires a naming coincidence.** Its trigger assertion held only because one skill
+  was named after the multiplexer whose tools share its prefix; it now carries a positive control and asserts
+  whichever of the two renderings the real inputs produce.
+
 ## Core — 0.43.3 (2026-10-28: one description, two intros, and a gate that keeps them honest)
 
 - **The registry page and the repository page open with the same claim.** The npm README still opened with a summary
