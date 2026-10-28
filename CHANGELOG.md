@@ -43,94 +43,74 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
-## Core — 0.42.9 (2026-10-28: a gate says how much it scanned, and the number is true)
+## Core — 0.43.0 (2026-10-28: a long session stops killing itself, and the pages stop describing what is not there)
 
-### Also in this line
-
-- **`check-placement` and `check-doc-links` print a population that equals their own enumeration.** Both skipped their
-  own file, so the first reported `1017 of 1018` tracked files and a worker transcribing that line into gate evidence
-  was refused by the merge rule, which compares a stamped files row against the revision's census. The tools now count
-  their own file in the population and list it as a documented exclusion from matching, so the line is true and a
-  stamp taken from it survives.
-- **A fixture asserts the two numbers are equal**, so the convention cannot regress into a tool that quietly vouches
-  for less than it enumerates.
-
-## Core — 0.42.8 (2026-10-28: two aliases leave, and the resolver stops reading their key)
-
-### Also in this line
-
-- **`/vision-model` and `/max-power-model` are gone.** Both shipped with a one-release warning and two releases have
-  passed since. `model-resolver` no longer imports or reads the vision key: image analysis resolves through the current
-  model when it accepts images, else the merged role's first image-capable entry. A fixture drives that chain end to
-  end, so the removal is justified by a working replacement rather than by a calendar.
-- **A registered-command fixture pins the surface.** Loading the polyfill against a stub `pi` asserts the exact set of
-  commands it registers, so a removed alias that creeps back fails a test rather than surprising a user.
-
-## Core — 0.42.7 (2026-10-28: the package surface stops describing things it does not ship)
-
-### Also in this line
-
-- **The skills README describes the skills that ship.** It documented a 31-row catalogue while the package carries
-  eight, so most of that page described another package's files and one row described a skill that exists in no tree.
-  The page now has one row per shipped skill, taken from each `SKILL.md`'s own trigger and content, and it names which
-  three carry `status: deprecated` and where their successors live rather than implying eight usable skills.
-- **Every count on the surface is derived.** Where a README states a number, the report carries the command that
-  produced it; a number with no command behind it does not ship.
-- **Descriptions say what a reader can do.** "Standalone", "markdown-only" and "no runtime dependencies" are true of
-  every package in the catalogue and useful to no reader; the private gateway no longer appears in published metadata.
-- **Internal material left the public pages.** Contracts, release mechanics and monorepo relationships moved to
-  developer sections or out, instead of being softened in place.
-
-### Removed
-
-- **`/vision-model` and `/max-power-model` are removed.** Both shipped with a one-release warning, and two have passed
-  since. What replaces them is the settings they wrote: image analysis resolves at `model-resolver` through the
-  current model when it accepts images, else the merged role's first image-capable entry, so the vision pin had
-  nothing left to decide; the max-power role merged into utility, and `/utility-model` has been the canonical command
-  since. The legacy `maxPowerModel` settings key is no longer read or cleaned, so a file that carries only it falls
-  back to the session model.
-
-## Core — 0.42.6 (2026-10-27: a meter that measures what the provider counts, a drain that waits, a whisper that prints one truth, and a latch that stops feeding a dying route)
-
-Four changes that between them remove the wedges behind a long session killing itself: the meter under-counted its
-own payload, the compaction drain fired into requests of its own making, the whispers printed three ages of one fact,
-and self-started wakes kept spending provider calls into a route that was failing on every turn. Versions 0.42.2 to
-0.42.5 were base bumps carrying these; this is the first tag above 0.42.1.
+One release for everything after `0.42.1`. The versions between were base bumps: they were never tagged, so no reader
+could install them, and their sections are folded here.
 
 ### Core
 
 - **The context meter measures what the provider counts.** It reported "the tokens that will be sent on the next
-  request" while computing a character walk at four characters per token, over a partial span. A live session read 51%
+  request" while computing a character walk at four characters per token over a partial span. A live session read 51%
   while the wire carried 1,147,002 tokens against a 1,048,576 window, so the arm thresholds, the 0.90W backstop and the
   emergency offload were all reading a number that could not reach them. The estimate now calibrates against the
   provider's own usage (median of the last eight pairs, ratio clamped) and every rendered number carries its
-  provenance: `measured` or `estimated`. The measured error was 78.9% of the branch's mass outside the walk, 2.55
+  provenance, `measured` or `estimated`. The measured error: 78.9% of the branch's mass outside the walk, 2.55
   characters per token against the assumed 4.00, and 14 image blocks counted as zero.
 - **A request that cannot fit is refused before it is sent.** `presend-budget` compares the calibrated payload plus the
   requested output budget against the resolved window and refuses with one line naming the numbers, the window, the
   overage and the remedy. It runs the chunked compaction once, re-measures, and only then allows the send. A
   context-length 400 is classified as request-shape and is never retried as transient.
 - **The compaction queue drains only where the loop cannot dispatch.** The `turn_end` drain and the arm-time fire are
-  gone: arming now only queues, and `agent_settled` is the unconditional drain. Below the 0.90W backstop a queued steer
-  at a turn boundary used to start a request the armed drain then aborted, which the session reported as an API error.
-  The 0.90W backstop survives as the one deliberate exception, because a run kept alive by continuous steers never
-  settles and overflow costs more than the turn the deliberate abort can lose.
+  gone; arming only queues, and `agent_settled` is the unconditional drain. Below the 0.90W backstop a queued steer at
+  a turn boundary started a request the armed drain then aborted, which the session reported as an API error. The
+  0.90W backstop survives as the one deliberate exception, because a run kept alive by continuous steers never settles
+  and overflow costs more than the turn the deliberate abort can lose.
 - **A self-started wake stops feeding a failing route.** A monotonic per-session counter of consecutive run-ending
   provider errors is asked through the existing turn-start predicate; above the threshold, timer wakes, watchdog
   escalations and waking whispers are demoted to non-waking delivery. The content still arrives and one line announces
-  the episode. Five existing signals re-open the gate, plus a floor that is sparser than the observed retry cadence.
+  the episode. Five existing signals re-open the gate, plus a floor sparser than the observed retry cadence.
 - **One delivery prints one snapshot.** A heartbeat could print a configured tier boundary (`Context at 30%`) beside a
   live measurement, and an agent then repeated the contradiction in its own reasoning. A delivery now carries a single
   measurement taken at delivery, its label is that measurement, percentages carry the meter's provenance word, numbers
   that change no decision are dropped, and a collapsed family is re-labelled from the newest arrival rather than the
   first.
 - **The publish step compares the artifact it served.** `pack-compare` unpacks the checkout's pack and the registry
-  tarball for the same version, normalises the one field that cannot be reproducible, and reports what differs. The
-  step reads the registry, never a rendering surface: its first version inferred from the job's step summary and
-  reported success while comparing nothing.
+  tarball for the same version and reports what differs. The step reads the registry, never a rendering surface: its
+  first version inferred from the job's step summary and reported success while comparing nothing.
+- **Gates report the population they actually scanned.** `check-placement` and `check-doc-links` skipped their own
+  file, so the first printed `1017 of 1018` and a worker transcribing that line into gate evidence was refused by the
+  merge rule. Both now count their own file and list it as a documented exclusion from matching, and a fixture asserts
+  the two numbers stay equal.
+
+### The package surface
+
+- **The skills README describes the skills that ship.** It documented a 31-row catalogue while the package carries
+  eight, so most of the page described another package's files and one row described a skill that exists in no tree.
+  The page now has one row per shipped skill, taken from each `SKILL.md`'s own trigger, and it names which three carry
+  `status: deprecated` and where their successors live.
+- **Descriptions say what a reader can do.** "Standalone", "markdown-only" and "no runtime dependencies" are true of
+  every package in the catalogue and useful to no reader; the private gateway no longer appears in published metadata.
+  Internal material left the public pages rather than being softened in place.
+- **Every count on the surface is derived.** Where a README states a number, the report carries the command that
+  produced it.
+- **Two skills could not fire, and now they can.** `adversarial-engagement` and `socratic-irony` carried trigger tails
+  of 222 and 212 characters against the trigger parser's 200-character cutoff, so both loaded with zero triggers.
+  Rewritten, they parse ten and six phrases, and a pack fixture fails on a description that cannot fire or on a tool
+  name no installed package declares.
+- **`design-system` uses the CLI it had called aspirational.** `@google/design.md` is published; the skill had been
+  building a manual workaround around its supposed absence.
+
+### Removed
+
+- **`/vision-model` and `/max-power-model` are removed.** Both shipped with a one-release warning and two have passed
+  since. Image analysis resolves through the current model when it accepts images, else the merged role's first
+  image-capable entry, and `model-resolver` no longer reads the vision key at all.
 
 ### Also in this line
 
+- **`SETUP.md` told readers the pi peers were unconstrained.** All five manifests carry `^1.2.0`; a wildcard accepts
+  any pi, a caret says which SDK surface the extension was written against.
 - **A test fixture no longer hangs instead of reporting.** `fleet/test-drain-atomicity` attached its exit listener after
   the kill, so a child that finished first left the promise unsettled and node exited 13 with every assertion green.
 
