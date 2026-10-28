@@ -97,6 +97,19 @@ in flight leaves nothing longer-lived than its own `sleep 30`, which ends
 itself. Any other fixture that escapes the group owes an explicit cleanup on
 every exit path, the interrupt one included.
 
+### New fixtures: use `node:test`
+
+A new fixture is written on `node:test`. The runner classifies a file by its
+exit code, so it does not care which style a file uses, and 140 of the
+fixtures already use `node:test`; the reason is the failure the other style
+produces. A hand-rolled helper that calls `fn()` without awaiting it discards
+the case's promise, so an `async` case runs detached and the file can print its
+green tally before that case settles, with the exit code computed from a
+counter the case never reached. `node:test` cannot take that shape. Existing
+files are not rewritten for style; a file with async cases that a synchronous
+helper discards is fixed when it is touched, by awaiting the helper's call or
+by moving to `node:test`.
+
 ## Two install modes
 
 ### 1. Live symlink (default for active development)
