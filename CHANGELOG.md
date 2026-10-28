@@ -63,6 +63,12 @@ reader-facing record; the tag scheme above applies unchanged.
   classes, the exit code, that a hang is killed at its cap rather than awaited, and that two one-second files at
   width two overlap. At width one the two pool assertions redden and print the numbers that explain it: 2,278ms for
   the pair, and 2,188ms of summed file duration inside a 2,192ms run.
+- **A telegram fixture stopped inheriting the machine's own poller state.** `busy-steer.test.mjs` failed
+  deterministically on any machine where a live pi process held the poller ownership lock, because the extension
+  correctly refuses to start a second `getUpdates` consumer and every delivery wait then starved on a poller that
+  never polled. The test now pins `BRAID_HOME`, the lock path and the session role for the whole case, so it passes
+  beside a live seat, and a refused start says so instead of timing out mute. Five sibling fixtures inherit the same
+  state and are unchanged here.
 
 ## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
 
