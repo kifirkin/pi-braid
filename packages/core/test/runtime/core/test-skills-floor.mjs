@@ -188,17 +188,33 @@ test("the obligation sentence survives and the superseded pointer text is gone",
   assert.ok(repoText.includes("This catalog is every installed skill"), "the catalog is announced");
 });
 
-test("the mechanical trigger still renders with derived pairs", () => {
+test("the mechanical trigger renders derived pairs, and stands bare when none derive", () => {
+  const lead =
+    "Mechanical trigger, no judgment call: about to use a tool family whose word appears in a skill's name";
+  const tail = "→ read that SKILL.md before the first call in the family.";
+
+  // Positive control: a skill whose name spells a tool family's word must pair
+  // with that family's tool. Without this, the repo assertions below could pass
+  // on a derivation that silently computes nothing, because this repository's
+  // own names happen not to pair (no shipped skill spells "read", "write",
+  // "bash", "memory" and so on).
+  const control = mechanicalTriggerExamples(TOOLS, ["herdr-notes", "pane-topology"]);
+  assert.deepEqual(control, ["`herdr_layout` → herdr"], "the derivation pairs a tool family with the skill token that spells it");
+
   const examples = mechanicalTriggerExamples(
     TOOLS,
     REPO_ENTRIES.map((s) => s.name),
   );
-  assert.ok(examples.length > 0, "the fixture tools and pack must compute a pair");
-  assert.ok(
-    repoText.includes(`Mechanical trigger, no judgment call: about to use a tool family`),
-    "the trigger renders",
-  );
-  assert.ok(repoText.includes(`(${examples.join(", ")})`), "the trigger renders the computed pairs");
+  assert.ok(repoText.includes(lead), "the trigger renders");
+  if (examples.length > 0) {
+    assert.ok(repoText.includes(`${lead} (${examples.join(", ")}) ${tail}`), "with pairs, the sentence prints exactly them");
+  } else {
+    assert.ok(
+      repoText.includes(`${lead} ${tail}`),
+      "with no derivable pair the sentence stands bare rather than printing an empty pair list",
+    );
+    assert.ok(!repoText.includes("()"), "a bare sentence carries no empty parentheses");
+  }
 });
 
 // ── 2. derivation, not a hardcoded location ───────────────────────────────
