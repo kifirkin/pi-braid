@@ -1,7 +1,7 @@
 {
   "name": "pi-braid",
   "version": "0.43.1",
-  "description": "Adds memory, plan tracking, and completion checks to the pi coding agent, so long sessions keep their context and stop claiming unfinished work.",
+  "description": "🥨 Braid - Metacognitive extension suite for pi coding agent: Adds memory, plan tracking, structured cognitive signals and completion checks on top of pi core loop, so long sessions keep their context and stop claiming unfinished work.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
