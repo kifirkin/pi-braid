@@ -43,6 +43,17 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.3 (2026-10-28: one description, two intros, and a gate that keeps them honest)
+
+- **The registry page and the repository page open with the same claim.** The npm README still opened with a summary
+  the manifest no longer carried, so the two surfaces described one product in two sets of words. Both files carry the
+  manifest description between `<!-- braid:intro:start -->` and `<!-- braid:intro:end -->`, wrapped for reading.
+- **A gate holds them together.** `npm run check:readme-sync` compares the two blocks to each other and to
+  `packages/core/package.json` with whitespace normalised, and names the character where a pair diverges. A drift in
+  either direction fails the chain, so the next edit to the description has to reach both pages in the same commit.
+- **`braid` is a keyword on every package in the family**, so the five registry entries share one discoverable term
+  instead of four different word lists.
+
 ## Core — 0.43.2 (2026-10-28: the artifact check waits out the publish it is checking)
 
 - **A 404 seconds after our own publish is a lag, not absence.** npm acknowledged the `0.43.1` publish, a read forty
