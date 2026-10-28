@@ -47,7 +47,8 @@ reader-facing record; the tag scheme above applies unchanged.
 
 - **The core suite stopped waiting on one file at a time.** Its 320 files ran serially in 640s; eight in flight measured
   157s here, a 3.9x drop, with every file's own result unchanged: 320 passed either way. Results print in fixture
-  order, so two runs of the same tree still diff line for line and a failing file's own output stays under its line.
+  order, so the fixture lines of two runs of the same tree still match and a failing file's own output stays under
+  its line; the summary tail carries the run's wall clock, so that line differs whenever the run did.
 - **Width sixteen is past the knee, and the numbers say why.** It bought 8 to 14 seconds of makespan over eight and
   cost 82% more total work, 2,490s against 1,364s, doubling the median file's duration from 3.5s to 7.3s and turning
   eight files red. The default is the machine's own parallelism capped at eight, and `--jobs 1` restores the serial
@@ -63,12 +64,23 @@ reader-facing record; the tag scheme above applies unchanged.
   classes, the exit code, that a hang is killed at its cap rather than awaited, and that two one-second files at
   width two overlap. At width one the two pool assertions redden and print the numbers that explain it: 2,278ms for
   the pair, and 2,188ms of summed file duration inside a 2,192ms run.
-- **A telegram fixture stopped inheriting the machine's own poller state.** `busy-steer.test.mjs` failed
-  deterministically on any machine where a live pi process held the poller ownership lock, because the extension
-  correctly refuses to start a second `getUpdates` consumer and every delivery wait then starved on a poller that
-  never polled. The test now pins `BRAID_HOME`, the lock path and the session role for the whole case, so it passes
-  beside a live seat, and a refused start says so instead of timing out mute. Five sibling fixtures inherit the same
-  state and are unchanged here.
+- **A telegram fixture stopped inheriting the machine's own poller state, and its five siblings followed.**
+  `busy-steer.test.mjs` failed deterministically on any machine where a live pi process held the poller ownership
+  lock, because the extension correctly refuses to start a second `getUpdates` consumer and every delivery wait then
+  starved on a poller that never polled. It now pins `BRAID_HOME`, the lock path and the session role for the whole
+  case, and so do `coalesce`, `inbound-queue-durability`, `collision-aware`, `collision-idle-ctx` and `index`, which
+  inherited the same state: the whole telegram suite now runs green beside a live seat, where five of its files
+  previously failed up to twenty cases each. A refused start names its three causes instead of starving mute.
+- **The runner names what it is waiting on, and the width it was given.** A run that has printed nothing for 30
+  seconds says once which file is holding the line, so an ordered flush that stalls on one slow file is visible
+  instead of looking like a hung suite. The contract fixture now also pins `--jobs` by census: a runner that ignores
+  the flag is caught, where before it passed every check in the file.
+- **Four claims the runner made about itself were wrong, and the sentences moved rather than the behaviour.** An
+  invalid `PI_TEST_TIMEOUT_MS` now warns like its siblings instead of silently keeping the default; the loader
+  allowance is 200s because twelve cases over five lanes is three waves of a 60s driver cap, not two; `SKIP` is keyed
+  by path relative to the test root, and its dead entry for a file that exists nowhere is gone; and the verdict's
+  reliance on the file's output pipes closing, not just its exit, is now stated and pinned by a fixture, because a
+  helper holding the inherited stdout keeps the file open past its own exit.
 
 ## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
 
