@@ -43,6 +43,23 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.2 (2026-10-28: the artifact check waits out the publish it is checking)
+
+- **A 404 seconds after our own publish is a lag, not absence.** npm acknowledged the `0.43.1` publish, a read forty
+  seconds later answered 404, and the version became servable four minutes forty-six seconds after the
+  acknowledgement. The packument is served with `cache-control: max-age=300`, so that window is a cache refresh rather
+  than a broken publish. The comparison step read the 404 as "not on the registry, nothing to compare", exited 0, and
+  the job went green without comparing anything. The read is now retried inside a bounded grace window (360 seconds
+  over 15-second intervals: 25 reads, 24 sleeps of the window, both parameters env-overridable). The bound is a count
+  of reads, not a deadline, so a slow read cannot hide an attempt.
+- **A green run can no longer be read as a verified one.** Every branch that cannot obtain the artifact emits
+  `::warning title=Registry artifact not verified::` naming the fact and the reads spent, and appends one line to the
+  run summary that distinguishes verified equal, differs, and not verified. A failure that is not a 404 is reported at
+  once: waiting does not change what it says about the registry, and the window covers propagation only.
+- **The artifact's own verdict is now on the run page.** A run whose step skipped its comparison carries a warning and a
+  summary line that say so, which is the difference between "the release was checked" and "the step ran".
+- **The package description names the suite the way the repository names it.** One character, no behaviour.
+
 ## Core — 0.43.1 (2026-10-28: the artifact check says what it ignored instead of failing silently)
 
 - **A step that cannot fail the job can no longer fail it silently.** The runner invokes the artifact-check body as
