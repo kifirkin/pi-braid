@@ -162,15 +162,20 @@ const CONTEXT_NAV_GUARD_TOOLS = [
   "context_proposals",
 ];
 // The herdr family renders no tool row (external guideline map, no
-// TOOL_GUIDELINES key) but is active in every real session; including it
-// gives the skills-loading derivation a real pair to render.
+// TOOL_GUIDELINES key) but is active in every real session, so the tool set
+// here mirrors what the prompt sees. It contributes no mechanical-trigger
+// example: the derivation pairs a tool's family token with a dash-delimited
+// token of a skill NAME, and the pane skill is named for the model rather
+// than the product, so no catalog name carries `herdr`.
 const HERDR_FAMILY_TOOLS = ["herdr_agent", "herdr_layout", "herdr_pane"];
 // Fixed synthetic catalog for the floor's rows and the derived trigger
 // examples (the real catalog is runtime state). It mirrors today's relevant
-// shape with stable names: a herdr skill exists; no memory or session skill
-// does. The rows live under one synthetic pack, so the section states that
-// root.
-const SKILL_NAMES = ["herdr-topology", "placement-discipline", "pi-reference"];
+// shape with stable names: the pane skill exists; no memory or session skill
+// does. `skill-usage` is the row whose name token pairs with a live tool
+// family (`skill_stats` -> skill), which the exactly-once test below needs so
+// the rendered parenthetical is not vacuous. The rows live under one synthetic
+// pack, so the section states that root.
+const SKILL_NAMES = ["pane-topology", "skill-usage", "placement-discipline"];
 const SYNTHETIC_PACK = "/catalog";
 const SKILL_ROWS = SKILL_NAMES.map((name) => ({
   name,
@@ -982,17 +987,29 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
     assert.deepEqual(
       mechanicalTriggerExamples(
         ["herdr_layout", "document_parse", "memory_store"],
-        ["herdr-topology", "parse-document", "placement-discipline"],
+        ["pane-topology", "parse-document", "placement-discipline"],
       ),
-      ["`document_parse` → document", "`herdr_layout` → herdr"],
+      ["`document_parse` → document"],
+    );
+    // The pair is a name match, not a topic match. The pane skill keeps the
+    // model's vocabulary (`pane`, `topology`) and drops the product token, so
+    // the herdr family derives no example from it: the pointer that reaches a
+    // model holding the tools is the tool description ("Deep procedures:
+    // pane-topology skill."), pinned in test-tool-description-trim.mjs. This
+    // assertion keeps the loss of the derived example visible, instead of
+    // letting a fixture that keeps a product-named skill paper over it.
+    assert.deepEqual(
+      mechanicalTriggerExamples(["herdr_layout"], ["pane-topology", "parse-document"]),
+      [],
+      "a skill named for the model derives no example for the product's tool family",
     );
     // The arrow target keeps the skill's own casing (case-insensitive match).
     assert.deepEqual(mechanicalTriggerExamples(["x_ray"], ["X-Ray-Viewer"]), ["`x_ray` → X"]);
     assert.ok(
-      skillsLoadingText(["herdr_layout"], [
-        { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+      skillsLoadingText(["document_parse"], [
+        { name: "parse-document", description: "", filePath: "/catalog/parse-document/SKILL.md" },
       ]).includes(
-        "(`herdr_layout` → herdr) → read that SKILL.md before the first call in the family.",
+        "(`document_parse` → document) → read that SKILL.md before the first call in the family.",
       ),
       "the trigger renders the computed pair inline",
     );
@@ -1000,12 +1017,12 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
 
   it("an unmatched family yields no example and no parenthetical", () => {
     assert.deepEqual(
-      mechanicalTriggerExamples(["memory_store", "session_health"], ["herdr-topology"]),
+      mechanicalTriggerExamples(["memory_store", "session_health"], ["pane-topology"]),
       [],
       "no skill token matches the memory/session families",
     );
     const trigger = skillsLoadingText(["memory_store", "session_health"], [
-      { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+      { name: "pane-topology", description: "", filePath: "/catalog/pane-topology/SKILL.md" },
     ])
       .split("\n")
       .find((l) => l.startsWith("Mechanical trigger"));
@@ -1017,15 +1034,16 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
   });
 
   it("multiple matches render deterministically across input permutations", () => {
-    const tools = [
-      "herdr_pane",
-      "document_search",
-      "herdr_agent",
-      "document_parse",
-      "herdr_layout",
+    // Generic family names: the derivation is a pure function of the two name
+    // lists, and the live catalog carries one pair, so ordering across several
+    // families is pinned here rather than on names the product owns.
+    const tools = ["widget_open", "widget_read", "gadget_x", "document_parse"];
+    const skills = ["widget-map", "gadget-guide", "parse-document"];
+    const expected = [
+      "`document_parse` → document",
+      "`gadget_x` → gadget",
+      "`widget_open` → widget",
     ];
-    const skills = ["pi-reference", "herdr-topology", "parse-document"];
-    const expected = ["`document_parse` → document", "`herdr_agent` → herdr"];
     assert.deepEqual(mechanicalTriggerExamples(tools, skills), expected);
     assert.deepEqual(
       mechanicalTriggerExamples([...tools].reverse(), [...skills].reverse()),
@@ -1045,7 +1063,7 @@ describe("skills-loading mechanical trigger (pure derivation)", () => {
     // the trigger without a parenthetical (the case above).
     assert.equal(skillsLoadingText(["memory_store"], []), "", "no catalog, no floor");
     const text = skillsLoadingText(["memory_store"], [
-      { name: "herdr-topology", description: "", filePath: "/catalog/herdr-topology/SKILL.md" },
+      { name: "pane-topology", description: "", filePath: "/catalog/pane-topology/SKILL.md" },
     ]);
     // Paragraphs 1 and 2 stay byte-stable (the pinned strategy text).
     assert.ok(text.startsWith(skillsCatalogRule(SYNTHETIC_PACK)), "catalog rule renders first");

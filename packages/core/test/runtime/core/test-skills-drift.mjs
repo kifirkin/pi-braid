@@ -274,7 +274,7 @@ test("no directory name, owner path, or skill name is baked into the trigger", (
     "tools/cli",
     "/Users/",
     "/home/",
-    "herdr-topology",
+    "pane-topology",
     "tone-quality",
     "placement-discipline",
   ];

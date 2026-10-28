@@ -217,7 +217,7 @@ test("a frontmatter `trigger:` string is read as well as a `triggers:` list", ()
   assert.ok(byName.get("voice-replies").triggers.includes("text-to-speech"));
   assert.ok(byName.get("healthcheck").triggers.includes("tool diagnostics"));
   // One declares the plural key as a YAML list.
-  assert.ok(byName.get("herdr-topology").triggers.includes("driving herdr panes or agents"));
+  assert.ok(byName.get("pane-topology").triggers.includes("driving panes"));
 });
 
 test("the description's Triggers: tail still works when nothing else is declared", () => {

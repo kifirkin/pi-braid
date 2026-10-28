@@ -3,7 +3,7 @@
  * trim on the provider payload tools channel. The pi-herdr npm extension
  * registers 3 tools whose registered descriptions are long (1451 chars
  * combined); the
- * lines per tool with the deep form moved to the herdr-topology skill.
+ * lines per tool with the deep form moved to the pane-topology skill.
  * Mechanism: a before_provider_request handler in the prompt-builder
  * rewrites ONLY the description field of trimmed tools — the only official
  * interception point pi-core 0.85.1 exposes for registered descriptions
@@ -117,7 +117,7 @@ await test("fallback: unlisted herdr_* tool with a long description is capped + 
   assert.ok(desc, "fallback trim produced");
   assert.ok(desc.length <= 400, `fallback is short (${desc.length} chars)`);
   assert.ok(desc.includes(GATE), "fallback carries the when-gate");
-  assert.ok(desc.includes("herdr-topology skill"), "fallback points at the skill");
+  assert.ok(desc.includes("pane-topology skill"), "fallback points at the skill");
 });
 
 await test("fallback does not touch already-short herdr descriptions or non-herdr names", () => {

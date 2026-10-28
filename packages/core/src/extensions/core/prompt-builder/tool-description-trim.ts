@@ -26,7 +26,7 @@
  *
  * Dependency-inversion compatibility: descriptions remain owned by the
  * registering package. The curated strings below only SHORTEN the channel
- * form and point at the herdr-topology SKILL for the deep form
+ * form and point at the pane-topology SKILL for the deep form
  * (progressive disclosure). The when-gate ("only when the user explicitly
  * mentions Herdr") is load-bearing and preserved in every rewrite.
  *
@@ -40,11 +40,11 @@
  */
 export const TRIM_TOOL_DESCRIPTIONS: Record<string, string> = {
   herdr_layout:
-    "Create/inspect Herdr terminal topology (workspaces, tabs, panes; layout only, never starts agents or commands). Use only when the user explicitly mentions Herdr. Read pane IDs from results; deep procedures live in the herdr-topology skill.",
+    "Create/inspect Herdr terminal topology (workspaces, tabs, panes; layout only, never starts agents or commands). Use only when the user explicitly mentions Herdr. Read pane IDs from results; deep procedures live in the pane-topology skill.",
   herdr_pane:
-    "Raw Herdr terminal pane control: run, read, wait_output, send_text/send_keys, inspect, close. Use only when the user explicitly mentions Herdr; prefer herdr_agent for recognized coding agents. Deep procedures: herdr-topology skill.",
+    "Raw Herdr terminal pane control: run, read, wait_output, send_text/send_keys, inspect, close. Use only when the user explicitly mentions Herdr; prefer herdr_agent for recognized coding agents. Deep procedures: pane-topology skill.",
   herdr_agent:
-    "Drive a recognized coding agent in an existing Herdr pane: start, prompt, wait, read, send_keys. Use only when the user explicitly mentions Herdr; needs an available shell pane from herdr_layout first. Deep procedures: herdr-topology skill.",
+    "Drive a recognized coding agent in an existing Herdr pane: start, prompt, wait, read, send_keys. Use only when the user explicitly mentions Herdr; needs an available shell pane from herdr_layout first. Deep procedures: pane-topology skill.",
 };
 
 /** Third-party family the trim applies to (prefix match for the fallback). */
@@ -54,7 +54,7 @@ const TRIMMED_PREFIX = "herdr_";
 const HERDR_GATE = "Use only when the user explicitly mentions Herdr";
 
 /** Skill pointer appended to fallback trims (progressive disclosure home). */
-const SKILL_POINTER = "Deep procedures: herdr-topology skill.";
+const SKILL_POINTER = "Deep procedures: pane-topology skill.";
 
 /** Fallback trim applies only to descriptions longer than this. */
 const FALLBACK_MAX_CHARS = 240;

@@ -323,7 +323,10 @@ herdr action=send pane=<successor> text="[agent:orchestrator→successor] Read /
 
 Best for a successor that will orchestrate subagents. TUI pi persists, accepts signaling, can spawn its own workers.
 
-3. Transfer mastership: the current session closes when the successor completes. The successor closes the predecessor's pane with `herdr_pane close <predecessor-pane>` - the predecessor cannot close the pane it runs in, so the incoming seat owns that one close and the transfer ends there.
+3. Transfer mastership: the self-transfer procedure below owns the detail. The short form: the
+   successor closes the predecessor's pane with `herdr_pane close <predecessor-pane>` after
+   verifying the predecessor's process is gone, because a process cannot close the pane it runs
+   in, and the incoming seat owns that one close. The predecessor stands down by ending its turn.
 4. The successor starts clean (no bloat) and reads the handoff.
 
 This is a **pipeline, not a loop**: each session is a fresh stage. Never compact above 70% - cascade instead.
@@ -489,6 +492,64 @@ Master: "I am pane-abc. Your task is X. When done, close pane-abc."
 ```
 
 Without this, the child cannot locate the parent to close it.
+
+### Self-transfer: a seat hands mastership to a fresh successor
+
+A running process keeps the module it booted with, so a fresh process is the only way to pick
+up a newer build, a changed setting, or a new route order. The seat may hand over whenever that
+is what the work needs; it does not wait for a crisis.
+
+Reach for it when:
+
+- a newer build exists than the one this process booted with (an adoption wave merged, or the
+  owner published),
+- settings or route order changed and the running process cannot see them,
+- the seat is wedged, or its context is exhausted past recovery,
+- the owner asks for it.
+
+Not a first resort for a long session: a handover costs a boot, a re-derivation of every claim,
+and a window in which neither seat fully owns the channel.
+
+1. **Write the handoff and finish the turn's durable writes first.** Goal, live state (workers
+   and their panes, open locks, branches), the queue with paths, and the traps this seat
+   learned. After step 2 a prompt may be the last thing this seat does, so anything still only
+   in context is lost.
+2. **Spawn the successor in its own pane, on the newest installed build.** Dispatch the handoff
+   prompt with `wait: false` and let it boot; the successor reads the handoff, re-derives its
+   boot claims from instruments, and writes its boot report in its own pane, because the pane is
+   the only channel between seats.
+3. **Verify the boot claims from that pane.** Version and model, the session it opened, the
+   skills and settings it loaded: a successor reporting a different build than the one you mean
+   to hand over to has not picked up the change, and the transfer stops there.
+4. **Release the channel, then stand down.** `telegram_poller` disable, write "CHANNEL IS FREE"
+   into the successor's pane through a herdr call that passes `wait: false`, and end the turn with
+   a text-only reply. After that the outgoing seat touches no channel, fleet, queue, repo or
+   setting, and arms at most one timer to read the successor's pane.
+
+**The trap, and what it costs.** Never end a handover with a `herdr_agent prompt` against the
+successor's pane and the default `wait: true`. The default waits for the successor's lifecycle
+to settle; a booting successor is working and does not settle, so the outgoing seat blocks
+inside the call, never stands down, and the poller lock stays with a seat that has already
+handed over. The successor's `telegram_poller` enable is then refused while a live foreign pid
+holds that lock, and the inbound channel goes to a process that has stopped reading it.
+
+The mirror rule, for the incoming side: a handoff message that arrives as a herdr-delivered
+prompt is a blocked predecessor waiting on your lifecycle. Finish the durable writes of that
+turn (lock read, journal, scratchpad) and end the turn with a text-only reply; the turn end is
+what releases it, and holding your own turn open to wait for the predecessor blocks both seats.
+
+**Who closes which pane.** The outgoing seat does not close its own pane, because a process
+cannot close the pane it runs in. The successor closes it with `herdr_pane close <pane>` after
+verifying the outgoing process is actually gone (the pid the poller lock named, or `ps`), since
+a close against a live process destroys in-flight state. That one pane close is the whole of the
+exception: the successor still does not close panes it did not inherit.
+
+**The journal.** The transfer is two lines in the project journal, not a paragraph in the
+handoff: an intention line before the successor is spawned (`node
+packages/core/scripts/journal-append.mjs`), and an outcome line once the outgoing process is
+gone, with the poller-lock read as its evidence (`node
+packages/core/scripts/check-journal.mjs`). An intention with no outcome entry is an unfinished
+handover, and the next seat treats the channel as contended until it reads otherwise.
 
 ## Next-Task Selection
 

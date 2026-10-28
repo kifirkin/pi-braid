@@ -81,7 +81,7 @@ const EXCLUSIONS = [
   { path: "packages/skills/skills/socratic-irony/SKILL.md", reason: "deprecation marker" },
   { path: "packages/skills/skills/twitter/SKILL.md", reason: "deprecation marker" },
   {
-    path: "packages/core/skills/herdr-topology/SKILL.md",
+    path: "packages/core/skills/pane-topology/SKILL.md",
     reason: "observation provenance for empirical claims: the date tells a reader whether the evidence is current",
   },
   {

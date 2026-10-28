@@ -379,7 +379,7 @@ test("generic-keyword-only match cannot take the slot of a cooldown-protected na
 
 // ── frontmatter triggers ──────────────────────────────────────────────
 
-const paneTopology = mk("herdr-topology", "Terminal topology guidance.");
+const paneTopology = mk("pane-topology", "Terminal topology guidance.");
 
 test("a trigger phrase hit scores +2 and qualifies like a name hit", () => {
   const skill = { ...paneTopology, triggers: ["pane topology"] };
@@ -405,7 +405,10 @@ test("multiple trigger hits accumulate", () => {
 
 test("without a prompt, triggers cannot match (keyword-only callers unchanged)", () => {
   const skill = { ...paneTopology, triggers: ["pane topology"] };
-  assert.equal(scoreSkill(skill, ["pane"]), 0, "desc-only lone keyword stays below the bar");
+  // `guidance` is description-only for this fixture: the name tokens are
+  // `pane` and `topology`, so a lone weak hit stays under the qualification
+  // bar whether or not a trigger phrase would have matched a prompt.
+  assert.equal(scoreSkill(skill, ["guidance"]), 0, "desc-only lone keyword stays below the bar");
 });
 
 test("trigger-qualified skill flows through the full selection", () => {
@@ -418,7 +421,7 @@ test("trigger-qualified skill flows through the full selection", () => {
   const out = selectSuggestions(scoredAll, [], 1);
   assert.deepEqual(
     out.map((s) => s.skill.name),
-    ["herdr-topology"],
+    ["pane-topology"],
   );
 });
 
@@ -511,7 +514,7 @@ test("readSkillTriggers memoizes by mtime and picks up rewrites", () => {
 test("triggerMatches: word boundaries, hyphen tokens, multi-word phrases", () => {
   assert.ok(triggerMatches("pane", "split the pane right"));
   assert.ok(!triggerMatches("pane", "paneledd display"));
-  assert.ok(triggerMatches("herdr-topology", "check the herdr-topology doc"));
+  assert.ok(triggerMatches("pane-topology", "check the pane-topology doc"));
   assert.ok(triggerMatches("pane topology", "fix my pane topology now"));
   assert.ok(!triggerMatches("pane topology", "pane topologyx"));
   assert.ok(triggerMatches("mem", "post a mem"));

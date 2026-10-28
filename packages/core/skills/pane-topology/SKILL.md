@@ -1,25 +1,39 @@
 ---
-name: herdr-topology
-description: "Deep topology guidance for driving Herdr terminal panes and coding agents through the herdr_layout, herdr_pane, and herdr_agent tools: the workspace/tab/pane model, opaque ID handling, read sources and output recovery, agent lifecycle states, and orchestrator field procedures (fresh-restart over nudge-resume, staged-prompt verification, pane hygiene). Load when actually controlling Herdr, not on first mention."
+name: pane-topology
+description: "Use when work needs more than one terminal surface, or when a pane, tab or agent has to be read or driven: the containment model (workspaces hold tabs, tabs hold panes, panes hold processes), opaque ID handling, the read sources that recover output, the two control surfaces the herdr_layout, herdr_pane and herdr_agent tools expose (a raw terminal channel and a coding-agent channel), agent lifecycle states, and the orchestrator procedures that keep a multi-pane wave honest about its progress. Load when actually splitting, reading or driving a pane, not on first mention."
 triggers:
-  - "driving herdr panes or agents"
-  - "herdr_layout / herdr_pane / herdr_agent in use"
-  - "multi-pane worker coordination"
+  - "pane topology"
+  - "split a pane"
+  - "terminal panes"
+  - "driving panes"
+  - "herdr_layout"
+  - "herdr_pane"
+  - "herdr_agent"
 validated: 2026-09-07
 verdict: KEEP
 ---
 
-# Herdr Topology
+# Pane Topology
 
-Progressive-disclosure companion to the Herdr tools. The tool descriptors
-carry one line each; this file carries the deep form. Herdr itself is used
-**only when the user explicitly mentions Herdr** - if you are reading this,
-that gate has already been satisfied.
+A containment model and two control surfaces over it. The model is the part a
+model needs before it touches anything: what a terminal multiplexer contains,
+what an identifier points at, and what a read can recover. The surfaces are
+`herdr_layout` (shape and inspect the topology), `herdr_pane` (raw terminal
+control) and `herdr_agent` (drive a recognized coding agent in a pane).
+
+This file is the deep form; each tool descriptor carries one line. Where a
+fact is Herdr's - its CLI quirks, its version behavior, its lifecycle states,
+its issue numbers - the fact says Herdr, because that is where it is true. The
+rest is the model, and a different multiplexer keeps the model and replaces
+the facts.
+
+Herdr itself is used **only when the user explicitly mentions Herdr**. If you
+are reading this, that gate has already been satisfied.
 
 ## The containment model
 
-Workspaces contain tabs; tabs contain panes. Herdr recognizes coding agents
-occupying panes and exposes them by name.
+Three levels, and every operation names one of them. Herdr calls them
+workspaces, tabs and panes; the shape is what matters:
 
 - Creating a workspace or tab also creates its root pane; splitting an
   existing pane creates another pane. There is no "create empty container".
@@ -28,6 +42,8 @@ occupying panes and exposes them by name.
 - A pane exists whether or not an agent occupies it. `herdr_agent start`
   requires an existing, available shell pane and never creates, splits, or
   moves layout.
+- Herdr recognizes coding agents occupying panes and exposes them by name, so
+  an agent is addressable two ways: by name, or by the pane hosting it.
 
 ## IDs are opaque: read, never construct
 
@@ -57,7 +73,8 @@ replaced: a process cannot close the pane it runs in, so during a
 mastership transfer the incoming seat owns that close and runs
 `herdr_pane close <pane>` on the outgoing seat's pane. The exception covers
 that pane and nothing else - worker panes you did not spawn, tabs, and
-workspaces still wait for the user's word.
+workspaces still wait for the user's word. The transfer procedure, including
+when it is worth its cost, is in the subagent-orchestration skill.
 
 ## Panes: raw terminal control
 
@@ -120,8 +137,8 @@ prompt, wait, read, and send_keys instead of raw pane input.
   whole run - and a timed-out wait does NOT mean the prompt failed; check `get`
   before re-sending. Only prompt with the default when blocking is the intent.
   (Observed 2026-10-09: a helper that had read only the native `herdr` docs
-  omitted `wait:false` and hung its dispatcher; the native `herdr` skill is
-  model-disabled on this machine, this skill is the operating surface.)
+  omitted `wait:false` and hung its dispatcher; the native `herdr` skill can be
+  model-disabled, leaving this skill as the operating surface.)
 - `idle` means ready for input with the tab seen in the focused UI; `done`
   is the same underlying readiness after unseen background work finishes.
   Focusing the tab (or targeting the pane/agent) marks it seen; CLI reads do
@@ -269,6 +286,6 @@ left running holds a name, a pane, and possibly a bill.
   is the always-visible form; this skill is the on-demand deep form.
 - `herdr_layout` results are the single source of topology truth; everything
   else takes IDs from there.
-- Orchestration-level concerns (spawn patterns, worker lifecycles, context
-  handoff between agents) live in the subagent-orchestration skill; this
-  file only covers the terminal topology underneath them.
+- Orchestration-level concerns (spawn patterns, worker lifecycles, mastership
+  transfer, context handoff between agents) live in the subagent-orchestration
+  skill; this file only covers the terminal topology underneath them.

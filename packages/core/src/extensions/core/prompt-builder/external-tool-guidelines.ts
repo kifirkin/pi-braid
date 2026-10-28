@@ -15,7 +15,7 @@
  * The registered tool DESCRIPTIONS of herdr_* are trimmed
  * to 1-2 lines at the provider-payload layer (tool-description-trim.ts,
  * before_provider_request) and the deep topology guidance lives in the
- * herdr-topology SKILL (progressive disclosure). This map keeps its
+ * pane-topology SKILL (progressive disclosure). This map keeps its
  * render-fallback role (priority 3) — still load-bearing if pi-herdr ever
  * stops self-registering promptGuidelines.
  */

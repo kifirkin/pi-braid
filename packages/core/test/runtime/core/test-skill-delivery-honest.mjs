@@ -69,20 +69,20 @@ async function test(name, fn) {
 // ── fixture ─────────────────────────────────────────────────────────────────
 
 const SKILLS_DIR = join(FAKE_HOME, "skills");
-const PANE_SKILL_DIR = join(SKILLS_DIR, "herdr-topology");
+const PANE_SKILL_DIR = join(SKILLS_DIR, "pane-topology");
 mkdirSync(PANE_SKILL_DIR, { recursive: true });
 const PANE_SKILL_PATH = join(PANE_SKILL_DIR, "SKILL.md");
 writeFileSync(
   PANE_SKILL_PATH,
-  "---\nname: herdr-topology\ndescription: Herdr pane topology\n---\n\n" +
+  "---\nname: pane-topology\ndescription: Terminal pane topology\n---\n\n" +
     "Create panes, split them right or down, and wait for an agent to settle.\n",
   "utf-8",
 );
 
 setCachedSkills([
   {
-    name: "herdr-topology",
-    description: "Herdr pane topology",
+    name: "pane-topology",
+    description: "Terminal pane topology",
     filePath: PANE_SKILL_PATH,
     baseDir: SKILLS_DIR,
   },
@@ -177,7 +177,7 @@ await test("(a) suggestion reaches the session stream on a live-turn shape", asy
   assert.ok(body.includes("[SKILL SUGGESTION]"), "suggestion body");
   assert.ok(body.includes(PANE_SKILL_PATH), "carries the SKILL.md path");
   assert.equal(delivered[0].details._braidSource, "skills-auto-inject");
-  assert.deepEqual(delivered[0].details.skills, ["herdr-topology"]);
+  assert.deepEqual(delivered[0].details.skills, ["pane-topology"]);
 });
 
 // ── (b) `suggested` is a measurement of arrival ─────────────────────────────
@@ -192,9 +192,9 @@ await test("(b) suggested counts only suggestions present in the stream", async 
   await pi.handlers.before_agent_start({ prompt: SKILL_PROMPT }, ctx);
 
   const delivered = suggestionsIn(pi).filter((m) =>
-    (m.details.skills ?? []).includes("herdr-topology"),
+    (m.details.skills ?? []).includes("pane-topology"),
   ).length;
-  const counted = getSkillStats(ctx)["herdr-topology"]?.suggested ?? 0;
+  const counted = getSkillStats(ctx)["pane-topology"]?.suggested ?? 0;
   assert.equal(
     counted,
     delivered,
@@ -214,7 +214,7 @@ await test("(c) a detected read converts the suggestion; no read leaves the miss
   openTurn();
   await pi.handlers.before_agent_start({ prompt: SKILL_PROMPT }, ctx);
   assert.equal(suggestionsIn(pi).length, 1, "suggestion delivered");
-  let s = getSkillStats(ctx)["herdr-topology"];
+  let s = getSkillStats(ctx)["pane-topology"];
   assert.equal(s.suggested, 1, "suggested recorded");
   assert.equal(s.actual, 0, "no read yet");
   assert.equal(s.suggested - s.actual, 1, "the unconverted suggestion stays visible");
@@ -224,11 +224,11 @@ await test("(c) a detected read converts the suggestion; no read leaves the miss
     {
       toolName: "read",
       input: { path: PANE_SKILL_PATH },
-      content: [{ type: "text", text: "---\nname: herdr-topology\n---\nbody" }],
+      content: [{ type: "text", text: "---\nname: pane-topology\n---\nbody" }],
     },
     ctx,
   );
-  s = getSkillStats(ctx)["herdr-topology"];
+  s = getSkillStats(ctx)["pane-topology"];
   assert.equal(s.actual, 1, "detected read of the suggested SKILL.md converts");
   assert.equal(s.loaded, 1, "loaded mirrors the detected read");
   assert.equal(s.suggested - s.actual, 0, "the gap closes on conversion");
@@ -245,7 +245,7 @@ await test("(c) a detected read converts the suggestion; no read leaves the miss
     },
     ctx,
   );
-  s = getSkillStats(ctx)["herdr-topology"];
+  s = getSkillStats(ctx)["pane-topology"];
   assert.equal(s.actual, 1, "a non-skill read never converts");
 });
 
@@ -253,7 +253,7 @@ await test("(c) a detected read converts the suggestion; no read leaves the miss
 
 await test("(d) the whisper points at the read and solicits no reply", () => {
   const whisper = formatWhisper([
-    { name: "herdr-topology", description: "Herdr pane topology", filePath: PANE_SKILL_PATH },
+    { name: "pane-topology", description: "Terminal pane topology", filePath: PANE_SKILL_PATH },
   ]);
   assert.ok(whisper.includes(PANE_SKILL_PATH), "points at the SKILL.md path");
   assert.ok(
@@ -281,7 +281,7 @@ await test("(e) a suppressed suggestion is not counted either", async () => {
     await pi.handlers.before_agent_start({ prompt: SKILL_PROMPT }, ctx);
     assert.equal(suggestionsIn(pi).length, 0, "nudges off → nothing delivered");
     assert.equal(
-      getSkillStats(ctx)["herdr-topology"]?.suggested ?? 0,
+      getSkillStats(ctx)["pane-topology"]?.suggested ?? 0,
       0,
       "nothing delivered → nothing counted, so the counter stays a measurement",
     );
