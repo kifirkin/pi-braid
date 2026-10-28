@@ -20,6 +20,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -29,6 +30,8 @@ import telegramExtension, {
   ENV_ALLOWED_USERS,
   ENV_POLL_ENABLED,
   ENV_POLL_DISABLED,
+  ENV_POLLER_LOCK_FILE,
+  ENV_SESSION_ROLE,
   ENV_STATE_FILE,
   ENV_POLL_INTERVAL_MS,
   ENV_COALESCE_WINDOW_MS,
@@ -54,9 +57,32 @@ import {
 } from "./fixtures.mjs";
 import { sleep, waitFor } from "./helpers/poll.mjs";
 
+/**
+ * Set process.env for the duration of fn, restoring every prior value after.
+ *
+ * Every window also pins the machine-wide braid tree the poller resolves — the
+ * root (BRAID_HOME), the ownership lock, and the session role — at a fresh dir
+ * this case owns. The pins hold for the whole case, not just the factory call,
+ * because the reads keep happening: the pause flag on every poll cycle, the
+ * lock path again when the poller releases at shutdown, the role on every start
+ * attempt (the session_start re-arm or an explicit enable inside the case). A
+ * window that ends early hands those reads the live tree, where another pi
+ * process's lock refuses the start, a paused owner holds every delivery, and a
+ * worker marker refuses the poller outright. The runner pins the same three for
+ * the children it spawns (child-env.mjs); a file run on its own inherits them
+ * instead. Caller pairs win, so a case may still unset BRAID_HOME to exercise a
+ * default path.
+ */
 function withEnv(pairs, fn) {
+  const pin = mkdtempSync(join(tmpdir(), "tg-coalesce-pin-"));
   const saved = new Map();
-  for (const [key, value] of Object.entries(pairs)) {
+  for (const [key, value] of Object.entries({
+    BRAID_HOME: pin,
+    [ENV_POLLER_LOCK_FILE]: join(pin, "telegram-poller.lock"),
+    TELEGRAM_POLLER_LOCK_FILE: undefined,
+    [ENV_SESSION_ROLE]: undefined,
+    ...pairs,
+  })) {
     saved.set(key, process.env[key]);
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -65,6 +91,15 @@ function withEnv(pairs, fn) {
     for (const [key, value] of saved) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
+    }
+    // The pin dir holds this case's lock file, so it is a case artifact and
+    // must not outlive the case: one dir per case per run accumulates in tmp.
+    // Cleanup cannot mask the case's own failure — force skips a missing path
+    // and the catch covers the rest.
+    try {
+      rmSync(pin, { recursive: true, force: true });
+    } catch {
+      // best effort: a leftover dir in tmp is harmless
     }
   };
   let result;
@@ -87,6 +122,30 @@ function tmpStateFile(prefix) {
     `tg-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     "telegram-state.json",
   );
+}
+
+/**
+ * Wait until the background poller has issued its first getUpdates.
+ *
+ * A refused start is invisible from the delivery waits below: the extension
+ * reports it through the notify sink, and nothing binds that sink before the
+ * first session_start. Without this wait a refusal reads as a bare "condition
+ * not met within 3000ms" — a description of the observer, not of the world.
+ */
+async function waitForFirstPoll(fetchFn, timeoutMs = 3000) {
+  try {
+    await waitFor(
+      () => fetchFn.calls.some((call) => call.url.includes("getUpdates")),
+      timeoutMs,
+    );
+  } catch (error) {
+    throw new Error(
+      "the poller never issued getUpdates: its start was refused — a live pid " +
+        "holds the machine-wide ownership lock, the session role is worker, or " +
+        "no braid root resolves",
+      { cause: error },
+    );
+  }
 }
 
 /** The hold lives beside the poller state file, named after its stem. */
@@ -271,38 +330,39 @@ test("coalescing: an idle burst is delivered as ONE message carrying every part"
   const fetchFn = makeFeedFetch();
   await withEnv(coalesceEnv(tmpStateFile("coalesce-idle")), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
-  });
+    await waitForFirstPoll(fetchFn);
 
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "new" },
-      makeCtx(true),
-    );
-    fetchFn.feed(
-      makeUpdate(901, { text: "first part" }),
-      makeUpdate(902, { text: "second part" }),
-    );
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(150); // past the window: no second delivery may follow
-    assert.equal(pi.messages.length, 1, "one burst → one user message");
-    const [content, options] = pi.messages[0];
-    assert.equal(options?.deliverAs, "steer");
-    assert.ok(
-      content.includes("first part") && content.includes("second part"),
-      "every part is carried",
-    );
-    assert.ok(
-      content.indexOf("first part") < content.indexOf("second part"),
-      "parts keep arrival order",
-    );
-    const headerLines = content.split("\n");
-    assert.equal(headerLines[0], "[braid-whisper - telegram]");
-    assert.equal(headerLines[1], "2 coalesced owner messages");
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "new" },
+        makeCtx(true),
+      );
+      fetchFn.feed(
+        makeUpdate(901, { text: "first part" }),
+        makeUpdate(902, { text: "second part" }),
+      );
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      await sleep(150); // past the window: no second delivery may follow
+      assert.equal(pi.messages.length, 1, "one burst → one user message");
+      const [content, options] = pi.messages[0];
+      assert.equal(options?.deliverAs, "steer");
+      assert.ok(
+        content.includes("first part") && content.includes("second part"),
+        "every part is carried",
+      );
+      assert.ok(
+        content.indexOf("first part") < content.indexOf("second part"),
+        "parts keep arrival order",
+      );
+      const headerLines = content.split("\n");
+      assert.equal(headerLines[0], "[braid-whisper - telegram]");
+      assert.equal(headerLines[1], "2 coalesced owner messages");
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
+  });
 });
 
 test("coalescing: a burst spanning two poll cycles still lands as ONE message", async () => {
@@ -315,27 +375,30 @@ test("coalescing: a burst spanning two poll cycles still lands as ONE message", 
     }),
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      await waitForFirstPoll(fetchFn);
+
+      try {
+        pi.emit(
+          "session_start",
+          { type: "session_start", reason: "new" },
+          makeCtx(true),
+        );
+        fetchFn.feed(makeUpdate(903, { text: "early part" }));
+        await waitFor(() => fetchFn.servedUpdates() === 1, 3000); // window armed
+        fetchFn.feed(makeUpdate(904, { text: "late part" })); // next cycle, inside the window
+        await waitFor(() => pi.messages.length >= 1, 3000);
+        await sleep(450); // past the window
+        assert.equal(pi.messages.length, 1, "across-cycle burst → ONE message");
+        const content = pi.messages[0][0];
+        assert.ok(
+          content.includes("early part") && content.includes("late part"),
+        );
+      } finally {
+        pi.emit("session_shutdown");
+        await sleep(50);
+      }
     },
   );
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "new" },
-      makeCtx(true),
-    );
-    fetchFn.feed(makeUpdate(903, { text: "early part" }));
-    await waitFor(() => fetchFn.servedUpdates() === 1, 3000); // window armed
-    fetchFn.feed(makeUpdate(904, { text: "late part" })); // next cycle, inside the window
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(450); // past the window
-    assert.equal(pi.messages.length, 1, "across-cycle burst → ONE message");
-    const content = pi.messages[0][0];
-    assert.ok(content.includes("early part") && content.includes("late part"));
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });
 
 test("coalescing: a busy burst leaves as ONE combined steer at window close", async () => {
@@ -343,39 +406,40 @@ test("coalescing: a busy burst leaves as ONE combined steer at window close", as
   const fetchFn = makeFeedFetch();
   await withEnv(coalesceEnv(tmpStateFile("coalesce-busy")), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
-  });
+    await waitForFirstPoll(fetchFn);
 
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "new" },
-      makeCtx(false),
-    );
-    fetchFn.feed(
-      makeUpdate(905, { text: "queued one" }),
-      makeUpdate(906, { text: "queued two" }),
-    );
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(150); // past the window: no second delivery may follow
-    assert.equal(
-      pi.messages.length,
-      1,
-      "the whole busy burst leaves as ONE combined steer",
-    );
-    const [content, options] = pi.messages[0];
-    assert.equal(options?.deliverAs, "steer", "it reaches the running turn");
-    assert.ok(
-      content.includes("queued one") && content.includes("queued two"),
-      "both parts are carried",
-    );
-    assert.ok(
-      content.indexOf("queued one") < content.indexOf("queued two"),
-      "arrival order preserved",
-    );
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "new" },
+        makeCtx(false),
+      );
+      fetchFn.feed(
+        makeUpdate(905, { text: "queued one" }),
+        makeUpdate(906, { text: "queued two" }),
+      );
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      await sleep(150); // past the window: no second delivery may follow
+      assert.equal(
+        pi.messages.length,
+        1,
+        "the whole busy burst leaves as ONE combined steer",
+      );
+      const [content, options] = pi.messages[0];
+      assert.equal(options?.deliverAs, "steer", "it reaches the running turn");
+      assert.ok(
+        content.includes("queued one") && content.includes("queued two"),
+        "both parts are carried",
+      );
+      assert.ok(
+        content.indexOf("queued one") < content.indexOf("queued two"),
+        "arrival order preserved",
+      );
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
+  });
 });
 
 test("coalescing: a lone message is delivered once, in the plain envelope", async () => {
@@ -383,28 +447,29 @@ test("coalescing: a lone message is delivered once, in the plain envelope", asyn
   const fetchFn = makeFeedFetch();
   await withEnv(coalesceEnv(tmpStateFile("coalesce-lone")), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
-  });
+    await waitForFirstPoll(fetchFn);
 
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "new" },
-      makeCtx(true),
-    );
-    fetchFn.feed(makeUpdate(907, { text: "solo" }));
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(150);
-    assert.equal(pi.messages.length, 1, "one message → one delivery");
-    const content = pi.messages[0][0];
-    assert.match(content, /^\[braid-whisper - telegram( @ [^\]]+)?\]/);
-    assert.ok(
-      !content.includes("coalesced"),
-      "a lone message is not shaped like a batch",
-    );
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "new" },
+        makeCtx(true),
+      );
+      fetchFn.feed(makeUpdate(907, { text: "solo" }));
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      await sleep(150);
+      assert.equal(pi.messages.length, 1, "one message → one delivery");
+      const content = pi.messages[0][0];
+      assert.match(content, /^\[braid-whisper - telegram( @ [^\]]+)?\]/);
+      assert.ok(
+        !content.includes("coalesced"),
+        "a lone message is not shaped like a batch",
+      );
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
+  });
 });
 
 test("coalescing: session_shutdown cancels the window; the entry stays on disk", async () => {
@@ -414,22 +479,30 @@ test("coalescing: session_shutdown cancels the window; the entry stays on disk",
   const fetchFn = makeFeedFetch();
   await withEnv(coalesceEnv(stateFile, { windowMs: "200" }), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
+    await waitForFirstPoll(fetchFn);
+
+    pi.emit(
+      "session_start",
+      { type: "session_start", reason: "new" },
+      makeCtx(true),
+    );
+    fetchFn.feed(makeUpdate(908, { text: "mid-window" }));
+    // The precondition is the ACCEPTED hold, not the fetch: the served counter
+    // is bumped before the delivery callback runs, so waiting on it can emit
+    // the shutdown while the arrival callback is still pending — which re-arms
+    // the window in the closing closure and delivers after the session ended.
+    await waitFor(
+      async () => (await loadInboundQueue(queueFile)).length === 1,
+      3000,
+    );
+
+    pi.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
+    await sleep(300); // past the window the shutdown cancelled
+    assert.equal(pi.messages.length, 0, "the window died with the session");
+    const held = await loadInboundQueue(queueFile);
+    assert.equal(held.length, 1, "the entry is durable across the shutdown");
+    assert.equal(held[0].message.updateId, 908);
   });
-
-  pi.emit(
-    "session_start",
-    { type: "session_start", reason: "new" },
-    makeCtx(true),
-  );
-  fetchFn.feed(makeUpdate(908, { text: "mid-window" }));
-  await waitFor(() => fetchFn.servedUpdates() === 1, 3000);
-
-  pi.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
-  await sleep(300); // past the window the shutdown cancelled
-  assert.equal(pi.messages.length, 0, "the window died with the session");
-  const held = await loadInboundQueue(queueFile);
-  assert.equal(held.length, 1, "the entry is durable across the shutdown");
-  assert.equal(held[0].message.updateId, 908);
 });
 
 test("coalescing: a reload mid-window loses nothing and duplicates nothing", async () => {
@@ -442,60 +515,73 @@ test("coalescing: a reload mid-window loses nothing and duplicates nothing", asy
   const fetch1 = makeFeedFetch();
   await withEnv(coalesceEnv(stateFile, { windowMs: "400" }), async () => {
     await telegramExtension(pi1, { fetch: fetch1 });
-  });
-  try {
-    pi1.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(true, "session-a"),
-    );
-    fetch1.feed(makeUpdate(909, { text: "mid-reload" }));
-    await waitFor(() => fetch1.servedUpdates() === 1, 3000);
-    const held = await loadInboundQueue(queueFile);
-    assert.equal(
-      held.length,
-      1,
-      "the entry is on disk before the window closes",
-    );
+    await waitForFirstPoll(fetch1);
 
-    pi1.emit("session_shutdown", {
-      type: "session_shutdown",
-      reason: "reload",
-    });
-    await sleep(100);
-    assert.equal(pi1.messages.length, 0, "the old closure delivered nothing");
-  } finally {
-    pi1.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
-  }
+    try {
+      pi1.emit(
+        "session_start",
+        { type: "session_start", reason: "startup" },
+        makeCtx(true, "session-a"),
+      );
+      fetch1.feed(makeUpdate(909, { text: "mid-reload" }));
+      await waitFor(
+        async () => (await loadInboundQueue(queueFile)).length === 1,
+        3000,
+      );
+      const held = await loadInboundQueue(queueFile);
+      assert.equal(
+        held.length,
+        1,
+        "the entry is on disk before the window closes",
+      );
+
+      pi1.emit("session_shutdown", {
+        type: "session_shutdown",
+        reason: "reload",
+      });
+      await sleep(100);
+      assert.equal(pi1.messages.length, 0, "the old closure delivered nothing");
+    } finally {
+      pi1.emit("session_shutdown", {
+        type: "session_shutdown",
+        reason: "quit",
+      });
+    }
+  });
 
   // ── Second process (factory re-run): the rehydrated entry is delivered once.
   const pi2 = makeRealShapePi();
   const fetch2 = makeFeedFetch();
   await withEnv(coalesceEnv(stateFile, { windowMs: "60" }), async () => {
     await telegramExtension(pi2, { fetch: fetch2 });
+    await waitForFirstPoll(fetch2);
+
+    try {
+      pi2.emit(
+        "session_start",
+        { type: "session_start", reason: "reload" },
+        makeCtx(true, "session-a"),
+      );
+      await waitFor(() => pi2.messages.length >= 1, 3000);
+      await sleep(150);
+      assert.equal(
+        pi2.messages.length,
+        1,
+        "exactly one delivery after the reload",
+      );
+      assert.ok(pi2.messages[0][0].includes("mid-reload"));
+      await waitFor(
+        async () => (await loadInboundQueue(queueFile)).length === 0,
+        3000,
+      );
+    } finally {
+      pi2.emit("session_shutdown", {
+        type: "session_shutdown",
+        reason: "quit",
+      });
+      await sleep(50);
+    }
   });
-  try {
-    pi2.emit(
-      "session_start",
-      { type: "session_start", reason: "reload" },
-      makeCtx(true, "session-a"),
-    );
-    await waitFor(() => pi2.messages.length >= 1, 3000);
-    await sleep(150);
-    assert.equal(
-      pi2.messages.length,
-      1,
-      "exactly one delivery after the reload",
-    );
-    assert.ok(pi2.messages[0][0].includes("mid-reload"));
-    await waitFor(
-      async () => (await loadInboundQueue(queueFile)).length === 0,
-      3000,
-    );
-  } finally {
-    pi2.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
-    await sleep(50);
-  }
 });
 
 test("coalescing: one combined batch pins ONE Working indicator (one begin per batch)", async () => {
@@ -509,55 +595,63 @@ test("coalescing: one combined batch pins ONE Working indicator (one begin per b
     }),
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      await waitForFirstPoll(fetchFn);
+
+      try {
+        pi.emit(
+          "session_start",
+          { type: "session_start", reason: "new" },
+          makeCtx(true),
+        );
+        fetchFn.feed(
+          makeUpdate(910, { text: "part A" }),
+          makeUpdate(911, { text: "part B" }),
+        );
+        await waitFor(
+          () => pi.messages.length >= 1 && fetchFn.sent.length >= 2,
+          3000,
+        );
+        assert.equal(
+          pi.messages.length,
+          1,
+          "the burst is ONE delivered message",
+        );
+        assert.ok(
+          fetchFn.sent[0].reply_markup,
+          "sent[0] is the control keyboard",
+        );
+        assert.equal(
+          fetchFn.sent[1].text,
+          TRACKED_START_TEXT,
+          "the delivered batch pinned the tracked message",
+        );
+
+        // One completed turn must resolve the indicator: the batch is ONE unit of
+        // work, so exactly one begin() ran for it. Per-arrival begins would leave
+        // the refcount at 1 and produce no ✅ Done edit.
+        const doneEvent = {
+          type: "turn_end",
+          turnIndex: 1,
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "both parts handled." }],
+            stopReason: "stop",
+          },
+          toolResults: [],
+        };
+        for (const fn of pi.handlers.get("turn_end") ?? []) {
+          await fn(doneEvent, undefined);
+        }
+        assert.equal(
+          fetchFn.edited.length,
+          1,
+          "the one begin resolved on the one turn_end",
+        );
+        assert.equal(fetchFn.edited[0].text, TRACKED_DONE_TEXT);
+      } finally {
+        pi.emit("session_shutdown");
+        await sleep(50);
+      }
     },
   );
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "new" },
-      makeCtx(true),
-    );
-    fetchFn.feed(
-      makeUpdate(910, { text: "part A" }),
-      makeUpdate(911, { text: "part B" }),
-    );
-    await waitFor(
-      () => pi.messages.length >= 1 && fetchFn.sent.length >= 2,
-      3000,
-    );
-    assert.equal(pi.messages.length, 1, "the burst is ONE delivered message");
-    assert.ok(fetchFn.sent[0].reply_markup, "sent[0] is the control keyboard");
-    assert.equal(
-      fetchFn.sent[1].text,
-      TRACKED_START_TEXT,
-      "the delivered batch pinned the tracked message",
-    );
-
-    // One completed turn must resolve the indicator: the batch is ONE unit of
-    // work, so exactly one begin() ran for it. Per-arrival begins would leave
-    // the refcount at 1 and produce no ✅ Done edit.
-    const doneEvent = {
-      type: "turn_end",
-      turnIndex: 1,
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: "both parts handled." }],
-        stopReason: "stop",
-      },
-      toolResults: [],
-    };
-    for (const fn of pi.handlers.get("turn_end") ?? []) {
-      await fn(doneEvent, undefined);
-    }
-    assert.equal(
-      fetchFn.edited.length,
-      1,
-      "the one begin resolved on the one turn_end",
-    );
-    assert.equal(fetchFn.edited[0].text, TRACKED_DONE_TEXT);
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });

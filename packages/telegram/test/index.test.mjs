@@ -8,9 +8,16 @@
  * poller NOT started when the flag is set, poller STILL started when absent —
  * is exercised end-to-end with no token leaked to the network.
  */
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,6 +63,54 @@ import {
   CONTROL_RUNNING_TEXT,
   CONTROL_PAUSED_TEXT,
 } from "../dist/lib/pause-control.js";
+
+/**
+ * Pin the machine-wide braid tree for the WHOLE file.
+ *
+ * The extension's poller resolves the tree — the root (BRAID_HOME), the
+ * ownership lock, and the session role — and more than a dozen cases here
+ * start it. One pin set for the file rather than a per-case window, because
+ * the reads keep happening: the pause flag on every poll cycle, the lock path
+ * again at the shutdown release, the role on every start attempt. These cases
+ * assert and shut the session down outside their factory window, so a per-case
+ * pin would hand those reads the live tree, where another pi process's lock
+ * refuses the start, a paused owner holds every delivery, and a worker marker
+ * refuses the poller outright. The runner pins the same three for the children
+ * it spawns (child-env.mjs); a file run on its own inherits them instead.
+ * Cases that need a different root still set their own BRAID_HOME via withEnv.
+ */
+const PINNED_BRAID_HOME = mkdtempSync(join(tmpdir(), "tg-index-pin-"));
+process.env.BRAID_HOME = PINNED_BRAID_HOME;
+process.env.BRAID_TG_POLLER_LOCK_FILE = join(
+  PINNED_BRAID_HOME,
+  "telegram-poller.lock",
+);
+delete process.env.TELEGRAM_POLLER_LOCK_FILE;
+delete process.env.BRAID_SESSION_ROLE;
+// The file-scoped pin dir holds the lock every case shares; it goes when the
+// last case finishes, so a run leaves tmp as it found it.
+after(() => rmSync(PINNED_BRAID_HOME, { recursive: true, force: true }));
+
+/**
+ * Wait for an effect the running poller produces, naming a refused start.
+ *
+ * A refused start is invisible from a delivery wait: the extension reports it
+ * through the notify sink, which nothing binds before the first session_start,
+ * so the world looks exactly like a slow window. The check runs only on
+ * timeout, so wrapping a wait never shifts when the case runs.
+ */
+async function waitForPollerEffect(what, predicate, timeoutMs) {
+  try {
+    await waitFor(predicate, timeoutMs);
+  } catch (error) {
+    throw new Error(
+      `${what}: a refused poller start looks the same — a live pid holds the ` +
+        "machine-wide ownership lock, the session role is worker, or no braid " +
+        "root resolves",
+      { cause: error },
+    );
+  }
+}
 
 /** Set process.env for the duration of fn, restoring every prior value after. */
 function withEnv(pairs, fn) {
@@ -485,7 +540,8 @@ test("poller opt-in: BRAID_TG_POLL_ENABLED=1 + token present => poller starts (e
   assert.ok(pi.tools.some((t) => t.name === "telegram_send"));
 
   // Poller starts with explicit opt-in.
-  await waitFor(
+  await waitForPollerEffect(
+    "the poller issued no getUpdates",
     () => fetchFn.calls.some((c) => c.url.includes("getUpdates")),
     2000,
   );
@@ -519,7 +575,8 @@ test("poller opt-in: TELEGRAM_POLL_ENABLED alias also starts the poller", async 
   );
 
   assert.equal(pi.tools.length, 3);
-  await waitFor(
+  await waitForPollerEffect(
+    "the poller issued no getUpdates",
     () => fetchFn.calls.some((c) => c.url.includes("getUpdates")),
     2000,
   );
@@ -572,7 +629,11 @@ test("poller auto-start: control keyboard placed in the owner chat at boot (corr
   try {
     // Boot placement fires as part of the poller start — exactly one sendMessage
     // with the control keyboard (live-update off: nothing else sends).
-    await waitFor(() => sent.length >= 1, 2000);
+    await waitForPollerEffect(
+      "the control keyboard was never placed",
+      () => sent.length >= 1,
+      2000,
+    );
     assert.equal(sent.length, 1, "exactly one control keyboard placed at boot");
     const body = sent[0];
     // BRAID_TG_CHAT_ID is an env string, so the placed chat_id arrives as a string.
@@ -640,7 +701,11 @@ test("/telegram enable ALSO places the control keyboard (the poller-start seam i
     const ctx = { ui: { notify: (m, t) => notifyCalls.push({ m, t }) } };
     await pi.commands[0].handler("enable", ctx);
 
-    await waitFor(() => sent.length >= 1, 2000);
+    await waitForPollerEffect(
+      "the control keyboard was never placed",
+      () => sent.length >= 1,
+      2000,
+    );
     assert.equal(
       sent.length,
       1,
@@ -719,7 +784,11 @@ test("poller start with unknown owner chat defers the control keyboard to the fi
 
     // First owner message → ownerChatId captured → deferred placement fires.
     updatesHandler.queue.push(makeUpdate(200, { text: "first dm" }));
-    await waitFor(() => pi.messages.length >= 1 && sent.length >= 1, 3000);
+    await waitForPollerEffect(
+      "the first owner message was never delivered",
+      () => pi.messages.length >= 1 && sent.length >= 1,
+      3000,
+    );
     assert.equal(
       sent.length,
       1,
@@ -743,7 +812,11 @@ test("poller start with unknown owner chat defers the control keyboard to the fi
 
     // Second owner message → NOT re-placed (one-shot guard).
     updatesHandler.queue.push(makeUpdate(201, { text: "second dm" }));
-    await waitFor(() => pi.messages.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the second owner message was never delivered",
+      () => pi.messages.length >= 2,
+      3000,
+    );
     await sleep(80);
     assert.equal(
       sent.length,
@@ -1176,7 +1249,8 @@ test("/telegram enable: starts the singleton poller (getUpdates fires)", async (
   const ctx = { ui: { notify: (m, t) => notifyCalls.push({ m, t }) } };
   await pi.commands[0].handler("enable", ctx);
 
-  await waitFor(
+  await waitForPollerEffect(
+    "the poller issued no getUpdates",
     () => fetchFn.calls.some((c) => c.url.includes("getUpdates")),
     2000,
   );
@@ -1273,8 +1347,9 @@ test("telegram_poller tool: enable starts poller, disable stops it, unknown acti
     undefined,
     undefined,
   );
-  assert.equal(r1.details.running, true);
-  await waitFor(
+  assert.equal(r1.details.running, true, r1.details.error ?? "poller state");
+  await waitForPollerEffect(
+    "the poller issued no getUpdates",
     () => fetchFn.calls.some((c) => c.url.includes("getUpdates")),
     2000,
   );
@@ -1287,7 +1362,7 @@ test("telegram_poller tool: enable starts poller, disable stops it, unknown acti
     undefined,
     undefined,
   );
-  assert.equal(r2.details.running, true);
+  assert.equal(r2.details.running, true, r2.details.error ?? "poller state");
 
   // Disable -> poller stops.
   const r3 = await pollerTool.execute(
@@ -1296,7 +1371,7 @@ test("telegram_poller tool: enable starts poller, disable stops it, unknown acti
     undefined,
     undefined,
   );
-  assert.equal(r3.details.running, false);
+  assert.equal(r3.details.running, false, r3.details.error ?? "poller state");
   assert.equal(r3.details.wasRunning, true);
 
   // Unknown action -> error.
@@ -1343,7 +1418,7 @@ test("telegram_poller tool: owner-message delivery uses deliverAs 'steer'", asyn
     undefined,
     undefined,
   );
-  assert.equal(r1.details.running, true);
+  assert.equal(r1.details.running, true, r1.details.error ?? "poller state");
 
   await waitFor(() => pi.messages.length >= 1, 3000);
   assert.equal(pi.messages.length, 1, "exactly one owner message delivered");
@@ -1710,7 +1785,11 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=0 disables live-update — no turn_e
   );
 
   try {
-    await waitFor(() => pi.messages.length >= 1, 3000);
+    await waitForPollerEffect(
+      "the owner message was never delivered",
+      () => pi.messages.length >= 1,
+      3000,
+    );
     assert.equal(
       pi.messages.length,
       1,
@@ -1797,7 +1876,11 @@ test("factory: live-update default-ON — no flags => turn_end finish listener r
     // Inbound owner message → live-update start() sends the tracked message.
     // sent[0] is the boot control-keyboard placement (poller-start seam);
     // sent[1] is the tracked Working… message pinned by live-update.
-    await waitFor(() => sent.length >= 2 && pi.messages.length >= 1, 3000);
+    await waitForPollerEffect(
+      "the tracked message or the delivery never appeared",
+      () => sent.length >= 2 && pi.messages.length >= 1,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -1889,7 +1972,11 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=1 pins a Working… tracked message 
     // Inbound owner message → live-update start() sends the tracked message.
     // sent[0] is the boot control keyboard (poller-start seam); sent[1] is the
     // tracked Working… message pinned by live-update.
-    await waitFor(() => sent.length >= 2 && pi.messages.length >= 1, 3000);
+    await waitForPollerEffect(
+      "the tracked message or the delivery never appeared",
+      () => sent.length >= 2 && pi.messages.length >= 1,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -1989,7 +2076,11 @@ test("factory: live-update finish does NOT fire on a trailing-tool-call turn (ke
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = tracked Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2100,7 +2191,11 @@ test("factory: §5b-2 — abort turn releases the indicator (terminal edit, stat
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = tracked Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2197,7 +2292,11 @@ test("factory: §5b-2 — error turn with partial text terminates, never '✅ Do
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = tracked Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2309,7 +2408,11 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = first Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2448,7 +2551,11 @@ test("factory: indicator NEVER freezes — inbound pinned, no completion event, 
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = tracked Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2587,7 +2694,11 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
 
   try {
     // sent[0] = boot control keyboard (poller-start seam); sent[1] = the single Working….
-    await waitFor(() => sent.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the control message + tracked indicator never appeared",
+      () => sent.length >= 2,
+      3000,
+    );
     assert.equal(
       sent.length,
       2,
@@ -2606,7 +2717,11 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
     // Second inbound arrives while the first is still active → it reuses the
     // SAME pinned message (no duplicate Working…); the refcount is now 2.
     releaseSecond = true;
-    await waitFor(() => pi.messages.length >= 2, 3000);
+    await waitForPollerEffect(
+      "the second owner message was never delivered",
+      () => pi.messages.length >= 2,
+      3000,
+    );
     await sleep(50); // let the reuse-path begin() settle through the poller
 
     // First unit completes → one of two down — the indicator MUST stay active.
@@ -2724,9 +2839,13 @@ test("callback routing: a dec: tap is answered and delivered as a [decision] whi
       undefined,
       undefined,
     );
-    assert.equal(r.details.running, true);
+    assert.equal(r.details.running, true, r.details.error ?? "poller state");
 
-    await waitFor(() => pi.messages.length >= 1, 4000);
+    await waitForPollerEffect(
+      "the decision message was never delivered",
+      () => pi.messages.length >= 1,
+      4000,
+    );
     const [content, options] = pi.messages[0];
     assert.equal(options?.deliverAs, "steer");
     assert.match(content, /^\[braid-whisper - telegram/);
@@ -2735,7 +2854,11 @@ test("callback routing: a dec: tap is answered and delivered as a [decision] whi
       `decision body expected, got: ${content}`,
     );
 
-    await waitFor(() => answered.length >= 1, 2000);
+    await waitForPollerEffect(
+      "the tap was never answered",
+      () => answered.length >= 1,
+      2000,
+    );
     assert.equal(answered[0].callback_query_id, "cq-201");
     assert.equal(answered[0].text, "✓ Option A");
   } finally {
@@ -2799,7 +2922,7 @@ test("callback routing: a pause tap still hits the pause handler (state persiste
       undefined,
       undefined,
     );
-    assert.equal(r.details.running, true);
+    assert.equal(r.details.running, true, r.details.error ?? "poller state");
 
     // The pause handler persists the flag under the braid root (BRAID_HOME
     // unset → the HOME-scoped braid home) and answers the tap; a control tap
@@ -2810,7 +2933,11 @@ test("callback routing: a pause tap still hits the pause handler (state persiste
       4000,
     );
     assert.equal(state.paused, true);
-    await waitFor(() => answered.length >= 1, 2000);
+    await waitForPollerEffect(
+      "the tap was never answered",
+      () => answered.length >= 1,
+      2000,
+    );
     assert.match(answered[0].text, /paused/i);
     assert.equal(pi.messages.length, 0, "a control tap must not start a turn");
   } finally {
@@ -2860,9 +2987,13 @@ test("callback routing: unknown callback data is answered by the control handler
       undefined,
       undefined,
     );
-    assert.equal(r.details.running, true);
+    assert.equal(r.details.running, true, r.details.error ?? "poller state");
 
-    await waitFor(() => answered.length >= 1, 4000);
+    await waitForPollerEffect(
+      "the tap was never answered",
+      () => answered.length >= 1,
+      4000,
+    );
     assert.match(answered[0].text, /Unknown action: nonsense/);
     assert.equal(
       pi.messages.length,
