@@ -1,8 +1,12 @@
 # pi-braid
 
-Extension pack for [pi](https://github.com/earendil-works/pi), the coding agent: memory, enforcement
-and context management in the core suite, plus a skills pack, a set of tool extensions, and two
-channels of their own.
+<!-- braid:intro:start -->
+
+🥨 Braid - Metacognitive extension suite for pi coding agent: Adds memory, plan tracking, structured
+cognitive signals and completion checks on top of pi core loop, so long sessions keep their context and
+stop claiming unfinished work.
+
+<!-- braid:intro:end -->
 
 pi is a coding agent with a small built-in toolset. Extensions are how pi gains capability: they
 register tools, listen for session events, and shape the system prompt. pi-braid is a monorepo of

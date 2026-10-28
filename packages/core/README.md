@@ -5,9 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![pi-coding-agent ^1.2.0](https://img.shields.io/badge/pi--coding--agent-%5E1.2.0-blueviolet)](https://github.com/earendil-works/pi)
 
-Memory, plan tracking, and completion checks for the [pi](https://github.com/earendil-works/pi)
-coding agent. A long session keeps what it learned, keeps its working state across compaction, and
-has to show evidence before it calls a task done.
+<!-- braid:intro:start -->
+
+🥨 Braid - Metacognitive extension suite for pi coding agent: Adds memory, plan tracking, structured
+cognitive signals and completion checks on top of pi core loop, so long sessions keep their context and
+stop claiming unfinished work.
+
+<!-- braid:intro:end -->
 
 > **Early-stage software.** APIs may change. Not production-hardened.
 

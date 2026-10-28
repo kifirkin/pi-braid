@@ -4,6 +4,7 @@
   "description": "Skills for research papers, brand systems, illustrations, and design critique that load straight into the pi coding agent.",
   "keywords": [
     "pi-package",
+    "braid",
     "pi-coding-agent",
     "agent-skills",
     "skills",
