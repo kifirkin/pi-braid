@@ -43,6 +43,21 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.7 (2026-10-28: the package surface stops describing things it does not ship)
+
+### Also in this line
+
+- **The skills README describes the skills that ship.** It documented a 31-row catalogue while the package carries
+  eight, so most of that page described another package's files and one row described a skill that exists in no tree.
+  The page now has one row per shipped skill, taken from each `SKILL.md`'s own trigger and content, and it names which
+  three carry `status: deprecated` and where their successors live rather than implying eight usable skills.
+- **Every count on the surface is derived.** Where a README states a number, the report carries the command that
+  produced it; a number with no command behind it does not ship.
+- **Descriptions say what a reader can do.** "Standalone", "markdown-only" and "no runtime dependencies" are true of
+  every package in the catalogue and useful to no reader; the private gateway no longer appears in published metadata.
+- **Internal material left the public pages.** Contracts, release mechanics and monorepo relationships moved to
+  developer sections or out, instead of being softened in place.
+
 ## Core — 0.42.6 (2026-10-27: a meter that measures what the provider counts, a drain that waits, a whisper that prints one truth, and a latch that stops feeding a dying route)
 
 Four changes that between them remove the wedges behind a long session killing itself: the meter under-counted its
