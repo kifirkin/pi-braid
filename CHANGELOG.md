@@ -43,6 +43,18 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.9 (2026-10-28: a gate says how much it scanned, and the number is true)
+
+### Also in this line
+
+- **`check-placement` and `check-doc-links` print a population that equals their own enumeration.** Both skipped their
+  own file, so the first reported `1017 of 1018` tracked files and a worker transcribing that line into gate evidence
+  was refused by the merge rule, which compares a stamped files row against the revision's census. The tools now count
+  their own file in the population and list it as a documented exclusion from matching, so the line is true and a
+  stamp taken from it survives.
+- **A fixture asserts the two numbers are equal**, so the convention cannot regress into a tool that quietly vouches
+  for less than it enumerates.
+
 ## Core — 0.42.8 (2026-10-28: two aliases leave, and the resolver stops reading their key)
 
 ### Also in this line
