@@ -8,14 +8,17 @@
  * body that ends at that answer reports nothing at all. The runner invokes the
  * body with `bash -e` (the job log's `shell:` line is that contract), so a
  * body that runs the comparison and only then reads its status ends the step
- * at the comparison — which is why this file drives the body extracted from
+ * at the comparison, which is why this file drives the body extracted from
  * the workflow rather than a copy of it: a copy would pass while the workflow
  * ran something else.
  *
  * Everything the body reaches outside itself is a stub in a scratch directory:
  * `npm` (pack, view) and `curl` through PATH, and a `packages/core` tree whose
  * `pack-compare.mjs` exits with the code the case is about. The step's own
- * branches are the subject; the tool it calls is held by its own fixture.
+ * branches are the subject; the tool it calls is held by its own fixture. The
+ * npm stub counts every `view` and answers with a scripted sequence of exit
+ * codes, so a retry the body did not make, or one more than the configured
+ * window allows, changes a number the cases assert.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -89,7 +92,10 @@ function extractStep() {
 
 /**
  * The two npm reads the body makes: `pack` answers with the tarball it then
- * compares, `view` with the registry URL it downloads.
+ * compares, `view` with the registry URL it downloads. Each `view` is counted
+ * in the scratch tree, and its exit code is the next one in the scripted
+ * sequence (the last one repeats), so the cases assert how many reads the
+ * body actually made.
  */
 const NPM_STUB = `#!/bin/sh
 if [ "$1" = "pack" ]; then
@@ -107,11 +113,28 @@ if [ "$1" = "pack" ]; then
   exit 0
 fi
 if [ "$1" = "view" ]; then
+  count_file="\${PI_FIXTURE_STATE}/view.count"
+  count=0
+  if [ -f "\${count_file}" ]; then
+    count=$(cat "\${count_file}")
+  fi
+  count=$((count + 1))
+  printf '%s\\n' "\${count}" >"\${count_file}"
+  code=""
+  remaining=\${count}
+  for token in \${PI_FIXTURE_VIEW_SEQUENCE}; do
+    code="\${token}"
+    remaining=$((remaining - 1))
+    if [ "\${remaining}" -le 0 ]; then
+      break
+    fi
+  done
+  [ -n "\${code}" ] || code=0
   printf '%s\\n' "\${PI_FIXTURE_TARBALL_URL}"
-  if [ "\${PI_FIXTURE_VIEW_EXIT}" != "0" ]; then
+  if [ "\${code}" != "0" ]; then
     printf '%s\\n' "\${PI_FIXTURE_VIEW_ERR}" >&2
   fi
-  exit "\${PI_FIXTURE_VIEW_EXIT}"
+  exit "\${code}"
 fi
 echo "stub npm: unexpected invocation $*" >&2
 exit 3
@@ -144,20 +167,28 @@ process.exit(Number(process.env.PI_FIXTURE_COMPARE_EXIT ?? 0));
 
 /**
  * A scratch checkout the body can run in: the stubs on PATH, a `packages/core`
- * manifest the body can read, and the comparison's stand-in where the body
- * looks for it.
+ * manifest the body can read, the comparison's stand-in where the body looks
+ * for it, and a run-summary file the runner would have supplied.
+ *
+ * `graceSeconds` and `graceInterval` are the step's window knobs. The default
+ * pair keeps every case fast while still allowing a retry: a first read that
+ * answers ends the loop without sleeping.
  */
 function buildScratch({
   manifest = true,
   compareExit = 0,
   compareText = "",
-  viewExit = 0,
+  viewSequence = "0",
   viewErr = "",
   curlExit = 0,
+  graceSeconds = 3,
+  graceInterval = 1,
 } = {}) {
   const dir = scratchDir("publish-artifact-step-");
   const bin = join(dir, "bin");
+  const state = join(dir, "state");
   mkdirSync(bin, { recursive: true });
+  mkdirSync(state, { recursive: true });
   for (const [name, stub] of Object.entries({ npm: NPM_STUB, curl: CURL_STUB })) {
     writeFileSync(join(bin, name), stub);
     chmodSync(join(bin, name), 0o755);
@@ -175,13 +206,17 @@ function buildScratch({
     env: {
       PATH: `${bin}:${process.env.PATH ?? ""}`,
       GITHUB_REF_NAME: TAG,
+      GITHUB_STEP_SUMMARY: join(dir, "summary.md"),
+      PI_FIXTURE_STATE: state,
       PI_FIXTURE_VERSION: VERSION,
       PI_FIXTURE_TARBALL_URL: TARBALL_URL,
-      PI_FIXTURE_VIEW_EXIT: String(viewExit),
+      PI_FIXTURE_VIEW_SEQUENCE: viewSequence,
       PI_FIXTURE_VIEW_ERR: viewErr,
       PI_FIXTURE_CURL_EXIT: String(curlExit),
       PI_FIXTURE_COMPARE_EXIT: String(compareExit),
       PI_FIXTURE_COMPARE_TEXT: compareText,
+      ARTIFACT_CHECK_GRACE_SECONDS: String(graceSeconds),
+      ARTIFACT_CHECK_GRACE_INTERVAL_SECONDS: String(graceInterval),
     },
   };
 }
@@ -205,6 +240,24 @@ function runStep(scratch, { pipefail = false } = {}) {
   return { code: result.status, out: result.stdout ?? "", err: result.stderr ?? "" };
 }
 
+/** How many times the body read the registry: the npm stub counts its calls. */
+function viewCount(scratch) {
+  try {
+    return Number(readFileSync(join(scratch.dir, "state", "view.count"), "utf8").trim());
+  } catch {
+    return 0;
+  }
+}
+
+/** What the step wrote to the run summary, the surface a human reads first. */
+function summaryText(scratch) {
+  try {
+    return readFileSync(join(scratch.dir, "summary.md"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
 /** Assert the body printed `text`, quoting what it did print when it did not. */
 function printed(out, text, what) {
   assert.ok(out.includes(text), `${what}: expected ${JSON.stringify(text)} in:\n${out}`);
@@ -225,66 +278,119 @@ test("the body opts out of the runner's shell options itself, and stays the job'
   assert.equal(check.status, 0, `the body must parse: ${check.stderr}`);
 });
 
-test("the comparison says equal: the step names the tree and warns about nothing", () => {
-  const { code, out } = runStep(buildScratch({ compareExit: 0 }));
+test("the first read answers: the step compares the artifact and reads the registry once", () => {
+  const scratch = buildScratch({ compareExit: 0 });
+  const { code, out } = runStep(scratch);
 
   assert.equal(code, 0, `an equal artifact must leave the step green: exit ${code}\n${out}`);
   printed(out, `artifact check: the registry artifact for pi-braid@${VERSION} unpacks to the tree ${TAG} builds`, "the equality is named");
   assert.ok(!out.includes("::warning"), `an equal artifact must carry no warning:\n${out}`);
+  assert.equal(viewCount(scratch), 1, "a served version is read once, not retried");
+  printed(summaryText(scratch), "- artifact check: verified equal:", "the run summary names the verdict");
 });
 
 test("the comparison says different: the step exits 0 and warns with the paths", () => {
-  const { code, out } = runStep(
-    buildScratch({
-      compareExit: 1,
-      compareText: "trees differ: 1 path\n  content differs  package/build-info.json",
-    }),
-  );
+  const scratch = buildScratch({
+    compareExit: 1,
+    compareText: "trees differ: 1 path\n  content differs  package/build-info.json",
+  });
+  const { code, out } = runStep(scratch);
 
   assert.equal(code, 0, `a difference is the step's report, not its failure: exit ${code}\n${out}`);
   printed(out, "::warning title=Registry artifact differs::", "the difference is a warning the run shows");
   // The tool owns the paths and the workflow reprints them; a warning that
   // does not carry them makes the run's log the only place they existed.
   printed(out, "  package/build-info.json", "the difference is named");
+  printed(summaryText(scratch), "- artifact check: differs:", "the run summary names the verdict");
 });
 
 test("the same body keeps that contract under the stricter shell", () => {
-  const { code, out } = runStep(buildScratch({ compareExit: 1, compareText: "trees differ: 1 path" }), {
-    pipefail: true,
-  });
+  const scratch = buildScratch({ compareExit: 1, compareText: "trees differ: 1 path" });
+  const { code, out } = runStep(scratch, { pipefail: true });
 
   assert.equal(code, 0, `-eo pipefail must not end the step either: exit ${code}\n${out}`);
   printed(out, "::warning title=Registry artifact differs::", "the difference is still a warning");
 });
 
 test("the comparison could not read an archive: the step exits 0 and refuses the verdict", () => {
-  const { code, out } = runStep(
-    buildScratch({ compareExit: 2, compareText: "pack-compare: /tmp/registry.tgz: not an archive" }),
-  );
+  const scratch = buildScratch({
+    compareExit: 2,
+    compareText: "pack-compare: /tmp/registry.tgz: not an archive",
+  });
+  const { code, out } = runStep(scratch);
 
   assert.equal(code, 0, `an unreadable archive is not a red mark on the publish: exit ${code}\n${out}`);
   printed(out, "::warning title=Registry artifact unreadable::", "the skip is a warning the run shows");
   printed(out, "not a verdict about the tree", "the run does not read it as a difference");
+  printed(summaryText(scratch), "- artifact check: unreadable:", "the run summary keeps it out of the verified state");
+});
+
+test("a 404 is the registry's propagation lag: the read is retried and the artifact then compared", () => {
+  const scratch = buildScratch({
+    viewSequence: "1 1 0",
+    viewErr: "npm error code E404",
+    graceSeconds: 3,
+    graceInterval: 1,
+  });
+  const { code, out } = runStep(scratch);
+
+  assert.equal(code, 0, `the version arrived inside the window: exit ${code}\n${out}`);
+  printed(out, `artifact check: the registry artifact for pi-braid@${VERSION} unpacks to the tree ${TAG} builds`, "the retry ends in the comparison");
+  assert.ok(!out.includes("::warning"), `a version that arrived is verified, not warned about:\n${out}`);
+  assert.equal(viewCount(scratch), 3, "two 404s and then the served version are three reads");
+  printed(summaryText(scratch), "- artifact check: verified equal:", "the run summary names the verdict the comparison reached");
+});
+
+test("the grace window expires: the reads stop at the bound and the artifact is reported not verified", () => {
+  const scratch = buildScratch({
+    viewSequence: "1",
+    viewErr: "npm error code E404",
+    graceSeconds: 3,
+    graceInterval: 1,
+  });
+  const { code, out } = runStep(scratch);
+
+  assert.equal(code, 0, `a version that never arrived cannot fail the publish: exit ${code}\n${out}`);
+  printed(out, "::warning title=Registry artifact not verified::", "the run shows the artifact was not verified");
+  printed(out, "within the 3s grace window (4 reads, 404)", "the window and the counted reads are named");
+  printed(out, "nothing to compare", "the skip still says there was nothing to compare");
+  assert.equal(viewCount(scratch), 4, "3s / 1s + 1 is the bound: the window is finite");
+  printed(summaryText(scratch), "- artifact check: not verified:", "the run summary names the fourth outcome");
+});
+
+test("a registry failure that is not a 404 gets no grace window: one read, reported at once", () => {
+  const scratch = buildScratch({
+    viewSequence: "1",
+    viewErr: "npm error code E500",
+    graceSeconds: 5,
+    graceInterval: 1,
+  });
+  const { code, out } = runStep(scratch);
+
+  assert.equal(code, 0, `a registry failure cannot fail the publish: exit ${code}\n${out}`);
+  printed(out, "the registry read for pi-braid@9.9.9 failed (exit 1)", "the failure is named");
+  printed(out, "::warning title=Registry artifact not verified::", "the run shows the artifact was not verified");
+  assert.equal(viewCount(scratch), 1, "a failure that is not a 404 is not retried");
+  printed(summaryText(scratch), "- artifact check: not verified:", "the run summary names the fourth outcome");
 });
 
 test("the registry serves no tarball: the step says which fact stopped it and exits 0", () => {
-  const { code, out } = runStep(buildScratch({ curlExit: 22 }));
+  const scratch = buildScratch({ curlExit: 22 });
+  const { code, out } = runStep(scratch);
 
   assert.equal(code, 0, `a missing artifact cannot fail the publish: exit ${code}\n${out}`);
   printed(out, "the registry served no tarball", "the skip names the failed download");
   printed(out, "nothing to compare", "the skip says there is nothing to compare");
-});
-
-test("the version is not on the registry: the 404 is read as absence and the step exits 0", () => {
-  const { code, out } = runStep(buildScratch({ viewExit: 1, viewErr: "npm error code E404" }));
-
-  assert.equal(code, 0, `absence is not a failure of the step: the exit is ${code}\n${out}`);
-  printed(out, `is not on the registry (404)`, "the 404 is the skip that means absent");
+  printed(out, "::warning title=Registry artifact not verified::", "the run shows the artifact was not verified");
+  printed(summaryText(scratch), "- artifact check: not verified:", "the run summary names the fourth outcome");
 });
 
 test("the core manifest cannot be read: the step exits 0 without a version to compare", () => {
-  const { code, out } = runStep(buildScratch({ manifest: false }));
+  const scratch = buildScratch({ manifest: false });
+  const { code, out } = runStep(scratch);
 
   assert.equal(code, 0, `a missing manifest cannot fail the publish: exit ${code}\n${out}`);
   printed(out, "could not read the core version", "the skip names the fact that stopped it");
+  printed(out, "::warning title=Registry artifact not verified::", "the run shows the artifact was not verified");
+  printed(summaryText(scratch), "- artifact check: not verified:", "the run summary names the fourth outcome");
 });
