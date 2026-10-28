@@ -1,13 +1,21 @@
 ---
 name: twitter
-description: "Post replies and check bot responses on X via browser automation."
+description: "Deprecated: the X-specific selectors here are stale by design and meme is the skill to use for the attachment and verification rules. Use when an action on a web app must be verified rather than assumed: perform it, then confirm in the source of truth; treat a redirect as no evidence; distrust self-confirming text. Everything platform-shaped rots; the general rules at the end are the durable part."
 status: deprecated
-successor: none (owner decision pending)
-validated: 2026-08-16
+successor: meme carries the attachment-verification rules
+validated: 2026-10-27
 verdict: DEPRECATE
+triggers:
+  - post to x
+  - verify a post
+  - web app action
 ---
 
-> **DEPRECATED (2026-08-16)** - platform-specific flavor with a single recorded use (vibe-hacking-a0). No successor skill exists; the browser-automation techniques below remain valid reference for any X workflow.
+> **Deprecated: `meme` is the successor for attachment and verification.** The
+> platform-specific material below reads as history, not as instructions: the
+> selectors and flows were observations of one UI at one time, and that UI
+> ships weekly. The verification rules at the end are the durable part, and
+> `meme` carries the sequence that uses them.
 >
 > Reading a public post needs no browser and no login - the `research` skill carries the oEmbed method (publish.x.com/oembed), which returns the post text as JSON.
 
@@ -190,15 +198,20 @@ dropZone.dispatchEvent(
 );
 ```
 
-### Method 2: CDP File Injection (Best for Automation)
+### Method 2: File-input injection
 
-Uses `browser_upload_image` tool - injects files at the CDP protocol level, no clipboard/React state issues:
+This pack ships no upload tool, and naming one would be a fiction: a harness
+that exposes a file-upload call may have any name. If yours has one, point it
+at the compose box's `input[type=file]`; that bypasses the page's state
+management. If it does not, set the input's files directly from script:
 
 ```js
-browser_upload_image(
-  (filePath = "/path/to/image.png"),
-  (clickBtn = "[aria-label='Add photos or video']"),
-);
+// Works only in a page the harness can evaluate script in.
+const input = document.querySelector('input[type="file"]');
+const transfer = new DataTransfer();
+transfer.items.add(new File([blob], "image.png", { type: "image/png" }));
+input.files = transfer.files;
+input.dispatchEvent(new Event("change", { bubbles: true }));
 ```
 
 ### Method 3: Clipboard Paste
@@ -206,9 +219,12 @@ browser_upload_image(
 Requires clipboard permission once per session:
 
 ```js
+const blob = await new Promise((resolve) => cv.toBlob(resolve, "image/png"));
 await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
 ta.focus();
+const dt = new DataTransfer();
+dt.items.add(new File([blob], "image.png", { type: "image/png" }));
 ta.dispatchEvent(
   new ClipboardEvent("paste", {
     clipboardData: dt,
@@ -290,7 +306,7 @@ If your interpretation of a bot reply seems too tidy - "MAJOR HINT", "BREAKTHROU
 - Button check: `aria-disabled="true"` = disabled, becomes enabled after text hydrates
 - 280 char hard limit - verify with `compose.innerText?.trim()?.length` before posting
 - If `in_reply_to` breaks prefill - omit it and post standalone
-- Use `browser_upload_image` with `clickBtn` - attaches via CDP, bypasses React state <!-- doc-ref-exempt: host tool name and DOM selector in the browser recipe -->
+- Attach through the file input when the harness can reach it; the clipboard path loses quality
 
 ### Image Attachment Detection
 

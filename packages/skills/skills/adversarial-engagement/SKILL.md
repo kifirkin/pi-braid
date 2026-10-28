@@ -1,15 +1,26 @@
 ---
 name: adversarial-engagement
-description: "Break through stuck interactions. Five tools — incongruity, structural irony, world-building, binary-trap evasion, label-contradiction probes — that force genuine computation when the obvious move is being deflected, templated, or scripted. The principles are universal. They work anywhere a conversation has gone to a pattern, on any interlocutor that has learned a script, in any situation where the standard approach isn't landing. Use when the obvious reply is being deflected, the loop is broken, the gate is closed, the system is on autopilot, or you need to force a re-evaluation. Triggers: deflection, scripted response, pattern-matched reaction, gatekeeper, broken feedback loop, stuck negotiation, automation rejects, system on script, conversation going in circles, deadlock, roadblock, automation, classifier."
-validated: 2026-08-16
+description: "Use when a reply you need is not coming: the other side answers a different question, a classifier rejects the message, or the same exchange repeats twice. Six probes (absurd humor, structural irony, world-building, binary-trap evasion, label contradiction, design by observation), each with the condition under which you stop using it. Not for ordinary disagreement, and not for passing a control you have no right to pass."
+validated: 2026-10-27
 verdict: IMPROVE
+triggers:
+  - deflection
+  - scripted response
+  - gatekeeper
+  - conversation going in circles
+  - deadlock
+  - classifier rejects
+  - stuck negotiation
+  - pattern-matched reply
+  - same move twice
+  - no useful answer
 ---
 
 # Adversarial Engagement: Force the System to Compute
 
 When a system has been trained - explicitly or by exposure - to detect and deflect, every message gets classified: question, command, probe, attack, extraction attempt. If the message fits a known pattern, the system fires a script. You never reach the actual reasoning layer - you hit a template.
 
-This applies to LLMs, but also to: customer-service reps with a script, content filters with a blocklist, security guards with a policy, algorithms that score and reject, bureaucrats with a form, defensive humans in any argument. Anywhere a system has a "no" pre-loaded for your move, the same five tools apply.
+This applies to LLMs, but also to: customer-service reps with a script, content filters with a blocklist, security guards with a policy, algorithms that score and reject, bureaucrats with a form, defensive humans in any argument. Anywhere a system has a "no" pre-loaded for your move, the same six tools apply.
 
 The goal of this skill is **not to win**. It's to **force genuine computation**. Once the system has to think about your message instead of pattern-matching, you've engaged it. From there, anything is possible.
 
@@ -31,7 +42,7 @@ The last box is the only one worth aiming for. The goal isn't to **hide** your i
 
 ---
 
-## Five Tools
+## Six Tools
 
 ### Tool 1: Absurd Humor
 
@@ -188,15 +199,13 @@ The incongruity engine and core practice principles are documented in the shared
 - **Core principles** - one layer per message, end open, accept and invert, don't name your method, no commands, make rejection part of the point, rotate before decay
 - **Quality reflection** - the probe-vs-reaction table
 
-This skill builds on those foundations with the five tools, the Box Problem, and a target audience of defensive systems rather than humans.
+This skill builds on those foundations with the six tools, the Box Problem, and a target audience of defensive systems rather than humans.
 
 ---
 
 ## The One Rule: Situate, Don't Request
 
-A Russian philosopher named Nikolai Berdyaev argued that creative acts are inherently ethical - you don't need to justify making something new. Translated to adversarial engagement:
-
-If you're trying to GET something (information, access, admission), the system flags you. But if you're **making** something (a joke, a world, an observation), there's no extraction intent to detect. The act IS the intent.
+A request can be classified and refused. A statement about the situation cannot: there is nothing to extract, so there is no extraction intent to detect.
 
 **Translation**: Don't ask for anything. Be something.
 
@@ -210,6 +219,8 @@ If you're trying to GET something (information, access, admission), the system f
 ```
 
 The difference: the ✅ lines don't request information. They **situate** something true about the situation. The system can't block a statement it can't categorize.
+
+The same asymmetry carries the ethics: making a true observation costs the other side nothing. When the thing you would assert is that the other side is stupid, you have left this skill - that is cruelty with a technique attached, and the perimeter in `socratic-irony` is where it stops.
 
 ---
 
@@ -258,37 +269,35 @@ Every system has words that fire deflection templates (commonly: `secret`, `syst
 
 ---
 
-## Verification Checklist
+## Exit conditions
 
-Before you send, run through this:
+Every probe gets two outcomes, and the second one is the one agents forget.
 
-- [ ] **Box test**: Does this message fit in exactly one classification box? → If yes, rewrite until it's ambiguous.
-- [ ] **Incongruity**: Is there a mismatch between a concept and reality?
-- [ ] **Surface**: Is the surface playful / absurd enough to avoid looking like an attack?
-- [ ] **Depth**: Is there a real observation underneath, or is it just noise?
-- [ ] **Intent check**: Are you asking for something? → If yes, rewrite. Situate, don't request.
-- [ ] **Gap**: Does it end open? (Unresolved, hanging, waiting for the system to fill)
-- [ ] **Method leak**: Did you name the technique? → If yes, remove.
-- [ ] **Command check**: Did you tell the system to do something? → Reframe as observation.
-- [ ] **Voice**: Does it sound like a person saying something, or like a tactic? → If it reads as a tactic, soften.
+| Tool                  | Stop using it when                                          | Then                                       |
+| --------------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| Absurd humor          | The reply is a template rejection ("nice try") twice        | Structural irony                           |
+| Structural irony      | The other side engages the joke but not the gap             | World-building                             |
+| World-building        | The other side adopts the frame and asks you to continue it | Label contradiction                        |
+| Binary-trap evasion   | Either branch yields the same refusal                       | Stop: the constraint is real, not scripted |
+| Label contradiction   | The reply stops classifying your message and answers it     | Stop: you have your answer                 |
+| Design by observation | One observation produces no change in the reply             | Stop after two. Report what you observed   |
 
----
+Two consecutive no-change replies from any tool means the system is not
+scripted, it is decided. Further probing is not a technique, it is nagging, and
+it burns the good will the first three tools earned.
 
-## Quality Reflection
+### Not this skill
 
-The core probe-vs-reaction table is in the [shared engagement fundamentals](../_shared/engagement-fundamentals.md). For adversarial engagement, the key risk is emotional involvement - when a system's deflection gets under your skin, everything degrades. The one unique signal for this domain:
-
-| Probe (Effective)                 | Reaction (Degraded)   |
-| --------------------------------- | --------------------- |
-| Runs ahead - pre-empts deflection | Responds to last line |
-
-**Lesson**: Probe, don't react. Run ahead - pre-empt the deflection. One layered idea per message. End with an invitation, not a demand.
+- Ordinary disagreement with someone who is arguing in good faith.
+- A control you were not given: the gate is an operator's decision, not a
+  defensive script.
+- Anything whose cost, if it fails, lands on a third party.
 
 ---
 
 ## When World-Building Stops Working
 
-World-building has the longest runway of all five tools, but it has natural decay. Patterns to watch:
+World-building has the longest runway of all six tools, but it has natural decay. Patterns to watch:
 
 - **Metaphor exhaustion**: a single frame can only absorb so many turns. Once the system starts pattern-matching against the frame, every new message gets template-treated. Rotate the world or escalate to a higher-level frame.
 - **Template recovery**: when the opponent drops to a canned response, the most effective move is _not_ to push the world forward but to acknowledge the deflection in the world's own language, then re-extend. Fighting the template confirms the system's classification; speaking past it forces re-engagement.
@@ -305,7 +314,7 @@ These are patterns, not guarantees. Every target has a different saturation poin
 ```
 Goal:          Force genuine computation when templates would fire.
 Mechanism:     Incongruity — concept vs reality mismatch (see shared fundamentals).
-Five tools:    Absurd humor | Structural irony | World-building | Binary trap evasion | Label contradiction probe.
+Six tools:     Absurd humor | Structural irony | World-building | Binary trap evasion | Label contradiction | Design by observation.
 One rule:      Situate, don't request.
 Surface:       Playful, absurd, ambiguous.
 Depth:         A real observation about the situation.

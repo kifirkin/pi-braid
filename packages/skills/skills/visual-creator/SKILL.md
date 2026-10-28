@@ -1,8 +1,19 @@
 ---
 name: visual-creator
-description: "Create production-quality visuals across domains — web/UI, game assets, brand materials, illustrations, and diagrams. Covers design principles, color theory, typography systems, layout composition, brand identity, and the full create → analyze → validate → improve cycle. Use when building UIs, designing games, creating brand assets, or any visual output that needs coherent design reasoning."
-validated: 2026-08-16
+description: "Use when the output is a visual decision rather than an image: palette, type scale, spacing grid, hierarchy and layout for a UI, a game screen, or a marketing asset. Gives the constraints (contrast ratios, scales, composition laws), a build order, and the critique pass to run before shipping. Not for writing the DESIGN.md contract (design-system) and not for auditing a finished screen (visual-validator)."
+validated: 2026-10-27
 verdict: IMPROVE
+triggers:
+  - ui layout
+  - color palette
+  - type scale
+  - spacing grid
+  - visual hierarchy
+  - game ui
+  - poster
+  - brand asset
+  - design composition
+  - sprite
 ---
 
 # Visual Creator
@@ -14,10 +25,26 @@ Create visuals that stand up to professional critique. This skill pairs with vis
 ## The Full Cycle
 
 ```
-CREATE ──→ ANALYZE (describe_image) ──→ VALIDATE (visual-validator) ──→ IMPROVE ──→ [repeat]
+CREATE ──→ ANALYZE (read the render) ──→ VALIDATE (visual-validator) ──→ IMPROVE ──→ [repeat]
 ```
 
-Every visual you create should go through this cycle at least once. Analysis catches what creation misses. Validation catches what analysis misses. Improvement closes the gap.
+Do the cycle at least once. Analysis catches what creation misses; validation
+catches what analysis misses.
+
+### How the artifact gets made
+
+This skill chooses constraints; it does not render. Name the route you have
+before you start, because the choice changes the constraints:
+
+- **An image model** in your toolset: prompt it, then read the result back.
+- **HTML or SVG plus a headless screenshot**: fastest for UI, exact for type.
+- **A plotting library**: for charts and diagrams (see the figure rules in
+  `paper-writer`).
+- **A file the user supplies**: audit it, do not regenerate it.
+
+Whichever route you use, the last step is the same: get the pixels in front of
+you and look. [`_shared/inspect-image.md`](../_shared/inspect-image.md) says how
+when the harness ships no image tool.
 
 ---
 
@@ -65,7 +92,7 @@ These apply to every visual domain. Internalize them.
 - **Macro space**: section padding, margins, gutters - use your spacing scale generously
 - **Micro space**: padding inside cards, button internal padding, text line-height
 - **Negative space**: empty areas between elements create visual structure - they're not wasted
-- **Density calibration**: reduce information density by 30% from what "feels right" - that's typically optimal
+- **Density calibration**: cut what the layout does not need. Compare the screen against a version with one third fewer elements; keep whichever reads faster. There is no universal percentage.
 
 ---
 
@@ -264,70 +291,7 @@ Pick one scale and use it everywhere:
 
 ---
 
-## 6. Design-to-Code Translation
-
-### 6.1 From Design to CSS
-
-```css
-/* Palette as CSS custom properties */
-:root {
-  --color-primary: #855300;
-  --color-primary-hover: #613b00;
-  --color-neutral-100: #f9f9ff;
-  --color-neutral-900: #151c27;
-
-  /* Spacing scale (8px base) */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-
-  /* Typography scale */
-  --font-display: 2.75rem; /* 44px */
-  --font-headline: 2rem; /* 32px */
-  --font-title: 1.25rem; /* 20px */
-  --font-body: 1rem; /* 16px */
-  --font-caption: 0.75rem; /* 12px */
-}
-```
-
-### 6.2 From Design to Tailwind Config
-
-```js
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        primary: { DEFAULT: "#855300", hover: "#613b00" },
-        neutral: { 100: "#f9f9ff", 900: "#151c27" },
-      },
-      spacing: { xs: "4px", sm: "8px", md: "16px", lg: "24px", xl: "32px" },
-      fontSize: { display: "2.75rem", headline: "2rem", title: "1.25rem" },
-    },
-  },
-};
-```
-
-### 6.3 From Design to Game Engine (Godot/Unity)
-
-```
-# Godot theme — palette as theme overrides
-[theme]
-default_font_color = Color("#151c27")
-default_bg_color = Color("#f9f9ff")
-
-# Spacing constants
-const SPACING = {
-  xs = 4, sm = 8, md = 16, lg = 24, xl = 32
-}
-```
-
----
-
-## 7. The Create → Analyze → Validate → Improve Cycle
+## 6. The Create → Analyze → Validate → Improve Cycle
 
 ### Step 1: Create
 
@@ -337,42 +301,47 @@ const SPACING = {
 
 ### Step 2: Analyze
 
-```
-describe_image("path/to/screenshot.png", "Comprehensive design analysis: extract colors, layout, and typography, then report every deviation from the design constraints")
-```
-
-- Extract colors, layout, typography
-- Check against your intended design
-- Note discrepancies between intent and output
+Read the render as an image attachment and compare it against the constraints
+you wrote down in Step 1. Extract colors, layout, and typography; every
+discrepancy between intent and output is a finding. The route to the pixels is
+in [`_shared/inspect-image.md`](../_shared/inspect-image.md).
 
 ### Step 3: Validate
 
-Follow the visual-validator skill's audit format. Key questions:
+Run `visual-validator`'s audit format against the image. Before you ship, three
+numbers decide most of it:
 
-- Do elements have clear hierarchy?
-- Is spacing consistent?
-- Are colors harmonious and accessible?
-- Does the typography system hold together?
-- Are there alignment errors?
+- **Contrast**: body text at least 4.5:1, large text at least 3:1, UI edges at
+  least 3:1.
+- **Spacing variance**: gaps should sit on the scale. Count the distinct gap
+  values; more than four in one screen is drift.
+- **Alignment offset**: an element off its axis by one or two pixels is a
+  defect; by more than half a spacing unit is a decision (make it look like
+  one).
 
 ### Step 4: Improve
 
-1. Fix P0 issues immediately
-2. Address P1 issues in the same work session
-3. Log P2 issues for polish pass
-4. Iterate: go to Step 1 or 2
+1. Fix P0 issues before showing anyone.
+2. Fix P1 issues in the same session.
+3. Keep a P2 list or drop it. An unfixed P2 list is how a design system rots.
+4. Iterate: go to Step 1 or 2.
 
-### Expected Iteration Counts
+### Iterations
 
-- **UI component**: 1-2 cycles for production quality
-- **Full screen**: 2-3 cycles
-- **Sprite sheet**: 2-4 cycles (validation catches palette/alignment issues)
-- **Brand material**: 3-5 cycles (consistency takes multiple passes)
-- **New design system**: 5-10 cycles (foundation decisions compound)
+Expect more than one pass and fewer than five. The first pass finds the P0s
+(wrong scale, unreadable contrast); the second finds the P1s. If a third pass
+turns up a P0, the constraints were wrong, not the execution: go back to Step 1
+and rewrite them.
+
+### Boundaries
+
+- **`design-system`** writes and enforces the token contract, the DESIGN.md file.
+- **`visual-validator`** measures a finished image and reports findings.
+- **This skill** chooses the palette, scale, and composition before anything exists. If you find yourself auditing a screenshot here, you are in the wrong file.
 
 ---
 
-## 8. Anti-Patterns
+## 7. Anti-Patterns
 
 These produce mediocre visuals every time:
 
@@ -394,7 +363,7 @@ These produce mediocre visuals every time:
 
 1. **PLAN** - Define design system (palette, typography, spacing, grid)
 2. **CREATE** - Build visual with design constraints
-3. **ANALYZE** - `describe_image(path, prompt)` with a comprehensive prompt to catch issues
+3. **ANALYZE** - Read the render as an attachment and compare it against the constraints
 4. **VALIDATE** - Follow visual-validator audit format
 5. **IMPROVE** - Fix issues, refine, document decisions
 6. **REPEAT** - Until P0=0, P1=0, P2 ≤ 3

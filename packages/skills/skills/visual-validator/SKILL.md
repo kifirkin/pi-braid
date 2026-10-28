@@ -1,13 +1,15 @@
 ---
 name: visual-validator
-description: "Rigorous visual validation with professional design critique. Analyzes sprite assets, game screenshots, UI designs, and any visual content with designer-level feedback and actionable fixes with measurable deltas. Companion to visual-creator (creation) and design-system (brand identity)."
+description: "Use when a finished visual has to be judged rather than made: a screenshot, a sprite sheet, a slide. Produces a DESIGN AUDIT with measured dimensions, dominant colors with percentages, contrast ratios, spacing variance and alignment offsets, then P0/P1/P2 findings with a measurable delta for each. Not for creating the asset (visual-creator) and not for writing the token contract (design-system)."
 triggers:
   - "visual validation"
   - "design critique"
   - "sprite analysis"
   - "UI audit"
   - "image quality check"
-validated: 2026-08-16
+  - "review this screenshot"
+  - "design defects"
+validated: 2026-10-27
 verdict: IMPROVE
 ---
 
@@ -17,17 +19,15 @@ Professional design critique with evidence-based, actionable fixes.
 
 ---
 
-## The Full Quality Cycle
+## What this skill is for
 
-```
-CREATE (visual-creator) ──→ ANALYZE (describe_image) ──→ VALIDATE (visual-validator) ──→ IMPROVE
-```
+This skill is the VALIDATE step: it judges a visual that already exists. Pair it with:
 
-This skill is the **VALIDATE** step. Pair it with:
+- **visual-creator** - chooses the palette, scale, and composition (the CREATE step)
+- **design-system** - writes and enforces the token contract
+- [`_shared/inspect-image.md`](../_shared/inspect-image.md) - how to get the pixels in front of you
 
-- **visual-creator** - for creating amazing visuals with design reasoning
-- **design-system** - for brand identity and DESIGN.md token systems
-- **describe_image(image_path, prompt)** - in-depth design analysis; delegates to the configured vision model when the active model cannot process images natively
+If you are choosing values rather than judging them, you are in the wrong file.
 
 ---
 
@@ -92,17 +92,29 @@ Always extract for any visual asset:
 
 ---
 
-## Design Vocabulary
+## Method: how each number is obtained
 
-| Term               | Definition             | Application                            |
-| ------------------ | ---------------------- | -------------------------------------- |
-| **Silhouette**     | Outline shape          | "Readable at 16×16px"                  |
-| **Gestalt**        | Whole > parts          | "Perceives character despite stacking" |
-| **Figure-ground**  | Subject vs background  | "Blue pops from dark"                  |
-| **Visual weight**  | Attention drawn        | "Eye dominates 40% of head"            |
-| **Rhythm**         | Repeated elements      | "Quill pattern creates spine rhythm"   |
-| **Negative space** | Space between elements | "Gap creates form"                     |
-| **Tension**        | Visual energy          | "Forward lean creates movement"        |
+A measurement you cannot source is a guess with a decimal point. Use the first
+row that applies, and say which instrument you used.
+
+| Metric                | Instrument                                                                      | If the instrument is missing                                       |
+| --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| The image itself      | Read the file: an image path passed to the `read` tool arrives as an attachment | Ask the user for the file or a larger crop                         |
+| A PDF page            | `document_screenshot` renders it to PNG; read that                              | Ask for a screenshot                                               |
+| Dimensions            | The file's pixel size, or the size the attachment reports                       | Do not estimate; say unknown                                       |
+| Dominant colors and % | Count over the image's pixels; report the top five with their area share        | Report colors qualitatively and say the percentages are unmeasured |
+| Contrast ratio        | WCAG relative luminance from the two values: (L1+0.05)/(L2+0.05)                | Compute it by hand; this is arithmetic, not perception             |
+| Spacing variance      | The distinct gap values you measured, and how many fall off the scale           | Say which gaps you could not measure                               |
+| Alignment offset      | The x/y of element edges against the container axis                             | Report only what is visibly off-axis                               |
+
+Two rules that outrank the table:
+
+1. **Never state a hex, a ratio, or a percentage you did not measure.** "Deep
+   blue, roughly a third of the canvas" is honest; an invented "#1A2B3C, 31%"
+   is the failure this skill exists to prevent.
+2. **Say which metric drove the severity.** A P0 blocks use (unreadable text, a
+   control you cannot see); a P1 costs comprehension; a P2 is polish. Twenty P2s
+   and no P0 is a good screen.
 
 ---
 
@@ -120,20 +132,20 @@ Always extract for any visual asset:
 
 ## Animation State Critique
 
-| State               | Check                         | Target                               |
-| ------------------- | ----------------------------- | ------------------------------------ |
-| **Keyframes**       | Minimum viable frames         | idle: 2, walk: 3, run: 4             |
-| **Weight Shift**    | Body leans into movement      | run: 15-25° forward lean             |
-| **Cycle Integrity** | First and last frame match    | Same pose, same position             |
-| **Limb Sync**       | Arms and legs opposite phases | Left arm forward = Right leg forward |
+| State               | Check                         | Target                                                          |
+| ------------------- | ----------------------------- | --------------------------------------------------------------- |
+| **Keyframes**       | Minimum viable frames         | idle: 2, walk: 4, run: 6, attack: 4 (owned by `visual-creator`) |
+| **Weight Shift**    | Body leans into movement      | run: 15-25° forward lean                                        |
+| **Cycle Integrity** | First and last frame match    | Same pose, same position                                        |
+| **Limb Sync**       | Arms and legs opposite phases | Left arm forward = Right leg forward                            |
 
 ---
 
 ## Integration
 
-1. **CAPTURE** - `describe_image` tool
+1. **CAPTURE** - read the image as an attachment (see `_shared/inspect-image.md`)
 2. **MEASURE** - Extract dimensions, colors, positions
-3. **COMPARE** - `compare_images` (for reference comparison)
+3. **COMPARE** - Measure the reference the same way and compare the numbers, not the impressions
 4. **AUDIT** - Apply design criteria
 5. **TRIAGE** - P0/P1/P2 classification
 6. **PRESCRIBE** - Specific actionable fixes
@@ -146,5 +158,6 @@ These undermine credibility:
 
 - "Looks better" without measurement
 - Vague advice without specific values
+- A hex, a ratio, or a percentage you did not measure
 - Ignoring evidence of critical failure
 - Accepting "close enough" when delta exceeds tolerance

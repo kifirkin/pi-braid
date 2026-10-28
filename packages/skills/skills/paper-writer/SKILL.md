@@ -1,8 +1,20 @@
 ---
 name: paper-writer
-description: "Structure, write, and format LaTeX research papers for ML/AI venues: IMRaD sections, abstract strategy, related-work synthesis, method and experiment presentation, figures, tables, citations, and arXiv/conference conventions. Use when drafting or revising a conference paper (NeurIPS, ICML, ICLR, ACL), an arXiv preprint, a workshop submission, or a technical report — including when a draft needs structure, an abstract, or venue formatting. Triggers: paper, LaTeX, arXiv, NeurIPS, ICML, ICLR, abstract, related work, camera-ready."
-validated: 2026-09-09
+description: "Use when drafting or revising a paper for an ML venue, a workshop, or arXiv: sections, abstract, related-work framing, tables and figures, LaTeX preamble, citation conventions. Gives the IMRaD skeleton, the pre-submission checklist, and the venue facts that change every cycle (page limits, template names) as a lookup recipe rather than a table. Not for literature search (research) and not for prose voice (tone-quality)."
+validated: 2026-10-27
 verdict: IMPROVE
+triggers:
+  - write a paper
+  - paper
+  - latex
+  - arxiv
+  - neurips
+  - icml
+  - iclr
+  - camera-ready
+  - related work
+  - conference submission
+  - workshop paper
 ---
 
 # Paper Writer
@@ -152,11 +164,21 @@ Visualizations, case studies, failure analysis.
 
 **Figure design rules:**
 
-- 600+ DPI for camera-ready (300 DPI minimum for review)
-- Same font as paper body (or close)
-- Colorblind-safe palettes (Crameri et al., 2020)
-- Axis labels readable at print size (9pt minimum)
-- No text in figures that appears only in the figure - reference in caption
+- **Export vector, not raster.** `savefig('fig.pdf')` from matplotlib; no PNG in a camera-ready unless the source is a photograph.
+- **Size the figure for its final width.** A two-column venue's column is roughly 3.25in and its text width roughly 5.5in. Set `figsize` to that width and the font size in points; the rendered label size is then whatever you set, instead of a wish.
+- **One font family with the body text.** `matplotlib.rc('font', family='serif')` plus `mathtext.fontset='cm'` matches a LaTeX body.
+- **Colorblind-safe palette, cited.** Use a published palette and cite it in the caption; do not invent one and call it safe.
+- **Reference every figure and table from the text before it appears.**
+
+### Experimental rigor
+
+Reviewers reject on this more often than on prose. Before submission:
+
+- **Seeds.** State how many runs, the metric's mean and standard deviation, and whether the std is over seeds or over folds.
+- **Error bars.** Every headline number in a table either carries a variance or a sentence explaining why it does not.
+- **Significance.** If you claim an improvement, name the test (paired bootstrap, Wilcoxon) and its result. "Consistently better" without a test is a claim the reviewer will discount.
+- **Baselines.** Every baseline named in related work appears in a table, tuned with the same budget, or the omission is stated with a reason.
+- **Negative results.** Report the metric you lose on, in the main table.
 
 ### Conclusion
 
@@ -174,9 +196,9 @@ Three paragraphs:
 
 ```latex
 \documentclass{article}
-% For conference submissions, replace with:
-% \documentclass{neurips_2025}  % NeurIPS
-% \documentclass[accepted]{icml2025}  % ICML
+% For a venue submission, replace the line above with the venue's own class
+% file: take it from the current CFP's starter template (see section 6), not
+% from a paper you read and not from this file.
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -285,8 +307,8 @@ Before submission, verify:
 - **Method**: Is every symbol defined? Is the main equation numbered?
 - **Experiments**: Does the main table have standard deviations? Are baselines fair?
 - **Conclusion**: Are limitations stated honestly?
-- **Figures**: Are they at 300+ DPI? Colorblind-safe? Referenced in text?
-- **References**: Are at least 70% from peer-reviewed venues?
+- **Figures**: Are they vector, sized for their final width, colorblind-safe, and referenced in text before they appear?
+- **References**: Does every citation support the sentence it is attached to, and does every baseline named in a related-work claim appear in the experiments table?
 - **Length**: Fits within page limit (typically 8 pages + references for NeurIPS/ICML)?
 
 ---
@@ -307,17 +329,42 @@ Before submission, verify:
 
 ---
 
-## 6. Conference Formatting Quick Reference
+## 6. Venue facts change every cycle: look them up, do not remember them
 
-| Venue   | Template           | Max pages (references excluded) | Anonymized?      |
-| ------- | ------------------ | ------------------------------- | ---------------- |
-| NeurIPS | `neurips_2025.sty` | 8                               | Yes              |
-| ICML    | `icml2025.sty`     | 8                               | Yes              |
-| ICLR    | `iclr2025.sty`     | 9                               | Yes              |
-| ACL     | `acl.sty`          | 8                               | Yes (unless ARR) |
-| arXiv   | `article` (any)    | No limit                        | No               |
+Templates and limits are re-issued annually. Get them from the venue, in this
+order, and record what you did in the repository:
 
-Check the specific conference website for the current template. Templates change yearly.
+1. `\documentclass` - take it from the venue's own starter (the CFP links a
+   zip or an Overleaf template). Do not copy a class file name out of a paper
+   you read.
+2. Page limit - read the CFP's submission section for this cycle. Count only
+   what the CFP says counts (usually body plus figures, excluding references
+   and appendix; sometimes the appendix counts, and that difference sinks
+   submissions).
+3. Anonymity - the same CFP paragraph states it, and it differs per venue and
+   per track (main, dataset-and-benchmark, workshop).
+4. Camera-ready - a separate deadline and a separate limit, usually one page
+   more.
+
+Two checks an agent can run before reading anything:
+
+```bash
+ls *.sty *.cls        # what template is actually in the tree
+grep -n 'documentclass' *.tex
+```
+
+If the class name's year is not the current cycle, the paper is on last cycle's
+template: stop and fetch the current one.
+
+### Anonymity checklist
+
+Five checks that catch nearly every desk-reject:
+
+1. Acknowledgements name nobody and thank no institution.
+2. No self-citation in the first person ("our earlier work"); cite in the third person.
+3. No repository, project page, or dataset link that resolves to your identity.
+4. No author names or affiliations left in the PDF metadata (`pdfinfo paper.pdf`).
+5. Supplementary material and appendix are anonymized too, and no grant numbers survive there.
 
 ---
 
@@ -325,3 +372,4 @@ Check the specific conference website for the current template. Templates change
 
 - `research` - literature search and fact-checking for citations
 - `tone-quality` - academic tone enforcement
+- `visual-creator` - figure and diagram critique when the plot is the argument

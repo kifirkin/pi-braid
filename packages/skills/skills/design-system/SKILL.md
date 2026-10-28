@@ -1,15 +1,28 @@
 ---
 name: design-system
-description: "Design and maintain a brand identity system using the DESIGN.md format. Covers design tokens (colors, typography, spacing, components), brand consistency enforcement, visual identity documentation, and the full DESIGN.md authoring workflow. Activate when building a brand system, writing a DESIGN.md, or enforcing design consistency across a project."
-validated: 2026-08-16
+description: "Use when a project needs a written visual identity other sessions can follow, or when an existing DESIGN.md and the code have drifted apart. Produces the token file plus its rationale and enforces it with `npx @google/design.md lint` (published, format alpha): lint findings, a diff between versions, export to Tailwind or DTCG. Not for judging whether one screen looks good (visual-validator) and not for choosing a palette from scratch (visual-creator)."
+validated: 2026-10-27
 verdict: IMPROVE
+triggers:
+  - DESIGN.md
+  - design tokens
+  - brand identity
+  - style guide
+  - design system
+  - token drift
+  - palette drift
 ---
 
 # Design System & Brand Identity
 
-Build and maintain a durable visual brand identity using the DESIGN.md format. The format is a monorepo that ships CLI tooling for linting, diffing, and exporting.
+Build and maintain a durable visual brand identity using the DESIGN.md format. The format is a specification with a published linter and exporter: `@google/design.md`.
 
-> **⚠️ CLI availability**: The `@google/design.md` CLI is aspirational - it's Google's internal design-spec tooling and has not been published as a public npm package. The commands shown below document the _intended_ interface. Until the package is published, use `describe_image` + manual cross-reference (see §5) for enforcement, and the token schema + drift-handling table for manual consistency checks.
+> **The CLI is published; the format is alpha.** `@google/design.md` is on npm
+> (0.4.0 at the time of writing) and ships `lint`, `diff`, `export`, and
+> `spec`. Run it with `npx`; pin the major version in CI. The format itself is
+> marked `alpha` upstream, so when lint disagrees with this skill, lint is
+> right and this skill is stale: re-read the format specification in the
+> repository below, which is what lint implements.
 
 ---
 
@@ -19,6 +32,7 @@ A DESIGN.md file combines machine-readable design tokens (YAML front matter) wit
 
 ```
 ---
+version: alpha
 name: My Brand
 colors:
   primary: "#1A1C1E"
@@ -41,18 +55,31 @@ spacing:
 The brand evokes architectural minimalism meets journalistic gravitas.
 ```
 
-Every agent that reads this file will produce visuals consistent with this identity.
+Consistency depends on two things, and neither is automatic: an agent reading this file, and `lint` running in the loop. A token file nobody reads and nothing checks is a wish.
 
 ---
 
 ## 1. Token Schema Reference
 
+```yaml
+version: <string> # optional, current: "alpha"
+name: <string>
+description: <string> # optional
+omitted: <string[] | OmittedSection[]> # optional, sections you intend to leave out
+```
+
+The rest of this section is the token types those fields hold. Tokens may live
+in the file's front matter or be interleaved as fenced `yaml` blocks inside the
+`##` sections they document; both are valid.
+
 ### 1.1 Colors
 
 ```yaml
 colors:
-  <token-name>: <hex-color>
+  <token-name>: <css-color>
 ```
+
+The spec accepts any CSS color: hex (`#1A1C1E`), `rgb()`, `oklch()`, or a named color. Do not reject a token because it is not a hex value.
 
 | Token name convention | Example   | Role                                   |
 | --------------------- | --------- | -------------------------------------- |
@@ -199,10 +226,12 @@ typography:
 
 **Step 3 - Define spacing grid:**
 
+Use the scale from §1.3 and nothing else. A DESIGN.md that carries two spacing
+scales is the drift it exists to prevent.
+
 ```yaml
 spacing:
-  base: 8px
-  xs: 4px; sm: 12px; md: 24px; lg: 40px; xl: 64px
+  xs: 4px; sm: 8px; md: 16px; lg: 24px; xl: 40px; xxl: 64px
   gutter: 16px; margin: 24px
 ```
 
@@ -242,32 +271,46 @@ The markdown body explains rationale. Each section answers "why":
 | Components        | Usage guidelines, interaction patterns, dos/don'ts                        |
 | Do's and Don'ts   | Concrete examples of correct and incorrect usage                          |
 
+Sections may be omitted, but the ones present must appear in the order above:
+`section-order` is a lint rule, and an out-of-order file fails it.
+
 ---
 
 ## 3. Consistency Enforcement
 
-### 3.1 Consistency Enforcement (No CLI Yet)
-
-Until the `@google/design.md` CLI is published, enforce DESIGN.md consistency manually per §3.2 below. The intended (future) commands are:
+### 3.1 The commands
 
 ```bash
-# Lint a DESIGN.md for structural errors (aspirational)
+# Lint: structural findings, broken token references, WCAG contrast per component
 npx @google/design.md lint DESIGN.md
+npx @google/design.md lint --format json DESIGN.md
 
-# Compare two versions for regressions (aspirational)
+# Diff two versions: added/removed/modified tokens plus a findings delta
 npx @google/design.md diff DESIGN.md DESIGN-v2.md
 
-# Export to other formats (aspirational)
-npx @google/design.md export --format tailwind DESIGN.md > tailwind.theme.json
-npx @google/design.md export --format dtcg DESIGN.md > tokens.json
+# Export
+npx @google/design.md export --format json-tailwind DESIGN.md > tailwind.theme.json
+npx @google/design.md export --format css-tailwind  DESIGN.md > theme.css
+npx @google/design.md export --format dtcg          DESIGN.md > tokens.json
 
-# Get the spec for agent context (aspirational)
+# The rules lint applies, as data - own them when writing a custom check
 npx @google/design.md spec --rules
 ```
 
+`lint` exits non-zero when it finds errors and prints
+`{"findings":[{severity,path,message}], "summary":{errors,warnings,infos}}`.
+A contrast warning carries the measured ratio, so "does the palette pass WCAG?"
+is answered by the tool rather than by the agent's eye. `export` exits 0 even
+when the source has lint findings: run `lint` separately as the gate.
+
+One caveat, stated rather than hidden: the subcommands and their exit codes
+above are read from the package README, not re-run here. If `--help` on your
+installed version disagrees, the installed version is right.
+
 ### 3.2 Cross-Screen Consistency Check
 
-When verifying that a screen follows the DESIGN.md:
+When verifying that a screen follows the DESIGN.md, run `lint` first and use its
+findings as the input to these five checks:
 
 1. **Color check**: scan every visible color. Does each one map to a token in the DESIGN.md? If not, it's a drift - either the design added an unauthorized color or the DESIGN.md is missing one.
 
@@ -297,7 +340,7 @@ When writing code that consumes a DESIGN.md:
 
 1. Extract all color values from the DESIGN.md into CSS custom properties or Tailwind config
 2. Build a component library (React/Vue/Svelte) that references these tokens
-3. Run `describe_image` on screenshots and cross-reference against DESIGN.md tokens
+3. Read the screenshot as an image attachment and cross-reference it against the DESIGN.md tokens (see §5); `visual-validator` owns the measurement vocabulary
 4. For CI, pipe the token list into a custom lint script that validates CSS variables against the YAML - or use a static schema validator (`yaml-lint`, `ajv`) to catch structural errors in the DESIGN.md itself
 
 ---
@@ -313,7 +356,7 @@ colors:
   on-warning: "#1A1C1E"
 ```
 
-Then run a diff check - either manually or via the aspirational `npx @google/design.md diff DESIGN.md DESIGN-v2.md` - to verify only intentional changes.
+Then run `npx @google/design.md diff DESIGN.md DESIGN-v2.md` to verify that only the changes you intended appear.
 
 ### Deprecating a token
 
@@ -335,20 +378,23 @@ colors:
 
 ---
 
-## 5. Integration with describe_image
+## 5. Reviewing a screen against the tokens
 
-After building a DESIGN.md, use `describe_image` with a comprehensive comparison prompt on screenshots of implemented designs:
+Token-level contrast is `lint`'s job (§3.1). Everything else about a rendered
+screen is a measurement, and `visual-validator` owns the measurements: hand it
+the screenshot and the drift table becomes a set of findings rather than an
+impression. Read the image first; [`_shared/inspect-image.md`](../_shared/inspect-image.md)
+says how to get the pixels in front of you when the harness has no image tool
+of its own.
 
-```
-describe_image("screenshot.png", "Comprehensive design analysis: compare the implementation against the DESIGN.md tokens - colors, typography, spacing, component shapes - and list every deviation")
-```
+What only you can answer, once the screen is measured:
 
-The analysis will report detected colors, typography, spacing, and components. Cross-reference these against the DESIGN.md tokens:
-
-1. Extract the reported colors - do they match your DESIGN.md palette?
-2. Extract detected typefaces - do they match your DESIGN.md typography?
-3. Extract spacing patterns - do they follow your DESIGN.md scale?
-4. Note any discrepancies as action items.
+1. Do the reported colors map to your palette, or did someone add a colour the
+   file does not name?
+2. Do detected typefaces and sizes match your typography tokens?
+3. Do the gaps follow your spacing scale, or is there a fourth value nobody
+   wrote down?
+4. Every discrepancy is an action item in the drift table (§3.3).
 
 ---
 
@@ -365,17 +411,37 @@ The analysis will report detected colors, typography, spacing, and components. C
 | Changing token names                | Breaks references everywhere                 | Names are permanent; values change    |
 | Zero documentation of drift         | Inconsistencies compound silently            | Use lint + diff regularly             |
 
+### Dark mode tokens
+
+The "only light mode" anti-pattern has a concrete answer: a second set of
+surface tokens, not a filter over the first.
+
+```yaml
+colors:
+  surface: "#F9F9FF" # light: the page
+  on-surface: "#151C27"
+  surface-dim: "#111318" # dark: the page
+  on-surface-dark: "#E3E6EB"
+  surface-container: "#E7EEFE"
+  surface-container-dark: "#1D2024"
+  inverse-surface: "#2F3033" # used for snackbars in both modes
+  inverse-on-surface: "#F1F0F4"
+```
+
+Keep the semantic names stable across modes and change only the values; lint's
+`contrast-ratio` rule then checks both sets with the same call.
+
 ---
 
 ## Quick Reference
 
-| Action                | How to do it (today)                                   | Aspirational CLI               |
-| --------------------- | ------------------------------------------------------ | ------------------------------ |
-| Validate structure    | Manual review or `yaml-lint` on YAML front matter      | `npx @google/design.md lint`   |
-| Compare versions      | Manual diff or `file_diff` between two DESIGN.md files | `npx @google/design.md diff`   |
-| Export to Tailwind    | Copy-paste tokens into `tailwind.config.js`            | `npx @google/design.md export` |
-| Export to DTCG        | Copy-paste tokens into DTCG format                     | `npx @google/design.md export` |
-| Analyze visual output | `describe_image("screenshot.png", prompt)`             | -                              |
-| Validate output       | Follow visual-validator audit format                   | -                              |
+| Action           | Command                                                                     | What to do with the output                                                    |
+| ---------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Validate         | `npx @google/design.md lint DESIGN.md`                                      | Fix errors; read warnings as drift, not noise                                 |
+| Check contrast   | the same command                                                            | Report the ratio the finding carries; do not eyeball it                       |
+| Compare versions | `npx @google/design.md diff OLD.md NEW.md`                                  | Every modified token is a migration item; `regression: true` blocks the merge |
+| Export tokens    | `npx @google/design.md export --format <json-tailwind\|css-tailwind\|dtcg>` | Commit the generated file; never hand-edit it                                 |
+| Review a screen  | `visual-validator`, after reading the image as an attachment                | Findings become drift-table rows                                              |
+| Learn the rules  | `npx @google/design.md spec --rules`                                        | The rule list is the source of truth for a custom lint                        |
 
 The DESIGN.md format is documented at [Google's design-spec repository](https://github.com/google-labs-code/design.md).

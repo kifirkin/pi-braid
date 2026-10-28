@@ -469,8 +469,6 @@ const DOC_REF_EXTERNAL = [
     "analyze_image",
     "read_document",
     "render_pdf_page",
-    "compare_images",
-    "browser_upload_image",
   ].map((name) => ({ name, reason: "tool provided by an installed pi package" })),
   { name: "in_reply_to", reason: "X intent-URL parameter named by the twitter skill" },
   { name: "time_range", reason: "date-window argument of the host search tools" },

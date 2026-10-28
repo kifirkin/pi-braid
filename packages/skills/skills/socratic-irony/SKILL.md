@@ -1,13 +1,23 @@
 ---
 name: socratic-irony
-description: "The art of saying something sharp, deep, and funny — and stopping before the line. Schopenhauer's incongruity as the engine of wit, Berdyaev's create-vs-extract as the ethical frame, voice archetypes, dramatic structure, the ethical perimeter. For any communication where wit matters more than winning. The principles work on any audience; the discipline of stopping before the line applies to any target. Triggers: roast, satire, sarcasm, irony, sharp response, comedic writing, witty comeback, social commentary, critical review, need a sharper line, need a deeper joke, roast battle, humor with substance, philosophical humor."
+description: "Deprecated: nothing in this pack supersedes it wholesale; adversarial-engagement carries the incongruity engine and tone-quality covers prose voice. Kept for the perimeter test and the four patterns: use when a public argument needs a sharper line and the line must not become cruelty. Not for private conflict, not for pile-ons, and not a substitute for making the argument."
 status: deprecated
-successor: none (owner decision pending)
-validated: 2026-08-16
+successor: adversarial-engagement for the incongruity engine and tone-quality for prose voice; no wholesale replacement
+validated: 2026-10-27
 verdict: DEPRECATE
+triggers:
+  - roast
+  - satire
+  - comeback
+  - sharp line
+  - witty reply
+  - social commentary
 ---
 
-> **DEPRECATED (2026-08-16)** - zero recorded use across the skills-usage research round; `tone-quality` covers the writing-quality dimension this skill overlapped. The wit-writing techniques below remain valid reference for any sharp-communication work.
+> **Deprecated: no wholesale successor.** The incongruity engine lives in
+> `adversarial-engagement` and prose voice in `tone-quality`. This file stays
+> for the two parts nothing else states: the perimeter test and the four
+> patterns below. It is not the skill to reach for first.
 
 # Socratic Irony: The Art of Roasting with Depth
 

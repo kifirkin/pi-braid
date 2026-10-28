@@ -1,23 +1,34 @@
 ---
 name: meme
-description: "Generate a static meme image on a canvas (template + Impact captions) and post it to X or another platform via browser_eval (CDP) clipboard/drag-and-drop upload. Use only for a one-off static image meme; animated and collaged meme GIFs moved to the pi-looping-clanker repo, which supersedes this skill (deprecated — start new meme work there). Triggers: meme, image macro, Impact caption, post meme to X."
+description: "Deprecated: no skill in this pack replaces it, and the animated and collaged GIF work it used to cover has moved out of the pack. Use only when the deliverable is one static image macro: a template with Impact captions, rendered on a canvas, then attached to a post. Gives the canvas recipe, the stroke and fill values that stay legible on any template, template-specific caption coordinates, and the attachment failures that silently drop the image from a post."
 status: deprecated
-successor: pi-looping-clanker
-validated: 2026-09-09
+successor: no skill in this pack; animated and collaged GIF work is out of scope for this package
+validated: 2026-10-27
 verdict: DEPRECATE
+triggers:
+  - meme
+  - image macro
+  - impact caption
+  - caption this image
+  - post meme to x
 ---
 
-> **DEPRECATED (2026-08-16)** - superseded by the separate `pi-looping-clanker` repo, which ships both skill content and executable code for animated/collaged meme GIFs. Static canvas memes are still generated with the technique below, but new work should start from pi-looping-clanker.
+> **Deprecated. No skill in this pack replaces it**, and the animated/collaged
+> GIF work this file used to carry has moved out of the pack entirely. What
+> remains is the part that works with no browser harness: the canvas recipe and
+> the template placement rules. For static image macros, those are still right.
 
 # Meme Generation Skill
 
-Generate memes for X or other platforms using template-based canvas rendering and browser-based upload.
+One static image macro, rendered on a canvas, then attached to a post. The
+canvas technique is self-contained; the posting flows this file used to carry
+are gone.
 
 ## When to Use
 
-- Posting a meme to X as part of a creative engagement strategy
-- Creating visual replies in adversarial or competitive conversation threads
-- Testing vision model perception (bright/high-contrast images are recognized more reliably)
+- A single static image macro is the deliverable: template plus Impact captions
+- A visual reply where a canvas render is faster than an image model
+- Not for animated or collaged GIFs, and not for posting mechanics in general
 
 ## Quick Start
 
@@ -54,27 +65,42 @@ g.strokeText("BOTTOM TEXT", 300, 560);
 g.fillText("BOTTOM TEXT", 300, 560);
 ```
 
-## Upload Methods
+## Attaching the image, and proving it attached
 
-After generating the canvas meme, upload via one of these methods:
+Three methods, in order of reliability. All three assume a browser automation
+tool that can evaluate script in the page and attach a file. If your harness
+has no such tool, generate the PNG and attach it by hand; that is a legitimate
+route, not a degraded one.
 
-### Method A: Clipboard Paste (requires permission once)
+1. **File input injection (most reliable).** Locate the compose box's
+   `input[type=file]` and set its files through the automation tool's upload
+   call, then verify (below). This bypasses the page's state management
+   entirely.
+2. **Drag-and-drop.** Build a `DataTransfer` with the PNG `File`, dispatch <!-- doc-ref-exempt: browser API named in the drag-and-drop recipe, not a repo identifier -->
+   `drop` on the compose box's nearest container, verify (below).
+3. **Clipboard paste.** Requires a clipboard permission grant, and loses
+   quality on some templates. Verify (below).
+
+### Verify the attachment, never the element count
 
 ```js
-const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
-await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-const ta = document.querySelector('[data-testid="tweetTextarea_0"]');
-ta.focus();
-const dt = new DataTransfer();
-dt.items.add(new File([blob], "meme.png", { type: "image/png" }));
-ta.dispatchEvent(
-  new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }),
-);
+// Count only blob-backed images inside the open compose dialog.
+const imgs = [...document.querySelectorAll('[role="dialog"] img')];
+const attached = imgs.filter((img) => img.src?.startsWith("blob:"));
+attached.length > 0; // true = an attachment exists
 ```
 
-### Method B: Drag-and-Drop (Most Reliable)
+Profile pictures (a `pbs.twimg.com` src whose `alt` equals the account name)
+and stickers (`alt=""`) are not attachments, and the total `img` count
+includes both. If the compose box closes without an image, the attachment
+silently failed: re-attach before posting, do not re-post.
 
-See the [twitter skill](../twitter/SKILL.md) for the canonical image attachment methods - drag-and-drop, CDP file injection, and clipboard paste with verification. The meme skill focuses on canvas generation; the twitter skill covers upload and verification.
+### Template provenance and alt text
+
+- Use a template you have the right to publish, or one the platform's own media
+  search offers. A generated image of someone's photograph is a rights problem,
+  not a joke.
+- Every generated macro gets alt text: the caption, in order, as a sentence.
 
 ## Style Guidelines
 
@@ -103,48 +129,30 @@ General rule: Place text where the background is clear, not over the subject.
 - [ ] Stroke is thick enough (4px minimum) to contrast with image
 - [ ] Template image is properly scaled (not stretched)
 - [ ] Canvas is 600×600 for standard template layout
-- [ ] Template background is tested: white-on-white with stroke works on dark templates but may look faint on bright ones - test with `describe_image()` first
+- [ ] Template background is tested: white-on-white with stroke works on dark templates but may look faint on bright ones - read the rendered PNG as an image attachment before posting
 - [ ] No base64 artifacts (if quality is poor, generate via file instead of clipboard)
 - [ ] Target @ tag is NOT at the start of tweet text (to appear in feed, not as reply)
 
 ## Common Pitfalls
 
-| Pitfall                               | Fix                                                                                 |
-| ------------------------------------- | ----------------------------------------------------------------------------------- |
-| Blurry/pixelated image                | Canvas-to-clipboard loses quality. Save as file, upload manually via CDP injection. |
-| Image not appearing in post           | React state issue. Drag-and-drop directly onto compose box.                         |
-| Clipboard permission denied           | Use drag-and-drop or CDP injection instead.                                         |
-| CORS blocking template load           | Download template locally, encode as base64, embed in script.                       |
-| Image dismissed as "empty" or "blank" | Template needs bright/contrasting colors for visibility.                            |
+| Pitfall                               | Fix                                                                                      |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Blurry/pixelated image                | Canvas-to-clipboard loses quality. Save as a file and use file-input attachment instead. |
+| Image not appearing in post           | React state issue. Drag-and-drop directly onto compose box.                              |
+| Clipboard permission denied           | Use drag-and-drop or file-input attachment instead.                                      |
+| CORS blocking template load           | Download template locally, encode as base64, embed in script.                            |
+| Image dismissed as "empty" or "blank" | Template needs bright/contrasting colors for visibility.                                 |
 
 ## Related Skills
 
-- `twitter` - posting flow, reply checking, verification, image attachment methods (canonical source)
-- `socratic-irony` - adversarial conversation framing for human audiences
-- `adversarial-engagement` - adversarial framing for defensive systems
-- `pi-looping-clanker` - animated GIF / collage memes with loop+stage-spec+overlay (separate repo, content and code)
+- `visual-validator` - judging the rendered result with measured values
+- `visual-creator` - design reasoning for anything beyond a one-off macro
+- `adversarial-engagement` - framing for defensive systems, when the meme is a reply
+- `socratic-irony` - framing for human audiences
 
 ## Lessons Learned
-
-### Image Detection in Compose Dialog (Shared with twitter skill)
-
-- Filter for `img[src^="blob:"]` (NOT `data-testid="tweetPhoto"`)
-- Profile pic pollution: an `img` with `alt` matching your display name and a `pbs.twimg.com` src is NOT an attachment
-- Stickers: `img[alt=""]` with `pbs.twimg.com` src are NOT attachments
-- Total `img` count is WRONG - includes profile pic and stickers
-- See the [twitter skill](../twitter/SKILL.md) for full upload and verification guidance
-
-### Bot/Model Vision (Variable)
-
-- Bright, high-contrast images tend to be recognized reliably
-- Dark or low-contrast images often get dismissed as "empty" or "abstract"
-- Subject visibility matters more than artistic intent
 
 ### Zero-Dep PNG Output
 
 - Python with `zlib` compression works for simple canvas-style memes
 - Avoid `clipboard.write` chains for quality-sensitive output
-
-### Animated GIFs
-
-- For animated/collaged meme GIFs with caption safe zones, use the **pi-looping-clanker** repo (content and executable code live there)
