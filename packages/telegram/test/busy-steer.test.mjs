@@ -17,7 +17,7 @@
  * fetch) with a fake pi exposing the shipped extension-API shape (no isIdle
  * member) and a fake context carrying the idle answer and session id.
  *
- * Run: npm test -w packages/telegram  (from the repo root)
+ * Run: node test/busy-steer.test.mjs  (or npm test -w packages/telegram)
  */
 
 import { test } from "node:test";
@@ -31,6 +31,8 @@ import telegramExtension, {
   ENV_ALLOWED_USERS,
   ENV_POLL_ENABLED,
   ENV_POLL_DISABLED,
+  ENV_POLLER_LOCK_FILE,
+  ENV_SESSION_ROLE,
   ENV_STATE_FILE,
   ENV_POLL_INTERVAL_MS,
   ENV_COALESCE_WINDOW_MS,
@@ -171,9 +173,28 @@ function makeFeedFetch() {
   return fetchFn;
 }
 
-/** Env for the busy-steer tests: poller on, live-update off, fake token. */
+/**
+ * Env for the busy-steer tests: poller on, live-update off, fake token.
+ *
+ * The pinning half is not decoration. The braid tree is MACHINE state, and the
+ * poller resolves it at start and again on every poll cycle: the ownership lock
+ * (a live pid of any other pi process on this machine holds it), the pause flag
+ * (a paused owner holds every delivery), the role marker (a worker session may
+ * not start the poller at all). Any of the three leaves the poller silent and
+ * every delivery wait here unsatisfiable, so the whole tree is pinned at this
+ * test's own tmp dir — the same pins the runner's child env applies to spawned
+ * children. BRAID_HOME moves the tree; the lock is named explicitly so an
+ * ambient lock override cannot reintroduce the machine lock. Both must stay set
+ * for the WHOLE case, not just the factory call: the pause read and the lock
+ * path are resolved per poll cycle and again at shutdown.
+ */
 function steerEnv(stateFile, { windowMs = "60", intervalMs = "150" } = {}) {
+  const dir = dirname(stateFile);
   return {
+    BRAID_HOME: dir,
+    [ENV_SESSION_ROLE]: undefined,
+    [ENV_POLLER_LOCK_FILE]: join(dir, "telegram-poller.lock"),
+    TELEGRAM_POLLER_LOCK_FILE: undefined,
     [ENV_TOKEN]: BOT_TOKEN,
     TELEGRAM_BOT_TOKEN: undefined,
     [ENV_CHAT_ID]: String(OWNER_CHAT_ID),
@@ -203,6 +224,31 @@ function handoffWarnings(pi) {
   );
 }
 
+/**
+ * Wait until the background poller has issued its first getUpdates.
+ *
+ * Every delivery assertion below needs a running poller, and a refused start is
+ * invisible from here: the extension reports it through the notify sink, and
+ * nothing binds that sink before the first session_start. Without this wait a
+ * refusal reads as a bare "condition not met within 3000ms" — a description of
+ * the observer, not of the world — so it is named here instead.
+ */
+async function waitForFirstPoll(fetchFn, timeoutMs = 3000) {
+  try {
+    await waitFor(
+      () => fetchFn.calls.some((call) => call.url.includes("getUpdates")),
+      timeoutMs,
+    );
+  } catch (error) {
+    throw new Error(
+      "the poller never issued getUpdates: its start was refused — a live pid " +
+        "holds the machine-wide ownership lock, the session role is worker, or " +
+        "no braid root resolves",
+      { cause: error },
+    );
+  }
+}
+
 test("busy-steer: a busy arrival is delivered as a steer at window close, the hold drained", async () => {
   const stateFile = tmpStateFile("busy-steer-busy");
   const queueFile = queueFileFor(stateFile);
@@ -210,38 +256,39 @@ test("busy-steer: a busy arrival is delivered as a steer at window close, the ho
   const fetchFn = makeFeedFetch();
   await withEnv(steerEnv(stateFile), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
+    await waitForFirstPoll(fetchFn);
+
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "startup" },
+        makeCtx(false, SESSION_A, pi.notifications),
+      );
+      fetchFn.feed(makeUpdate(1001, { text: "steer into the run" }));
+
+      // The run is active; the message still leaves at the window's close.
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      const [content, options] = pi.messages[0];
+      assert.equal(
+        options?.deliverAs,
+        "steer",
+        "a busy session gets a steer, not a next-task followUp",
+      );
+      assert.ok(
+        content.includes("steer into the run"),
+        "the owner text reaches the running turn",
+      );
+      await sleep(150);
+      assert.equal(pi.messages.length, 1, "exactly one delivery");
+      await waitFor(
+        async () => (await loadInboundQueue(queueFile)).length === 0,
+        3000,
+      );
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
   });
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(false, SESSION_A, pi.notifications),
-    );
-    fetchFn.feed(makeUpdate(1001, { text: "steer into the run" }));
-
-    // The run is active; the message still leaves at the window's close.
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    const [content, options] = pi.messages[0];
-    assert.equal(
-      options?.deliverAs,
-      "steer",
-      "a busy session gets a steer, not a next-task followUp",
-    );
-    assert.ok(
-      content.includes("steer into the run"),
-      "the owner text reaches the running turn",
-    );
-    await sleep(150);
-    assert.equal(pi.messages.length, 1, "exactly one delivery");
-    await waitFor(
-      async () => (await loadInboundQueue(queueFile)).length === 0,
-      3000,
-    );
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });
 
 test("busy-steer: an idle arrival is delivered at window close with the same steer shape", async () => {
@@ -252,33 +299,34 @@ test("busy-steer: an idle arrival is delivered at window close with the same ste
     steerEnv(stateFile, { windowMs: "400", intervalMs: "120" }),
     async () => {
       await telegramExtension(pi, { fetch: fetchFn });
+      await waitForFirstPoll(fetchFn);
+
+      try {
+        pi.emit(
+          "session_start",
+          { type: "session_start", reason: "startup" },
+          makeCtx(true, SESSION_A, pi.notifications),
+        );
+        fetchFn.feed(makeUpdate(1002, { text: "idle arrival" }));
+        await waitFor(() => fetchFn.servedUpdates() === 1, 3000);
+        assert.equal(
+          pi.messages.length,
+          0,
+          "the coalescing window is still open: nothing delivered yet",
+        );
+
+        await waitFor(() => pi.messages.length >= 1, 3000);
+        const [content, options] = pi.messages[0];
+        assert.equal(options?.deliverAs, "steer", "same call shape while idle");
+        assert.ok(content.includes("idle arrival"));
+        await sleep(150);
+        assert.equal(pi.messages.length, 1, "one arrival, one delivery");
+      } finally {
+        pi.emit("session_shutdown");
+        await sleep(50);
+      }
     },
   );
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(true, SESSION_A, pi.notifications),
-    );
-    fetchFn.feed(makeUpdate(1002, { text: "idle arrival" }));
-    await waitFor(() => fetchFn.servedUpdates() === 1, 3000);
-    assert.equal(
-      pi.messages.length,
-      0,
-      "the coalescing window is still open: nothing delivered yet",
-    );
-
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    const [content, options] = pi.messages[0];
-    assert.equal(options?.deliverAs, "steer", "same call shape while idle");
-    assert.ok(content.includes("idle arrival"));
-    await sleep(150);
-    assert.equal(pi.messages.length, 1, "one arrival, one delivery");
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });
 
 test("busy-steer: a busy burst leaves as ONE steer carrying every part in arrival order", async () => {
@@ -287,38 +335,39 @@ test("busy-steer: a busy burst leaves as ONE steer carrying every part in arriva
   const fetchFn = makeFeedFetch();
   await withEnv(steerEnv(stateFile), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
+    await waitForFirstPoll(fetchFn);
+
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "startup" },
+        makeCtx(false, SESSION_A, pi.notifications),
+      );
+      fetchFn.feed(
+        makeUpdate(1003, { text: "first part" }),
+        makeUpdate(1004, { text: "second part" }),
+      );
+
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      await sleep(150); // past the window: no second delivery may follow
+      assert.equal(
+        pi.messages.length,
+        1,
+        "the whole busy burst is ONE sendUserMessage",
+      );
+      const [content, options] = pi.messages[0];
+      assert.equal(options?.deliverAs, "steer");
+      assert.ok(
+        content.indexOf("first part") < content.indexOf("second part"),
+        "parts keep arrival order",
+      );
+      const headerLines = content.split("\n");
+      assert.equal(headerLines[1], "2 coalesced owner messages");
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
   });
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(false, SESSION_A, pi.notifications),
-    );
-    fetchFn.feed(
-      makeUpdate(1003, { text: "first part" }),
-      makeUpdate(1004, { text: "second part" }),
-    );
-
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(150); // past the window: no second delivery may follow
-    assert.equal(
-      pi.messages.length,
-      1,
-      "the whole busy burst is ONE sendUserMessage",
-    );
-    const [content, options] = pi.messages[0];
-    assert.equal(options?.deliverAs, "steer");
-    assert.ok(
-      content.indexOf("first part") < content.indexOf("second part"),
-      "parts keep arrival order",
-    );
-    const headerLines = content.split("\n");
-    assert.equal(headerLines[1], "2 coalesced owner messages");
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });
 
 test("busy-steer: a handoff pi refuses is re-queued in order, the window re-arms, the refusal is logged", async () => {
@@ -328,59 +377,64 @@ test("busy-steer: a handoff pi refuses is re-queued in order, the window re-arms
   const fetchFn = makeFeedFetch();
   await withEnv(steerEnv(stateFile), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
+    await waitForFirstPoll(fetchFn);
+
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "startup" },
+        makeCtx(false, SESSION_A, pi.notifications),
+      );
+      pi.failAlways = true; // every handoff refused, as during compaction
+      fetchFn.feed(
+        makeUpdate(1005, { text: "retry first" }),
+        makeUpdate(1006, { text: "retry second" }),
+      );
+
+      await waitFor(() => handoffWarnings(pi).length >= 1, 3000);
+      assert.equal(
+        pi.messages.length,
+        0,
+        "a refused handoff hands nothing over",
+      );
+      const held = await loadInboundQueue(queueFile);
+      assert.deepEqual(
+        held.map((entry) => entry.message.updateId),
+        [1005, 1006],
+        "the whole batch is re-queued, still in arrival order",
+      );
+      assert.ok(
+        held.every((entry) => entry.sessionId === SESSION_A),
+        "re-queued entries keep the session they were accepted for",
+      );
+
+      // The window re-armed: the next close refuses again.
+      await waitFor(() => handoffWarnings(pi).length >= 2, 3000);
+
+      // pi accepts again: the next re-armed window hands the batch over whole.
+      pi.failAlways = false;
+      await waitFor(() => pi.messages.length >= 1, 3000);
+      await sleep(120);
+      assert.equal(
+        pi.messages.length,
+        1,
+        "the retried batch leaves as one steer",
+      );
+      const [content, options] = pi.messages[0];
+      assert.equal(options?.deliverAs, "steer");
+      assert.ok(
+        content.indexOf("retry first") < content.indexOf("retry second"),
+        "order survives the refusal",
+      );
+      await waitFor(
+        async () => (await loadInboundQueue(queueFile)).length === 0,
+        3000,
+      );
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
   });
-
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(false, SESSION_A, pi.notifications),
-    );
-    pi.failAlways = true; // every handoff refused, as during compaction
-    fetchFn.feed(
-      makeUpdate(1005, { text: "retry first" }),
-      makeUpdate(1006, { text: "retry second" }),
-    );
-
-    await waitFor(() => handoffWarnings(pi).length >= 1, 3000);
-    assert.equal(pi.messages.length, 0, "a refused handoff hands nothing over");
-    const held = await loadInboundQueue(queueFile);
-    assert.deepEqual(
-      held.map((entry) => entry.message.updateId),
-      [1005, 1006],
-      "the whole batch is re-queued, still in arrival order",
-    );
-    assert.ok(
-      held.every((entry) => entry.sessionId === SESSION_A),
-      "re-queued entries keep the session they were accepted for",
-    );
-
-    // The window re-armed: the next close refuses again.
-    await waitFor(() => handoffWarnings(pi).length >= 2, 3000);
-
-    // pi accepts again: the next re-armed window hands the batch over whole.
-    pi.failAlways = false;
-    await waitFor(() => pi.messages.length >= 1, 3000);
-    await sleep(120);
-    assert.equal(
-      pi.messages.length,
-      1,
-      "the retried batch leaves as one steer",
-    );
-    const [content, options] = pi.messages[0];
-    assert.equal(options?.deliverAs, "steer");
-    assert.ok(
-      content.indexOf("retry first") < content.indexOf("retry second"),
-      "order survives the refusal",
-    );
-    await waitFor(
-      async () => (await loadInboundQueue(queueFile)).length === 0,
-      3000,
-    );
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
 });
 
 test("busy-steer: a hold accepted for a foreign session is dropped and reported", async () => {
@@ -408,49 +462,51 @@ test("busy-steer: a hold accepted for a foreign session is dropped and reported"
   const fetchFn = makeFeedFetch();
   await withEnv(steerEnv(stateFile), async () => {
     await telegramExtension(pi, { fetch: fetchFn });
-  });
 
-  try {
-    pi.emit(
-      "session_start",
-      { type: "session_start", reason: "startup" },
-      makeCtx(true, SESSION_A, pi.notifications),
-    );
-    await waitFor(
-      () =>
-        pi.appended.some(
-          (entry) => entry.customType === "telegram_inbound_dropped",
-        ),
-      3000,
-    );
-    await sleep(150);
-    assert.equal(
-      pi.messages.length,
-      0,
-      "an entry accepted for another named session is never delivered",
-    );
-    const note = pi.notifications.find((n) => n.message.includes("dropped 1"));
-    assert.ok(note, "the drop is a visible notify line");
-    assert.equal(note.type, "warning");
-    assert.ok(
-      note.message.includes(SESSION_B),
-      "the report names the session the message was accepted for",
-    );
-    assert.ok(
-      note.message.includes("1007"),
-      "the report names the dropped update",
-    );
-    const record = pi.appended.find(
-      (entry) => entry.customType === "telegram_inbound_dropped",
-    );
-    assert.equal(record.data.acceptedFor, SESSION_B);
-    assert.equal(record.data.currentSessionId, SESSION_A);
-    await waitFor(
-      async () => (await loadInboundQueue(queueFile)).length === 0,
-      3000,
-    );
-  } finally {
-    pi.emit("session_shutdown");
-    await sleep(50);
-  }
+    try {
+      pi.emit(
+        "session_start",
+        { type: "session_start", reason: "startup" },
+        makeCtx(true, SESSION_A, pi.notifications),
+      );
+      await waitFor(
+        () =>
+          pi.appended.some(
+            (entry) => entry.customType === "telegram_inbound_dropped",
+          ),
+        3000,
+      );
+      await sleep(150);
+      assert.equal(
+        pi.messages.length,
+        0,
+        "an entry accepted for another named session is never delivered",
+      );
+      const note = pi.notifications.find((n) =>
+        n.message.includes("dropped 1"),
+      );
+      assert.ok(note, "the drop is a visible notify line");
+      assert.equal(note.type, "warning");
+      assert.ok(
+        note.message.includes(SESSION_B),
+        "the report names the session the message was accepted for",
+      );
+      assert.ok(
+        note.message.includes("1007"),
+        "the report names the dropped update",
+      );
+      const record = pi.appended.find(
+        (entry) => entry.customType === "telegram_inbound_dropped",
+      );
+      assert.equal(record.data.acceptedFor, SESSION_B);
+      assert.equal(record.data.currentSessionId, SESSION_A);
+      await waitFor(
+        async () => (await loadInboundQueue(queueFile)).length === 0,
+        3000,
+      );
+    } finally {
+      pi.emit("session_shutdown");
+      await sleep(50);
+    }
+  });
 });
