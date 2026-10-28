@@ -1,6 +1,6 @@
 {
   "name": "pi-braid",
-  "version": "0.42.7",
+  "version": "0.42.8",
   "description": "Adds memory, plan tracking, and completion checks to the pi coding agent, so long sessions keep their context and stop claiming unfinished work.",
   "type": "module",
   "main": "./dist/index.js",

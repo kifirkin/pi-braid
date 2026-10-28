@@ -43,6 +43,17 @@ reader-facing record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.42.8 (2026-10-28: two aliases leave, and the resolver stops reading their key)
+
+### Also in this line
+
+- **`/vision-model` and `/max-power-model` are gone.** Both shipped with a one-release warning and two releases have
+  passed since. `model-resolver` no longer imports or reads the vision key: image analysis resolves through the current
+  model when it accepts images, else the merged role's first image-capable entry. A fixture drives that chain end to
+  end, so the removal is justified by a working replacement rather than by a calendar.
+- **A registered-command fixture pins the surface.** Loading the polyfill against a stub `pi` asserts the exact set of
+  commands it registers, so a removed alias that creeps back fails a test rather than surprising a user.
+
 ## Core — 0.42.7 (2026-10-28: the package surface stops describing things it does not ship)
 
 ### Also in this line
