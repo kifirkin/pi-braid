@@ -2,8 +2,18 @@
  * pi-braid unified test runner.
  * Run: npm test
  *
- * Uses spawnSync with exit codes (no stdout parsing) for robustness, and
- * reports three categories:
+ * Files run in a bounded pool of detached child processes, so the suite's wall
+ * clock is the slowest file plus the leftovers rather than the sum of all of
+ * them. Each file already carries the isolation a pool needs - its own TMPDIR,
+ * its own process group, its own cap - so the serialisation was the loop's
+ * shape, not a property of the tests.
+ *
+ * Results print in fixture order, never as they finish: a reader diffing two
+ * runs must see the same shape, and a file's own output must stay under its own
+ * line. Ordering also means the counts keep their meaning - the `[n/total]`
+ * label is the file's position, as it always was.
+ *
+ * Reports three categories:
  *
  *   passed     the file exited 0
  *   failed     the file exited non-zero, or died on a signal
@@ -18,21 +28,62 @@
  *   - every file gets DEFAULT_TIMEOUT_MS
  *   - ALLOWANCES gives a specific file a longer declared allowance; the
  *     reason is printed in the summary, so an allowance cannot hide
- *   - the environment overrides both without an edit (see readAllowances)
+ *     - the environment overrides both without an edit (see readAllowances)
  *   - FAILURE_OUTPUT_CHARS and FAILURE_OUTPUT_LINES bound how much of a failing
  *     file's own output the run prints under it
+ *
+ * Pool width:
+ *   - default is DEFAULT_JOBS, capped by the machine's own parallelism
+ *   - `--jobs <n>` or PI_TEST_JOBS overrides it; `--jobs 1` forces the serial
+ *     order, which is what a bisect against the loop's behaviour needs
+ *
+ * Measurements:
+ *   - `--timings` prints each file's duration and the slowest files at the end
+ *   - `--timings-json=<path>` (or PI_TEST_TIMINGS) writes the same numbers as
+ *     a JSON artifact, which is what a pool width has to be argued from
+ *
+ * Root:
+ *   - PI_TEST_ROOT points the runner at another tree of `.mjs` files, so the
+ *     runner's own contract can be tested over a bench instead of this suite.
+ *     Relative paths are resolved from the working directory; the child is
+ *     spawned with an absolute path either way.
  */
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { resolve, dirname, join, relative } from "node:path";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { availableParallelism, tmpdir } from "node:os";
+import { resolve, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const testDir = resolve(root, "test/runtime");
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * Every file's cap. A cap is a hang detector, not a performance budget, so its
+ * value has to exceed the pool's own inflation of the slowest file rather than
+ * that file's idle duration.
+ *
+ * Measured over the ten slowest files: a file's own duration grows by 1.03x to
+ * 2.5x when it runs beside seven others, because the CPU-bound stretch of a file
+ * now shares the cores. The slowest file without an allowance of its own takes
+ * 21.5s alone and 25.2s in the pool, so a 30s cap there is a coin flip decided
+ * by how busy the box was - a red run that says nothing about the code. 60s
+ * keeps the detector's job (a real hang is still killed inside one cap) while
+ * leaving the pool the room its measured inflation needs.
+ */
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * Pool width when neither the flag nor the environment says otherwise.
+ *
+ * The fixtures are spawn- and I/O-bound: nearly every one of them starts child
+ * processes (node drivers, git, sqlite) and then waits, so overlapping the
+ * waits is most of the available win. Past a handful of files in flight the
+ * suite's own work - the box's cores, its disk, and the locks a fixture holds
+ * across processes - is the limit, so the cap stays at eight and the machine
+ * gets the last word: a two-core container runs two at a time instead of
+ * thrashing eight against two cores and timing files out on the way.
+ */
+const DEFAULT_JOBS = Math.max(1, Math.min(8, availableParallelism()));
 
 /**
  * How much of a failing file's own output the run prints under its line.
@@ -51,7 +102,15 @@ const FAILURE_OUTPUT_CHARS = 4_000;
 const FAILURE_OUTPUT_LINES = 40;
 
 /**
- * Per-file wall-clock allowances, keyed by path relative to test/runtime.
+ * How long a killed file's pipes may still be draining before the pool takes
+ * the slot back. SIGKILL cannot be refused, so this only covers a write
+ * already in flight on a pipe whose reader is gone; without the bound one
+ * wedged file would hold a slot for the rest of the run.
+ */
+const DRAIN_MS = 2_000;
+
+/**
+ * Per-file wall-clock allowances, keyed by path relative to the test root.
  *
  * An entry declares that this file is legitimately slower than the default
  * cap. State the reason inline: the summary prints it, so a reader can tell a
@@ -85,6 +144,39 @@ const ALLOWANCES = new Map([
   ],
 ]);
 
+const argv = process.argv.slice(2);
+
+/** A `--name value` or `--name=value` flag's value; undefined when absent. */
+function flagValue(name) {
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === `--${name}`) return argv[i + 1];
+    if (argv[i].startsWith(`--${name}=`)) return argv[i].slice(name.length + 3);
+  }
+  return undefined;
+}
+
+function flagOn(name) {
+  return argv.some((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
+}
+
+/**
+ * The pool width, from the flag, the environment, or DEFAULT_JOBS.
+ *
+ * A value the runner cannot use is reported and dropped rather than guessed
+ * at: a typo that silently became "one" would look like the runner got slower,
+ * and a typo that silently became "unbounded" would look like the suite broke.
+ */
+function readJobs() {
+  const raw = flagValue("jobs") ?? process.env.PI_TEST_JOBS ?? "";
+  if (raw === "") return DEFAULT_JOBS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    console.error(`ignoring jobs="${raw}" - expected a positive integer`);
+    return DEFAULT_JOBS;
+  }
+  return value;
+}
+
 /** Recursively find all .mjs test files in subdirectories too. */
 function findTests(dir) {
   const results = [];
@@ -110,7 +202,14 @@ const SKIP = new Set([
 
 /** Durations as printed: 12000 -> "12s", 1500 -> "1.5s". */
 function formatMs(ms) {
-  return ms % 1000 === 0 ? `${ms / 1000}s` : `${(ms / 1000).toFixed(1)}s`;
+  const value = Math.round(ms);
+  return value % 1000 === 0 ? `${value / 1000}s` : `${(value / 1000).toFixed(1)}s`;
+}
+
+/** A whole run's duration: 557000 -> "9m17s", so the summary reads as a clock. */
+function formatClock(ms) {
+  const seconds = Math.round(ms / 1000);
+  return seconds < 60 ? formatMs(ms) : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
 }
 
 /**
@@ -158,14 +257,14 @@ function printFileOutput(file, output) {
   const omitted = dropped > 0 ? `, ${dropped} earlier line${dropped === 1 ? "" : "s"} omitted` : "";
   console.log(`     its own output (${lines.length} line${lines.length === 1 ? "" : "s"}${omitted}):`);
   for (const line of lines) console.log(`     | ${line}`);
-  console.log(`     (all of it: node test/runtime/${file})`);
+  console.log(`     (all of it: node ${displayPath(file)})`);
 }
 
 /**
  * The declared allowances plus any the environment adds:
  *   PI_TEST_TIMEOUT_MS=<ms>               cap for files without an allowance
  *   PI_TEST_ALLOWANCE="<path>=<ms>[,..]"  add or override a per-file allowance
- * Paths are relative to test/runtime, exactly as printed below.
+ * Paths are relative to the test root, exactly as printed below.
  */
 function readAllowances() {
   const table = new Map(ALLOWANCES);
@@ -186,8 +285,150 @@ function readAllowances() {
   };
 }
 
+/**
+ * A file's path as a reader can retype it: relative to the repository when it
+ * sits inside it, absolute when PI_TEST_ROOT points somewhere else.
+ */
+function displayPath(file) {
+  const absolute = join(testDir, file);
+  const rel = relative(root, absolute);
+  return rel.startsWith("..") || isAbsolute(rel) ? absolute : rel;
+}
+
+/**
+ * SIGKILL a file's process group.
+ *
+ * The whole group, not the direct child: a file that started helpers leaves
+ * them behind otherwise, and a helper still holding the file's TMPDIR as its
+ * cwd is why the scratch remove below would fail. A no-op once the group is
+ * empty, which is every path but a kill that left helpers behind.
+ */
+function killGroup(pid) {
+  if (typeof pid !== "number") return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // ESRCH: the group is already gone, the common case.
+  }
+}
+
+/**
+ * Remove a scratch dir the runner owns. A file that started helpers can
+ * outlive the runner's SIGKILL for a beat with a scratch dir still its cwd;
+ * macOS then refuses the recursive remove, and force:true would swallow that
+ * and leave the litter. The helpers are short-lived, so retry briefly - then
+ * give up rather than hang the suite on a genuinely immortal child.
+ *
+ * The retry is an await, not a spin: under a pool the event loop has to stay
+ * free for the other files in flight, so blocking it here would serialise the
+ * run one cleanup at a time from the inside.
+ */
+async function removeScratchDir(dir, attempts = 20) {
+  for (let i = 0; i < attempts; i += 1) {
+    rmSync(dir, { recursive: true, force: true });
+    if (!existsSync(dir)) return;
+    await new Promise((tick) => setTimeout(tick, 100));
+  }
+}
+
+/** Every detached child group currently alive, so a signal to the runner reaps them. */
+const liveGroups = new Set();
+
+/**
+ * Run one file to completion, settling with what it did.
+ *
+ * The cap is the runner's own timer rather than a spawn option, because the
+ * kill has to reach the file's process group: a file that traps the signal
+ * must still die at its cap, so the signal is SIGKILL to the group.
+ */
+function runFile(file) {
+  const allowance = allowances.get(file);
+  const timeout = allowance?.ms ?? defaultTimeoutMs;
+  // A file gets its own TMPDIR: the child's own cleanup cannot run when this
+  // runner SIGKILLs it at the cap, so the environment it litters in is ours to
+  // remove. The removal sits in finish(), so the timeout path is covered like
+  // the rest.
+  const scratch = mkdtempSync(join(tmpdir(), "pi-braid-test-"));
+  const startedAt = process.hrtime.bigint();
+
+  return new Promise((settle) => {
+    const out = [];
+    const err = [];
+    let settled = false;
+    let timedOut = false;
+    let capTimer;
+    let drainTimer;
+    let child;
+
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(capTimer);
+      clearTimeout(drainTimer);
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+      const pid = child?.pid;
+      killGroup(pid);
+      if (typeof pid === "number") liveGroups.delete(pid);
+      const stdout = out.join("");
+      const stderr = err.join("");
+      removeScratchDir(scratch).then(() =>
+        settle({ ...payload, timedOut, ms: elapsedMs, stdout, stderr }),
+      );
+    };
+
+    try {
+      child = spawn("node", [join(testDir, file)], {
+        cwd: root,
+        // Own process group: the cap kill must reach the helpers a file
+        // started too, and a helper left holding a scratch dir as its cwd is
+        // why the finished file's TMPDIR would otherwise leak.
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, TMPDIR: scratch },
+      });
+    } catch (error) {
+      finish({ code: null, signal: null, error });
+      return;
+    }
+
+    if (typeof child.pid === "number") liveGroups.add(child.pid);
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
+    child.stdout.on("data", (chunk) => out.push(chunk));
+    child.stderr.on("data", (chunk) => err.push(chunk));
+    child.on("error", (error) => finish({ code: null, signal: null, error }));
+    child.on("close", (code, signal) => finish({ code, signal }));
+
+    capTimer = setTimeout(() => {
+      timedOut = true;
+      // SIGKILL, not the default SIGTERM: a file that traps SIGTERM would
+      // never die and the cap must be untrappable to mean anything.
+      killGroup(child.pid);
+      drainTimer = setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish({ code: null, signal: "SIGKILL" });
+      }, DRAIN_MS);
+    }, timeout);
+  });
+}
+
 const { table: allowances, fallback: defaultTimeoutMs } = readAllowances();
+const jobs = readJobs();
+const testDir = resolve(process.env.PI_TEST_ROOT ? process.env.PI_TEST_ROOT : join(root, "test/runtime"));
+const timings = flagOn("timings");
+const timingsPath = flagValue("timings-json") ?? process.env.PI_TEST_TIMINGS ?? "";
 const tests = findTests(testDir).sort();
+
+/**
+ * An empty walk is a hard failure, not a green run: an override that resolved
+ * to the wrong directory, or a tree this runner was pointed at by accident,
+ * would otherwise report "0 passed, 0 failed, 0 timed out" and exit 0.
+ */
+if (tests.length === 0) {
+  console.error(`no test files under ${testDir} - refusing to report an empty run as green`);
+  process.exit(1);
+}
 
 let passed = 0;
 let failed = 0;
@@ -195,100 +436,118 @@ let timedOut = 0;
 const failures = [];
 const timeouts = [];
 
-console.log(`Running ${tests.length} tests from ${testDir}\n`);
-
 /**
- * Remove a scratch dir the runner owns. A file that started helpers can
- * outlive the runner's SIGKILL for a beat with a scratch dir still its cwd;
- * macOS then refuses the recursive remove, and force:true would swallow that
- * and leave the litter. The helpers are short-lived, so retry briefly — then
- * give up rather than hang the suite on a genuinely immortal child.
+ * A signal to the runner must not orphan the pool: every live file group is
+ * killed before the exit, because each one is detached and would otherwise
+ * keep running with nobody left to read or reap it.
  */
-function removeScratchDir(dir, attempts = 20) {
-  for (let i = 0; i < attempts; i++) {
-    rmSync(dir, { recursive: true, force: true });
-    if (!existsSync(dir)) return;
-    // spawnSync has returned, so there is no event-loop turn to await on;
-    // block this process briefly instead.
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
-  }
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+]) {
+  process.on(signal, () => {
+    const live = [...liveGroups];
+    for (const pid of live) killGroup(pid);
+    console.log(`\n  ${signal}: killed ${live.length} running file group${live.length === 1 ? "" : "s"}`);
+    process.exit(code);
+  });
 }
 
-for (const t of tests) {
-  const allowance = allowances.get(t);
-  const timeout = allowance?.ms ?? defaultTimeoutMs;
-  const label = `[${String(passed + failed + timedOut + 1)}/${tests.length}]`;
-  // A file gets its own TMPDIR: the child's own cleanup cannot run when this
-  // runner SIGKILLs it at the cap, so the environment it litters in is ours to
-  // remove. The removal sits before every branch, so the timeout path is
-  // covered like the rest.
-  const testTmpDir = mkdtempSync(join(tmpdir(), "pi-braid-test-"));
-  const result = spawnSync("node", [`test/runtime/${t}`], {
-    cwd: root,
-    timeout,
-    // SIGKILL, not the default SIGTERM: a file that traps SIGTERM would never
-    // die and spawnSync would block past the cap, so the cap must be
-    // untrappable to mean anything.
-    killSignal: "SIGKILL",
-    // Own process group: the cap kill must reach the helpers a file started
-    // too. spawnSync signals only the direct child, and a helper left holding
-    // a scratch dir as its cwd is why the remove below would otherwise leak.
-    detached: true,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, TMPDIR: testTmpDir },
-  });
-  // Reap the file's process group. A no-op once the group is empty, which is
-  // every path but a kill that left helpers behind; then the scratch remove
-  // can actually succeed.
-  if (typeof result.pid === "number") {
-    try {
-      process.kill(-result.pid, "SIGKILL");
-    } catch {
-      // ESRCH: the group is already gone, the common case.
-    }
-  }
-  removeScratchDir(testTmpDir);
+console.log(
+  `Running ${tests.length} tests from ${testDir}` +
+    `${jobs > 1 ? `, ${jobs} at a time` : ""}\n`,
+);
 
-  if (result.error?.code === "ETIMEDOUT") {
+/** One file's duration as it prints beside its line, when timings are asked for. */
+function durationNote(result) {
+  return timings ? ` (${formatMs(result.ms)})` : "";
+}
+
+/**
+ * One file's line, plus its own output when it failed or timed out.
+ *
+ * Called in fixture order, never in completion order, so the run reads the
+ * same way twice and a file's output stays under its own line.
+ */
+function report(index, result) {
+  const file = tests[index];
+  const allowance = allowances.get(file);
+  const timeout = allowance?.ms ?? defaultTimeoutMs;
+  const label = `[${index + 1}/${tests.length}]`;
+  const note = durationNote(result);
+
+  if (result.timedOut) {
     const declared = allowance
       ? ` (declared allowance ${formatMs(allowance.ms)}: ${allowance.reason})`
       : "";
-    console.log(`  \u23F1 TIMEOUT ${label} ${t} \u2014 killed after ${formatMs(timeout)}${declared}`);
-    printFileOutput(t, `${result.stdout ?? ""}${result.stderr ?? ""}`);
-    timedOut++;
-    timeouts.push(t);
-    continue;
+    console.log(`  \u23F1 TIMEOUT ${label} ${file}${note} \u2014 killed after ${formatMs(timeout)}${declared}`);
+    printFileOutput(file, `${result.stdout}${result.stderr}`);
+    result.outcome = "timed out";
+    timedOut += 1;
+    timeouts.push(file);
+    return;
   }
 
-  if (result.status === 0) {
-    const lines = (result.stdout ?? "").split("\n");
+  if (result.code === 0) {
+    const lines = result.stdout.split("\n");
     const summary = lines.find((l) => l.includes("\uD83D\uDCCA") || l.includes("Results"))?.trim();
-    console.log(`  \u2705 ${label} ${t}${summary ? " \u2014 " + summary : ""}`);
-    passed++;
-    continue;
+    console.log(`  \u2705 ${label} ${file}${note}${summary ? " \u2014 " + summary : ""}`);
+    result.outcome = "passed";
+    passed += 1;
+    return;
   }
 
   // Killed by a signal is a failure, not a timeout: the cap did not do this,
   // so name what did.
-  const stdout = result.stdout ?? "";
-  const stderr = result.stderr ?? "";
-  const lines = (stdout + "\n" + stderr).split("\n");
+  const lines = (result.stdout + "\n" + result.stderr).split("\n");
   const summary = lines.find((l) => l.includes("\uD83D\uDCCA") || l.includes("passed"))?.trim();
-  let outcome = `exit code ${result.status}`;
-  if (result.status === null) {
+  let outcome = `exit code ${result.code}`;
+  if (result.code === null) {
     outcome = result.signal
       ? `killed by ${result.signal}`
       : `spawn failed: ${result.error?.code ?? "unknown"}`;
   }
-  console.log(`  \u274C ${label} ${t} \u2014 ${summary || outcome}`);
-  printFileOutput(t, stdout + "\n" + stderr);
-  failed++;
-  failures.push(t);
+  console.log(`  \u274C ${label} ${file}${note} \u2014 ${summary || outcome}`);
+  printFileOutput(file, result.stdout + "\n" + result.stderr);
+  result.outcome = "failed";
+  failed += 1;
+  failures.push(file);
 }
+
+const runStartedAt = process.hrtime.bigint();
+const results = new Array(tests.length);
+let cursor = 0;
+let printed = 0;
+
+/** Print every finished file whose turn has come; a later one waits its turn. */
+function flush() {
+  while (printed < tests.length && results[printed]) {
+    report(printed, results[printed]);
+    printed += 1;
+  }
+}
+
+/**
+ * One pool slot: take the next file, run it to completion, print what is now
+ * in order, repeat until the queue is empty. The cursor is taken before the
+ * first await, so two slots never claim the same file.
+ */
+async function slot() {
+  for (;;) {
+    const index = cursor;
+    cursor += 1;
+    if (index >= tests.length) return;
+    results[index] = await runFile(tests[index]);
+    flush();
+  }
+}
+
+await Promise.all(Array.from({ length: Math.min(jobs, tests.length) }, () => slot()));
+const totalMs = Number(process.hrtime.bigint() - runStartedAt) / 1e6;
 
 console.log(
   `\n\uD83D\uDCCA ${passed} passed, ${failed} failed, ${timedOut} timed out` +
+    ` in ${formatClock(totalMs)}` +
     (failures.length > 0 ? "\n  Failed: " + failures.join(", ") : ""),
 );
 if (timeouts.length > 0) {
@@ -298,4 +557,33 @@ if (allowances.size > 0) {
   const declared = [...allowances].map(([file, a]) => `${file} ${formatMs(a.ms)} (${a.reason})`);
   console.log(`  Allowances: ${declared.join("; ")}`);
 }
+
+if (timings) {
+  const listed = results
+    .map((result, index) => ({ file: tests[index], ms: result.ms }))
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 12)
+    .map((entry) => `${entry.file} ${formatMs(entry.ms)}`);
+  console.log(`  Slowest: ${listed.join("; ")}`);
+}
+
+if (timingsPath) {
+  const artifact = {
+    jobs,
+    totalMs: Math.round(totalMs),
+    files: results.map((result, index) => ({
+      file: tests[index],
+      outcome: result.outcome,
+      ms: Math.round(result.ms),
+    })),
+  };
+  try {
+    writeFileSync(timingsPath, `${JSON.stringify(artifact, null, 2)}\n`);
+  } catch (error) {
+    // A measurement that could not be written is reported, never silently
+    // dropped: the run's own verdict does not depend on the artifact.
+    console.error(`could not write timings to ${timingsPath}: ${error.message}`);
+  }
+}
+
 process.exit(failed > 0 || timedOut > 0 ? 1 : 0);

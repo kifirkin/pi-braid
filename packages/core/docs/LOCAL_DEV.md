@@ -47,6 +47,7 @@ npm install            # installs all workspaces (peer-resolves the pi packages)
 npm run typecheck      # all four code packages
 npm run build          # compile core to dist/
 npm test               # build + runtime test suites (core)
+node packages/core/scripts/run-tests.mjs --jobs 1 --timings  # the same files serially, with durations
 npm run lint           # ESLint over all four code packages
 npm run format         # prettier --write .
 npm run format:check   # prettier --check .
@@ -54,6 +55,20 @@ npm run check:docs     # every in-scope .md has a status marker
 npm run check:doc-drift # current-state docs must not reference APIs missing from code
 npm run check:deps     # layer-boundary check
 ```
+
+The core runtime suite runs its files in a bounded pool: the machine's own
+parallelism, at most eight. The width is a flag, so the same files can be run
+one at a time when a failure needs the serial order, and their durations can
+be printed or written for a comparison between two widths:
+
+```bash
+node packages/core/scripts/run-tests.mjs --jobs 1   # one file at a time
+node packages/core/scripts/run-tests.mjs --timings  # per-file durations, slowest first
+node packages/core/scripts/run-tests.mjs --timings-json=/tmp/timings.json
+```
+
+`PI_TEST_JOBS` sets the width without the flag. Results always print in
+fixture order, so two runs of the same tree diff line for line.
 
 Per-workspace variants use the workspace flag, e.g.
 `npm run build -w packages/core`, `npm test -w packages/providers`.
