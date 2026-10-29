@@ -1,0 +1,83 @@
+{
+  "note": "One entry per count this gate governs. An entry names the file and the line the count is written on, a pattern that reads it out of that line, the command that re-derives it from the tree, and a pattern that reads the derived number out of that command's output. The registry stores no number: the document holds the only copy, so an entry cannot pass by agreeing with a copy of itself. A count no command re-derives does not belong here - an entry that holds an expected value and runs nothing is the same drift with a gate painted on it. `node scripts/check-source-claims.mjs` re-runs every command and fails on a disagreement, on a command that cannot run, and on a command whose output carries no number.",
+  "claims": [
+    {
+      "id": "core-fixture-population",
+      "claim": "how many fixtures the core runner counts",
+      "stated": {
+        "file": "docs/LOCAL_DEV.md",
+        "line": 141,
+        "pattern": "core suite's (\\S+) fixtures"
+      },
+      "derived": {
+        "cmd": "node scripts/run-tests.mjs --list | awk '$1==\"counted\"{n++} END{print n+0}'",
+        "pattern": "^(\\d+)$"
+      }
+    },
+    {
+      "id": "core-fixtures-on-node-test",
+      "claim": "how many of the counted fixtures import node:test",
+      "stated": {
+        "file": "docs/LOCAL_DEV.md",
+        "line": 141,
+        "pattern": "- (\\S+) of the core suite's"
+      },
+      "derived": {
+        "cmd": "node scripts/run-tests.mjs --list | awk '$1==\"counted\"{print \"test/runtime/\"$2}' | xargs grep -lE 'from +.{0,2}node:test' | wc -l",
+        "pattern": "^(\\d+)$"
+      }
+    },
+    {
+      "id": "loader-fixture-driver-count",
+      "claim": "the loader fixture's child drivers, as its runner allowance reason states them",
+      "stated": {
+        "file": "scripts/run-tests.mjs",
+        "line": 177,
+        "pattern": "(\\w+) child drivers"
+      },
+      "derived": {
+        "cmd": "awk '/^test\\(\"/{n++} END{print n+0}' test/runtime/loader/test-module-config.mjs",
+        "pattern": "^(\\d+)$"
+      }
+    },
+    {
+      "id": "loader-fixture-driver-concurrency",
+      "claim": "how many of those drivers run at a time, as the same reason states it",
+      "stated": {
+        "file": "scripts/run-tests.mjs",
+        "line": 177,
+        "pattern": "drivers, (\\S+) at a time"
+      },
+      "derived": {
+        "cmd": "sed -n 's/.*CASE_CONCURRENCY = \\([0-9][0-9]*\\).*/\\1/p' test/runtime/loader/test-module-config.mjs",
+        "pattern": "^(\\d+)$"
+      }
+    },
+    {
+      "id": "shipped-skill-count",
+      "claim": "how many skills the package ships",
+      "stated": {
+        "file": "README.md",
+        "line": 26,
+        "pattern": "the (\\S+) skills that ship"
+      },
+      "derived": {
+        "cmd": "find skills -name SKILL.md | wc -l",
+        "pattern": "^(\\d+)$"
+      }
+    },
+    {
+      "id": "manifest-extension-count",
+      "claim": "how many extensions the manifest registers",
+      "stated": {
+        "file": "README.md",
+        "line": 44,
+        "pattern": "The suite is (\\S+) extensions"
+      },
+      "derived": {
+        "cmd": "awk '/^    id: \"/{n++} END{print n+0}' src/extensions/manifest.ts",
+        "pattern": "^(\\d+)$"
+      }
+    }
+  ]
+}

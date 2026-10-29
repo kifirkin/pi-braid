@@ -141,6 +141,15 @@ both code and any docs that reference it - or mark the doc
 Add new API names to `TRACKED_NAMES` in `check-doc-drift.mjs` as new
 drift surfaces emerge.
 
+A third gate covers the counts these documents state, which the status and drift
+gates do not read: **`scripts/check-source-claims.mjs`** re-runs the command
+behind every count enrolled in `scripts/source-claims.json` and fails when a
+document states a different number (`npm run check:source-claims`, part of
+`npm run ci:check`). Enrol a count only when a command re-derives it: a measured
+figure (a duration, a load average) and a released changelog's number belong to
+the run that produced them, and an entry that holds an expected value with no
+command behind it is the same drift with a gate painted on it.
+
 ## Tool Inventory
 
 The canonical, source-derived inventory of every tool provided/exposed by this

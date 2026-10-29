@@ -54,7 +54,16 @@ npm run format:check   # prettier --check .
 npm run check:docs     # every in-scope .md has a status marker
 npm run check:doc-drift # current-state docs must not reference APIs missing from code
 npm run check:deps     # layer-boundary check
+npm run check:source-claims # every count a doc states is re-derived from the tree
 ```
+
+The counts these documents state are re-derived, not copied.
+`packages/core/scripts/source-claims.json` holds the counts the gate governs - the
+file and line each one is written on, a pattern that reads it out of that line,
+and the command that derives it from the tree - and `npm run check:source-claims`
+re-runs every command and fails on a disagreement. A count no command re-derives
+is not enrolled: a measurement (a duration, a load average) belongs to the run
+that produced it, and a figure in a released changelog belongs to that release.
 
 The core runtime suite runs its files in a bounded pool: the machine's own
 parallelism, at most eight. The width is a flag, so the same files can be run
@@ -129,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 85 of the core suite's 319 fixtures already use `node:test` - so the
+file uses - 87 of the core suite's 321 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
