@@ -20,6 +20,9 @@
  *      nobody can name
  *   4. the merge subject git derives from a worker branch: exit 1, the branch
  *      namespace reported as the label it is
+ *   5. an authored handle in the lowercase spelling (`w<digits>:`), with three
+ *      near-misses beside it in the same population: exactly one problem, and
+ *      the near-misses add none
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -40,6 +43,11 @@ const LIB = join(ROOT, "scripts", "lib", "label-tokens.mjs");
 const LABEL_TOKEN = "W" + "123";
 const LABEL_SUBJECT = `${LABEL_TOKEN}: tighten the retry path`;
 const CLEAN_SUBJECT = "retry: the backoff names the failure it waits for";
+// The spelling seats typed before the rule was stated plainly. Not in the shared
+// vocabulary, so nothing else refuses it: this case is the only thing standing
+// between that spelling and a hole in the history gate.
+const AUTHORED_HANDLE = "w" + "556";
+const AUTHORED_SUBJECT = `${AUTHORED_HANDLE}: gate the internal-label surfaces`;
 
 function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf-8" }).trim();
@@ -146,6 +154,33 @@ test("no reachable tag: exit 1 with the reason, never a green line over an unnam
     assert.match(out, /no reachable tag/, out);
     assert.match(out, /cannot certify a commit range/, out);
     assert.ok(!/clean:/.test(out), `a tagless tree must not print a clean line\n${out}`);
+  } finally {
+    c.cleanup();
+  }
+});
+
+test("an authored lowercase handle is a hit while three near-misses add none", () => {
+  const c = makeCase();
+  try {
+    c.commit("base: the tree before the cut");
+    git(c.repo, "tag", "v1.0.0");
+    const badSha = c.commit(AUTHORED_SUBJECT);
+    // Each near-miss is one character away from a hit: a word character before
+    // the handle, too few digits, and a suffix that is not the task one.
+    c.commit(`search: a local named network_a${AUTHORED_HANDLE} stays clean`);
+    c.commit("search: a two-digit handle is not a label");
+    c.commit("search: a four-digit run is not the spelling either");
+
+    const { status, out } = c.run();
+    assert.equal(status, 1, out);
+    assert.match(out, /1 problem\(s\)/, out);
+    const hits = out
+      .split("\n")
+      .filter((line) => line.startsWith(`${badSha.slice(0, 12)}  `));
+    assert.equal(hits.length, 1, out);
+    assert.ok(hits[0].includes(AUTHORED_HANDLE), `the hit must name the token\n${out}`);
+    assert.ok(hits[0].includes(AUTHORED_SUBJECT), `the hit must name the subject\n${out}`);
+    assert.ok(!/network_a/.test(out), `a near-miss must not be reported\n${out}`);
   } finally {
     c.cleanup();
   }
