@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 // Hermetic settings: pin the window braid resolves (the archive handler's
 // percent math decides whether a follow-up compact is armed) so the fixture
 // never depends on the live settings.json.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w218-queue-home-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "pending-queue-queue-home-"));
 process.env.HOME = FAKE_HOME;
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
 writeFileSync(
@@ -95,7 +95,7 @@ function makeWorld(entries = ENTRIES) {
   }
   // Unique session file per world: extension state (pending queue, slideMode)
   // is keyed on the session file — a constant would share state across tests.
-  const sessionFile = `/tmp/w218-queue-${++worldSeq}.jsonl`;
+  const sessionFile = `/tmp/pending-queue-queue-${++worldSeq}.jsonl`;
   const ctx = {
     cwd: "/tmp/test",
     mode: "test",
@@ -105,7 +105,7 @@ function makeWorld(entries = ENTRIES) {
       this.compactCalls.push(options);
     },
     sessionManager: {
-      getSessionId: () => `w218-queue-${worldSeq}`,
+      getSessionId: () => `pending-queue-queue-${worldSeq}`,
       getSessionFile: () => sessionFile,
       getBranch: () => branch,
       getTree: () => branch.map((e) => ({ entry: e, children: [], label: undefined })),
@@ -179,7 +179,7 @@ await test("archive pending, then slide pending: ONE compaction at the earliest 
     action: "archive",
     startIndex: 0,
     endIndex: 29,
-    topic: "w218 phase",
+    topic: "pending-queue phase",
     summary: "Owner: did X. Braid: did Y.",
   });
   assert.ok(!result.details?.error, `archive accepted: ${result.content?.[0]?.text ?? ""}`);

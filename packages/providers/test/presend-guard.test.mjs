@@ -39,7 +39,7 @@ const pkgRoot = resolve(here, "..");
 const repoRoot = resolve(pkgRoot, "..", "..");
 const tscBin = join(pkgRoot, "node_modules", "typescript", "bin", "tsc");
 const buildDir = join(repoRoot, ".race-build");
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w115-presend-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "presend-"));
 
 let failures = 0;
 const checks = [];

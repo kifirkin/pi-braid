@@ -71,7 +71,7 @@ function test(name, fn) {
 // HOME must point at the fixture's temp home before the dist modules
 // evaluate SETTINGS_PATH; braid's readSettings re-reads the file per call,
 // so scenarios can rewrite settings.json without re-importing.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w221-t1-home-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "reload-t1-home-"));
 process.env.HOME = FAKE_HOME;
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
 
@@ -123,7 +123,7 @@ function makeFakeSession(model) {
     getEntryCount: () => sessionManager.entryCount,
     getSessionId: () => "fixture-session",
     getLeafId: () => null,
-    getCwd: () => "/tmp/w221-t1",
+    getCwd: () => "/tmp/reload-t1",
     getSessionName: () => null,
   };
   const session = {

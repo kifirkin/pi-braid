@@ -11,11 +11,19 @@
  * digits, while every two-digit `Wnn` token in the tree is an ISO calendar week
  * (the `2026-Wnn` strings, and the two week-number constants in the memory
  * write-log metrics fixture), so a two-to-three-digit pattern would flag
- * calendar weeks forever and train people to ignore the gate. Two-digit
+ * calendar weeks forever and train people to ignore the gate. A digit run of
+ * four or more is not a handle either: three digits followed by a word
+ * character leaves no boundary, so the token never reads as one. Two-digit
  * historical task labels are out of scope.
+ *
+ * Either case, because one handle is written both ways: uppercase in a task
+ * label, lowercase in a fixture's session id or temp directory. Only the
+ * uppercase spelling was refused, and the lowercase one is what accumulated in
+ * the file population while that gate stayed green, so both letters are matched
+ * in either case here rather than at each caller.
  *
  * The export is an array of global regexes, read with `matchAll` (which clones
  * the pattern and never moves `lastIndex`), so a shared object stays stateless
  * across callers.
  */
-export const LABEL_TOKEN_PATTERNS = [/\bW\d{3}(-T\d+)?\b/g, /\bBRIEF-[A-Z0-9-]+/g];
+export const LABEL_TOKEN_PATTERNS = [/\b[Ww]\d{3}(-[Tt]\d+)?\b/g, /\bBRIEF-[A-Z0-9-]+/g];

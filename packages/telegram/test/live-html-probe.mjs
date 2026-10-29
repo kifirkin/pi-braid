@@ -117,7 +117,7 @@ if (process.argv.includes("--deliver")) {
     process.exit(2);
   }
   const digest =
-    "[w542 format probe] one-off checker validation — accepted shapes:\n" +
+    "[format probe] one-off checker validation — accepted shapes:\n" +
     "<b>bold</b> <u>underline</u> <s>strike</s> <tg-spoiler>spoiler</tg-spoiler> <code>code</code>\n" +
     '<a href="https://example.com">link</a> and a quoted ">" inside an attribute:\n' +
     '<a href="https://example.com/a>b">quoted-gt link</a>\n' +

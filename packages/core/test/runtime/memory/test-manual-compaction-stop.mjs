@@ -60,7 +60,7 @@ console.log("=== manual compaction is a full stop (no stale-prompt replay turn) 
 let sessionSeq = 0;
 
 function makeFakeCtx() {
-  const sessionFile = `/tmp/w198-fixture-${++sessionSeq}.jsonl`;
+  const sessionFile = `/tmp/manual-stop-fixture-${++sessionSeq}.jsonl`;
   let entrySeq = 0;
   const appended = [];
   const branch = [
@@ -89,7 +89,7 @@ function makeFakeCtx() {
     },
   };
   return {
-    cwd: "/tmp/w198-fixture",
+    cwd: "/tmp/manual-stop-fixture",
     mode: "test",
     hasUI: false,
     sessionManager: sm,

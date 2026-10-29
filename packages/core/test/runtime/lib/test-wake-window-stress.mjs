@@ -78,7 +78,7 @@ process.on("exit", () => {
   }
 });
 
-const CTX = { sessionManager: { getSessionId: () => "w140" } };
+const CTX = { sessionManager: { getSessionId: () => "wake-stress" } };
 
 /** Three macrotask hops: fireExpired's deferral → sendTrackedMessage's
  *  triggerTurn deferral → the actual pi.sendMessage. Two hops only unwind
@@ -129,7 +129,7 @@ function userPromptEnters(p, streamingBehavior) {
  *  Deterministic: the 1s poller bails while busy, so fireExpired is the only
  *  claimant, and checkExpired removes the claimed timer from the map. */
 async function fireWakeMidTool(p) {
-  timerMod.scheduleTimer("w140", 30, "resume the deploy", undefined, true);
+  timerMod.scheduleTimer("wake-stress", 30, "resume the deploy", undefined, true);
   p.emit("tool_call", { type: "tool_call", toolCallId: "a" }, CTX); // tool A in flight
   await sleep(60); // timer expires mid-tool
   p.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "a" }, CTX);
@@ -160,7 +160,7 @@ afterEach(() => {
   wakeRetryQueue._setClockForTests(null);
   resetWakeGateForTests();
   clearAllBuckets();
-  timerMod.timerManager.clearSession("w140");
+  timerMod.timerManager.clearSession("wake-stress");
 });
 
 describe("wake window: wake landing in the pre-before_agent_start window under tool load", () => {
@@ -210,7 +210,7 @@ describe("wake window: wake landing in the pre-before_agent_start window under t
     // A second timer expires in the same window: each fire delivers exactly
     // once, as its own queued steer.
     pi.emit("tool_call", { type: "tool_call", toolCallId: "b" }, CTX);
-    timerMod.scheduleTimer("w140", 20, "second reminder", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 20, "second reminder", undefined, true);
     await sleep(50);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "b" }, CTX);
     await flushDeferred();
@@ -244,7 +244,7 @@ describe("wake window: no cross-run leak from the input-armed gate", () => {
     // Idle between runs: a fresh wake is a real turn trigger — the gate
     // armed by run N's prompt entry must NOT suppress or steer it.
     pi.emit("tool_call", { type: "tool_call", toolCallId: "c" }, CTX);
-    timerMod.scheduleTimer("w140", 20, "idle follow-up", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 20, "idle follow-up", undefined, true);
     await sleep(50);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "c" }, CTX);
     await flushDeferred();
@@ -273,7 +273,7 @@ describe("wake window: no cross-run leak from the input-armed gate", () => {
     pi.emit("agent_start", { type: "agent_start" }, CTX);
 
     pi.emit("tool_call", { type: "tool_call", toolCallId: "d" }, CTX);
-    timerMod.scheduleTimer("w140", 20, "mid-run reminder", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 20, "mid-run reminder", undefined, true);
     await sleep(50);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "d" }, CTX);
     await flushDeferred();
@@ -295,7 +295,7 @@ describe("retryHoldUntil: simulated pi-core auto-retry holds redelivery, settle 
 
     // Idle delivery (no run): the wake is a real triggerTurn turn.
     pi.emit("tool_call", { type: "tool_call", toolCallId: "e" }, CTX);
-    timerMod.scheduleTimer("w140", 30, "resume the deploy", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 30, "resume the deploy", undefined, true);
     await sleep(60);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "e" }, CTX);
     await flushDeferred();
@@ -343,7 +343,7 @@ describe("retryHoldUntil: simulated pi-core auto-retry holds redelivery, settle 
     pi.emit("session_start", {}, CTX);
 
     pi.emit("tool_call", { type: "tool_call", toolCallId: "f" }, CTX);
-    timerMod.scheduleTimer("w140", 30, "resume the build", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 30, "resume the build", undefined, true);
     await sleep(60);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "f" }, CTX);
     await flushDeferred();
@@ -389,7 +389,7 @@ describe("drop policy: cap exhaustion is the only under-load drop, and it is vis
     wakeRetryQueue._setMaxAttemptsForTests(1); // pin a 1-redelivery cap
 
     pi.emit("tool_call", { type: "tool_call", toolCallId: "g" }, CTX);
-    timerMod.scheduleTimer("w140", 30, "resume the release", undefined, true);
+    timerMod.scheduleTimer("wake-stress", 30, "resume the release", undefined, true);
     await sleep(60);
     pi.emit("tool_execution_end", { type: "tool_execution_end", toolCallId: "g" }, CTX);
     await flushDeferred();

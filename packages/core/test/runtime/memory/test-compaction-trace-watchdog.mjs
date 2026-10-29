@@ -345,7 +345,7 @@ await test("(f) session shutdown clears an armed watchdog", async () => {
 
 await test("(g) the trace entry survives in a real session file", async () => {
   if (!piCore) return; // skip when pi-core dist is unavailable
-  const dir = mkdtempSync(join(tmpdir(), "w236-trace-"));
+  const dir = mkdtempSync(join(tmpdir(), "watchdog-trace-"));
   const sm = piCore.SessionManager.create(dir, join(dir, "sessions"));
   // pi-core 0.85.1 buffers the session file until the first assistant message
   // lands (session-manager.js _persist "flushed" gate) - seed one so the

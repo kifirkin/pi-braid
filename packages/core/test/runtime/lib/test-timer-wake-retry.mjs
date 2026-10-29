@@ -136,7 +136,7 @@ function sleep(ms) {
 function makeTimer(id, reason = "wake me") {
   return {
     id,
-    sessionId: "w114r",
+    sessionId: "retry-session",
     firesAt: Date.now(),
     reason,
     createdAt: Date.now() - 1000,
@@ -296,7 +296,7 @@ describe("successful wake turn clears the pending retry chain", () => {
     q._setClockForTests(() => now);
 
     // Original fire fails -> retry attempt 1 armed.
-    q.trackWake(makeTimer("w119-a"));
+    q.trackWake(makeTimer("success-a"));
     q.onAgentEnd(true);
     q.onAgentSettled();
     assert.equal(q.pendingRetryCount(), 1);
@@ -332,7 +332,7 @@ describe("successful wake turn clears the pending retry chain", () => {
     let now = 5_000_000;
     q._setClockForTests(() => now);
 
-    q.trackWake(makeTimer("w119-b"));
+    q.trackWake(makeTimer("success-b"));
     now += WAKE_OUTCOME_TIMEOUT_MS;
     q.drainDue(); // outcome timeout during the long turn -> retry armed
     assert.equal(q.pendingRetryCount(), 1);
@@ -350,7 +350,7 @@ describe("successful wake turn clears the pending retry chain", () => {
     let now = 6_000_000;
     q._setClockForTests(() => now);
 
-    q.trackWake(makeTimer("w119-c"));
+    q.trackWake(makeTimer("success-c"));
     for (let attempt = 1; attempt <= WAKE_RETRY_MAX_ATTEMPTS; attempt++) {
       q.onAgentEnd(true);
       q.onAgentSettled();
@@ -376,7 +376,7 @@ describe("successful wake turn clears the pending retry chain", () => {
     let now = 7_000_000;
     q._setClockForTests(() => now);
 
-    q.trackWake(makeTimer("w119-d"));
+    q.trackWake(makeTimer("success-d"));
     now += WAKE_OUTCOME_TIMEOUT_MS;
     q.drainDue(); // timeout arms retry 1, entry kept + marked
     q.onAgentEnd(true);
@@ -398,7 +398,7 @@ describe("outcome timeout 240s covers long legitimate wake turns", () => {
     const q = new WakeRetryQueue();
     let now = 7_500_000;
     q._setClockForTests(() => now);
-    q.trackWake(makeTimer("w137-long"));
+    q.trackWake(makeTimer("outcome-long"));
 
     // 180s in (a legitimate babysit wake turn), poll ticks keep running.
     now += 180_000;
@@ -421,7 +421,7 @@ describe("outcome timeout 240s covers long legitimate wake turns", () => {
     const q = new WakeRetryQueue();
     let now = 7_600_000;
     q._setClockForTests(() => now);
-    q.trackWake(makeTimer("w137-hang"));
+    q.trackWake(makeTimer("outcome-hang"));
     now += WAKE_OUTCOME_TIMEOUT_MS - 1;
     assert.deepEqual(q.drainDue(), [], "inside the (new) outcome window");
     now += 1;
@@ -437,7 +437,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     q._setClockForTests(() => now);
     q._setRetryHoldForTests(60_000);
 
-    q.trackWake(makeTimer("w137-hold"));
+    q.trackWake(makeTimer("outcome-hold"));
     // pi-core's retry cycle: attempt 1 fails retryable at t+50s...
     now += 50_000;
     q.onAgentEnd(true, "Connection error: socket hang up");
@@ -461,7 +461,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     q._setClockForTests(() => now);
     q._setRetryHoldForTests(400_000); // hold LONGER than the 240s outcome window
 
-    q.trackWake(makeTimer("w137-expiry"));
+    q.trackWake(makeTimer("outcome-expiry"));
     now += 50_000;
     q.onAgentEnd(true, "upstream request timeout"); // hold until t+450s
     now += 250_000; // t+300s: outcome timeout elapsed BUT hold still active
@@ -479,7 +479,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     let now = 12_000_000;
     q._setClockForTests(() => now);
     q._setRetryHoldForTests(100_000); // per-attempt hold; refresh extends it
-    q.trackWake(makeTimer("w137-refresh"));
+    q.trackWake(makeTimer("outcome-refresh"));
 
     now += 200_000;
     q.onAgentEnd(true, "connection error: other side closed"); // hold until +300s
@@ -505,7 +505,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     let now = 11_000_000;
     q._setClockForTests(() => now);
     q._setRetryHoldForTests(60_000);
-    q.trackWake(makeTimer("w137-ladder"));
+    q.trackWake(makeTimer("outcome-ladder"));
 
     now += 50_000;
     q.onAgentEnd(true, "connection error: getaddrinfo ENOTFOUND"); // pi-core attempt 1
@@ -528,7 +528,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     const q = new WakeRetryQueue();
     let now = 10_000_000;
     q._setClockForTests(() => now);
-    q.trackWake(makeTimer("w137-auth"));
+    q.trackWake(makeTimer("outcome-auth"));
     q.onAgentEnd(true, "HTTP 401 Unauthorized");
     q.onAgentSettled();
     assert.equal(q.pendingRetryCount(), 1, "non-retryable failures arm at settle");
@@ -539,12 +539,12 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     let now = 13_000_000;
     q._setClockForTests(() => now);
     q._setRetryHoldForTests(600_000);
-    q.trackWake(makeTimer("w137-clear-a"));
+    q.trackWake(makeTimer("outcome-clear-a"));
     q.onAgentEnd(true, "request timeout"); // hold armed
     q.onAgentEnd(false);
     q.onAgentSettled(); // cycle resolved successfully — hold must die with it
 
-    q.trackWake(makeTimer("w137-clear-b"));
+    q.trackWake(makeTimer("outcome-clear-b"));
     now += WAKE_OUTCOME_TIMEOUT_MS;
     q.drainDue();
     assert.equal(q.pendingRetryCount(), 1, "no stale hold: the fresh wake times out normally");
@@ -571,7 +571,7 @@ describe("retryable-failure hold defers redelivery during pi-core auto-retry", (
     let now = 14_000_000;
     q._setClockForTests(() => now);
     q._setMaxAttemptsForTests(2);
-    q.trackWake(makeTimer("w137-cap"));
+    q.trackWake(makeTimer("outcome-cap"));
     for (let attempt = 1; attempt <= 2; attempt++) {
       q.onAgentEnd(true); // no errorMessage: non-retryable, no hold
       q.onAgentSettled();
@@ -957,11 +957,11 @@ function readTimerFile() {
 describe("fix 3: recovered persisted fires defer past turn start", () => {
   it("REGRESSION: expired persisted fire is NOT delivered inline in before_agent_start", () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w114c");
+    timerMod.timerManager.clearSession("recovered-defer");
     writeTimerFile([
       {
         id: "rec-1",
-        sessionId: "w114c",
+        sessionId: "recovered-defer",
         firesAt: Date.now() - 5000,
         reason: "recovered work",
         createdAt: Date.now() - 60_000,
@@ -976,11 +976,11 @@ describe("fix 3: recovered persisted fires defer past turn start", () => {
 
   it("flushRecoveredFires delivers wake:true recovered fires as post-settle turns", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w114c");
+    timerMod.timerManager.clearSession("recovered-defer");
     writeTimerFile([
       {
         id: "rec-1b",
-        sessionId: "w114c",
+        sessionId: "recovered-defer",
         firesAt: Date.now() - 5000,
         reason: "recovered work",
         createdAt: Date.now() - 60_000,
@@ -1001,11 +1001,11 @@ describe("fix 3: recovered persisted fires defer past turn start", () => {
 
   it("wake:false recovered fires flush as advisory steers (no turn)", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w114c");
+    timerMod.timerManager.clearSession("recovered-defer");
     writeTimerFile([
       {
         id: "rec-silent",
-        sessionId: "w114c",
+        sessionId: "recovered-defer",
         firesAt: Date.now() - 5000,
         reason: "silent recovery",
         createdAt: Date.now() - 60_000,
@@ -1027,11 +1027,11 @@ describe("fix 3: recovered persisted fires defer past turn start", () => {
 
   it("expired RECURRING persisted fire: overdue tick deferred, recurrence still re-armed", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w114c");
+    timerMod.timerManager.clearSession("recovered-defer");
     writeTimerFile([
       {
         id: "rec-p",
-        sessionId: "w114c",
+        sessionId: "recovered-defer",
         firesAt: Date.now() - 5000,
         reason: "periodic",
         tag: "periodic-status",
@@ -1045,7 +1045,7 @@ describe("fix 3: recovered persisted fires defer past turn start", () => {
     const pi = makeFakePi();
     pb.recoverPersistedTimers(pi);
 
-    const live = timerMod.timerManager.listTimers("w114c");
+    const live = timerMod.timerManager.listTimers("recovered-defer");
     assert.equal(live.length, 1, "recurrence re-armed during recovery (unchanged)");
     assert.equal(live[0].fires, 4, "fires counter advanced");
     assert.equal(readTimerFile()[0].fires, 4, "disk carries the advanced counter");
@@ -1070,11 +1070,11 @@ describe("fix 3: recovered persisted fires defer past turn start", () => {
 describe("recovered fire text carries the live timing marker", () => {
   it("REGRESSION: wake:true recovered fire reuses the set-for/fired/drift marker", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w234t");
+    timerMod.timerManager.clearSession("recovered-timing");
     writeTimerFile([
       {
         id: "rec-timing",
-        sessionId: "w234t",
+        sessionId: "recovered-timing",
         firesAt: Date.now() - 60_000,
         reason: "recovered timing",
         createdAt: Date.now() - 3_600_000,
@@ -1098,11 +1098,11 @@ describe("recovered fire text carries the live timing marker", () => {
 
   it("a late recovered fire logs its delay once", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w234t");
+    timerMod.timerManager.clearSession("recovered-timing");
     writeTimerFile([
       {
         id: "rec-late",
-        sessionId: "w234t",
+        sessionId: "recovered-timing",
         firesAt: Date.now() - 1_500_000, // 25 min overdue
         reason: "recovered late",
         createdAt: Date.now() - 1_800_000,
@@ -1122,11 +1122,11 @@ describe("recovered fire text carries the live timing marker", () => {
 
   it("an on-time recovered fire logs no late line", async () => {
     process.chdir(tmp);
-    timerMod.timerManager.clearSession("w234t");
+    timerMod.timerManager.clearSession("recovered-timing");
     writeTimerFile([
       {
         id: "rec-ontime",
-        sessionId: "w234t",
+        sessionId: "recovered-timing",
         firesAt: Date.now() - 5, // drifted less than a second
         reason: "recovered ontime",
         createdAt: Date.now() - 60_000,
@@ -1154,10 +1154,10 @@ describe("e2e: failed wake turn retries via poll/TURN_END ticks (no user turn)",
     const pi = makeFakePi();
     timerMod.default(pi);
     wakeRetryQueue._setMaxAttemptsForTests(WAKE_RETRY_MAX_ATTEMPTS); // pin the cap
-    const ctx = { sessionManager: { getSessionId: () => "w114r" } };
+    const ctx = { sessionManager: { getSessionId: () => "retry-session" } };
     pi.emit("session_start", {}, ctx);
 
-    timerMod.scheduleTimer("w114r", 30, "resume the build", undefined, true);
+    timerMod.scheduleTimer("retry-session", 30, "resume the build", undefined, true);
     await sleep(80); // let it expire
 
     // TURN_END/TOOL_EXECUTION_END path delivers the fire (setTimeout(0) guard).
@@ -1208,10 +1208,10 @@ describe("e2e: failed wake turn retries via poll/TURN_END ticks (no user turn)",
     process.chdir(tmp);
     const pi = makeFakePi();
     timerMod.default(pi);
-    const ctx = { sessionManager: { getSessionId: () => "w114s" } };
+    const ctx = { sessionManager: { getSessionId: () => "happy-path" } };
     pi.emit("session_start", {}, ctx);
 
-    timerMod.scheduleTimer("w114s", 30, "happy path", undefined, true);
+    timerMod.scheduleTimer("happy-path", 30, "happy path", undefined, true);
     await sleep(60);
     pi.emit("tool_execution_end", {}, ctx);
     await flushDeferred();
@@ -1228,10 +1228,10 @@ describe("e2e: failed wake turn retries via poll/TURN_END ticks (no user turn)",
     process.chdir(tmp);
     const pi = makeFakePi();
     timerMod.default(pi);
-    const ctx = { sessionManager: { getSessionId: () => "w137e" } };
+    const ctx = { sessionManager: { getSessionId: () => "retryable-hold" } };
     pi.emit("session_start", {}, ctx);
 
-    timerMod.scheduleTimer("w137e", 30, "resume the deploy", undefined, true);
+    timerMod.scheduleTimer("retryable-hold", 30, "resume the deploy", undefined, true);
     await sleep(80);
     pi.emit("tool_execution_end", {}, ctx);
     await flushDeferred();

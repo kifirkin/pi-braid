@@ -64,7 +64,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w170-registry-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "workers-registry-"));
 process.env.HOME = FAKE_HOME;
 
 const { BRAID_DIR, getLockFilePath, getWorkersFilePath } =
@@ -105,12 +105,12 @@ function test(name, fn) {
 
 /** Fresh project dir per test — registry state never leaks across tests. */
 function freshProject() {
-  return mkdtempSync(join(tmpdir(), "w170-project-"));
+  return mkdtempSync(join(tmpdir(), "workers-project-"));
 }
 
 /** Fresh git repo on main with one base commit. */
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "w170-repo-"));
+  const repo = mkdtempSync(join(tmpdir(), "workers-repo-"));
   gitIn(repo, "init", "-q", "-b", "main");
   gitIn(repo, "config", "user.email", "test@example.com");
   gitIn(repo, "config", "user.name", "test");

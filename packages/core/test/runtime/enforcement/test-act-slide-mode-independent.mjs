@@ -36,14 +36,14 @@ import { fileURLToPath } from "node:url";
 // (compaction mode via the project .pi/settings.json + braid's configured
 // contextLimitTokens); BRAID_HOME pins braid's durable tree so the act's
 // pre-save resume.json never touches the live tree.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w218-act-home-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "act-act-home-"));
 process.env.HOME = FAKE_HOME;
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
 writeFileSync(
   join(FAKE_HOME, ".pi", "agent", "settings.json"),
   JSON.stringify({ braid: { context: { contextLimitTokens: 200_000 } } }),
 );
-const BRAID_HOME = mkdtempSync(join(tmpdir(), "w218-act-braid-home-"));
+const BRAID_HOME = mkdtempSync(join(tmpdir(), "act-act-braid-home-"));
 process.env.BRAID_HOME = BRAID_HOME;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -115,14 +115,14 @@ function makeWorld({ enabled, branch }) {
     sendUserMessage: () => {},
   };
   const compactCalls = [];
-  const cwd = mkdtempSync(join(tmpdir(), "w218-act-cwd-"));
+  const cwd = mkdtempSync(join(tmpdir(), "act-act-cwd-"));
   mkdirSync(join(cwd, ".pi"), { recursive: true });
   writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ compaction: { enabled } }));
   const ctx = {
     cwd,
     compact: (opts) => compactCalls.push(opts),
     sessionManager: {
-      getSessionId: () => "w218-act",
+      getSessionId: () => "act-act",
       getSessionFile: () => join(cwd, "synthetic.jsonl"),
       getBranch: () => branch,
       getLabel: () => undefined,

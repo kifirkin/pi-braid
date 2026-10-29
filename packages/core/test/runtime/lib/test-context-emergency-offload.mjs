@@ -40,7 +40,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
 // Isolate settings AND offload storage: temp home. MUST precede imports.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w115-emergency-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "offload-emergency-"));
 process.env.HOME = FAKE_HOME;
 const SETTINGS_PATH = join(FAKE_HOME, ".pi", "agent", "settings.json");
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
@@ -302,7 +302,7 @@ test("apply: flushes FULL content to disk as JSON, then returns the stub record"
     keepRecentTurns: 0,
     minChars: 1,
   });
-  const result = applyContextEmergencyOffloads(messages, plan, IO, { sessionId: "w115-apply" });
+  const result = applyContextEmergencyOffloads(messages, plan, IO, { sessionId: "offload-apply" });
   assert.equal(result.offloaded, 1);
   assert.equal(result.charsSaved, 300_000);
   const rec = Object.values(result.stubs)[0];
@@ -394,7 +394,7 @@ test("runner: scans the branch, flushes to disk, records stubs in CmState", asyn
     toolResult("R".repeat(300_000), { toolName: "bash" }),
     toolResult("recent", { toolName: "read" }),
   ];
-  const ctx = makeFakeCtx(branch, "w115-runner");
+  const ctx = makeFakeCtx(branch, "offload-runner");
   const result = await runContextEmergencyOffload(ctx, "test");
   assert.equal(result.offloaded, 1);
   assert.ok(result.charsSaved >= 300_000);
@@ -416,7 +416,7 @@ test("runner: scans the branch, flushes to disk, records stubs in CmState", asyn
 
 test("runner: disabled setting → offloaded=0, error=disabled", async () => {
   writeSettings({ context: { contextEmergencyOffload: { enabled: false } } });
-  const ctx = makeFakeCtx([user("go"), toolResult("R".repeat(300_000))], "w115-off");
+  const ctx = makeFakeCtx([user("go"), toolResult("R".repeat(300_000))], "offload-off");
   const result = await runContextEmergencyOffload(ctx, "test");
   assert.equal(result.offloaded, 0);
   assert.equal(result.error, "disabled");
@@ -427,7 +427,7 @@ test("runner: disabled setting → offloaded=0, error=disabled", async () => {
 
 const { callLlm } = await import("../../../dist/lib/ai/llm-call.js");
 
-const FAKE_MODEL = { id: "w115-test-model", provider: "test" };
+const FAKE_MODEL = { id: "offload-test-model", provider: "test" };
 
 function resetEmergencySlots() {
   resetContextEmergencyOffloadRunner();

@@ -4,7 +4,8 @@
 //
 // Scans packages/**/{src,test,scripts}/**/*.{ts,mjs} and packages/**/*.md,
 // skipping node_modules, dist, and .git, for:
-//   - three-digit wave tokens, optionally with a task suffix (Wnnn[-Tnn])
+//   - three-digit handles in either case, optionally with a task suffix
+//     (Wnnn[-Tnn], wnnn[-tnn])
 //   - brief references (BRIEF- prefixed identifiers)
 //
 // The three-digit rule is deliberate, not arbitrary: task wave labels in this
@@ -12,9 +13,20 @@
 // is an ISO calendar-week reference (2026-W35 strings, the W37/W38 fixture
 // constants in test-memory-write-log-metrics.mjs), so a two-to-three-digit
 // pattern would flag calendar weeks forever and train people to ignore this
-// gate. Two-digit historical task labels are out of scope. The vocabulary is
-// shared with the commit-subject gate and lives in lib/label-tokens.mjs, so
-// the two surfaces cannot drift into refusing different tokens.
+// gate. Two-digit historical task labels are out of scope.
+//
+// Either case, because that is the spelling the tree carried: a lowercase
+// handle in a fixture's session id or temp directory names the same task as the
+// uppercase one, and a vocabulary that refused only the uppercase spelling left
+// the other in place. The vocabulary is shared with the commit-subject gate and
+// lives in lib/label-tokens.mjs, so the two surfaces cannot drift into refusing
+// different tokens.
+//
+// Documented bound: the pattern needs a word boundary on both sides, so a
+// handle glued to a letter (some fixture session ids spell one that way) is a
+// non-hit, exactly as a four-digit run is. Such a spelling is a fixture to
+// rename, not a reason to loosen the vocabulary until it matches every number
+// the prose contains.
 //
 // No config file and no path allowlist: the sanctioned seat for wave context
 // (report filenames and titles) lives in the docs repo, outside this scan

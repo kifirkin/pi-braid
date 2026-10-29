@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 // Pin braid's whole durable tree into a private tmpdir BEFORE any dist module
 // loads (the dynamic imports below honor it): the writers' resume file lands
 // under BRAID_HOME, never the live tree.
-const BRAID_HOME = mkdtempSync(join(tmpdir(), "w648-resume-braid-home-"));
+const BRAID_HOME = mkdtempSync(join(tmpdir(), "resume-braid-home-"));
 process.env.BRAID_HOME = BRAID_HOME;
 const LIVE_SESSIONS_ROOT = join(
   typeof process.env.HOME === "string" ? process.env.HOME : "",
@@ -37,7 +37,7 @@ const LIVE_SESSIONS_ROOT = join(
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const DIST = join(ROOT, "dist");
-const cwd = mkdtempSync(join(tmpdir(), "w648-resume-cwd-"));
+const cwd = mkdtempSync(join(tmpdir(), "resume-cwd-"));
 
 console.log("=== resume handoff carries the scratchpad program ===\n");
 
@@ -283,7 +283,7 @@ await test("(3) absent scratchpad degrades to empty sections, never a throw", as
   const { registerSessionShutdownResumption } = await import(
     join(DIST, "extensions/enforcement/handlers/register-session-shutdown-resumption.js")
   );
-  const bareCwd = mkdtempSync(join(tmpdir(), "w648-resume-bare-"));
+  const bareCwd = mkdtempSync(join(tmpdir(), "resume-bare-"));
   const handlers = new Map();
   registerSessionShutdownResumption({
     on(event, handler) {

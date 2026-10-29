@@ -111,7 +111,7 @@ test("polluted degradation.json seeds the TELEMETRY mirror but NOT a new session
   assert.equal(getMetricsSummary().degraded, true, "global mirror is degraded (as the file says)");
 
   // 2. A NEW session starts CLEAN despite the poisoned file (the fix).
-  const ctx = makeCtx("w104-fresh-session");
+  const ctx = makeCtx("scoping-fresh-session");
   const summary = getMetricsSummary(ctx);
   assert.equal(summary.totalTurns, 0, "new session inherits NO stale metrics");
   assert.equal(summary.degraded, false, "new session is not degraded");
@@ -144,7 +144,7 @@ test("polluted degradation.json seeds the TELEMETRY mirror but NOT a new session
   assert.equal(getAllMetrics().length, 41, "live entry mirrored into the 30-day telemetry");
 
   // 5. A SECOND session still starts clean (no cross-session bleed).
-  const ctx2 = makeCtx("w104-second-session");
+  const ctx2 = makeCtx("scoping-second-session");
   assert.equal(getMetricsSummary(ctx2).totalTurns, 0, "second session also clean");
   assert.equal(isDegraded(ctx2), false);
 

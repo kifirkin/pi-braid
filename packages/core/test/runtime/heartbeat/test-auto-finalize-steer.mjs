@@ -77,10 +77,10 @@ console.log("=== heartbeat auto-finalize whisper delivers as steer ===\n");
 
 function makePolicyContext(percent) {
   return {
-    sessionId: "w106-test",
+    sessionId: "auto-finalize-test",
     turnNumber: 1,
     toolStats: new Map(),
-    cwd: "/tmp/w106",
+    cwd: "/tmp/auto-finalize",
     getContextUsage: () => ({ percent, tokens: 1_000, contextWindow: 200_000 }),
   };
 }

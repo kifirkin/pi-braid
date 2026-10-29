@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 // Hermetic settings: pin the window so the inspect percent math never reads
 // the live settings.json.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w218-fmt-home-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "fmt-fmt-home-"));
 process.env.HOME = FAKE_HOME;
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
 writeFileSync(
@@ -84,8 +84,8 @@ function makeWorld() {
     mode: "test",
     hasUI: false,
     sessionManager: {
-      getSessionId: () => "w218-fmt",
-      getSessionFile: () => "/tmp/w218-fmt.jsonl",
+      getSessionId: () => "fmt-fmt",
+      getSessionFile: () => "/tmp/fmt-fmt.jsonl",
       getBranch: () => branch,
       getTree: () => branch.map((e) => ({ entry: e, children: [], label: undefined })),
       getChildren: () => [],

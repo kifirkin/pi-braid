@@ -20,16 +20,13 @@
  * run, so a population stamp transcribed from the output names the revision it
  * certifies.
  *
- * A subject is a problem when it carries:
- *   - a token from the shared label vocabulary (`lib/label-tokens.mjs`, the same
- *     three-digit task-label tokens and brief identifiers the source gate refuses);
- *   - the branch namespace a merge subject is derived from
- *     (`worker/w<digits>/`), which is the handle without the label spelling;
- *   - an authored handle in the spelling seats typed before the rule was stated
- *     plainly (`w<digits>:` at the start of a subject). That spelling is not in
- *     the shared vocabulary, because the file population carries dozens of
- *     lowercase three-digit tokens inside fixture names; the reason is stated at
- *     the pattern rather than left implicit.
+ * A subject is a problem when it carries a token from the shared label
+ * vocabulary (`lib/label-tokens.mjs`, the same three-digit handles and brief
+ * identifiers the source gate refuses). The vocabulary covers either spelling
+ * of a handle, so the branch namespace a merge subject is derived from
+ * (`worker/w<digits>/`) and an authored `w<digits>:` prefix both reduce to the
+ * bare token: one subject yields one problem line per distinct handle, and no
+ * second pattern can double-report the same one.
  *
  * No reachable tag is a problem, never a skip: without a baseline there is no
  * range to certify, and a green run over an unknowable population is worse than
@@ -82,22 +79,6 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-// The worker-branch shape a merge subject inherits. Case-insensitive because the
-// handle is internal either way; the shape, not the spelling, is what makes it a
-// label.
-const BRANCH_NAMESPACE = /\bworker\/w\d+\//i;
-
-// An authored handle at the start of a subject (`w<digits>: ...`). This spelling is
-// deliberately NOT in the shared vocabulary: the file population carries dozens
-// of lowercase three-digit tokens inside fixture temp-dir names and case labels,
-// so widening the set both gates read would redden the source gate over strings
-// that are not labels. A commit subject has no such population, and this is the
-// spelling seats actually typed before the rule was stated plainly, so the
-// history surface refuses it here and the divergence is stated rather than
-// hidden. The leading group excludes the branch namespace already reported
-// above, so one subject is not two problems for the same handle.
-const AUTHORED_HANDLE = /(^|[^/\w])w\d{3}(-t\d+)?\b/;
-
 const problems = [];
 let baseline = "";
 
@@ -146,10 +127,6 @@ for (const row of commits) {
   for (const pattern of LABEL_TOKEN_PATTERNS) {
     for (const match of subject.matchAll(pattern)) tokens.push(match[0]);
   }
-  const branchMatch = subject.match(BRANCH_NAMESPACE);
-  if (branchMatch) tokens.push(branchMatch[0]);
-  const authoredMatch = subject.match(AUTHORED_HANDLE);
-  if (authoredMatch) tokens.push(authoredMatch[1] ? authoredMatch[0].slice(authoredMatch[1].length) : authoredMatch[0]);
 
   for (const token of tokens) {
     const key = `${sha}\t${token}`;

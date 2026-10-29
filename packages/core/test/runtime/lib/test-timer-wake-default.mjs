@@ -82,7 +82,7 @@ describe("fix 1: timer tool surface wakes by default (recurring included)", () =
       {},
       {},
       {
-        sessionManager: { getSessionId: () => "w114" },
+        sessionManager: { getSessionId: () => "wake-default" },
       },
     );
   }
@@ -101,7 +101,7 @@ describe("fix 1: timer tool surface wakes by default (recurring included)", () =
     );
     assert.match(res.content[0].text, /\(waking\)/, "confirmation states waking");
     assert.equal(res.details.recurring, true);
-    timerMod.clearSessionTimers("w114");
+    timerMod.clearSessionTimers("wake-default");
   });
 
   it("REGRESSION: bounded recurring timer (interval_seconds + count) also wakes by default", async () => {
@@ -113,7 +113,7 @@ describe("fix 1: timer tool surface wakes by default (recurring included)", () =
       count: 5,
     });
     assert.equal(res.details.wake, true, "cron-style bounded recurrence wakes by default");
-    timerMod.clearSessionTimers("w114");
+    timerMod.clearSessionTimers("wake-default");
   });
 
   it("explicit wake:false still produces a silent (advisory) recurring timer", async () => {
@@ -126,14 +126,14 @@ describe("fix 1: timer tool surface wakes by default (recurring included)", () =
     });
     assert.equal(res.details.wake, false, "explicit opt-out preserved");
     assert.match(res.content[0].text, /\(silent\)/);
-    timerMod.clearSessionTimers("w114");
+    timerMod.clearSessionTimers("wake-default");
   });
 
   it("one-shot default stays wake:true (unchanged legacy)", async () => {
     const tool = getTool();
     const res = await setTimer(tool, { delay_seconds: 5, reason: "reminder" });
     assert.equal(res.details.wake, true);
-    timerMod.clearSessionTimers("w114");
+    timerMod.clearSessionTimers("wake-default");
   });
 
   it("tool docs no longer claim recurring timers are silent by default", () => {
@@ -154,10 +154,10 @@ describe("fix 1: timer tool surface wakes by default (recurring included)", () =
     process.chdir(tmp);
     const tool = getTool();
     await setTimer(tool, { delay_seconds: 5, reason: "persist", interval_seconds: 60 });
-    const live = timerMod.listTimers("w114");
+    const live = timerMod.listTimers("wake-default");
     assert.equal(live.length, 1);
     assert.equal(live[0].wake, true, "manager entry is waking");
-    timerMod.clearSessionTimers("w114");
+    timerMod.clearSessionTimers("wake-default");
   });
 });
 

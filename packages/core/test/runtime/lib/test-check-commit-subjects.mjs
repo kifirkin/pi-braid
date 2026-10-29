@@ -18,11 +18,12 @@
  *      with the planted commit removed, the same tree is green
  *   3. no reachable tag: exit 1 with the reason, never a green line over a range
  *      nobody can name
- *   4. the merge subject git derives from a worker branch: exit 1, the branch
- *      namespace reported as the label it is
- *   5. an authored handle in the lowercase spelling (`w<digits>:`), with three
- *      near-misses beside it in the same population: exactly one problem, and
- *      the near-misses add none
+ *   4. the merge subject git derives from a worker branch: exit 1, exactly one
+ *      problem line, and the token it names is the bare handle the namespace
+ *      carries
+ *   5. a handle in the lowercase spelling (`w<digits>:`), with four near-misses
+ *      beside it in the same population: exactly one problem, and the
+ *      near-misses add none
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,11 +44,26 @@ const LIB = join(ROOT, "scripts", "lib", "label-tokens.mjs");
 const LABEL_TOKEN = "W" + "123";
 const LABEL_SUBJECT = `${LABEL_TOKEN}: tighten the retry path`;
 const CLEAN_SUBJECT = "retry: the backoff names the failure it waits for";
-// The spelling seats typed before the rule was stated plainly. Not in the shared
-// vocabulary, so nothing else refuses it: this case is the only thing standing
-// between that spelling and a hole in the history gate.
-const AUTHORED_HANDLE = "w" + "556";
-const AUTHORED_SUBJECT = `${AUTHORED_HANDLE}: gate the internal-label surfaces`;
+// The lowercase spelling of the same label. The shared vocabulary covers either
+// case, so the source gate refuses this one in files and this gate refuses it in
+// subjects; the case proves the history surface reads the spelling.
+const LOWERCASE_HANDLE = "w" + "556";
+const LOWERCASE_SUBJECT = `${LOWERCASE_HANDLE}: gate the internal-label surfaces`;
+// A worker branch carries the bare handle and git derives the merge subject from
+// it. Three digits, like every task label, and composed for the same reason.
+const BRANCH_HANDLE = "w" + "999";
+const MERGE_BRANCH = `worker/${BRANCH_HANDLE}/subject-leak`;
+// One boundary away from a hit on each side: a leading word character, a short
+// digit run, a long one, and a calendar week that only looks like a label.
+const TWO_DIGIT_RUN = "w" + "55";
+const FOUR_DIGIT_RUN = "w" + "5566";
+const CALENDAR_WEEK = "2026-W" + "35";
+const NEAR_MISSES = [
+  `search: a local named network_a${LOWERCASE_HANDLE} stays clean`,
+  `search: a two-digit run ${TWO_DIGIT_RUN} is not a handle`,
+  `search: a four-digit run ${FOUR_DIGIT_RUN} is not the spelling either`,
+  `search: the calendar week ${CALENDAR_WEEK} is not a label`,
+];
 
 function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf-8" }).trim();
@@ -159,17 +175,13 @@ test("no reachable tag: exit 1 with the reason, never a green line over an unnam
   }
 });
 
-test("an authored lowercase handle is a hit while three near-misses add none", () => {
+test("a lowercase handle is a hit in the shared vocabulary while four near-misses add none", () => {
   const c = makeCase();
   try {
     c.commit("base: the tree before the cut");
     git(c.repo, "tag", "v1.0.0");
-    const badSha = c.commit(AUTHORED_SUBJECT);
-    // Each near-miss is one character away from a hit: a word character before
-    // the handle, too few digits, and a suffix that is not the task one.
-    c.commit(`search: a local named network_a${AUTHORED_HANDLE} stays clean`);
-    c.commit("search: a two-digit handle is not a label");
-    c.commit("search: a four-digit run is not the spelling either");
+    const badSha = c.commit(LOWERCASE_SUBJECT);
+    for (const subject of NEAR_MISSES) c.commit(subject);
 
     const { status, out } = c.run();
     assert.equal(status, 1, out);
@@ -178,34 +190,40 @@ test("an authored lowercase handle is a hit while three near-misses add none", (
       .split("\n")
       .filter((line) => line.startsWith(`${badSha.slice(0, 12)}  `));
     assert.equal(hits.length, 1, out);
-    assert.ok(hits[0].includes(AUTHORED_HANDLE), `the hit must name the token\n${out}`);
-    assert.ok(hits[0].includes(AUTHORED_SUBJECT), `the hit must name the subject\n${out}`);
-    assert.ok(!/network_a/.test(out), `a near-miss must not be reported\n${out}`);
+    assert.ok(hits[0].includes(LOWERCASE_HANDLE), `the hit must name the token\n${out}`);
+    assert.ok(hits[0].includes(LOWERCASE_SUBJECT), `the hit must name the subject\n${out}`);
+    for (const subject of NEAR_MISSES) {
+      assert.ok(!out.includes(subject), `a near-miss must not be reported\n${out}`);
+    }
   } finally {
     c.cleanup();
   }
 });
 
-test("the subject git derives from a worker branch is reported as the label it is", () => {
+test("the subject git derives from a worker branch is reported once as the bare handle", () => {
   const c = makeCase();
   try {
     c.commit("base: the tree before the branch point");
     git(c.repo, "tag", "v1.0.0");
 
-    const branch = "worker/w9999/subject-leak";
-    git(c.repo, "checkout", "-q", "-b", branch);
+    git(c.repo, "checkout", "-q", "-b", MERGE_BRANCH);
     c.commit("worker: the commit that landed");
     git(c.repo, "checkout", "-q", "main");
     c.commit("base: a commit after the branch point");
     // The subject is git's own, not written by this fixture.
-    git(c.repo, "merge", "--no-edit", branch);
+    git(c.repo, "merge", "--no-edit", MERGE_BRANCH);
     const derived = git(c.repo, "log", "-1", "--format=%s", "HEAD");
-    assert.equal(derived, `Merge branch '${branch}'`, "fixture sanity: git derived the subject");
+    assert.equal(derived, `Merge branch '${MERGE_BRANCH}'`, "fixture sanity: git derived the subject");
 
     const { status, out } = c.run();
     assert.equal(status, 1, out);
-    assert.ok(out.includes("worker/w9999/"), `the namespace must be named\n${out}`);
-    assert.ok(out.includes(derived), `the subject must be echoed\n${out}`);
+    const problems = out.split("\n").filter((line) => /^[0-9a-f]{12} {2}/.test(line));
+    assert.equal(problems.length, 1, `one subject, one problem line\n${out}`);
+    assert.ok(
+      problems[0].includes(`  ${BRANCH_HANDLE}  `),
+      `the reported token is the bare handle, not the namespace\n${out}`,
+    );
+    assert.ok(problems[0].endsWith(derived), `the subject must be echoed\n${out}`);
   } finally {
     c.cleanup();
   }

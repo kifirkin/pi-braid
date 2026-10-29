@@ -62,7 +62,7 @@ function withPinnedClock(nowMs, fn) {
 }
 
 test("autoRollback restores the NEWEST checkpoint (chronological order invariant)", async () => {
-  const sid = "w104-latest-sel";
+  const sid = "latest-sel";
   const ctx = makeCtx(sid);
   const t0 = 1_700_000_000_000;
 

@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Isolate settings AND offload storage: temp home. MUST precede imports.
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "w115-capture-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "toolresult-capture-"));
 process.env.HOME = FAKE_HOME;
 const SETTINGS_PATH = join(FAKE_HOME, ".pi", "agent", "settings.json");
 mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
@@ -134,7 +134,7 @@ function captureHandler() {
   return captured.find((h) => h.type === "tool_result").fn;
 }
 
-const FAKE_CTX = { sessionManager: { getSessionId: () => "w115cap" } };
+const FAKE_CTX = { sessionManager: { getSessionId: () => "size-cap-session" } };
 
 test("capture cap: oversized text blob in → stub + disk file out", async () => {
   writeSettings(null); // default ON
@@ -280,7 +280,7 @@ test("capture cap: exactly at cap → untouched (strictly greater triggers)", as
 test("pi-core emitToolResult applies the capture replacement (installed runtime)", async () => {
   writeSettings(null);
   const handler = captureHandler();
-  const ext = { path: "w115-cap-test", handlers: new Map([["tool_result", [handler]]]) };
+  const ext = { path: "toolresult-cap-test", handlers: new Map([["tool_result", [handler]]]) };
   const runner = new ExtensionRunner([ext], {}, process.cwd());
   const blob = "Q".repeat(300_000);
   const merged = await runner.emitToolResult({

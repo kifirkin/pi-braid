@@ -47,7 +47,7 @@ after(() => {
 function makeTimer(id) {
   return {
     id,
-    sessionId: "w238",
+    sessionId: "wake-dedupe",
     firesAt: Date.now(),
     reason: "resume the task",
     wake: true,

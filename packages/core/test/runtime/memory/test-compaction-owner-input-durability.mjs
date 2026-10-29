@@ -72,7 +72,7 @@ let sessionSeq = 0;
  * session from mid-run to settled.
  */
 function makeFakeCtx({ idle = true, pendingMessages = false } = {}) {
-  const sessionFile = `/tmp/w377-fixture-${++sessionSeq}.jsonl`;
+  const sessionFile = `/tmp/owner-input-fixture-${++sessionSeq}.jsonl`;
   let entrySeq = 0;
   let isIdle = idle;
   let hasPending = pendingMessages;
@@ -105,7 +105,7 @@ function makeFakeCtx({ idle = true, pendingMessages = false } = {}) {
   };
   let smRef = sm;
   return {
-    cwd: "/tmp/w377-fixture",
+    cwd: "/tmp/owner-input-fixture",
     mode: "test",
     hasUI: false,
     get sessionManager() {
