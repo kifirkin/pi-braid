@@ -76,12 +76,11 @@ const root = resolve(__dirname, "..");
  * Measured over the ten slowest files, once at the default width and once at
  * `--jobs 1` under the same added load: a file's own duration grows by 1.07x to
  * 2.20x when it runs beside seven others, because the CPU-bound stretch of a
- * file now shares the cores. The slowest file left without an allowance of its
- * own takes 15.4s one at a time and 32.5s in the pool, so 60s sits 27.5s above
- * the slowest pooled duration the table has to carry unassisted, and no file in
- * either arm was killed at the cap. That is the detector's job kept - a real
- * hang is still killed inside one cap - with the room the measurement says the
- * pool needs.
+ * file now shares the cores. The slowest file the table has to carry unassisted
+ * - the longest unallowanced duration in the pool - takes 32.5s there and 15.4s
+ * one at a time, so 60s sits 27.5s above it, and no file in either arm was
+ * killed at the cap. That is the detector's job kept - a real hang is still
+ * killed inside one cap - with the room the measurement says the pool needs.
  */
 const DEFAULT_TIMEOUT_MS = 60_000;
 
