@@ -68,10 +68,12 @@ node packages/core/scripts/run-tests.mjs --timings-json=/tmp/timings.json
 ```
 
 `PI_TEST_JOBS` sets the width without the flag. Results always print in
-fixture order, so two runs of the same tree diff line for line. The cost of that
-order is that a slow file at the head of the walk holds every later line, so a
-run that has printed nothing for 30 seconds says once which file it is waiting
-on.
+fixture order, so the per-file lines of two runs of the same tree match; the
+summary line carries the run's own wall clock, so it differs whenever the run
+did, and a diff between two widths should compare the file lines rather than
+the tail. The cost of that order is that a slow file at the head of the walk
+holds every later line, so a run that has printed nothing for 30 seconds says
+once which file it is waiting on.
 
 Per-workspace variants use the workspace flag, e.g.
 `npm run build -w packages/core`, `npm test -w packages/providers`.
