@@ -35,6 +35,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitOutSilence } from "../lib/deferred-delivery.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -162,8 +163,9 @@ await test("willRetry: true → handler returns early, no pi.sendMessage", async
     ctx,
   );
 
-  // Wait for any setTimeout(0) deferred side-effects (none should fire).
-  await new Promise((r) => setTimeout(r, 50));
+  // The handler returns before scheduling anything here, so there is no
+  // arrival to poll for; the window is the evidence that it stayed silent.
+  await waitOutSilence();
 
   assert.equal(
     pi.sendMessageCalls.length,
@@ -190,7 +192,7 @@ await test("reason='manual' + flag unset (user /compress) → handler returns ea
     ctx,
   );
 
-  await new Promise((r) => setTimeout(r, 50));
+  await waitOutSilence();
 
   assert.equal(
     pi.sendMessageCalls.length,
@@ -230,10 +232,9 @@ await test("flag is one-shot: handler clears autoResumeAfterCompaction on every 
     ctx,
   );
 
-  // Wait for the setTimeout(0) + Promise chain to run.
-  await new Promise((r) => setTimeout(r, 100));
-
-  // After handler runs, the flag must be cleared.
+  // No wait: the handler clears the flag in its synchronous body, before it
+  // schedules either setTimeout(0) side-effect. The assertion reads a state
+  // write that has already happened by the time _emit returns.
   assert.equal(
     getState(ctx).autoResumeAfterCompaction,
     false,

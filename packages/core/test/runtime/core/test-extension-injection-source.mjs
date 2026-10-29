@@ -32,6 +32,7 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitOutSilence } from "../lib/deferred-delivery.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CORE_DIST = join(
@@ -168,6 +169,9 @@ test("a custom message never enters the input chain at all", async () => {
     },
     { triggerTurn: false },
   );
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // A negative has no arrival to poll for: the window is what makes "no input
+  // event" mean the path stayed out of the chain rather than "the event had
+  // not fired yet".
+  await waitOutSilence();
   assert.equal(labels.length, before, "no input event fired for a custom message");
 });

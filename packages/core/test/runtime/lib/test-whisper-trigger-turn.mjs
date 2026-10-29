@@ -38,6 +38,7 @@
  */
 
 import { strict as assert } from "node:assert";
+import { assertExactlyOne, waitForDelivery } from "./deferred-delivery.mjs";
 // Compiled runtime (npm test builds first).
 const { sendEnforcementWhisper } = await import("../../../dist/extensions/enforcement/whisper.js");
 const { registerSessionCompactHandler } =
@@ -111,11 +112,6 @@ function makeFakeCtx() {
   return ctx;
 }
 
-/** sendTrackedMessage defers triggerTurn:true to setTimeout(0) — flush it. */
-function flushDeferred() {
-  return new Promise((r) => setTimeout(r, 30));
-}
-
 // ── Unit: sendEnforcementWhisper option derivation (the fix) ────────────────
 
 await test("triggerTurn:true must NOT carry deliverAs 'nextTurn' (would queue, not wake)", async () => {
@@ -127,9 +123,9 @@ await test("triggerTurn:true must NOT carry deliverAs 'nextTurn' (would queue, n
   sendEnforcementWhisper(pi, ctx, "Context compacted — re-orient and continue.", false, {
     triggerTurn: true,
   });
-  await flushDeferred();
+  await waitForDelivery(pi.sent);
 
-  assert.equal(pi.sent.length, 1, "whisper must reach pi.sendMessage");
+  assertExactlyOne(pi.sent, { what: "whisper" });
   const { options } = pi.sent[0];
   assert.equal(options.triggerTurn, true, "triggerTurn must survive to pi.sendMessage");
   assert.notEqual(
@@ -146,9 +142,9 @@ await test("no options → live class (steer while streaming, append when idle)"
   const ctx = makeFakeCtx();
 
   sendEnforcementWhisper(pi, ctx, "advisory");
-  await flushDeferred();
+  await waitForDelivery(pi.sent);
 
-  assert.equal(pi.sent.length, 1);
+  assertExactlyOne(pi.sent, { what: "whisper" });
   assert.equal(pi.sent[0].options.deliverAs, "steer", "default delivery is steer");
   assert.equal(
     pi.sent[0].options.triggerTurn,
@@ -164,9 +160,9 @@ await test("triggerTurn:false → default is deliverAs:'steer'", async () => {
   const ctx = makeFakeCtx();
 
   sendEnforcementWhisper(pi, ctx, "advisory", false, { triggerTurn: false });
-  await flushDeferred();
+  await waitForDelivery(pi.sent);
 
-  assert.equal(pi.sent.length, 1);
+  assertExactlyOne(pi.sent, { what: "whisper" });
   assert.equal(pi.sent[0].options.deliverAs, "steer");
 });
 
@@ -180,9 +176,9 @@ await test("explicit deliverAs is respected when triggerTurn:true (steer preserv
     triggerTurn: true,
     deliverAs: "steer",
   });
-  await flushDeferred();
+  await waitForDelivery(pi.sent);
 
-  assert.equal(pi.sent.length, 1);
+  assertExactlyOne(pi.sent, { what: "whisper" });
   assert.equal(pi.sent[0].options.deliverAs, "steer", "explicit deliverAs wins");
   assert.equal(pi.sent[0].options.triggerTurn, true);
 });
@@ -215,8 +211,9 @@ await test("agent-initiated compaction → session_compact handler sends a REAL 
 
   // Handler defers (scratchpad read + whisper via setTimeout(0); the whisper
   // defers again inside sendTrackedMessage because triggerTurn is set).
-  await new Promise((r) => setTimeout(r, 120));
+  await waitForDelivery(pi.sent);
 
+  assertExactlyOne(pi.sent, { what: "re-orientation whisper" });
   const wake = pi.sent.find((m) =>
     (m.params.content ?? []).some((c) => /Context compacted/.test(c.text ?? "")),
   );
@@ -265,8 +262,9 @@ await test("natural stop before compaction → re-orientation is advisory (trigg
     ctx,
   );
 
-  await new Promise((r) => setTimeout(r, 120));
+  await waitForDelivery(pi.sent);
 
+  assertExactlyOne(pi.sent, { what: "re-orientation whisper" });
   const advisory = pi.sent.find((m) =>
     (m.params.content ?? []).some((c) => /Context compacted/.test(c.text ?? "")),
   );
@@ -310,8 +308,9 @@ await test("mid-work turn before compaction → re-orientation keeps the wake (t
     ctx,
   );
 
-  await new Promise((r) => setTimeout(r, 120));
+  await waitForDelivery(pi.sent);
 
+  assertExactlyOne(pi.sent, { what: "re-orientation whisper" });
   const wake = pi.sent.find((m) =>
     (m.params.content ?? []).some((c) => /Context compacted/.test(c.text ?? "")),
   );

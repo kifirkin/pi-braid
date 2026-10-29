@@ -37,6 +37,7 @@
 import { strict as assert } from "node:assert";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertExactlyOne, waitForDelivery, waitOutSilence } from "../lib/deferred-delivery.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -124,9 +125,6 @@ function makeFakeCtx() {
   };
 }
 
-/** Both the handler's setTimeout(0) and the funnel's triggerTurn deferral. */
-const settle = () => new Promise((r) => setTimeout(r, 120));
-
 /**
  * Fresh process-global turn state, then three enforcement whispers into the
  * SAME source and priority tier as the resume wake, delivered in this turn.
@@ -155,7 +153,7 @@ async function spentTurn(pi, ctx) {
       triggerTurn: true,
     });
   }
-  await settle();
+  await waitForDelivery(pi.sent, { atLeast: cap });
   assert.equal(
     pi.sent.length,
     cap,
@@ -181,7 +179,7 @@ async function emitAgentRequestedCompact(pi, ctx) {
     },
     ctx,
   );
-  await settle();
+  await waitForDelivery(pi.sent, { from: before });
   return pi.sent.slice(before);
 }
 
@@ -203,13 +201,12 @@ await test("3 enforcement whispers spent this turn → the resume wake still rea
   // No reset between the fills and the wake: that is the whole point.
   const after = await emitAgentRequestedCompact(pi, ctx);
 
-  assert.equal(
-    after.length,
-    1,
-    "exactly one re-orientation message must reach pi.sendMessage even though the " +
-      "enforcement/whisper bucket was already spent at its cap; got " +
-      `${after.length} (the wake was dropped, the loop is never handed back)`,
-  );
+  assertExactlyOne(after, {
+    what: "re-orientation message",
+    missingNote:
+      "the enforcement/whisper bucket was already spent at its cap and the wake was dropped, " +
+      "so the loop is never handed back",
+  });
   assert.ok(
     isWake(after[0]),
     `the surviving message must be the wake (triggerTurn:true, deliverAs undefined); got ` +
@@ -253,7 +250,7 @@ await test("a turn whose high tier is spent by OTHER sources → the resume wake
       );
     }
   }
-  await settle();
+  await waitForDelivery(pi.sent, { atLeast: 3 });
   assert.equal(pi.sent.length, 3, "the three high-tier spenders must be delivered");
   assert.equal(
     snapshotTurnDedup().whisperCounts.high,
@@ -267,12 +264,10 @@ await test("a turn whose high tier is spent by OTHER sources → the resume wake
   );
 
   const after = await emitAgentRequestedCompact(pi, ctx);
-  assert.equal(
-    after.length,
-    1,
-    "the resume wake must not be blocked by a high tier spent by other sources; got " +
-      `${after.length}`,
-  );
+  assertExactlyOne(after, {
+    what: "resume wake",
+    missingNote: "a high tier spent by other sources must not block it",
+  });
   assert.ok(isWake(after[0]), "the surviving message must be the wake");
 });
 
@@ -290,7 +285,10 @@ await test("the same spent turn still caps the unpersisted-learnings advisory", 
 
   const after = await emitAgentRequestedCompact(pi, ctx);
 
-  assert.equal(after.length, 1, "only the wake may get through a spent bucket");
+  assertExactlyOne(after, {
+    what: "wake",
+    missingNote: "only the wake may get through a spent bucket",
+  });
   assert.ok(isWake(after[0]), "the single surviving message must be the wake");
   assert.ok(
     !after.some((s) => bodyOf(s).includes("not yet persisted")),
@@ -321,13 +319,12 @@ await test("spent turn + auto threshold after a natural stop → the parked re-o
     },
     ctx,
   );
-  await settle();
+  await waitForDelivery(pi.sent, { from: before });
   const after = pi.sent.slice(before);
-  assert.equal(
-    after.length,
-    1,
-    "the parked re-orientation must survive a spent bucket; got " + `${after.length}`,
-  );
+  assertExactlyOne(after, {
+    what: "parked re-orientation",
+    missingNote: "the parked re-orientation must survive a spent bucket",
+  });
   assert.equal(
     after[0].options?.triggerTurn,
     false,
@@ -345,7 +342,9 @@ await test("bypass is per call: a spent turn still suppresses a plain wrapper se
   sendEnforcementWhisper(pi, ctx, "post-cap enforcement whisper without the bypass", false, {
     triggerTurn: true,
   });
-  await settle();
+  // A capped send is dropped before the deferral, so this case has no arrival
+  // to poll for: the window is the evidence that the cap kept it out.
+  await waitOutSilence();
   assert.equal(
     pi.sent.length,
     before,
@@ -356,7 +355,7 @@ await test("bypass is per call: a spent turn still suppresses a plain wrapper se
     triggerTurn: true,
     bypassFloodCap: true,
   });
-  await settle();
+  await waitForDelivery(pi.sent, { from: before });
   assert.equal(pi.sent.length, before + 1, "bypassFloodCap:true must skip the spent cap");
 });
 
