@@ -126,8 +126,8 @@ test("a planted task label is one hit naming sha, token and subject; removed, th
       .filter((line) => line.startsWith(`${goodSha.slice(0, 12)}  `));
     assert.equal(goodLines.length, 0, `a clean subject must not be reported\n${out}`);
 
-    // Remove the planted commit and the same tree goes green: the red above is
-    // the subject, not the tree.
+    // The reset below is what proves the red was the subject and not the tree:
+    // the same tree goes green once the planted commit is gone.
     git(c.repo, "reset", "--hard", cleanTip);
     const after = c.run();
     assert.equal(after.status, 0, after.out);
