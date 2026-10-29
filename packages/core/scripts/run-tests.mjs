@@ -73,13 +73,15 @@ const root = resolve(__dirname, "..");
  * value has to exceed the pool's own inflation of the slowest file rather than
  * that file's idle duration.
  *
- * Measured over the ten slowest files: a file's own duration grows by 1.03x to
- * 2.5x when it runs beside seven others, because the CPU-bound stretch of a file
- * now shares the cores. The slowest file without an allowance of its own takes
- * 21.5s alone and 25.2s in the pool, so a 30s cap there is a coin flip decided
- * by how busy the box was - a red run that says nothing about the code. 60s
- * keeps the detector's job (a real hang is still killed inside one cap) while
- * leaving the pool the room its measured inflation needs.
+ * Measured over the ten slowest files, once at the default width and once at
+ * `--jobs 1` under the same added load: a file's own duration grows by 1.07x to
+ * 2.20x when it runs beside seven others, because the CPU-bound stretch of a
+ * file now shares the cores. The slowest file left without an allowance of its
+ * own takes 15.4s one at a time and 32.5s in the pool, so 60s sits 27.5s above
+ * the slowest pooled duration the table has to carry unassisted, and no file in
+ * either arm was killed at the cap. That is the detector's job kept - a real
+ * hang is still killed inside one cap - with the room the measurement says the
+ * pool needs.
  */
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -140,10 +142,23 @@ const STALL_POLL_MS = 2_000;
 /**
  * Per-file wall-clock allowances, keyed by path relative to the test root.
  *
- * An entry declares that this file is legitimately slower than the default
- * cap. State the reason inline: the summary prints it, so a reader can tell a
+ * An entry declares that this file can outlive the default cap on a busy box.
+ * State the reason inline: the summary prints it, so a reader can tell a
  * declared slow file from a hang. Without an entry, a file that outlives the
  * cap is reported as a timeout.
+ *
+ * A file's duration at the default width is what earns an entry, never its
+ * duration alone. Work the pool shares out - child processes, packs, installs -
+ * stretches with the number of files beside it, while a file that waits on a
+ * lock it holds itself costs what it costs on any machine; size an allowance
+ * from the alone duration and it is sized for the quietest box in the fleet.
+ *
+ * The class is "files whose duration at the default width comes within a
+ * quarter of DEFAULT_TIMEOUT_MS", i.e. at or above three quarters of it, and
+ * the instrument is one run at that width with `--timings-json`, sorted
+ * descending and read against the cap. An entry's size comes from the same
+ * number: the contended duration plus the room a slower box needs to report its
+ * own failure instead of this file's timeout.
  */
 const ALLOWANCES = new Map([
   [
@@ -163,11 +178,27 @@ const ALLOWANCES = new Map([
     },
   ],
   [
+    "release/test-pack-provenance.mjs",
+    {
+      ms: 120_000,
+      reason:
+        "packs real fixtures through npm and then the markdown-only skills workspace, so its cost is a sequence of real packs whose length follows the box: 28.1s one at a time and 48.3s beside seven other files with every core saturated, 1.7x from the pool alone; the allowance is what keeps a box a quarter slower than the one that measured this reporting the provenance failure instead of being killed here at the 60s default",
+    },
+  ],
+  [
+    "lib/test-braid-home-containment.mjs",
+    {
+      ms: 120_000,
+      reason:
+        "its own work is 9.8s with the box to itself, 21.9s run one at a time with every core saturated and 47.2s beside seven other files, so the other thirty-seven seconds are cores the pool and the load share; that is the shape a CI runner's co-tenants produce, and the allowance is what lets it report the containment assertion that failed instead of being killed here at the 60s default",
+    },
+  ],
+  [
     "fleet/test-drain-contention.mjs",
     {
       ms: 90_000,
       reason:
-        "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s) and one of them waits out that 13s from a status command, so the file spends half a minute waiting on locks it holds itself: 34.1s beside seven other files, the suite's slowest file and the one a loaded box would push past the 60s default first",
+        "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s) and one of them waits out that 13s from a status command, so at least 24s of the file's 33.7s is lock hold it schedules itself: 33.7s run one at a time and 36.2s beside seven other files, a 1.07x that says the pool barely moves it. Contention is not what threatens this file - an arm wedging inside its own hold is - so the allowance is what lets the file name that arm instead of being killed here as an opaque timeout",
     },
   ],
 ]);
