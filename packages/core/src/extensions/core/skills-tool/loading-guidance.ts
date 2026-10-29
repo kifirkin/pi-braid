@@ -37,6 +37,7 @@
  */
 
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { toolFamilyToken } from "./skill-families.js";
 
 /** One visible skill as the floor renders it. */
 export interface CatalogEntry {
@@ -158,7 +159,7 @@ export function mechanicalTriggerExamples(toolNames: string[], skillNames: strin
   // Family token (lowercased) -> lexicographically smallest active tool name.
   const familyTool = new Map<string, string>();
   for (const tool of toolNames) {
-    const family = tool.split("_")[0].toLowerCase();
+    const family = toolFamilyToken(tool);
     const incumbent = familyTool.get(family);
     if (incumbent === undefined || tool < incumbent) familyTool.set(family, tool);
   }

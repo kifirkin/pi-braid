@@ -5,6 +5,8 @@ status: deprecated
 successor: no skill in this pack; animated and collaged GIF work is out of scope for this package
 validated: 2026-10-27
 verdict: DEPRECATE
+governs:
+  - browser
 triggers:
   - meme
   - image macro

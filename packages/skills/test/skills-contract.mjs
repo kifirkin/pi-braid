@@ -22,6 +22,22 @@
  *     word is "Deprecated": a deprecation that reads as a live instruction
  *     is not a boundary, and a user cannot follow a successor that is unnamed.
  *
+ * and, because a body that names the tools its advice directs is what makes
+ * the obligation rate computable, the optional declaration:
+ *
+ *   - `governs:` names tool FAMILIES, not tools: the first underscore-delimited
+ *     segment of a tool name (`search_things` → `search`), which is the token
+ *     the prompt's mechanical trigger already pairs with a skill name. Each
+ *     entry must be one of the families the shipped text admits (the TOOLS
+ *     table in content-rules.mjs), so a declaration cannot invent a family
+ *     that no reader will ever see called.
+ *   - absent is admitted and means "this skill directs no tool": most bodies
+ *     are advice about prose, a palette or a checklist;
+ *   - present with no entries, with a malformed entry, with a duplicate, over
+ *     the reader's cap, or naming the read tool itself is refused by name —
+ *     the last because a call to the detector IS the read leg, so such a
+ *     declaration would let an obligation satisfy itself.
+ *
  * The content-rules fixture runs from here too, so `npm test` covers the
  * shipped text as well as the frontmatter.
  *
@@ -35,6 +51,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanPack } from "./content-rules.mjs";
+import { TOOL_FAMILIES } from "./content-rules.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const skillsDir = join(__dirname, "..", "skills");
@@ -59,6 +76,17 @@ const SITUATION =
   /\buse (?:when|if|for|only|this|it|these)\b|\bwhen (?:a|an|the|you|there|it|someone|work)\b/i;
 /** The skill-name shape pi accepts. */
 const NAME_SHAPE = /^[a-z0-9-]+$/;
+
+/** Mirrors skill-families.ts: the reader keeps this many families per file. */
+const MAX_GOVERNED_FAMILIES = 4;
+/** Mirrors skill-families.ts: the shape a family token must have. */
+const FAMILY_SHAPE = /^[a-z][a-z0-9]*$/;
+/** The detector's own tool: never a declarable family (see skill-families.ts). */
+const DETECTOR_TOOL = "read";
+
+const declared = new Set();
+/** skill files that declare at least one family (the rest are admitted as-is). */
+const declaringFiles = new Set();
 
 const problems = [];
 const fail = (message) => problems.push(message);
@@ -98,6 +126,40 @@ function authoredTriggers(front) {
     if (phrase !== "") phrases.push(phrase);
   }
   return phrases;
+}
+
+/**
+ * Entries authored under `governs:`, in file order, and whether the key exists
+ * at all. Both the block-list and the comma-string forms are read, matching the
+ * runtime reader; the distinction between "absent" and "present and empty" is
+ * what decides whether a file declares no family or fails to declare one.
+ * Pure.
+ */
+function authoredFamilies(front) {
+  const lines = front.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^governs\s*:/.test(line));
+  if (start < 0) return { present: false, entries: [] };
+  const inline = lines[start].replace(/^governs\s*:/, "").trim();
+  if (inline !== "")
+    return {
+      present: true,
+      entries: inline
+        .replace(/^\[|\]$/g, "")
+        .split(",")
+        .map((part) => part.trim().replace(/^["']|["']$/g, ""))
+        .filter((entry) => entry !== ""),
+    };
+  const entries = [];
+  for (const line of lines.slice(start + 1)) {
+    const item = /^\s+-\s*(.*)$/.exec(line);
+    if (!item) {
+      if (/^\s*$/.test(line)) continue;
+      break;
+    }
+    const entry = item[1].trim().replace(/^["']|["']$/g, "");
+    if (entry !== "") entries.push(entry);
+  }
+  return { present: true, entries };
 }
 
 function checkSkill(dirName) {
@@ -191,6 +253,38 @@ function checkSkill(dirName) {
       `${rel}: verdict '${verdict}' is not one of ${[...VERDICTS].join(" / ")}`,
     );
 
+  const families = authoredFamilies(front);
+  if (families.present) {
+    if (families.entries.length > 0) declaringFiles.add(rel);
+    if (families.entries.length === 0)
+      fail(
+        `${rel}: 'governs:' names no family — declare a tool family the body directs, or delete the key`,
+      );
+    if (families.entries.length > MAX_GOVERNED_FAMILIES)
+      fail(
+        `${rel}: ${families.entries.length} declared families; the reader keeps the first ${MAX_GOVERNED_FAMILIES}`,
+      );
+    const seen = new Set();
+    for (const entry of families.entries) {
+      if (!FAMILY_SHAPE.test(entry))
+        fail(
+          `${rel}: governs entry '${entry}' is not a tool-family token — use the first underscore-delimited segment of a tool name, lowercase (a-z, 0-9)`,
+        );
+      else if (entry === DETECTOR_TOOL)
+        fail(
+          `${rel}: governs entry '${DETECTOR_TOOL}' is the read detector's own tool — a call to it IS the read leg, so declaring it would let the obligation satisfy itself`,
+        );
+      else if (!TOOL_FAMILIES.has(entry))
+        fail(
+          `${rel}: governs entry '${entry}' is no family this pack admits — declare one of ${[...TOOL_FAMILIES].sort().join(", ")}, or drop it`,
+        );
+      if (seen.has(entry))
+        fail(`${rel}: governs entry '${entry}' is declared twice`);
+      seen.add(entry);
+      declared.add(`${rel}:${entry}`);
+    }
+  }
+
   return true;
 }
 
@@ -220,5 +314,5 @@ if (checked === 0) {
   process.exit(1);
 }
 console.log(
-  `skills-contract: clean (${checked} skill(s): name/description/validated/verdict, >=2 trigger phrase(s) each; ${content.scanned} shipped file(s) name only declared tools and projects)`,
+  `skills-contract: clean (${checked} skill(s): name/description/validated/verdict, >=2 trigger phrase(s) each; ${declared.size} family declaration(s) over ${declaringFiles.size} file(s), ${checked - declaringFiles.size} declaring none; ${content.scanned} shipped file(s) name only declared tools and projects)`,
 );

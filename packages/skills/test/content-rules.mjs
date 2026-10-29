@@ -55,6 +55,16 @@ const TOOLS = new Map([
   ["document_search", "pi-docparser extension, search tool"],
 ]);
 
+/**
+ * The tool families the shipped text may declare in a skill's `governs:` key:
+ * each admitted tool name's first underscore-delimited segment. A declaration
+ * is checked against this table, so a skill cannot claim a family no reader of
+ * this pack can ever see called.
+ */
+export const TOOL_FAMILIES = new Set(
+  [...TOOLS.keys()].map((name) => name.split("_")[0]),
+);
+
 /** Non-tool snake_case names that legitimately appear, with the reason. */
 const NAMES = new Map([
   [

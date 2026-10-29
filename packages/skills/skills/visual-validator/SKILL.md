@@ -11,6 +11,8 @@ triggers:
   - "design defects"
 validated: 2026-10-27
 verdict: IMPROVE
+governs:
+  - document
 ---
 
 # Visual Validator

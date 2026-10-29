@@ -1,13 +1,15 @@
 /**
  * Durable per-session skill records + the monthly adoption rollup.
  *
- * The store is one append-only JSONL file with two record kinds, told apart
+ * The store is one append-only JSONL file with three record kinds, told apart
  * by `kind`:
  *
  *   (absent)         an ADOPTION record, the older shape:
  *                    { sessionId, role, month, hadSkillLoad, updatedAt }
  *   "applicability"  an APPLICABILITY record: the session's skill verdicts
  *                    (see ApplicabilityRecord)
+ *   "obligation"     an OBLIGATION record: one skill's legs in one session
+ *                    (see ObligationLegRecord)
  *
  * An adoption record exists for every session that reaches an agent turn, so
  * every such session gets ONE logical record (the rollup denominator);
@@ -30,7 +32,7 @@
  * filesystems; the tolerant reader skips unparseable lines, the window is
  * a single small write, and this is accepted as best-effort telemetry.
  *
- * Each reader reads its own kind and ignores the other. The adoption reader
+ * Each reader reads its own kind and ignores the others. The adoption reader
  * is fail-closed on an unknown `kind`, so a record type added later cannot
  * enter the adoption numbers by looking enough like one; and a build that
  * predates the applicability kind reads those lines as adoption records of
@@ -593,6 +595,392 @@ export function getSessionApplicability(
     const storePath = options.storePath ?? getSkillsSessionsFilePath();
     return foldApplicabilityRecords(readApplicabilityRecords(storePath)).find(
       (rec) => rec.sessionId === sess.sessionId,
+    );
+  } catch (err) {
+    reportRecordFailure(err);
+    return undefined;
+  }
+}
+
+// Obligation records (the applied leg)
+
+/**
+ * One skill's legs in one session: what the instrument saw happen to the body
+ * an obligation names.
+ *
+ * These are facts about reads and calls, not verdicts. `read` here means a
+ * DETECTED SKILL.md read, and it is deliberately not the applicability record's
+ * `applicability: "read"` class — that one is a verdict about a skill whose
+ * declared condition held, and the applicability record refuses to classify a
+ * read whose condition never held. This record states the read and leaves the
+ * verdict where it belongs.
+ *
+ * `called` and `applied` are the applied leg, and they are the reason the
+ * record exists:
+ *   called   a tool call in a family this skill declares happened this
+ *            session, whatever the call's outcome — a refusal fires before the
+ *            call and cannot know the result.
+ *   applied  the FIRST such call came after a detected read of this body.
+ *
+ * The pair is decided once, at the first call, because that is the only moment
+ * the ordering exists: a later read followed by a later call must not turn an
+ * earlier violation into satisfaction. Both stay false when the skill declares
+ * no family; most declare none, and an obligation that names no family is
+ * satisfied by the read alone.
+ *
+ * `suggested` and `listed` are the surfaces that made the body findable in
+ * this session (a delivered suggestion, a list_skills row); they carry the
+ * "was it offered" half of adoption, which the call facts cannot.
+ */
+export interface ObligationLegRecord {
+  kind: "obligation";
+  sessionId: string;
+  role: string;
+  month: string;
+  updatedAt: string;
+  skill: string;
+  suggested: boolean;
+  listed: boolean;
+  read: boolean;
+  called: boolean;
+  applied: boolean;
+}
+
+/** A record's five legs, read back as one row per skill. */
+export interface ObligationLegs {
+  skill: string;
+  suggested: boolean;
+  listed: boolean;
+  read: boolean;
+  called: boolean;
+  applied: boolean;
+}
+
+/** One session's obligation rows, folded. */
+export interface SessionObligation {
+  sessionId: string;
+  role: string;
+  month: string;
+  updatedAt: string;
+  /** One row per skill seen, in first-seen order. */
+  skills: ObligationLegs[];
+}
+
+/** Normalize a parsed JSON line into an obligation record, or null. */
+export function normalizeObligationRecord(raw: unknown): ObligationLegRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.kind !== "obligation") return null;
+  if (typeof r.sessionId !== "string" || typeof r.skill !== "string" || !r.skill.trim()) {
+    return null;
+  }
+  return {
+    kind: "obligation",
+    sessionId: r.sessionId,
+    role: typeof r.role === "string" ? r.role : NEUTRAL_SESSION_PROFILE,
+    month: typeof r.month === "string" ? r.month : "",
+    updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : "",
+    skill: r.skill,
+    suggested: r.suggested === true,
+    listed: r.listed === true,
+    read: r.read === true,
+    called: r.called === true,
+    applied: r.applied === true,
+  };
+}
+
+/**
+ * Read the obligation records from the store. Missing or unreadable file →
+ * empty (never throws); other kinds and corrupt lines are skipped.
+ */
+export function readObligationRecords(
+  storePath: string = getSkillsSessionsFilePath(),
+): ObligationLegRecord[] {
+  let text: string;
+  try {
+    text = readFileSync(storePath, "utf-8");
+  } catch {
+    return []; // missing or unreadable → no records
+  }
+  const out: ObligationLegRecord[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const rec = normalizeObligationRecord(JSON.parse(trimmed));
+      if (rec) out.push(rec);
+    } catch {
+      // torn or corrupt line — skip
+    }
+  }
+  return out;
+}
+
+/**
+ * Fold a session's obligation rows into one record: the five legs OR across
+ * every row, so a row that saw one leg never erases a leg a later row did not
+ * have. `called`/`applied` are written once per skill, so the OR is exact
+ * rather than convenient. A torn or duplicated row folds; a malformed one is
+ * dropped at normalize, before this sees it.
+ */
+export function foldObligationRecords(records: ObligationLegRecord[]): SessionObligation[] {
+  const bySession = new Map<string, SessionObligation>();
+  for (const rec of records) {
+    let session = bySession.get(rec.sessionId);
+    if (!session) {
+      session = {
+        sessionId: rec.sessionId,
+        role: rec.role,
+        month: rec.month,
+        updatedAt: rec.updatedAt,
+        skills: [],
+      };
+      bySession.set(rec.sessionId, session);
+    } else if (rec.updatedAt >= session.updatedAt) {
+      session.role = rec.role;
+      session.month = rec.month;
+      session.updatedAt = rec.updatedAt;
+    }
+    const held = session.skills.find((legs) => legs.skill === rec.skill);
+    if (!held) {
+      session.skills.push({
+        skill: rec.skill,
+        suggested: rec.suggested,
+        listed: rec.listed,
+        read: rec.read,
+        called: rec.called,
+        applied: rec.applied,
+      });
+      continue;
+    }
+    held.suggested = held.suggested || rec.suggested;
+    held.listed = held.listed || rec.listed;
+    held.read = held.read || rec.read;
+    held.called = held.called || rec.called;
+    held.applied = held.applied || rec.applied;
+  }
+  return [...bySession.values()];
+}
+
+/**
+ * Append one skill's legs. Best-effort like the sibling writer: a refused or
+ * missing store returns false so the caller can retry on a later turn.
+ */
+export function recordObligationLegs(
+  ctx: ExtensionContext,
+  legs: ObligationLegs,
+  storePath?: string,
+): boolean {
+  try {
+    const base = applicabilityBase(ctx);
+    if (!base) return false;
+    const record: ObligationLegRecord = {
+      kind: "obligation",
+      ...base,
+      skill: legs.skill,
+      suggested: legs.suggested,
+      listed: legs.listed,
+      read: legs.read,
+      called: legs.called,
+      applied: legs.applied,
+    };
+    return appendLine(record, storePath ?? getSkillsSessionsFilePath());
+  } catch (err) {
+    reportRecordFailure(err);
+    return false;
+  }
+}
+
+/** The current session's obligation rows, folded. Missing store → undefined. */
+export function getSessionObligation(
+  ctx: ExtensionContext,
+  options: { storePath?: string } = {},
+): SessionObligation | undefined {
+  try {
+    const sess = resolveSession(ctx);
+    if (!sess) return undefined;
+    const storePath = options.storePath ?? getSkillsSessionsFilePath();
+    return foldObligationRecords(readObligationRecords(storePath)).find(
+      (rec) => rec.sessionId === sess.sessionId,
+    );
+  } catch (err) {
+    reportRecordFailure(err);
+    return undefined;
+  }
+}
+
+/**
+ * An obligation is satisfied when the body was read AND, if the session ever
+ * called into a family the skill declares, that the first call came after the
+ * read. Without a declared family the second clause is vacuous: reading the
+ * body is the whole obligation.
+ */
+export function obligationSatisfied(legs: ObligationLegs): boolean {
+  return legs.read && (!legs.called || legs.applied);
+}
+
+/** One judged skill: its legs, plus whether it was even an obligation. */
+export interface JudgedSkill extends ObligationLegs {
+  /** null when the skill's declared condition never held: no obligation. */
+  satisfied: boolean | null;
+}
+
+/** A session's judgement: every leg it recorded, and the session boolean. */
+export interface SessionJudgement {
+  skills: JudgedSkill[];
+  allSatisfied: boolean;
+  /** Obligations that applied (leg rows whose condition held). */
+  obligations: number;
+}
+
+/**
+ * Judge one session against its obligation rows. Pure.
+ *
+ * A skill is an obligation when the applicability fold carries a verdict for
+ * it: the previous record's question was whether the skill applied, and this
+ * one takes that answer as given. An obligation is decided by this record's
+ * legs alone, which is why the two kinds can be folded independently and
+ * joined on (sessionId, skill) without either re-reading the other.
+ */
+export function judgeSessionObligations(
+  applicable: SessionApplicability | undefined,
+  obligation: SessionObligation | undefined,
+): SessionJudgement | undefined {
+  if (!applicable) return undefined;
+  const applied = new Set(applicable.verdicts.map((verdict) => verdict.name));
+  const skills: JudgedSkill[] = (obligation?.skills ?? []).map((legs) => ({
+    ...legs,
+    satisfied: applied.has(legs.skill) ? obligationSatisfied(legs) : null,
+  }));
+  // An applicable skill with no leg row still owes the read: a session that was
+  // never offered, listed, or read the body it owed is the ignored population,
+  // and dropping it from the denominator would report only the sessions that
+  // happened to be instrumented.
+  const seen = new Set(skills.map((legs) => legs.skill));
+  for (const skill of applied) {
+    if (seen.has(skill)) continue;
+    skills.push({
+      skill,
+      suggested: false,
+      listed: false,
+      read: false,
+      called: false,
+      applied: false,
+      satisfied: false,
+    });
+  }
+  if (!applicable.verdicts.length) {
+    return { skills, allSatisfied: false, obligations: 0 };
+  }
+  const obligations = skills.filter((legs) => legs.satisfied !== null);
+  return {
+    skills,
+    obligations: obligations.length,
+    allSatisfied: obligations.every((legs) => legs.satisfied === true),
+  };
+}
+
+/**
+ * The design's own decision rule: a gap this small makes the rate a duplicate
+ * of the read rate, and a duplicate should be deleted rather than shipped.
+ */
+export const FALSIFIER_GAP_POINTS = 5;
+
+/**
+ * The two rates and their shared denominator.
+ *
+ * `sessions` is the population both rates are divided by: sessions with at
+ * least one obligation that applied AND at least one obligation row, i.e. the
+ * sessions this build's instrument saw. A session whose applicable verdicts
+ * predate the instrument is counted in `uninstrumented` instead of scored as
+ * unsatisfied — a zero the instrument did not observe is not a zero it found.
+ *
+ * `readRate` is the older measurement restricted to this population: a session
+ * counts when ANY detected read landed in it, which is the adoption counter's
+ * own definition (`actual > 0`), so the difference between the two numbers is
+ * the satisfaction criterion and nothing else.
+ */
+export interface ObligationRate {
+  sessions: number;
+  allSatisfied: number;
+  /** 0-1, rounded to 4 decimals (a percentage point is 2 of these). */
+  allSatisfiedRate: number;
+  withRead: number;
+  readRate: number;
+  /** allSatisfiedRate - readRate, in percentage points, 2 decimals. */
+  gapPoints: number;
+  /** Obligations that applied, across the population. */
+  obligations: number;
+  unsatisfied: number;
+  /** False when the gap is under FALSIFIER_GAP_POINTS: the metric is a copy. */
+  discriminating: boolean;
+  /** Sessions with an applicable skill but no obligation row: not scored. */
+  uninstrumented: number;
+}
+
+/** Compute both rates over one store's folds. Pure. */
+export function computeObligationRate(
+  sessions: SessionApplicability[],
+  obligations: SessionObligation[],
+): ObligationRate {
+  const bySession = new Map(obligations.map((rec) => [rec.sessionId, rec]));
+  let population = 0;
+  let allSatisfied = 0;
+  let withRead = 0;
+  let obligationsSeen = 0;
+  let unsatisfied = 0;
+  let uninstrumented = 0;
+  for (const session of sessions) {
+    if (!session.verdicts.length) continue;
+    const legs = bySession.get(session.sessionId);
+    if (!legs || !legs.skills.length) {
+      uninstrumented++;
+      continue;
+    }
+    const judgement = judgeSessionObligations(session, legs);
+    if (!judgement) continue;
+    population++;
+    obligationsSeen += judgement.obligations;
+    if (judgement.allSatisfied) allSatisfied++;
+    if (legs.skills.some((row) => row.read)) withRead++;
+    unsatisfied += judgement.skills.filter((row) => row.satisfied === false).length;
+  }
+  const allSatisfiedRate = population ? round4(allSatisfied / population) : 0;
+  const readRate = population ? round4(withRead / population) : 0;
+  const gapPoints = Math.round((allSatisfiedRate - readRate) * 10000) / 100;
+  return {
+    sessions: population,
+    allSatisfied,
+    allSatisfiedRate,
+    withRead,
+    readRate,
+    gapPoints,
+    obligations: obligationsSeen,
+    unsatisfied,
+    discriminating: Math.abs(gapPoints) >= FALSIFIER_GAP_POINTS,
+    uninstrumented,
+  };
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+/**
+ * The store-wide rate, or undefined when the store carries no obligation row
+ * at all. Undefined is the absent record: a reader of a store this build has
+ * not written to sees the payload it always saw, byte for byte.
+ */
+export function getObligationRate(
+  options: { storePath?: string } = {},
+): ObligationRate | undefined {
+  try {
+    const storePath = options.storePath ?? getSkillsSessionsFilePath();
+    const obligationRecords = readObligationRecords(storePath);
+    if (!obligationRecords.length) return undefined;
+    return computeObligationRate(
+      foldApplicabilityRecords(readApplicabilityRecords(storePath)),
+      foldObligationRecords(obligationRecords),
     );
   } catch (err) {
     reportRecordFailure(err);

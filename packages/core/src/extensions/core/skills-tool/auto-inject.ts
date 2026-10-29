@@ -118,13 +118,16 @@ import {
   getSessionProfile,
   recordApplicabilityCensus,
   recordApplicabilityVerdict,
+  recordObligationLegs,
   recordSessionSkillLoad,
   recordSessionStart,
 } from "./session-records.js";
+import type { ObligationLegs } from "./session-records.js";
 import { evaluateApplicability } from "./applicability.js";
 import type { SkillApplicabilityVerdict } from "./applicability.js";
 import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
+import { toolFamilyToken } from "./skill-families.js";
 import {
   advanceDrift,
   driftDirectoryFor,
@@ -291,6 +294,27 @@ interface AutoInjectState {
   drift: DriftTracker;
   /** Which skills' own declared conditions held this session (applicability.ts). */
   applicability: ApplicabilityState;
+  /** What the session did with each skill body it met (see ObligationState). */
+  obligations: ObligationState;
+}
+
+/**
+ * The session's obligation bookkeeping: one row of legs per skill, appended
+ * only when a leg changes, so at most a handful of lines per session.
+ *
+ * `called` holds the skills whose first call in a declared family was already
+ * decided; the applied leg is fixed at that moment and never revisited.
+ * `written` is the last signature that reached disk, which makes a repeated
+ * read, a repeated list row or a second call cost nothing.
+ */
+interface ObligationState {
+  legs: Map<string, ObligationLegs>;
+  called: Set<string>;
+  written: Map<string, string>;
+}
+
+function initialObligations(): ObligationState {
+  return { legs: new Map(), called: new Set(), written: new Map() };
 }
 
 /**
@@ -324,6 +348,7 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     hintSent: false,
     drift: initialDrift(),
     applicability: initialApplicability(),
+    obligations: initialObligations(),
   }));
 }
 
@@ -344,6 +369,8 @@ export interface CachedSkill {
   triggers?: string[];
   /** Which source authored each phrase (the row's evidence label). */
   triggerSources?: Record<string, TriggerSource>;
+  /** Tool families the file's `governs:` declaration claims (skill-families.ts). */
+  families?: string[];
 }
 
 // Shared module-level variable rather than a per-module copy: the import
@@ -1238,6 +1265,12 @@ function stepApplicability(
       applicability: verdict.verdict,
       evidence: verdict.evidence,
     });
+    // The obligation row lands with the verdict, not with the first leg: a
+    // session that is merely told which body it owes, and then does nothing,
+    // is the population the rate exists to count. Without this row that
+    // session would be mistaken for one the instrument never saw.
+    legsFor(state, verdict.name);
+    appendObligationRow(ctx, state, verdict.name);
   }
 }
 
@@ -1256,6 +1289,84 @@ function markApplicabilityRead(ctx: ExtensionContext, state: AutoInjectState, na
     applicability: "read",
     evidence: held.evidence,
   });
+}
+
+// Obligation rows (the applied leg)
+
+/**
+ * The session's legs for one skill, created on first sight. The object is the
+ * snapshot every row carries, so a row states all five legs as of the moment
+ * the leg changed rather than the single delta that triggered the write.
+ */
+function legsFor(state: AutoInjectState, name: string): ObligationLegs {
+  let legs = state.obligations.legs.get(name);
+  if (!legs) {
+    legs = {
+      skill: name,
+      suggested: false,
+      listed: false,
+      read: false,
+      called: false,
+      applied: false,
+    };
+    state.obligations.legs.set(name, legs);
+  }
+  return legs;
+}
+
+/**
+ * Append the skill's legs when they changed since the last row. One row per
+ * distinct state rather than one per event: a session that reads the same body
+ * three times, or lists it on every turn, writes one line. A refused write
+ * leaves the signature unset, so the next leg change retries.
+ */
+function appendObligationRow(ctx: ExtensionContext, state: AutoInjectState, name: string): void {
+  const legs = state.obligations.legs.get(name);
+  if (!legs) return;
+  const signature = [legs.suggested, legs.listed, legs.read, legs.called, legs.applied]
+    .map((flag) => (flag ? "1" : "0"))
+    .join("");
+  if (state.obligations.written.get(name) === signature) return;
+  if (!recordObligationLegs(ctx, legs)) return;
+  state.obligations.written.set(name, signature);
+}
+
+/** Note one observed leg for a skill and record the row it changed. */
+function noteObligationLeg(
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  name: string,
+  leg: "suggested" | "listed" | "read",
+): void {
+  if (!name) return;
+  const legs = legsFor(state, name);
+  if (legs[leg]) return;
+  legs[leg] = true;
+  appendObligationRow(ctx, state, name);
+}
+
+/**
+ * Record the skills a delivered suggestion offered this session. Called only
+ * after the send was accepted, so the row counts arrivals like the `suggested`
+ * counter does. Never throws: a record is not worth a broken turn.
+ */
+export function noteObligationSuggested(ctx: ExtensionContext, names: string[]): void {
+  try {
+    const state = getState(ctx);
+    for (const name of names) noteObligationLeg(ctx, state, name, "suggested");
+  } catch (err) {
+    log.debug(`[skills-auto-inject] obligation suggested leg failed (best-effort): ${err}`);
+  }
+}
+
+/** Record the skills a catalog page listed (called from the list_skills tool). */
+export function noteObligationListed(ctx: ExtensionContext, names: string[]): void {
+  try {
+    const state = getState(ctx);
+    for (const name of names) noteObligationLeg(ctx, state, name, "listed");
+  } catch (err) {
+    log.debug(`[skills-auto-inject] obligation listed leg failed (best-effort): ${err}`);
+  }
 }
 
 // Main Handler
@@ -1293,8 +1404,41 @@ function detectSkillLoad(
   // The load counters say a read happened; this says whether the session was
   // one where the skill applied. Independent writes, independent failures.
   markApplicabilityRead(ctx, state, name);
+  noteObligationLeg(ctx, state, name, "read");
   log.debug(`[skills-auto-inject] counted actual load of "${name}" via read`);
   return name;
+}
+
+/**
+ * Record a call into a declared family (the applied leg).
+ *
+ * The FIRST call per (session, skill) decides it: a read already on record
+ * means the body came first and the call applies what it says; no read means
+ * the call came first, and no later read can turn that into satisfaction — the
+ * ordering is a fact about what happened, not a state that improves.
+ *
+ * A failed call still counts: a refusal would fire before the tool ran and
+ * could not know the outcome. Skills that declare no family are never reached
+ * here, which is most of them.
+ */
+function stepFamilyCalls(
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  event: ToolResultEvent,
+): void {
+  const toolName = event?.toolName;
+  if (!toolName) return;
+  const family = toolFamilyToken(toolName);
+  if (!family) return;
+  for (const skill of _skillsCache) {
+    if (!skill.families?.length || !skill.families.includes(family)) continue;
+    if (state.obligations.called.has(skill.name)) continue;
+    const legs = legsFor(state, skill.name);
+    state.obligations.called.add(skill.name);
+    legs.called = true;
+    legs.applied = legs.read;
+    appendObligationRow(ctx, state, skill.name);
+  }
 }
 
 /**
@@ -1369,6 +1513,10 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       const ev = event as ToolResultEvent;
       const state = getState(ctx);
       if (detectSkillLoad(ev, ctx, state)) noteDriftSurface(state.drift);
+      // A call in a declared family is the applied leg. It runs after the load
+      // detector so a SKILL.md read of the very tool call in flight is already
+      // on record when the family is looked up.
+      stepFamilyCalls(ctx, state, ev);
       stepDrift(pi, ctx, state, ev);
     } catch {
       // best-effort — never break the tool loop over a counter or a whisper
@@ -1550,6 +1698,11 @@ export function registerAutoInject(pi: ExtensionAPI): void {
 
       // E3: per-skill suggestion counter — counts deliveries, not intent.
       recordSkillSuggestion(
+        ctx,
+        skillsToInject.map((s) => s.name),
+      );
+      // The same delivery is an obligation leg: the body was offered here.
+      noteObligationSuggested(
         ctx,
         skillsToInject.map((s) => s.name),
       );

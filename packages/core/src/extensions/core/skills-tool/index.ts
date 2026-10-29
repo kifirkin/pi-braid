@@ -43,19 +43,27 @@ import {
   updateSkillCache,
   getSkillStats,
   getDurableSkillStats,
+  noteObligationListed,
   resolveDiscoveryMode,
   rankSkillsDeterministic,
 } from "./auto-inject.js";
 import type { DeterministicRanking, RankedSkill, RelevanceReason } from "./auto-inject.js";
 import { readSkillTriggerEntries } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
+import { readGovernedFamilies } from "./skill-families.js";
 import {
   clampSectionsMax,
   DEFAULT_SECTIONS_MAX,
   SECTIONS_MAX_LIMIT,
   readSkillReach,
 } from "./reach.js";
-import { getMonthlyAdoptionRollup, getSessionApplicability } from "./session-records.js";
+import {
+  getMonthlyAdoptionRollup,
+  getObligationRate,
+  getSessionApplicability,
+  getSessionObligation,
+  judgeSessionObligations,
+} from "./session-records.js";
 import { checkArgumentValues } from "../../../lib/utils/argument-report.js";
 
 const log = createLogger("skills-tool");
@@ -93,7 +101,15 @@ export function setCachedSkills(skills: CachedSkill[]): void {
     const entries = readSkillTriggerEntries(s.filePath, s.description);
     const triggerSources: Record<string, TriggerSource> = {};
     for (const entry of entries) triggerSources[entry.phrase] = entry.source;
-    return { ...s, triggers: entries.map((entry) => entry.phrase), triggerSources };
+    return {
+      ...s,
+      triggers: entries.map((entry) => entry.phrase),
+      triggerSources,
+      // The families the file says its advice directs, resolved from the same
+      // frontmatter read the phrases come from (one extra parse per file per
+      // process). An empty list is a declaration of no family, not a miss.
+      families: readGovernedFamilies(s.filePath),
+    };
   });
   // Sync with auto-inject subsystem (enriched cache — triggers ride along)
   updateSkillCache(cachedSkills);
@@ -348,6 +364,14 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
         ...(answer.relevance.has(s.name) ? { relevance: answer.relevance.get(s.name) } : {}),
       }));
 
+      // A listed row is one of the session's obligation legs: the catalog is
+      // where a body becomes findable without a whisper. Recorded before the
+      // response is built so the row and the page describe the same read.
+      noteObligationListed(
+        ctx,
+        skills.map((s) => s.name),
+      );
+
       return {
         content: [
           {
@@ -435,6 +459,24 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
             updatedAt: recorded.updatedAt,
           }
         : undefined;
+      // The session's obligation legs and its boolean: what the session did
+      // with the bodies whose conditions held. Absent when the session has no
+      // leg row, so a store this build never wrote to reads byte for byte as
+      // it did before (the same rule the applicability block above follows).
+      const legRecord = getSessionObligation(ctx);
+      const judgement = judgeSessionObligations(recorded, legRecord);
+      const obligations =
+        judgement && legRecord && legRecord.skills.length
+          ? {
+              allSatisfied: judgement.allSatisfied,
+              obligations: judgement.obligations,
+              skills: judgement.skills,
+            }
+          : undefined;
+      // Both rates over one population, or absent while the store carries no
+      // obligation row at all: a build that predates the leg reads the same
+      // sessions and must see the same payload.
+      const obligationRate = getObligationRate();
       return {
         content: [
           {
@@ -456,6 +498,8 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
                 },
                 monthly,
                 ...(applicability ? { applicability } : {}),
+                ...(obligations ? { obligations } : {}),
+                ...(obligationRate ? { obligationRate } : {}),
                 discovery: {
                   // Whether the stock skill catalog sits in the persisted
                   // transcript (it re-enters via pi's post-compaction
@@ -478,6 +522,15 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
           allTimeTotals: { ...totals, suggestedDelivered, suggestedMixed },
           monthly,
           ...(applicability ? { applicability: applicability.classes } : {}),
+          ...(obligations
+            ? {
+                obligations: {
+                  allSatisfied: obligations.allSatisfied,
+                  count: obligations.obligations,
+                },
+              }
+            : {}),
+          ...(obligationRate ? { obligationRate } : {}),
         },
       };
     },

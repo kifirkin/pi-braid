@@ -5,6 +5,8 @@ status: deprecated
 successor: meme carries the attachment-verification rules
 validated: 2026-10-27
 verdict: DEPRECATE
+governs:
+  - browser
 triggers:
   - post to x
   - verify a post

@@ -69,6 +69,7 @@ Rules the contract test enforces, each with the failure it prevents:
 - No `Triggers:` tail in the description. The reader drops a tail longer than 200 characters and reports nothing, so a tail is a declaration that silently does not exist.
 - `validated` is an ISO date, `verdict` is one of the five values.
 - `status: deprecated` requires a `successor` and a description that opens with "Deprecated:" - a deprecation that reads as a live instruction is not a boundary.
+- `governs` (optional) names the tool families the body directs, so the runtime can tell whether a read of the file was followed by a call into what it describes. A family is the first underscore-delimited segment of a tool name, not a tool; an entry must be one of the families the shipped text admits (`browser`, `document`). Absent is the normal case: advice about prose, a palette or a checklist directs no tool. Naming the read tool itself is refused, because a read is the obligation and not its use.
 
 Any number of additional frontmatter fields is fine as long as they are YAML-valid.
 

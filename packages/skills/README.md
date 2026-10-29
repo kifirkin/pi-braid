@@ -64,8 +64,9 @@ MIT. See [LICENSE](LICENSE).
 
 Every `SKILL.md` opens with frontmatter: `name` matches its directory, `description` is non-empty
 and under pi's 1024-character limit, `validated` is an ISO date, and the `verdict:` field (DEPRECATE
-/ IMPROVE) records the last review outcome. The monorepo's contract test enforces those fields
-before a release; the tarball does not carry the test. Shared fragment files live in `skills/_shared`
+/ IMPROVE) records the last review outcome. A body that directs a tool family may declare it under
+`governs:`; most declare none, and the declaration is optional. The monorepo's contract test enforces
+those fields before a release; the tarball does not carry the test. Shared fragment files live in `skills/_shared`
 and carry no `SKILL.md`.
 
 Releases are cut from the monorepo: the tarball carries `skills/`, this README, `AGENTS.md`,
