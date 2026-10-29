@@ -33,15 +33,59 @@ stay core history and no longer occupy a sibling's release name: past a bare
 
 ## Repository history
 
-`main` carries a single consolidated commit as of the 2026-10-12 consolidation.
-The per-iteration series it replaces (380 commits) is kept outside this
-repository, in a local-only ref (`refs/archive/main-pre-squash`) plus an
-all-refs bundle; a public clone has the consolidated commit only, so a checkout
-that needs line history needs access to that local archive. This file and
-[`packages/core/docs/HISTORY.md`](packages/core/docs/HISTORY.md) are the
-reader-facing record; the tag scheme above applies unchanged.
+`main` is a linear history above the tag line described above; `git rev-list --count main` states how
+many commits it holds.
+
+Two rewrites are visible to anyone holding an older clone, and both preserved content byte for byte:
+
+- the 2026-10-12 consolidation replaced the per-iteration series (380 commits) with one consolidated
+  commit; that series is kept outside this repository, in a local-only ref
+  (`refs/archive/main-pre-squash`) plus an all-refs bundle, so a public clone has the consolidated line
+  only;
+- the 2026-10-29 subject rewrite changed 16 commit messages and nothing else: the generated
+  `Merge branch '<internal branch name>'` subjects became the subject of the commit that landed, and two
+  older hand-written subjects lost a prefix. Every tree hash is unchanged and the tags were re-pointed,
+  so fetching this history can report a forced update. Packed artifacts from releases before it name a
+  `build-info` commit from the old history, and that commit no longer resolves here.
+
+This file and [`packages/core/docs/HISTORY.md`](packages/core/docs/HISTORY.md) are the reader-facing
+record; the tag scheme above applies unchanged.
 
 ---
+
+## Core — 0.43.6 (2026-10-29: the rule says one thing, and a merge states what landed)
+
+- **The identity block contradicted itself, and the contradiction is gone.** One sentence forbade
+  internal labels in commit messages while the next sanctioned the commit subject as a seat for them, so
+  the rule could be quoted in either direction and nothing could be gated against it. It now says one
+  thing: a branch name may carry an internal handle for the operator, a commit subject must not. The
+  file gate's own comment, the design research behind the rule, and the open-source readiness audit all
+  already said subjects stay clean; the block was the outlier.
+- **A merge states what landed.** Git derives `Merge branch '<name>'` from the branch name, so every
+  merge out of a worker branch published a handle nobody chose to write: 14 of the 24 merge commits then
+  in this repository carried that shape, and no gate read commit messages. The merge path now passes the
+  landed commit's own subject, and refuses the merge when it cannot read one, because the fallback is
+  precisely the derived subject. A probe through the real tool on a two-parent merge shows the landed
+  subject before and after; against a build with the change reverted it prints the derived one.
+- **History has a gate now.** `check:commit-subjects` reads every commit since the newest tag reachable
+  from HEAD, merges included, and refuses internal-label tokens and the branch namespace a merge subject
+  inherits. Its range re-anchors at each release, and the summary line carries the range, the baseline tag
+  and the head, so a recorded population names the revision it certifies. Both workflows now fetch full
+  history, because a shallow clone has no tag to anchor the range, and the gate fails closed rather than
+  certifying nothing.
+- **One vocabulary, two surfaces.** The label patterns the source gate used moved into a module both
+  gates read, so a token added once is refused in files and in history. The source gate's behaviour is
+  unchanged, proven by the same planted token caught at the same line and column either side of the
+  extraction.
+- **The spelling seats actually typed is refused.** The shared vocabulary is uppercase, and the lowercase
+  form slid through: it is refused in history now, where the population has no fixture strings to
+  confuse it, with three near-miss cases in the fixture proving a word character before the handle, two
+  digits, and a four-digit run are not hits. The source surface keeps the uppercase vocabulary until the
+  lowercase strings inside fixture names are swept, which is tracked rather than assumed.
+- **The fixture builds its own repositories.** A tag and a clean range, a planted label reported with its
+  sha, token and subject while a clean commit beside it stays unreported, a tagless tree refused with a
+  reason, the subject git itself derives from a worker branch, and the lowercase spelling with its
+  near-misses. The label tokens are composed at runtime, so the fixture does not plant what it tests.
 
 ## Core — 0.43.5 (2026-10-28: the runtime suite runs eight files at once, and a planted hang still dies at its cap)
 
