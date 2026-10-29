@@ -105,6 +105,27 @@ in flight leaves nothing longer-lived than its own `sleep 30`, which ends
 itself. Any other fixture that escapes the group owes an explicit cleanup on
 every exit path, the interrupt one included.
 
+### Fixtures and their own temp directory
+
+Every runner that spawns fixture files gives each file its own `TMPDIR` and
+removes that tree when the file settles, and on `SIGINT`/`SIGTERM` too. A
+fixture's `mkdtemp` then writes inside the sandbox instead of the machine's
+temp directory: a case that never cleans up after itself, or a file killed at
+its cap, which cannot clean up, costs one tree the runner already owns.
+`packages/core/scripts/run-tests.mjs` and
+`packages/telegram/test/run-tests.mjs` both do this; the telegram runner also
+derives its per-file `BRAID_HOME` and poller-lock pins from that same temp
+root, so nothing a child writes to temp lands outside the sandbox.
+
+The signal path needs a runner that is not blocked in a synchronous spawn:
+a JS signal handler cannot run while `spawnSync` waits, so a blocking loop
+only cleans up after the file it was waiting on has already returned. The
+core runner's pool and the telegram runner's per-file `spawn` both keep the
+loop free for the handler.
+
+When you change a runner, count the fixture-named directories under `$TMPDIR`
+before and after a full run. A non-zero delta is the leak this rule prevents.
+
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a

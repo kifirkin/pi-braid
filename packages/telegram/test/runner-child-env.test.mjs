@@ -8,8 +8,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { STRIPPED_ENV_KEYS, childEnv } from "./child-env.mjs";
 
@@ -56,4 +57,21 @@ test("childEnv: the poller lock is pinned per file over any ambient value", () =
     b.BRAID_TG_POLLER_LOCK_FILE,
     "each child gets its own lock path",
   );
+});
+
+test("childEnv: its tmp pins follow the temp root the caller passes", () => {
+  const root = mkdtempSync(join(tmpdir(), "tg-child-env-"));
+  try {
+    const env = childEnv("probe.test.mjs", { ...AMBIENT, TMPDIR: root });
+    assert.equal(env.TMPDIR, root, "the caller's temp root reaches the child");
+    for (const key of ["BRAID_HOME", "BRAID_TG_POLLER_LOCK_FILE"]) {
+      assert.equal(
+        env[key].startsWith(root + sep),
+        true,
+        `${key} must live inside the temp root the child is given`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -28,6 +28,11 @@
  *   into a fixture instead of the live seat's braid tree. Suites that
  *   assert the default tree set their own pin and restore it.
  *
+ * Both pins live under the temp root in `base` (`TMPDIR`), not under this
+ * process's own: a runner that gives the child a sandbox TMPDIR then owns the
+ * tree the pins sit in, so removing the sandbox removes them too. Without an
+ * explicit TMPDIR in `base`, that is os.tmpdir().
+ *
  * Everything else passes through untouched; suites pin or delete their
  * own remaining inputs (credentials, cadence).
  */
@@ -49,12 +54,13 @@ export function childEnv(file, base = process.env) {
   const env = { ...base };
   for (const key of STRIPPED_ENV_KEYS) delete env[key];
   env.PI_BRAID_TELEGRAM_TEST = "1";
+  const tempRoot = base.TMPDIR || tmpdir();
   env.BRAID_TG_POLLER_LOCK_FILE = join(
-    tmpdir(),
+    tempRoot,
     `tg-poller-lock-${file}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   env.BRAID_HOME = join(
-    tmpdir(),
+    tempRoot,
     `tg-braid-home-${file}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   return env;
