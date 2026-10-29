@@ -55,7 +55,7 @@ import {
   SECTIONS_MAX_LIMIT,
   readSkillReach,
 } from "./reach.js";
-import { getMonthlyAdoptionRollup } from "./session-records.js";
+import { getMonthlyAdoptionRollup, getSessionApplicability } from "./session-records.js";
 import { checkArgumentValues } from "../../../lib/utils/argument-report.js";
 
 const log = createLogger("skills-tool");
@@ -417,6 +417,24 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       }
       const monthly = getMonthlyAdoptionRollup();
       const discovery = resolveDiscoveryMode(ctx);
+      // The session's skill verdicts (read | ignored, plus the not-applicable
+      // remainder of the census) from the durable record, never from memory:
+      // the point of the record is that it outlives the turn that saw it.
+      // Absent when the session wrote none — an older store, or a session that
+      // never reached a task text — so an exhausted reader of the old counters
+      // keeps byte-identical output. Only the verdict classes are summarized in
+      // details; the full evidence stays in the text payload.
+      const recorded = getSessionApplicability(ctx);
+      const applicability = recorded
+        ? {
+            taskChars: recorded.taskChars,
+            evaluated: recorded.evaluated,
+            undeclared: recorded.undeclared,
+            classes: recorded.classes,
+            verdicts: recorded.verdicts,
+            updatedAt: recorded.updatedAt,
+          }
+        : undefined;
       return {
         content: [
           {
@@ -437,6 +455,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
                   suggestedEpoch: suggestedMixed === 0 ? "delivered" : "mixed",
                 },
                 monthly,
+                ...(applicability ? { applicability } : {}),
                 discovery: {
                   // Whether the stock skill catalog sits in the persisted
                   // transcript (it re-enters via pi's post-compaction
@@ -458,6 +477,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
           allTimeSkills: Object.keys(allTime).length,
           allTimeTotals: { ...totals, suggestedDelivered, suggestedMixed },
           monthly,
+          ...(applicability ? { applicability: applicability.classes } : {}),
         },
       };
     },

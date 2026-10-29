@@ -116,9 +116,13 @@ import { getSkillsUsageFilePath } from "../../../lib/config/braid-paths.js";
 import { SESSION_COMPACT, AGENT_SETTLED } from "../../../lib/core/event-names.js";
 import {
   getSessionProfile,
+  recordApplicabilityCensus,
+  recordApplicabilityVerdict,
   recordSessionSkillLoad,
   recordSessionStart,
 } from "./session-records.js";
+import { evaluateApplicability } from "./applicability.js";
+import type { SkillApplicabilityVerdict } from "./applicability.js";
 import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import {
@@ -285,6 +289,30 @@ interface AutoInjectState {
   hintSent: boolean;
   /** Where the work is going, for the drift trigger (loading-guidance.ts). */
   drift: DriftTracker;
+  /** Which skills' own declared conditions held this session (applicability.ts). */
+  applicability: ApplicabilityState;
+}
+
+/**
+ * The session's applicability bookkeeping. Cumulative by design: once a task
+ * text met a skill's declared condition, the skill applied to that session, and
+ * a read that lands on a later turn is still a read of a skill that applied.
+ */
+interface ApplicabilityState {
+  /** True once the session's census row landed on disk. */
+  censusWritten: boolean;
+  /** Verdicts by skill name; only ever grows, and an entry only ever upgrades. */
+  verdicts: Map<string, SkillApplicabilityVerdict>;
+  /** Skills declaring a condition, from the latest evaluation. */
+  evaluated: number;
+  /** Skills declaring none, from the latest evaluation. */
+  undeclared: string[];
+  /** Task-text length the latest evaluation read. */
+  taskChars: number;
+}
+
+function initialApplicability(): ApplicabilityState {
+  return { censusWritten: false, verdicts: new Map(), evaluated: 0, undeclared: [], taskChars: 0 };
 }
 
 const STATE_KEY = "skills-auto-inject";
@@ -295,6 +323,7 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     currentTurn: 0,
     hintSent: false,
     drift: initialDrift(),
+    applicability: initialApplicability(),
   }));
 }
 
@@ -1151,6 +1180,84 @@ export function resolveDiscoveryMode(ctx: ExtensionContext): DiscoveryState {
   return state;
 }
 
+// Applicability verdict (recorded, never enforced)
+
+/**
+ * Classify the catalog against this turn's task text and record what changed.
+ *
+ * Two writes, both append-only:
+ *   - the session's census row, once, retried until it lands. It is what makes
+ *     "not-applicable" derivable (evaluated minus the verdict rows) and what
+ *     names the skills whose files state no condition at all.
+ *   - one verdict row per skill whose declared condition held, and never twice
+ *     for the same (session, skill): the set only grows because the verdict is
+ *     per-session — a skill whose condition held on any turn applied to the
+ *     session.
+ *
+ * The row shape is the joint the sibling compliance record expects: it joins on
+ * (sessionId, skill) and adds its own `suggested`/`listed`/`read`/`applied`
+ * beside this verdict, so `ignored / (read + ignored)` becomes computable. This
+ * module writes no `applied` leg: a tool belong to a skill's family only once
+ * the skill declares that family, and no skill does yet.
+ *
+ * Reads only — it never touches `injected`, a counter or a send. That is the
+ * whole point of the ordering in before_agent_start: this step cannot move the
+ * suggestion, and the suggestion cannot move the verdict.
+ */
+function stepApplicability(
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  skills: CachedSkill[],
+  prompt: string,
+): void {
+  const evaluation = evaluateApplicability(skills, prompt);
+  const app = state.applicability;
+  const fresh = evaluation.applicable.filter((verdict) => !app.verdicts.has(verdict.name));
+  for (const verdict of fresh) app.verdicts.set(verdict.name, verdict);
+  app.evaluated = evaluation.evaluated;
+  app.undeclared = evaluation.undeclared;
+  app.taskChars = prompt.length;
+
+  if (!app.censusWritten) {
+    const wrote = recordApplicabilityCensus(ctx, {
+      taskChars: app.taskChars,
+      evaluated: app.evaluated,
+      undeclared: app.undeclared,
+    });
+    // A session without an id, or a refused store: retry on the next turn.
+    if (wrote) app.censusWritten = true;
+  }
+  if (!fresh.length) return;
+  log.debug(
+    `[skills-auto-inject] applicability: ${fresh.length} newly applicable, ` +
+      `${evaluation.evaluated} evaluated, ${evaluation.undeclared.length} undeclared`,
+  );
+  for (const verdict of fresh) {
+    recordApplicabilityVerdict(ctx, {
+      skill: verdict.name,
+      applicability: verdict.verdict,
+      evidence: verdict.evidence,
+    });
+  }
+}
+
+/**
+ * Upgrade an applicable skill to `read` and append its verdict row. A read of a
+ * skill whose declared condition never held gets no row: the three classes are
+ * about skills that applied, and a read is not a fourth one.
+ */
+function markApplicabilityRead(ctx: ExtensionContext, state: AutoInjectState, name: string): void {
+  const app = state.applicability;
+  const held = app.verdicts.get(name);
+  if (!held || held.verdict === "read") return;
+  app.verdicts.set(name, { ...held, verdict: "read" });
+  recordApplicabilityVerdict(ctx, {
+    skill: name,
+    applicability: "read",
+    evidence: held.evidence,
+  });
+}
+
 // Main Handler
 
 /** The tool_result fields this module reads. */
@@ -1183,6 +1290,9 @@ function detectSkillLoad(
   const held = state.injected.find((i) => i.name === name && i.loadedTurn === undefined);
   if (held) held.loadedTurn = state.currentTurn;
   recordSkillLoad(ctx, name);
+  // The load counters say a read happened; this says whether the session was
+  // one where the skill applied. Independent writes, independent failures.
+  markApplicabilityRead(ctx, state, name);
   log.debug(`[skills-auto-inject] counted actual load of "${name}" via read`);
   return name;
 }
@@ -1314,6 +1424,17 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       const prompt = ev.prompt ?? "";
       if (!prompt.trim()) {
         return; // No user input to match against
+      }
+
+      // Applicability is recorded BEFORE every scoring early-return below.
+      // Most sessions match no skill, and those are exactly the sessions the
+      // adoption counters cannot explain: the returns would erase them. The
+      // step reads the catalog and the prompt only, so the suggestion decision
+      // below is untouched by it (and its failure cannot cost a suggestion).
+      try {
+        stepApplicability(ctx, state, skills, prompt);
+      } catch (err) {
+        log.debug(`[skills-auto-inject] applicability step failed (best-effort): ${err}`);
       }
 
       // One-shot profile hint: the first non-empty prompt of a session whose

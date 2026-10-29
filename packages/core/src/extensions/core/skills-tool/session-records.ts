@@ -1,8 +1,16 @@
 /**
- * Durable per-session skill-adoption records + monthly adoption rollup.
+ * Durable per-session skill records + the monthly adoption rollup.
  *
- * Every session that reaches an agent turn gets ONE logical record:
- *   { sessionId, role, month, hadSkillLoad, updatedAt }
+ * The store is one append-only JSONL file with two record kinds, told apart
+ * by `kind`:
+ *
+ *   (absent)         an ADOPTION record, the older shape:
+ *                    { sessionId, role, month, hadSkillLoad, updatedAt }
+ *   "applicability"  an APPLICABILITY record: the session's skill verdicts
+ *                    (see ApplicabilityRecord)
+ *
+ * An adoption record exists for every session that reaches an agent turn, so
+ * every such session gets ONE logical record (the rollup denominator);
  * `role` carries the session's profile name from the braid config (see
  * lib/config/session-profiles.ts), or the neutral default when no profile
  * matches; `month` is the local-time "YYYY-MM" of the write, and
@@ -21,6 +29,13 @@
  * appends from two processes can theoretically tear a line on some
  * filesystems; the tolerant reader skips unparseable lines, the window is
  * a single small write, and this is accepted as best-effort telemetry.
+ *
+ * Each reader reads its own kind and ignores the other. The adoption reader
+ * is fail-closed on an unknown `kind`, so a record type added later cannot
+ * enter the adoption numbers by looking enough like one; and a build that
+ * predates the applicability kind reads those lines as adoption records of
+ * the same session, which folds to the same numbers because it carries no
+ * new sessions and never sets `hadSkillLoad`.
  *
  * Back-compat: records written before profiles existed carry a role from
  * the retired fixed set; those values pass the profile-name gate
@@ -41,6 +56,8 @@ import {
   resolveSessionProfileForCwd,
   type ResolvedSessionProfile,
 } from "../../../lib/config/session-profiles.js";
+import { MAX_APPLICABILITY_EVIDENCE } from "./applicability.js";
+import type { ApplicabilityEvidence, SkillApplicabilityVerdict } from "./applicability.js";
 
 const log = createLogger("skills-tool");
 
@@ -72,6 +89,9 @@ export function monthOf(date: Date): string {
 function normalizeRecord(raw: unknown): SkillSessionRecord | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const r = raw as Record<string, unknown>;
+  // One file, several record kinds: the adoption reader accepts its own kind
+  // (no `kind`, or an explicit "adoption") and refuses anything else.
+  if (r.kind !== undefined && r.kind !== "adoption") return undefined;
   if (typeof r.sessionId !== "string" || !r.sessionId) return undefined;
   if (typeof r.month !== "string" || !/^\d{4}-\d{2}$/.test(r.month)) return undefined;
   const role = normalizeProfileName(r.role) ?? NEUTRAL_SESSION_PROFILE;
@@ -135,11 +155,11 @@ export function readSessionRecords(storePath: string): SkillSessionRecord[] {
 }
 
 /**
- * Append one record. Best-effort: every error is swallowed (this runs on
+ * Append one record line. Best-effort: every error is swallowed (this runs on
  * the agent-loop and tool-result paths — a telemetry failure must never
  * break a turn). Returns true when the line landed on disk.
  */
-export function appendSessionRecord(record: SkillSessionRecord, storePath: string): boolean {
+function appendLine(record: object, storePath: string): boolean {
   try {
     mkdirSync(dirname(storePath), { recursive: true });
     appendFileSync(storePath, `${JSON.stringify(record)}\n`, "utf-8");
@@ -148,6 +168,11 @@ export function appendSessionRecord(record: SkillSessionRecord, storePath: strin
     reportRecordFailure(err);
     return false;
   }
+}
+
+/** Append one adoption record (see appendLine for the failure contract). */
+export function appendSessionRecord(record: SkillSessionRecord, storePath: string): boolean {
+  return appendLine(record, storePath);
 }
 
 /** Warned once per process about a refused adoption-record append. */
@@ -250,6 +275,328 @@ export function recordSessionSkillLoad(ctx: ExtensionContext, storePath?: string
     );
   } catch (err) {
     reportRecordFailure(err);
+  }
+}
+
+// Applicability records (the verdict kind)
+
+/**
+ * One skill's applicability verdict for one session.
+ *
+ * The three classes, as this instrument names them:
+ *
+ *   not-applicable  the skill's own declared condition did not meet the
+ *                   session's task text. Derived, never a row: the census's
+ *                   `evaluated` minus the verdict rows. A row per non-match
+ *                   would multiply every session's record by the installed
+ *                   catalog to say "nothing here".
+ *   ignored         the condition held and no detected read followed. This is
+ *                   the class the adoption counters cannot express.
+ *   read            the condition held and a detected SKILL.md read followed.
+ *
+ * `undeclared` sits outside all three: those skill files state no condition, so
+ * no verdict about them is honest (see applicability.ts).
+ */
+
+/** One verdict row: the skill, its class, and the phrases that decided it. */
+export interface ApplicabilityVerdictRecord {
+  kind: "applicability";
+  sessionId: string;
+  role: string;
+  month: string;
+  updatedAt: string;
+  /** The skill this row answers for. */
+  skill: string;
+  /** read | ignored — a row exists only where a condition held. */
+  applicability: "read" | "ignored";
+  evidence: ApplicabilityEvidence[];
+}
+
+/**
+ * One session's census row: how much task text was read, how many skills
+ * declared a condition, and which ones declared none. Written once per
+ * session, so `not-applicable` is derivable without a row per non-match.
+ */
+export interface ApplicabilityCensusRecord {
+  kind: "applicability";
+  sessionId: string;
+  role: string;
+  month: string;
+  updatedAt: string;
+  /** Characters of task text the first evaluation read. */
+  taskChars: number;
+  /** Installed skills declaring at least one condition phrase. */
+  evaluated: number;
+  /** Installed skills whose files declare no condition phrase. */
+  undeclared: string[];
+}
+
+/**
+ * An applicability record. The two shapes share the kind and the session
+ * identity, and a reader tells them apart by `skill`: a row with one answers
+ * for that skill, a row without one is the session's census. The split is what
+ * lets a per-skill record join the sibling compliance record on
+ * (sessionId, skill) without either store learning the other's fields.
+ */
+export type ApplicabilityRecord = ApplicabilityVerdictRecord | ApplicabilityCensusRecord;
+
+/** A session's applicability after folding every record written for it. */
+export interface SessionApplicability {
+  sessionId: string;
+  role: string;
+  month: string;
+  updatedAt: string;
+  /** Characters of task text the census read. */
+  taskChars: number;
+  /** Skills that declared a condition. */
+  evaluated: number;
+  /** Skills that declared none — the blind spot, named. */
+  undeclared: string[];
+  /** One entry per applicable skill, `read` beating `ignored`. */
+  verdicts: SkillApplicabilityVerdict[];
+  /** The three classes as counts: read + ignored = applicable. */
+  classes: { read: number; ignored: number; notApplicable: number };
+}
+
+/** One evidence row, normalizing an unknown source to "no source recorded". */
+function normalizeEvidence(raw: unknown): ApplicabilityEvidence | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const e = raw as Record<string, unknown>;
+  if (typeof e.phrase !== "string" || !e.phrase) return undefined;
+  return e.source === "frontmatter" || e.source === "heading" || e.source === "description"
+    ? { phrase: e.phrase, source: e.source }
+    : { phrase: e.phrase };
+}
+
+/**
+ * Normalize one raw applicability line; undefined when the line is not one.
+ * Field junk is coerced to a safe default rather than trusted, matching the
+ * adoption reader's posture.
+ */
+function normalizeApplicabilityRecord(raw: unknown): ApplicabilityRecord | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.kind !== "applicability") return undefined;
+  if (typeof r.sessionId !== "string" || !r.sessionId) return undefined;
+  if (typeof r.month !== "string" || !/^\d{4}-\d{2}$/.test(r.month)) return undefined;
+  const base = {
+    kind: "applicability" as const,
+    sessionId: r.sessionId,
+    role: normalizeProfileName(r.role) ?? NEUTRAL_SESSION_PROFILE,
+    month: r.month,
+    updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : "",
+  };
+  if (typeof r.skill === "string" && r.skill) {
+    if (r.applicability !== "read" && r.applicability !== "ignored") return undefined;
+    const evidence: ApplicabilityEvidence[] = [];
+    for (const item of Array.isArray(r.evidence) ? r.evidence : []) {
+      const normalized = normalizeEvidence(item);
+      if (normalized) evidence.push(normalized);
+    }
+    return { ...base, skill: r.skill, applicability: r.applicability, evidence };
+  }
+  const count = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return {
+    ...base,
+    taskChars: count(r.taskChars),
+    evaluated: count(r.evaluated),
+    undeclared: (Array.isArray(r.undeclared) ? r.undeclared : []).filter(
+      (name): name is string => typeof name === "string" && name !== "",
+    ),
+  };
+}
+
+/**
+ * Read the applicability records from the store. Missing or unreadable file →
+ * empty (never throws); non-applicability and corrupt lines are skipped.
+ */
+export function readApplicabilityRecords(storePath: string): ApplicabilityRecord[] {
+  let text: string;
+  try {
+    text = readFileSync(storePath, "utf-8");
+  } catch {
+    return []; // missing or unreadable → no records
+  }
+  const out: ApplicabilityRecord[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const rec = normalizeApplicabilityRecord(JSON.parse(trimmed));
+      if (rec) out.push(rec);
+    } catch {
+      // torn or corrupt line — skip
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge two verdicts for the same skill: `read` beats `ignored` (a read is
+ * evidence the skill's content reached the session, whatever the turn order
+ * was), and the evidence unions by (phrase, source), bounded like every other
+ * evidence surface. Pure.
+ */
+function mergeVerdict(
+  current: SkillApplicabilityVerdict | undefined,
+  next: SkillApplicabilityVerdict,
+): SkillApplicabilityVerdict {
+  if (!current) return next;
+  const byPhrase = new Map<string, ApplicabilityEvidence>();
+  for (const evidence of [...current.evidence, ...next.evidence]) {
+    const key = `${evidence.phrase}\u0000${evidence.source ?? ""}`;
+    if (!byPhrase.has(key) && byPhrase.size < MAX_APPLICABILITY_EVIDENCE) {
+      byPhrase.set(key, evidence);
+    }
+  }
+  return {
+    name: next.name,
+    verdict: current.verdict === "read" || next.verdict === "read" ? "read" : "ignored",
+    evidence: [...byPhrase.values()],
+  };
+}
+
+/**
+ * Fold the store into one logical record per sessionId: the newest census wins
+ * the session facts, verdict rows union across writes with `read` beating
+ * `ignored`. Pure. The fold is what makes a torn, duplicated or out-of-order
+ * append harmless: the record set, not the line order, decides a verdict.
+ */
+export function foldApplicabilityRecords(records: ApplicabilityRecord[]): SessionApplicability[] {
+  const byId = new Map<string, SessionApplicability>();
+  const empty = (rec: ApplicabilityRecord): SessionApplicability => ({
+    sessionId: rec.sessionId,
+    role: rec.role,
+    month: rec.month,
+    updatedAt: rec.updatedAt,
+    taskChars: 0,
+    evaluated: 0,
+    undeclared: [],
+    verdicts: [],
+    classes: { read: 0, ignored: 0, notApplicable: 0 },
+  });
+  for (const rec of records) {
+    const prev = byId.get(rec.sessionId) ?? empty(rec);
+    // Session facts come from the newest CENSUS row; verdict rows carry no
+    // census of their own and must not erase it.
+    const newer = rec.updatedAt >= prev.updatedAt;
+    const verdicts = new Map(prev.verdicts.map((v) => [v.name, v]));
+    if ("skill" in rec) {
+      verdicts.set(
+        rec.skill,
+        mergeVerdict(verdicts.get(rec.skill), {
+          name: rec.skill,
+          verdict: rec.applicability,
+          evidence: rec.evidence,
+        }),
+      );
+    }
+    const census = "evaluated" in rec ? (newer ? rec : undefined) : undefined;
+    byId.set(rec.sessionId, {
+      sessionId: rec.sessionId,
+      role: newer ? rec.role : prev.role,
+      month: newer ? rec.month : prev.month,
+      updatedAt: newer ? rec.updatedAt : prev.updatedAt,
+      taskChars: census ? census.taskChars : prev.taskChars,
+      evaluated: census ? census.evaluated : prev.evaluated,
+      undeclared: census ? census.undeclared : prev.undeclared,
+      verdicts: [...verdicts.values()],
+      classes: { read: 0, ignored: 0, notApplicable: 0 },
+    });
+  }
+  for (const rec of byId.values()) {
+    const read = rec.verdicts.filter((v) => v.verdict === "read").length;
+    const ignored = rec.verdicts.length - read;
+    rec.classes = { read, ignored, notApplicable: Math.max(0, rec.evaluated - read - ignored) };
+  }
+  return [...byId.values()];
+}
+
+/** Fields a caller supplies for the session's census row. */
+export interface ApplicabilityCensusInput {
+  taskChars: number;
+  evaluated: number;
+  undeclared: string[];
+}
+
+/** Resolve the session identity a record needs, or undefined for a fake ctx. */
+function applicabilityBase(
+  ctx: ExtensionContext,
+): { sessionId: string; role: string; month: string; updatedAt: string } | undefined {
+  const sess = resolveSession(ctx);
+  if (!sess) return undefined;
+  return {
+    sessionId: sess.sessionId,
+    role: getSessionProfile(ctx).name,
+    month: monthOf(new Date()),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Append the session's census row. Best-effort like every other writer here: a
+ * false return means the line did not land, never a thrown turn.
+ */
+export function recordApplicabilityCensus(
+  ctx: ExtensionContext,
+  census: ApplicabilityCensusInput,
+  storePath?: string,
+): boolean {
+  try {
+    const base = applicabilityBase(ctx);
+    if (!base) return false;
+    return appendLine(
+      { kind: "applicability", ...base, ...census },
+      storePath ?? getSkillsSessionsFilePath(),
+    );
+  } catch (err) {
+    reportRecordFailure(err);
+    return false;
+  }
+}
+
+/**
+ * Append one skill's verdict row. The same function writes the `read` upgrade:
+ * the fold decides, so no line is ever rewritten.
+ */
+export function recordApplicabilityVerdict(
+  ctx: ExtensionContext,
+  verdict: { skill: string; applicability: "read" | "ignored"; evidence: ApplicabilityEvidence[] },
+  storePath?: string,
+): boolean {
+  try {
+    const base = applicabilityBase(ctx);
+    if (!base) return false;
+    return appendLine(
+      { kind: "applicability", ...base, ...verdict },
+      storePath ?? getSkillsSessionsFilePath(),
+    );
+  } catch (err) {
+    reportRecordFailure(err);
+    return false;
+  }
+}
+
+/**
+ * The folded applicability record for the context's own session, or undefined
+ * when the session wrote none. Reader: a refused path or a torn store is a
+ * miss, not a throw.
+ */
+export function getSessionApplicability(
+  ctx: ExtensionContext,
+  options: { storePath?: string } = {},
+): SessionApplicability | undefined {
+  try {
+    const sess = resolveSession(ctx);
+    if (!sess) return undefined;
+    const storePath = options.storePath ?? getSkillsSessionsFilePath();
+    return foldApplicabilityRecords(readApplicabilityRecords(storePath)).find(
+      (rec) => rec.sessionId === sess.sessionId,
+    );
+  } catch (err) {
+    reportRecordFailure(err);
+    return undefined;
   }
 }
 
