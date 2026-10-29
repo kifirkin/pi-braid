@@ -123,11 +123,11 @@ gs.setWatchdogWakeDeliveryFeed?.({
 
 let now = Date.now();
 wakeRetryQueue._setClockForTests(() => now);
-const ctx = { sessionManager: { getSessionId: () => "w243s" }, isIdle: () => true };
+const ctx = { sessionManager: { getSessionId: () => "wake-delivery" }, isIdle: () => true };
 pi.emit("session_start", {}, ctx); // starts the poller (sets its piRef)
 
 function makeTimer(id, reason = "babysit deploy checks") {
-  return { id, sessionId: "w243s", firesAt: now, reason, createdAt: now, wake: true };
+  return { id, sessionId: "wake-delivery", firesAt: now, reason, createdAt: now, wake: true };
 }
 
 /** Advance the queue clock one outcome window (+ worst backoff) and run one
@@ -269,7 +269,7 @@ describe("long-run grace: an active run is not a dead delivery", () => {
       // Flip the extension's captured ctx to a busy session (isIdle false:
       // a run is in flight — the wake's turn is merely long). tool_call's
       // handler captures ctx; the grace predicate live-reads it.
-      const busyCtx = { sessionManager: { getSessionId: () => "w243s" }, isIdle: () => false };
+      const busyCtx = { sessionManager: { getSessionId: () => "wake-delivery" }, isIdle: () => false };
       pi.emit("tool_call", {}, busyCtx);
 
       const tgBefore = calls.tg.length;

@@ -126,7 +126,7 @@ after(() => {
 afterEach(() => {
   resetWakeGateForTests();
   wakeRetryQueue.resetForTests();
-  for (const sid of ["w234a", "w234b", "w234c", "w234d"]) {
+  for (const sid of ["flush-idle", "flush-busy", "flush-deferred", "flush-late"]) {
     timerMod.timerManager.clearSession(sid);
   }
   rmSync(getTimerFilePath(tmp), { force: true });
@@ -135,7 +135,7 @@ afterEach(() => {
 describe("recovered fires flush at session_start (no intervening turn)", () => {
   it("REGRESSION: overdue persisted fire is delivered at session_start when the session is idle", async () => {
     process.chdir(tmp);
-    const sid = "w234a";
+    const sid = "flush-idle";
     writeTimerFile([overdueRecord("rec-ss-1", sid)]);
     const pi = makeFakePi();
     timerMod.default(pi);
@@ -162,7 +162,7 @@ describe("recovered fires flush at session_start (no intervening turn)", () => {
 
   it("busy session at session_start does not flush; the post-settle flush delivers", async () => {
     process.chdir(tmp);
-    const sid = "w234b";
+    const sid = "flush-busy";
     writeTimerFile([overdueRecord("rec-ss-2", sid)]);
     const pi = makeFakePi();
     timerMod.default(pi);
@@ -187,7 +187,7 @@ describe("recovered fires flush at session_start (no intervening turn)", () => {
 
   it("REVERT-PROOF: onBusy re-parks a flush whose send lands in a busy window", async () => {
     process.chdir(tmp);
-    const sid = "w234c";
+    const sid = "flush-deferred";
     writeTimerFile([overdueRecord("rec-ss-3", sid)]);
     // The wake gate is a real module in production (registered by the
     // enforcement bootstrap); register it here so the send-time busy check
@@ -224,7 +224,7 @@ describe("recovered fires flush at session_start (no intervening turn)", () => {
 
   it("no parked fires: session_start sends nothing", async () => {
     process.chdir(tmp);
-    const sid = "w234d";
+    const sid = "flush-late";
     const pi = makeFakePi();
     timerMod.default(pi);
     const ctx = { sessionManager: { getSessionId: () => sid }, isIdle: () => true };
