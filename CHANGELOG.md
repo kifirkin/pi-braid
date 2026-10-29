@@ -81,6 +81,15 @@ reader-facing record; the tag scheme above applies unchanged.
   by path relative to the test root, and its dead entry for a file that exists nowhere is gone; and the verdict's
   reliance on the file's output pipes closing, not just its exit, is now stated and pinned by a fixture, because a
   helper holding the inherited stdout keeps the file open past its own exit.
+- **Three fixtures were printing a verdict their cases had not earned.** Their local `test()` helper called an
+  `async` case and discarded the promise, so the case ran detached: a rejected case was marked as passing, the tally
+  read `0 failed`, and only Node's default unhandled-rejection handler made the exit non-zero. With nothing keeping
+  the loop alive past the summary, the same file printed `7 passed, 0 failed` and exited 0. Both halves are fixed -
+  the helper awaits its case and the call sites await the helper - and a rejecting case now fails the file.
+- **A cleanup kill no longer fails a case because the process left first.** `fleet/test-cli.mjs` failed under a loaded
+  pooled run with `kill ESRCH`, because the supervisor had already exited when the signal arrived. A gone process is
+  what that cleanup wanted, so `ESRCH` is accepted there and any other errno still fails the case; the four kill
+  sites share the one helper.
 
 ## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
 
