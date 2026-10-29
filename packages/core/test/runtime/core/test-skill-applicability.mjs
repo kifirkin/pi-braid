@@ -247,6 +247,20 @@ await test("a negation cue stops at its clause, and an asserted occurrence survi
   );
 });
 
+await test("a double negative reads as negation, so the ignored rate is a lower bound", async () => {
+  // The rule is one cue before the phrase: the nearest negation wins, and it is
+  // not composed. "would not want you to avoid research" asserts research to a
+  // reader and reads as negated here, which means the ignored count can only
+  // understate how often a condition held. The bound is deliberate: composing
+  // cues needs clause grammar, and a measurer that guesses would be worse than
+  // one that under-counts. Pinned so the limitation is discoverable rather than
+  // latent, and so a future change to it is a decision rather than a drift.
+  assert.deepEqual(
+    namesOf(evaluateApplicability(FIXTURE_CATALOG, "I would not want you to avoid research here.")),
+    [],
+  );
+});
+
 await test("phraseOccurrences uses the injector's boundary rule", async () => {
   const lowered = "researching the researcher and a research note";
   assert.deepEqual(phraseOccurrences("research", lowered), [lowered.lastIndexOf("research")]);
