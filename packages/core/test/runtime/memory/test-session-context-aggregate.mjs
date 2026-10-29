@@ -28,9 +28,9 @@ console.log("=== Option B cross-session context-adoption aggregate ===\n");
 
 let passed = 0;
 let failed = 0;
-function test(name, fn) {
+async function test(name, fn) {
   try {
-    fn();
+    await fn();
     console.log(` [v] ${name}`);
     passed++;
   } catch (e) {
@@ -193,14 +193,14 @@ async function makeFixture() {
 
 // ── Boilerplate detection ────────────────────────────────────────────────────
 
-test("isBoilerplateSummary: empty summary is lossy", () => {
+await test("isBoilerplateSummary: empty summary is lossy", () => {
   assert.equal(isBoilerplateSummary(""), true);
   assert.equal(isBoilerplateSummary("   "), true);
   assert.equal(isBoilerplateSummary(undefined), true);
   assert.equal(isBoilerplateSummary(null), true);
 });
 
-test("isBoilerplateSummary: boilerplate family is lossy", () => {
+await test("isBoilerplateSummary: boilerplate family is lossy", () => {
   assert.equal(isBoilerplateSummary(BOILERPLATE_SUMMARY), true);
   assert.equal(
     isBoilerplateSummary("No conversation content exists. There is no user goal to summarize."),
@@ -209,7 +209,7 @@ test("isBoilerplateSummary: boilerplate family is lossy", () => {
   assert.equal(isBoilerplateSummary("Await actual conversation content to summarize."), true);
 });
 
-test("isBoilerplateSummary: substantive summary is not lossy", () => {
+await test("isBoilerplateSummary: substantive summary is not lossy", () => {
   assert.equal(isBoilerplateSummary(SUBSTANTIVE_SUMMARY), false);
   assert.equal(
     isBoilerplateSummary("Implemented the payment gateway migration with retry handlers."),
@@ -219,7 +219,7 @@ test("isBoilerplateSummary: substantive summary is not lossy", () => {
 
 // ── Per-file aggregation ─────────────────────────────────────────────────────
 
-test("aggregateSessionFile: counts durable markers", async () => {
+await test("aggregateSessionFile: counts durable markers", async () => {
   const { dir, proj, files } = await makeFixture();
   try {
     const counts = await aggregateSessionFile(join(proj, files.A));
@@ -239,7 +239,7 @@ test("aggregateSessionFile: counts durable markers", async () => {
 
 // ── Full aggregate ───────────────────────────────────────────────────────────
 
-test("aggregateContextAdoption: window + signals + adoption rate", async () => {
+await test("aggregateContextAdoption: window + signals + adoption rate", async () => {
   const { dir, window: win } = await makeFixture();
   try {
     const r = await aggregateContextAdoption(dir, win);
@@ -268,7 +268,7 @@ test("aggregateContextAdoption: window + signals + adoption rate", async () => {
   }
 });
 
-test("aggregateContextAdoption: default window is recent 7 days", async () => {
+await test("aggregateContextAdoption: default window is recent 7 days", async () => {
   const { dir } = await makeFixture();
   try {
     const r = await aggregateContextAdoption(dir);
@@ -281,7 +281,7 @@ test("aggregateContextAdoption: default window is recent 7 days", async () => {
   }
 });
 
-test("aggregateContextAdoption: project filter narrows the scan", async () => {
+await test("aggregateContextAdoption: project filter narrows the scan", async () => {
   const { dir } = await makeFixture();
   try {
     const r = await aggregateContextAdoption(dir, { project: "tmp-project" });
@@ -293,7 +293,7 @@ test("aggregateContextAdoption: project filter narrows the scan", async () => {
   }
 });
 
-test("aggregateContextAdoption: maxFiles cap and size cap", async () => {
+await test("aggregateContextAdoption: maxFiles cap and size cap", async () => {
   const { dir } = await makeFixture();
   try {
     const capped = await aggregateContextAdoption(dir, { maxFiles: 1 });
@@ -308,7 +308,7 @@ test("aggregateContextAdoption: maxFiles cap and size cap", async () => {
   }
 });
 
-test("aggregateContextAdoption: empty dir yields idle result", async () => {
+await test("aggregateContextAdoption: empty dir yields idle result", async () => {
   const dir = await mkdtemp(join(tmpdir(), "braid-s8-empty-"));
   try {
     const r = await aggregateContextAdoption(dir);
@@ -322,7 +322,7 @@ test("aggregateContextAdoption: empty dir yields idle result", async () => {
 
 // ── Formatting ───────────────────────────────────────────────────────────────
 
-test("formatContextAggregate: concise block ≤ 40 lines with trend", async () => {
+await test("formatContextAggregate: concise block ≤ 40 lines with trend", async () => {
   const { dir, window: win } = await makeFixture();
   try {
     const r = await aggregateContextAdoption(dir, win);

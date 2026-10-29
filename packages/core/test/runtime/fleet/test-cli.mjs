@@ -38,9 +38,9 @@ const CLI = resolve(HERE, "../../../scripts/fleet/cli.mjs");
 
 let passed = 0;
 let failed = 0;
-function check(name, fn) {
+async function check(name, fn) {
   try {
-    fn();
+    await fn();
     passed += 1;
     console.log(`  [ok] ${name}`);
   } catch (error) {
@@ -50,6 +50,18 @@ function check(name, fn) {
 }
 
 const sleep = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
+
+// Cleanup kills a process that may already have left on its own: under a loaded
+// pool the supervisor can exit before the kill lands, and every site below asks
+// for it to be gone either way. ESRCH is that outcome; any other errno means the
+// signal was not delivered for a reason the case should still fail on.
+function killIfRunning(pid, signal = "SIGKILL") {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
 
 const root = mkdtempSync(join(tmpdir(), "fleet-cli-"));
 const charter = join(root, "work.charter.md");
@@ -154,7 +166,7 @@ await check("an unknown node fails loudly and records nothing", () => {
 });
 
 await check("with the supervisor killed, inject still records (tier C) and status still reads", async () => {
-  process.kill(supervisorPid, "SIGKILL");
+  killIfRunning(supervisorPid);
   const deadline = Date.now() + 5000;
   while (pidIsAlive(supervisorPid) && Date.now() < deadline) await sleep(50);
   assert.equal(pidIsAlive(supervisorPid), false, "the supervisor is gone");
@@ -207,7 +219,7 @@ await check("a fleet root deeper than the socket path limit still gets a control
       journal.close();
     }
   })();
-  process.kill(pid, "SIGKILL");
+  killIfRunning(pid);
   const deadline = Date.now() + 5000;
   while (pidIsAlive(pid) && Date.now() < deadline) await sleep(50);
   assert.equal(pidIsAlive(pid), false);
@@ -333,14 +345,14 @@ await check("without the flag a spawn keeps the default window, not a leak of th
   assert.ok(pid > 0, out.stdout);
   await sleep(2000);
   assert.equal(pidIsAlive(pid), true, "the default window is longer than the 1200 ms an arm asked for");
-  process.kill(pid, "SIGKILL");
+  killIfRunning(pid);
   await waitForExit(pid, { timeoutMs: 5000 });
 });
 
 // Guarded: `process.kill(0, ...)` signals this process's own group, so a pid
 // that failed to parse must never reach the kill.
 if (idlePid > 0) {
-  process.kill(idlePid, "SIGKILL");
+  killIfRunning(idlePid);
   const deadline = Date.now() + 5000;
   while (pidIsAlive(idlePid) && Date.now() < deadline) await sleep(50);
   assert.equal(pidIsAlive(idlePid), false, "the arm leaves no supervisor behind");
