@@ -182,7 +182,7 @@ const ALLOWANCES = new Map([
     {
       ms: 120_000,
       reason:
-        "drives four real publishes, each one an npm pack plus its install and rollback path: 11.2s with the box to itself and 24.6s beside seven other files, so the pool's inflation of this work is already 2x; the allowance is what keeps a loaded box reporting the swap that failed instead of killing the file at the 60s default",
+        "drives four real publishes, each one an npm pack plus its install and rollback path: 16.3s run one at a time and 35.7s beside seven other files under one load generator, a 2.2x that follows the box rather than the code; the allowance is what keeps a loaded box reporting the swap that failed instead of killing the file at the 60s default",
     },
   ],
   [
