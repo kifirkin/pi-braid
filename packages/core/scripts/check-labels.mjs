@@ -12,7 +12,9 @@
 // is an ISO calendar-week reference (2026-W35 strings, the W37/W38 fixture
 // constants in test-memory-write-log-metrics.mjs), so a two-to-three-digit
 // pattern would flag calendar weeks forever and train people to ignore this
-// gate. Two-digit historical task labels are out of scope.
+// gate. Two-digit historical task labels are out of scope. The vocabulary is
+// shared with the commit-subject gate and lives in lib/label-tokens.mjs, so
+// the two surfaces cannot drift into refusing different tokens.
 //
 // No config file and no path allowlist: the sanctioned seat for wave context
 // (report filenames and titles) lives in the docs repo, outside this scan
@@ -25,6 +27,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectFiles } from "./lib/collect-files.mjs";
+import { LABEL_TOKEN_PATTERNS } from "./lib/label-tokens.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -51,9 +54,7 @@ const SCAN_ROOT = join(REPO_ROOT, "packages");
 
 const LABEL_DIRS = new Set(["src", "test", "scripts"]);
 
-// Three digits only (see header rationale): two-digit Wnn tokens in this tree
-// are ISO calendar weeks, not task labels.
-const TOKEN_PATTERNS = [/\bW\d{3}(-T\d+)?\b/g, /\bBRIEF-[A-Z0-9-]+/g];
+const TOKEN_PATTERNS = LABEL_TOKEN_PATTERNS;
 
 function classify(absPath) {
   const name = basename(absPath);

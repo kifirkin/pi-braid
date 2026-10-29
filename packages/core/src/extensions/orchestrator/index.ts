@@ -324,7 +324,19 @@ function verifyAndMergeBase(
         `NOT merged: worktree on ${base} has uncommitted changes; refusing to merge over them. Base unchanged at ${short(baseBefore)}. Locks and branch kept.`,
       );
     }
-    if (git(repoRoot, ["merge", "--no-edit", workerBranch]) === undefined) {
+    // Git derives a merge subject from the branch name, so a merge out of a
+    // worker branch would publish that branch's namespace in the one part of a
+    // commit a reader keeps. The subject states what landed instead. A tip
+    // whose subject cannot be read (missing, or empty) refuses the merge: the
+    // fallback is precisely the derived subject this avoids, so a silent
+    // fallback would put the leak back.
+    const landed = git(repoRoot, ["log", "-1", "--format=%s", workerBranch]);
+    if (!landed) {
+      return nothingMerged(
+        `NOT merged: cannot read the subject of ${workerBranch} at ${short(tip)}; refusing to merge without an explicit subject, since git would derive the merge subject from that branch name. Base unchanged at ${short(baseBefore)}. Locks and branch kept.`,
+      );
+    }
+    if (git(repoRoot, ["merge", "--no-edit", "-m", landed, workerBranch]) === undefined) {
       return nothingMerged(
         `NOT merged: git merge ${workerBranch} into ${base} failed (conflict or refusal). Base unchanged at ${short(baseBefore)}. Locks and branch kept.`,
       );

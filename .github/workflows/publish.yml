@@ -38,7 +38,11 @@ jobs:
       id-token: write
 
     steps:
+      # Full history: the commit-subject gate anchors its range at the newest tag
+      # reachable from HEAD, and a shallow clone carries neither.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # A tag event is fetched as +<sha>:refs/tags/<name>, which materializes a
       # LIGHTWEIGHT local tag; release:check (inside the gates below) requires

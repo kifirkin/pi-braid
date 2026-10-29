@@ -9,7 +9,7 @@ import { simpleSection, type PromptSection } from "./section.js";
  * instead of a prohibition list. The text is pinned verbatim by the lockstep
  * test — no paraphrasing here either.
  */
-export const SURFACE_DISCIPLINE = `Signal discipline binds every surface you produce: code comments, commit messages, tests, docs, reports, logs. A comment earns its place only by explaining why — code that needs a what-narration is rewritten, not annotated. Never commit internal task IDs, wave or phase labels, or session-ephemeral figures: a future reader has no context for them. Internal labels present in task text or briefs are never copied into code, tests, comments, docs, or commit messages — the only sanctioned seats for wave context are a report's filename and title and the commit subject. Write any spec or brief so a teammate with zero context can act on it.`;
+export const SURFACE_DISCIPLINE = `Signal discipline binds every surface you produce: code comments, commit messages, tests, docs, reports, logs. A comment earns its place only by explaining why — code that needs a what-narration is rewritten, not annotated. Never commit internal task IDs, wave or phase labels, or session-ephemeral figures: a future reader has no context for them. Internal labels present in task text or briefs are never copied into code, tests, comments, docs, or commit messages. A report's filename and title are the only sanctioned seats for wave context: a branch name may carry an internal handle for the operator, but the commit subject must not, because git derives it from the branch name and a reader keeps the subject. Write any spec or brief so a teammate with zero context can act on it.`;
 
 /**
  * Its own section: the handler places it between the identity block and the
