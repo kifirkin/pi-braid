@@ -58,9 +58,18 @@
  *     runner's own contract can be tested over a bench instead of this suite.
  *     Relative paths are resolved from the working directory; the child is
  *     spawned with an absolute path either way.
+ *
+ * Population:
+ *   - the walk counts every `.mjs` it finds as a passed fixture, so a module
+ *     that registers no case and asserts nothing is a pass that cannot fail.
+ *     The tree declares those in `fixture-manifest.json`, one reason each, and
+ *     a declared module is neither run nor counted (see readNotFixtures)
+ *   - `--list` prints the population this run would be over and exits without
+ *     running anything, which is how `check-suite-coverage.mjs` reads the same
+ *     population rather than walking the tree a second time
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { resolve, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -236,9 +245,11 @@ function readJobs() {
 }
 
 /**
- * Find .mjs files here and under each real subdirectory. A symlink to a
- * directory is not a directory entry, so it is never entered; a symlink to an
- * .mjs file is one, so it runs in addition to its target.
+ * Every .mjs file here and under each real subdirectory, declared non-fixture
+ * or not. A symlink to a directory is not a directory entry, so it is never
+ * entered; a symlink to an .mjs file is one, so it runs in addition to its
+ * target. The declaration is applied by the caller, which is what lets
+ * `--list` report a declared module this tree no longer carries.
  */
 function findTests(dir) {
   const results = [];
@@ -248,7 +259,7 @@ function findTests(dir) {
       const rel = relative(testDir, full);
       if (entry.isDirectory()) {
         results.push(...findTests(full));
-      } else if (entry.name.endsWith(".mjs") && !SKIP.has(rel)) {
+      } else if (entry.name.endsWith(".mjs")) {
         results.push(rel);
       }
     }
@@ -258,14 +269,54 @@ function findTests(dir) {
   return results;
 }
 
+/** The tree's own declaration of the modules in it that are not fixtures. */
+const MANIFEST_NAME = "fixture-manifest.json";
+
 /**
- * Test files the walk leaves out, keyed by path relative to the test root -
- * the same coordinate ALLOWANCES uses, so a skip names one file rather than
- * every file with that name.
+ * Modules the walk leaves out of the count, keyed by path relative to the test
+ * root - the same coordinate ALLOWANCES uses, so a declaration names one file
+ * rather than every file with that name.
+ *
+ * The declaration lives in the tree rather than in this file because it is a
+ * fact about the tree's own modules, and because a bench over this runner's
+ * contract carries its own. Every entry states why the module is not a fixture:
+ * a walked module is counted as a passed fixture, while a shared helper
+ * registers nothing and asserts nothing, so leaving one in the count is how the
+ * summary line stops meaning what it says. `check-suite-coverage.mjs` reads the
+ * same declaration back and refuses both halves of a disagreement - a counted
+ * module that asserts nothing, and a declared one that is a real fixture.
+ *
+ * A tree without a manifest declares nothing, which is every bench. A manifest
+ * that cannot be read is fatal: falling back to "no declarations" would quietly
+ * inflate the count, the failure this file exists to prevent.
  */
-const SKIP = new Set([
-  "test-all.mjs", // the root aggregator; duplicates the files beside it
-]);
+function readNotFixtures(dir) {
+  const file = join(dir, MANIFEST_NAME);
+  if (!existsSync(file)) return new Map();
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    console.error(`${file}: ${error.message}`);
+    process.exit(1);
+  }
+  const declared = parsed?.notFixtures;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) {
+    console.error(`${file}: expected a "notFixtures" object of module path -> reason`);
+    process.exit(1);
+  }
+  const notFixtures = new Map();
+  for (const [module, reason] of Object.entries(declared)) {
+    if (typeof reason !== "string" || reason.trim() === "") {
+      console.error(
+        `${file}: "${module}" states no reason - a module stays out of the count with one on record`,
+      );
+      process.exit(1);
+    }
+    notFixtures.set(module, reason.trim());
+  }
+  return notFixtures;
+}
 
 /** Durations as printed: 12000 -> "12s", 1500 -> "1.5s". */
 function formatMs(ms) {
@@ -494,7 +545,25 @@ const jobs = readJobs();
 const testDir = resolve(process.env.PI_TEST_ROOT ? process.env.PI_TEST_ROOT : join(root, "test/runtime"));
 const timings = flagOn("timings");
 const timingsPath = flagValue("timings-json") ?? process.env.PI_TEST_TIMINGS ?? "";
-const tests = findTests(testDir).sort();
+const notFixtures = readNotFixtures(testDir);
+const walked = findTests(testDir).sort();
+const tests = walked.filter((file) => !notFixtures.has(file));
+
+/**
+ * `--list` prints the population this run would be over and exits without
+ * running anything: `counted` for a module the run would judge, `skipped` for a
+ * declared non-fixture and the reason it is one, `absent` for a declaration
+ * this tree no longer carries. The population check reads this instead of
+ * walking the tree a second time, so the gate and the runner cannot disagree
+ * about which files exist.
+ */
+if (flagOn("list")) {
+  for (const file of tests) console.log(`counted\t${file}`);
+  for (const [file, reason] of notFixtures) {
+    console.log(`${walked.includes(file) ? "skipped" : "absent"}\t${file}\t${reason}`);
+  }
+  process.exit(0);
+}
 
 /**
  * An empty walk is a hard failure, not a green run: an override that resolved
@@ -533,6 +602,15 @@ console.log(
   `Running ${tests.length} tests from ${testDir}` +
     `${jobs > 1 ? `, ${jobs} at a time` : ""}\n`,
 );
+if (notFixtures.size > 0) {
+  // Printed where the count is introduced, because this is what the count is
+  // not: the tree carries the module, the run does not judge it.
+  console.log(
+    `  Not counted, not run: ${notFixtures.size} module${notFixtures.size === 1 ? "" : "s"} the tree declares not a fixture (${MANIFEST_NAME})`,
+  );
+  for (const [file, reason] of notFixtures) console.log(`    ${file} - ${reason}`);
+  console.log("");
+}
 
 /** One file's duration as it prints beside its line, when timings are asked for. */
 function durationNote(result) {

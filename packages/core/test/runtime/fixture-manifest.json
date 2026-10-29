@@ -1,0 +1,8 @@
+{
+  "notFixtures": {
+    "core/session-scan.mjs": "the scanner library behind the session-scan fixture, with a CLI entry that refuses to scan without an argument: a bare run prints that refusal and asserts nothing, so a pass here is a pass that cannot fail",
+    "lib/deferred-delivery.mjs": "a shared helper: the deferred-chain fixtures import its waits and its exactly-one check, and it asserts nothing when the runner loads it on its own",
+    "lib/fixture-guard.mjs": "a shared helper: the runner fixtures import its parse and typecheck refusals, and it asserts nothing when the runner loads it on its own",
+    "test-all.mjs": "the root aggregator: it spawns every file beside it, so counting it as a pass would count the suite twice"
+  }
+}

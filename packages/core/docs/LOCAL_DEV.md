@@ -108,7 +108,7 @@ every exit path, the interrupt one included.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 85 of the core suite's 320 fixtures already use `node:test` - so the
+file uses - 85 of the core suite's 319 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -116,6 +116,29 @@ the exit code computed from a counter the case never reached. `node:test` cannot
 take that shape. Existing files are not rewritten for style; a file with async
 cases that a synchronous helper discards is fixed when it is touched, by
 awaiting the helper's call or by moving to `node:test`.
+
+### What the count counts
+
+The runner walks every `.mjs` under `test/runtime` and counts each file that
+exits 0 as a passed fixture, so a module the walk sees and no case ever judges
+would still add one to the summary line. A shared helper in `test/runtime/lib/`
+is exactly that: the fixtures import it, it registers nothing, and it asserts
+nothing when the runner loads it on its own.
+
+Those modules are declared in `test/runtime/fixture-manifest.json`, under
+`notFixtures`, each with the reason it is not a fixture. The runner neither runs
+nor counts a declared module, and says so where it introduces the count. The
+reason is required, so a module leaves the count with one on record, and
+`node packages/core/scripts/run-tests.mjs --list` prints the whole population
+with the declarations beside it, running nothing.
+
+`npm run check:suite-coverage` holds both halves of that declaration. A counted
+module must register a case with `node:test`, assert from `node:assert` while it
+loads, or call a function it declares at load (the hand-rolled harness that
+names its own cases and sets the exit code). A declared module must be none of
+those, because a declaration that names a real fixture keeps a test out of the
+run. A new helper therefore fails the gate until it is declared, and a declared
+helper that grows a case fails it until it is taken back into the count.
 
 ## Two install modes
 
