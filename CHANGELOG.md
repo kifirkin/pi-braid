@@ -90,6 +90,28 @@ reader-facing record; the tag scheme above applies unchanged.
   pooled run with `kill ESRCH`, because the supervisor had already exited when the signal arrived. A gone process is
   what that cleanup wanted, so `ESRCH` is accepted there and any other errno still fails the case; the four kill
   sites share the one helper.
+- **The suite's tally stopped counting modules it never judged.** The run counted every walked `.mjs` as a passed
+  fixture, so three shared modules that assert nothing and the root aggregator added five to a number readers
+  compare between runs. They are now declared in `packages/core/test/runtime/fixture-manifest.json` with a reason each, the run
+  lists them beside the count instead of running them, and `check:suite-coverage` fails in both directions: a
+  counted module that cannot fail, and a declaration for a module the tree no longer carries.
+- **A run that is interrupted leaves nothing behind.** `SIGINT` and `SIGTERM` killed every live file group but not
+  the per-file temp sandbox the runner creates, so every interrupted run stranded one directory. The handler now
+  sweeps them too, and both signals keep their exit codes.
+- **The telegram suite stopped leaving 246 directories per run.** Its runner spawned each file with no `TMPDIR`, so
+  every per-case tree a fixture made landed in the machine's real temp directory and stayed. Each file now gets its
+  own sandbox, removed when it settles and on a signal, with the per-file `BRAID_HOME` and poller lock derived from
+  it so nothing a child writes to temp lands outside it.
+- **Two fixtures stopped deciding their verdict from a fixed sleep.** They waited a guessed number of milliseconds
+  for a chain of deferrals and then read a count, which failed 19 times in 130 loaded attempts; they now poll for
+  arrival, hold until the count stops moving so a double send is still caught, and say which way a count went wrong.
+- **`scripts/prompt-capture.mjs` renders a build's assembled prompt and diffs two captures.** Two captures of one
+  build are byte-identical, each hunk is labelled with its prompt region, and the header lists the surfaces the
+  pinning hides. The misdirection audit's third probe pointed at a two-build prompt diff no tool could produce;
+  it names this one now.
+- **Two files earned a longer allowance from measurement rather than from their idle duration.** `test-pack-provenance`
+  and `test-braid-home-containment` sit at 48.3s and 47.2s beside seven other files under load and at 28.1s and
+  21.9s one at a time, so a pool on a box slower than this one would have killed them for the box's weather.
 
 ## Core — 0.43.4 (2026-10-28: the pane guide is named for the model, and a seat can hand over)
 
