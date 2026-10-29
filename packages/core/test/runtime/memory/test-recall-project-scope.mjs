@@ -61,9 +61,9 @@ console.log("=== Recall project-scope isolation (THREE-MEMORY-STORE RECALL FIX) 
 
 let passed = 0;
 let failed = 0;
-function test(name, fn) {
+async function test(name, fn) {
   try {
-    fn();
+    await fn();
     console.log(`  [v] ${name}`);
     passed++;
   } catch (e) {
@@ -91,7 +91,7 @@ function makeState() {
 }
 
 // ── A. scope="all": cross-project labeled, same-project not (REVERT-PROOF) ──
-test("scope=all labels cross-project episodes and same-project distinctly", () => {
+await test("scope=all labels cross-project episodes and same-project distinctly", () => {
   const state = makeState();
   const results = retrieveByRUMS(state, QUERY, 3, state.currentSessionId, CURRENT, "all");
   assert.equal(results.length, 2, `expected both episodes, got ${results.length}`);
@@ -109,7 +109,7 @@ test("scope=all labels cross-project episodes and same-project distinctly", () =
 });
 
 // ── B. scope undefined + currentProject: behaves as "current" (REVERT-PROOF) ──
-test("default scope (undefined) with currentProject is project-scoped and boolean-labeled", () => {
+await test("default scope (undefined) with currentProject is project-scoped and boolean-labeled", () => {
   const state = makeState();
   const results = retrieveByRUMS(state, QUERY, 3, state.currentSessionId, CURRENT);
   assert.ok(results.length >= 1, "expected at least the same-project episode");
@@ -124,7 +124,7 @@ test("default scope (undefined) with currentProject is project-scoped and boolea
 });
 
 // ── C. scope="current": same-project wins; cross filtered or labeled ─────────
-test("scope=current keeps same-project first and labels any cross-project survivor", () => {
+await test("scope=current keeps same-project first and labels any cross-project survivor", () => {
   const state = makeState();
   const results = retrieveByRUMS(state, QUERY, 3, state.currentSessionId, CURRENT, "current");
   assert.ok(results.length >= 1, "same-project episode must never be filtered in current scope");
@@ -149,7 +149,7 @@ test("scope=current keeps same-project first and labels any cross-project surviv
 });
 
 // ── D. Shared project-id convention (idempotent derivation) ─────────────────
-test("deriveProjectIdFromCwd is the idempotent project convention", () => {
+await test("deriveProjectIdFromCwd is the idempotent project convention", () => {
   const cwd = "/tmp/projects/agents/pi-braid";
   const derived = deriveProjectIdFromCwd(cwd);
   assert.equal(derived, "agents/pi-braid", `derived id must be last 2 segments, got ${derived}`);
@@ -160,7 +160,7 @@ test("deriveProjectIdFromCwd is the idempotent project convention", () => {
 });
 
 // ── E. Semantic recall honors the derived-id convention ─────────────────────
-test("CognitiveMemory.recall keeps same-project (derived id) and drops cross-project", async () => {
+await test("CognitiveMemory.recall keeps same-project (derived id) and drops cross-project", async () => {
   const cm = new CognitiveMemory();
   const cwd = "/tmp/projects/agents/pi-braid";
   const derived = deriveProjectIdFromCwd(cwd);
@@ -198,7 +198,7 @@ test("CognitiveMemory.recall keeps same-project (derived id) and drops cross-pro
 });
 
 // ── F. addEpisode stores the provided project (writer-side contract) ────────
-test("addEpisode persists the caller-provided project id", () => {
+await test("addEpisode persists the caller-provided project id", () => {
   const state = createMemoryStoresState();
   state.currentSessionId = "session-writer-test";
   const ep = addEpisode(
