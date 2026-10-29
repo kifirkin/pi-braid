@@ -27,21 +27,39 @@
  *     are ever alive at once while the run still takes the three batches that
  *     width implies. Every other bench here passes a width at least as large
  *     as its file count, so all of them stay green in a runner that ignored
- *     the flag; this one does not.
+ *     the flag; this one does not;
+ *   - a signal while a file is in flight leaves no runner scratch dir behind:
+ *     the bench gives the nested run a TMPDIR of its own, counts the
+ *     `pi-braid-test-*` dirs in it while the file is provably alive and again
+ *     after the exit, and requires exactly one more dir while the file is
+ *     alive and the same count after the exit. The exit code the signal
+ *     defines (130 for SIGINT, 143 for SIGTERM) and the handler's
+ *     `killed N running file group` line are pinned in the same check.
  *
  * Tamper hook: PI_TEST_FIXTURE_JOBS sets the nested run's width and defaults
  * to 2. Run this file with it set to 1 to watch the concurrency assertions
  * fail - a gate whose failure has never been seen is a gate nobody has
  * tested. The width bench has its own tamper: in a copy of the runner, make
  * readJobs() return DEFAULT_JOBS instead of the flag's value, and the census
- * reports five files alive at once with their names in the message.
+ * reports five files alive at once with their names in the message. The
+ * interrupt bench's tamper is PI_RUNNER_SCRIPT: point it at a copy of the
+ * runner from before the signal path removed its scratch dirs and the arm
+ * reports the survivor by name.
  *
  * Run: node test/runtime/test-runner-parallel.mjs
  */
 
 import { strict as assert } from "node:assert";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +68,13 @@ import { assertFixtureParses } from "./lib/fixture-guard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RUNNER = resolve(HERE, "../../scripts/run-tests.mjs");
+
+/**
+ * The script the interrupt arm drives. Defaults to this repository's runner;
+ * PI_RUNNER_SCRIPT points the arm at another copy, which is how the pre-fix
+ * script is watched failing the arm instead of the arm being taken on trust.
+ */
+const INTERRUPT_RUNNER = resolve(process.env.PI_RUNNER_SCRIPT ?? RUNNER);
 const JOBS = Number(process.env.PI_TEST_FIXTURE_JOBS ?? 2);
 
 /** The pool's width in the concurrency bench; width 1 is the serial control. */
@@ -104,6 +129,16 @@ const SLEEP = `setTimeout(() => console.log("slept"), ${SLEEP_MS});
 `;
 
 /**
+ * A file that proves it started and then stays alive until a signal arrives.
+ * The proof is what makes the interrupt arm land on a live file rather than on
+ * the runner's spawn window: the bench waits for the file to write it.
+ */
+const IN_FLIGHT = `import { writeFileSync } from "node:fs";
+writeFileSync(process.env.IN_FLIGHT_PROOF, String(process.pid));
+setTimeout(() => {}, ${HANG_MS});
+`;
+
+/**
  * A file whose whole job is to live SLOT_MS and stamp its own start and end.
  *
  * The stamps are the census: two of them overlap only if the two processes were
@@ -151,7 +186,12 @@ function tree(files, dirName) {
   return dir;
 }
 
-function runRunner(dir, args, extraEnv = {}) {
+/**
+ * The environment a nested run gets: the bench as its test root, plus the
+ * arm's own settings, with the outer walk's settings dropped unless the arm
+ * sets them again.
+ */
+function runnerEnv(dir, extraEnv) {
   const env = { ...process.env, PI_TEST_ROOT: dir, ...extraEnv };
   for (const key of [
     "PI_TEST_JOBS",
@@ -161,16 +201,76 @@ function runRunner(dir, args, extraEnv = {}) {
   ]) {
     if (!(key in extraEnv)) delete env[key];
   }
+  return env;
+}
+
+function runRunner(dir, args, extraEnv = {}) {
   const startedAt = Date.now();
   const run = spawnSync(process.execPath, [RUNNER, ...args], {
     cwd: dir,
-    env,
+    env: runnerEnv(dir, extraEnv),
     encoding: "utf8",
     // The hang probe lives 60s; a run that waited it out has to be reported
     // as this file's own failure rather than as an opaque timeout here.
     timeout: 20_000,
   });
   return { ...run, wallMs: Date.now() - startedAt, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+}
+
+/** The runner scratch dirs under one TMPDIR: the population the signal path owns. */
+function scratchDirs(dir) {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("pi-braid-test-"))
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Wait for a file to appear, so a signal lands on a file that has really started. */
+async function waitForFile(file, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(file)) return true;
+    await new Promise((tick) => setTimeout(tick, 20));
+  }
+  return false;
+}
+
+/**
+ * One run over the in-flight sleeper, signalled while its only file is alive.
+ *
+ * `during` is the count of scratch dirs at the moment the file's own proof
+ * arrives - the control that says the counter can see one at all. The signal
+ * goes to the runner process, not to its group, which is what a Ctrl-C or a
+ * service manager delivers.
+ */
+async function runUntilSignal(dir, countDir, signal, proofFile) {
+  rmSync(proofFile, { force: true });
+  const before = scratchDirs(countDir);
+  const child = spawn(process.execPath, [INTERRUPT_RUNNER], {
+    cwd: dir,
+    env: runnerEnv(dir, { TMPDIR: countDir, IN_FLIGHT_PROOF: proofFile }),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => (output += chunk));
+  child.stderr.on("data", (chunk) => (output += chunk));
+  const closed = new Promise((settle) => child.on("close", (code, sig) => settle({ code, sig })));
+  const inFlight = await waitForFile(proofFile, 10_000);
+  const during = scratchDirs(countDir);
+  if (inFlight) {
+    child.kill(signal);
+  } else {
+    // Nothing to signal: end the run rather than let the sleeper hold the
+    // bench for its whole life, and let the check report the missing proof.
+    child.kill("SIGKILL");
+  }
+  const { code, sig } = await closed;
+  return { inFlight, before, during, after: scratchDirs(countDir), code, sig, output };
 }
 
 const bench = mkdtempSync(join(tmpdir(), "runner-parallel-"));
@@ -260,6 +360,23 @@ try {
   const pipeRun = runRunner(pipeDir, ["--jobs", "2"], {
     PI_TEST_TIMEOUT_MS: String(CLASSIFICATION_CAP_MS),
   });
+
+  // ── The signal path, while the only file is in flight ─────────────────────
+  const interruptDir = tree({ "test-in-flight.mjs": IN_FLIGHT }, "interrupt-");
+  const interruptTmp = join(bench, "interrupt-tmp");
+  mkdirSync(interruptTmp, { recursive: true });
+  const sigintRun = await runUntilSignal(
+    interruptDir,
+    interruptTmp,
+    "SIGINT",
+    join(bench, "sigint.proof"),
+  );
+  const sigtermRun = await runUntilSignal(
+    interruptDir,
+    interruptTmp,
+    "SIGTERM",
+    join(bench, "sigterm.proof"),
+  );
 
   check("a passing, a failing and a hanging file are classified apart", () => {
     assert.equal(
@@ -372,6 +489,39 @@ try {
       `five ${SLOT_MS}ms files at width ${PINNED_WIDTH} took ${widthRun.wallMs}ms, under the three batches ${WIDTH_FILES} files over ${PINNED_WIDTH} lanes implies`,
     );
   });
+
+  for (const [signal, expectedCode, arm] of [
+    ["SIGINT", 130, sigintRun],
+    ["SIGTERM", 143, sigtermRun],
+  ]) {
+    check(`${signal} while a file is in flight leaves no runner scratch dir`, () => {
+      assert.equal(
+        arm.inFlight,
+        true,
+        `the file never proved it was in flight, so no signal was sent: ${arm.output.slice(-400)}`,
+      );
+      assert.equal(
+        arm.during.length,
+        arm.before.length + 1,
+        `the counter saw ${arm.during.length} scratch dir(s) while the file was alive, against ${arm.before.length} before the run, so it cannot prove an absence it never saw a presence for`,
+      );
+      assert.equal(
+        arm.code,
+        expectedCode,
+        `${signal} keeps its exit code: ${arm.output.slice(-400)}`,
+      );
+      assert.match(
+        arm.output,
+        new RegExp(`${signal}: killed 1 running file group`),
+        "the handler's line names the killed group",
+      );
+      assert.equal(
+        arm.after.length,
+        arm.before.length,
+        `${signal} added ${arm.after.length - arm.before.length} scratch dir(s) (before ${arm.before.length}, after ${arm.after.length}): ${arm.after.join(", ")}`,
+      );
+    });
+  }
 } finally {
   rmSync(bench, { recursive: true, force: true });
 }

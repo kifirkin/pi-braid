@@ -423,9 +423,9 @@ function displayPath(file) {
  * SIGKILL a file's process group.
  *
  * The whole group, not the direct child: a file that started helpers leaves
- * them behind otherwise, and a helper still holding the file's TMPDIR as its
- * cwd is why the scratch remove below would fail. A no-op once the group is
- * empty, which is every path but a kill that left helpers behind.
+ * them behind otherwise, running with nobody left to read their output or
+ * reap them. A no-op once the group is empty, which is every path but a kill
+ * that left helpers behind.
  */
 function killGroup(pid) {
   if (typeof pid !== "number") return;
@@ -437,11 +437,14 @@ function killGroup(pid) {
 }
 
 /**
- * Remove a scratch dir the runner owns. A file that started helpers can
- * outlive the runner's SIGKILL for a beat with a scratch dir still its cwd;
- * macOS then refuses the recursive remove, and force:true would swallow that
- * and leave the litter. The helpers are short-lived, so retry briefly - then
- * give up rather than hang the suite on a genuinely immortal child.
+ * Remove a scratch dir the runner owns.
+ *
+ * Measured on macOS with a live child process still sitting in the directory:
+ * one recursive force remove was enough - the directory was gone immediately
+ * afterwards, with no second attempt needed. The loop below is therefore a
+ * bound rather than a fix for a known refusal: if a removal ever does fail,
+ * give up after ~2s instead of hanging the suite on a child that never lets
+ * go. On the measured path the first attempt returns and costs one existsSync.
  *
  * The retry is an await, not a spin: under a pool the event loop has to stay
  * free for the other files in flight, so blocking it here would serialise the
@@ -459,6 +462,17 @@ async function removeScratchDir(dir, attempts = 20) {
 const liveGroups = new Set();
 
 /**
+ * Every scratch dir made for a file that has not settled, so the signal path
+ * can remove them before it exits.
+ *
+ * Kept beside liveGroups because a file in flight owns both: one process group
+ * to kill and one TMPDIR to remove. finish() releases both; the signal handler
+ * never reaches finish(), so it reads this set directly. A dir the retry could
+ * not remove stays registered, which is what lets a later signal try again.
+ */
+const liveScratchDirs = new Set();
+
+/**
  * Run one file to completion, settling with what it did.
  *
  * The cap is the runner's own timer rather than a spawn option, because the
@@ -471,8 +485,10 @@ function runFile(file) {
   // A file gets its own TMPDIR: the child's own cleanup cannot run when this
   // runner SIGKILLs it at the cap, so the environment it litters in is ours to
   // remove. The removal sits in finish(), so the timeout path is covered like
-  // the rest.
+  // the rest; the set carries it for the signal path, which never reaches
+  // finish().
   const scratch = mkdtempSync(join(tmpdir(), "pi-braid-test-"));
+  liveScratchDirs.add(scratch);
   const startedAt = process.hrtime.bigint();
 
   return new Promise((settle) => {
@@ -495,17 +511,19 @@ function runFile(file) {
       if (typeof pid === "number") liveGroups.delete(pid);
       const stdout = out.join("");
       const stderr = err.join("");
-      removeScratchDir(scratch).then(() =>
-        settle({ ...payload, timedOut, ms: elapsedMs, stdout, stderr }),
-      );
+      removeScratchDir(scratch).then(() => {
+        // A dir the retry could not remove stays registered, so the signal
+        // path still tries it once more before exiting.
+        if (!existsSync(scratch)) liveScratchDirs.delete(scratch);
+        settle({ ...payload, timedOut, ms: elapsedMs, stdout, stderr });
+      });
     };
 
     try {
       child = spawn("node", [join(testDir, file)], {
         cwd: root,
         // Own process group: the cap kill must reach the helpers a file
-        // started too, and a helper left holding a scratch dir as its cwd is
-        // why the finished file's TMPDIR would otherwise leak.
+        // started too.
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, TMPDIR: scratch },
@@ -584,7 +602,9 @@ const timeouts = [];
 /**
  * A signal to the runner must not orphan the pool: every live file group is
  * killed before the exit, because each one is detached and would otherwise
- * keep running with nobody left to read or reap it.
+ * keep running with nobody left to read or reap it. The scratch dir each of
+ * those files was given is removed here too, because the settle path that
+ * normally removes it is never reached from a signal.
  */
 for (const [signal, code] of [
   ["SIGINT", 130],
@@ -593,6 +613,17 @@ for (const [signal, code] of [
   process.on(signal, () => {
     const live = [...liveGroups];
     for (const pid of live) killGroup(pid);
+    // Synchronous and swallowed: the code this signal defines and the killed
+    // groups above are the report, while a directory left behind is litter,
+    // not a failure. An error escaping here would replace the exit code with a
+    // stack trace and lose both.
+    for (const dir of liveScratchDirs) {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // The exit still has to be the signal's.
+      }
+    }
     console.log(`\n  ${signal}: killed ${live.length} running file group${live.length === 1 ? "" : "s"}`);
     process.exit(code);
   });
