@@ -156,6 +156,13 @@ export function projectsDir(): string {
   return path.join(braidDir(), "projects");
 }
 
+/** Derived-store root for the session corpus index (one shard per project),
+ *  resolved on every call. Derived data: deleting this directory only costs a
+ *  rebuild from the session files. */
+export function corpusIndexDir(): string {
+  return path.join(braidDir(), "corpus-index");
+}
+
 // ── File paths ─────────────────────────────────────────────────────────────
 
 /** lib/memory semantic + episodic store */

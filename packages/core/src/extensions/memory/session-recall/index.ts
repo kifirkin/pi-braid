@@ -45,7 +45,8 @@ import {
   dateFromPath,
   searchFiles,
   searchFilesWithInfo,
-  searchLines,
+  searchLineHits,
+  excludeSessionPath,
   walkJsonlFiles,
   tokenizeQuery,
   labelFromCwd,
@@ -54,6 +55,8 @@ import {
   MAX_SNIPPETS_PER_SESSION,
 } from "./search.js";
 import { rankSearchResults } from "./rank.js";
+import { corpusIndexFreshness, loadCorpusIndex } from "./corpus-index.js";
+import { askCorpusIndex, formatAskResult, MAX_ASK_HITS } from "./ask.js";
 import { loadSessionMessages, serializeSession, QUERY_SYSTEM_PROMPT } from "./query.js";
 import { collectSessionStats } from "./stats.js";
 import { summarizeSession, buildAnalysisInput, ANALYZE_SYSTEM_PROMPT } from "./analyze.js";
@@ -75,6 +78,7 @@ const sessionSchema = Type.Object({
   action: Type.Union(
     [
       Type.Literal("search"),
+      Type.Literal("ask"),
       Type.Literal("query"),
       Type.Literal("batch"),
       Type.Literal("stats"),
@@ -82,14 +86,15 @@ const sessionSchema = Type.Object({
       Type.Literal("context"),
     ],
     {
-      description: "Action: search | query | batch | stats | analyze | context",
+      description: "Action: search | ask | query | batch | stats | analyze | context",
     },
   ),
-  // search-only
+  // search/ask
   query: Type.Optional(
     Type.String({
       description:
-        "Search terms, space-separated; a file matching any term is returned and files carrying the whole phrase rank first. action=search.",
+        "Search terms, space-separated; a file matching any term is returned and files carrying the whole phrase rank first. action=search. " +
+        "For action=ask, the question in words: it is scored against the corpus index of user turns and the top turns are cited.",
     }),
   ),
   // query-only
@@ -140,6 +145,81 @@ function positiveLimit(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+// Helpers the search, ask and batch actions share
+
+/** Passages one `batch` result renders across all its sessions. */
+const MAX_BATCH_LINES = 20;
+
+/**
+ * The session file this call runs in.
+ *
+ * A session must never match its own transcript: the current turn's own words
+ * are the query, so it would outrank the earlier evidence it is looking for.
+ * pi exposes the file on the session manager; the environment carries it for a
+ * context without one.
+ */
+function callingSessionFile(ctx: unknown): string | null {
+  const manager = (
+    ctx as
+      | {
+          sessionManager?: {
+            getSessionFile?: () => string | null | undefined;
+            sessionFile?: string;
+          };
+        }
+      | undefined
+  )?.sessionManager;
+  const fromManager = manager?.getSessionFile?.() ?? manager?.sessionFile;
+  if (typeof fromManager === "string" && fromManager) return fromManager;
+  const fromEnv = process.env.PI_SESSION_FILE;
+  return typeof fromEnv === "string" && fromEnv ? fromEnv : null;
+}
+
+/**
+ * One matched JSONL line as a readable passage, or null when the line carries
+ * no message text. A compaction envelope holds many messages in one physical
+ * line, so the messages carrying the pattern are preferred over the first.
+ */
+function linePassage(rawLine: string, query: string): string | null {
+  const parsed = extractLineMessages(rawLine);
+  const terms = tokenizeQuery(query);
+  const shown =
+    parsed.isArchive && terms.length > 0
+      ? messagesMatchingTerms(parsed.messages, terms)
+      : parsed.messages;
+  const first = shown[0] ?? parsed.messages[0];
+  if (!first) return null;
+  const text = snippetAround(first.text, query, 110).replace(/\s+/g, " ").trim();
+  return `  [${first.role}] ${text}`;
+}
+
+/**
+ * Ranked passages across matched sessions: term coverage first, then recency,
+ * capped at MAX_BATCH_LINES. One read per session, and only for the sessions
+ * the caller's limit already selected.
+ */
+async function batchPassages(
+  sessions: Array<{ path: string }>,
+  pattern: string,
+): Promise<string[]> {
+  const scored: Array<{ weight: number; when: string; text: string }> = [];
+  for (const session of sessions) {
+    if (scored.length >= MAX_BATCH_LINES) break;
+    const hits = await searchLineHits(pattern, session.path, MAX_SNIPPETS_PER_SESSION);
+    for (const hit of hits) {
+      const passage = linePassage(hit.text, pattern);
+      if (!passage) continue;
+      scored.push({
+        weight: hit.hits,
+        when: dateFromPath(session.path),
+        text: `${passage}  \`${basename(session.path)}:${hit.line}\``,
+      });
+    }
+  }
+  scored.sort((a, b) => b.weight - a.weight || b.when.localeCompare(a.when));
+  return scored.slice(0, MAX_BATCH_LINES).map((entry) => entry.text);
+}
+
 // Extension
 
 export default function sessionRecallExtension(pi: ExtensionAPI) {
@@ -151,10 +231,11 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "session",
     label: "Session",
-    promptSnippet: "Access past session history — search, query, analyze, stats, or context",
+    promptSnippet: "Access past session history — search, ask, query, analyze, stats, or context",
     description:
-      "Access past session history: search, query a specific session, analyze multiple, batch across sessions, stats, or context (cross-session §8 adoption aggregate). " +
-      "LLM-driven except search, batch, stats, and context.",
+      "Access past session history: search, ask, query a specific session, analyze multiple, batch across sessions, stats, or context (cross-session §8 adoption aggregate). " +
+      "ask answers a question from the indexed user turns and cites every hit (project, session path, line, timestamp); it refuses when the index cannot answer. " +
+      "LLM-driven except search, ask, batch, stats, and context.",
     parameters: sessionSchema,
     execute: async (
       _toolCallId,
@@ -182,12 +263,16 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               };
             }
             const currentProject = _ctx?.cwd ? labelFromCwd(_ctx.cwd) : undefined;
+            const ownSession = callingSessionFile(_ctx);
             // The four-signal ranker also picks the bounded candidate set the
-            // role signal is refined on; see search.ts ROLE_REFINE_LIMIT.
+            // role signal is refined on; see search.ts ROLE_REFINE_LIMIT. The
+            // caller's own session is dropped before either read, so a session
+            // can never match itself (search.ts excludeSessionPath).
             const info = await searchFilesWithInfo(params.query, sessionsDir, {
-              rankCandidates: (matches) => rankSearchResults(matches, { currentProject }),
+              rankCandidates: (matches) =>
+                rankSearchResults(excludeSessionPath(matches, ownSession), { currentProject }),
             });
-            const allMatches = info.matches;
+            const allMatches = excludeSessionPath(info.matches, ownSession);
             if (allMatches.length === 0) {
               return {
                 content: [
@@ -212,18 +297,18 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
             );
             const results: string[] = [];
             const queryTerms = tokenizeQuery(params.query);
-            for (const { path: filePath, count } of fileMatches) {
+            for (const { path: filePath } of fileMatches) {
               const project = projectFromPath(filePath);
               const date = dateFromPath(filePath);
-              const matchLines = await searchLines(
+              const matchLines = await searchLineHits(
                 params.query,
                 filePath,
                 MAX_SNIPPETS_PER_SESSION,
               );
               const snippets: string[] = [];
               let archiveNote = "";
-              for (const line of matchLines) {
-                const parsed = extractLineMessages(line);
+              for (const hit of matchLines) {
+                const parsed = extractLineMessages(hit.text);
                 // A live line carries one message. A compaction envelope carries
                 // the whole archived batch inside its `originals` string, and the
                 // one physical line matches if the query is anywhere in that
@@ -236,7 +321,9 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                   : parsed.messages;
                 for (const msg of shown) {
                   if (snippets.length >= MAX_SNIPPETS_PER_SESSION) break;
-                  snippets.push(`  [${msg.role}] ${snippetAround(msg.text, params.query)}`);
+                  snippets.push(
+                    `  [${msg.role}] L${hit.line}: ${snippetAround(msg.text, params.query)}`,
+                  );
                 }
                 if (parsed.isArchive) {
                   const parts = [
@@ -263,7 +350,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               // matches.
               if (snippets.length === 0 && !archiveNote) continue;
               results.push(
-                `**${date}** - \`${project}\` - ${count} match${count > 1 ? "es" : ""}\n` +
+                `**${date}** - \`${project}\`\n` +
                   `Session: \`${filePath}\`\n` +
                   [...snippets, archiveNote].filter(Boolean).join("\n"),
               );
@@ -280,7 +367,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
               };
             }
             const output =
-              `Found ${results.length} session${results.length > 1 ? "s" : ""} matching "${params.query}":\n\n` +
+              `**Search:** "${params.query}" - matched lines from ${results.length} session${results.length > 1 ? "s" : ""}, ranked:\n\n` +
               results.join("\n\n---\n\n");
             return {
               content: [{ type: "text" as const, text: output }],
@@ -290,6 +377,75 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 backend: info.backend,
                 elapsedMs: info.elapsedMs,
                 roleRefined: info.roleRefined,
+                selfSessionExcluded: Boolean(ownSession),
+              },
+            };
+          }
+          case "ask": {
+            if (!params.query) {
+              return {
+                content: [{ type: "text" as const, text: "action=ask requires 'query' parameter" }],
+                details: { error: true, action: "ask" },
+              };
+            }
+            const projectFilter =
+              params.project === "all"
+                ? null
+                : (params.project ?? (_ctx?.cwd ? labelFromCwd(_ctx.cwd) : null));
+            const loaded = await loadCorpusIndex(projectFilter ? { project: projectFilter } : {});
+            if (!loaded.ok) {
+              const hint = projectFilter ? ` Pass project=all to query every project's shard.` : "";
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text:
+                      `The corpus index cannot answer: ${loaded.reason}.${hint} ` +
+                      `Index directory: \`${loaded.dir}\`. Build it with ` +
+                      `\`node packages/core/scripts/build-corpus-index.mjs\` (one pass over the ` +
+                      `session files), then ask again.`,
+                  },
+                ],
+                details: {
+                  error: true,
+                  action: "ask",
+                  indexDir: loaded.dir,
+                  reason: loaded.reason,
+                  shards: loaded.shards,
+                },
+              };
+            }
+            // The answer states its own freshness: a shard is derived data, so
+            // the drift is measured and printed rather than assumed away.
+            const freshness = await corpusIndexFreshness(loaded.shards, getSessionsDir(_ctx));
+            const result = askCorpusIndex(loaded.shards, params.query, {
+              project: projectFilter,
+              since: params.since ?? null,
+              limit: positiveLimit(params.limit) ?? MAX_ASK_HITS,
+              excludeSession: callingSessionFile(_ctx),
+              freshness,
+            });
+            return {
+              content: [{ type: "text" as const, text: formatAskResult(result) }],
+              details: {
+                action: "ask",
+                answered: result.answered,
+                query: params.query,
+                terms: result.terms,
+                matchedTerms: result.matched_terms,
+                unmatchedTerms: result.unmatched_terms,
+                hits: result.hits.map((hit) => ({
+                  project: hit.turn.project,
+                  session: hit.turn.session,
+                  sessionId: hit.turn.session_id,
+                  line: hit.turn.line,
+                  ts: hit.turn.ts,
+                  score: Number(hit.score.toFixed(3)),
+                })),
+                population: result.population,
+                freshness,
+                indexDir: loaded.dir,
+                selfSessionExcluded: result.self_excluded,
               },
             };
           }
@@ -422,7 +578,11 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 details: { error: true, matchCount: 0 },
               };
             }
-            const allMatches = await searchFiles(params.pattern, sessionsDir);
+            const ownSession = callingSessionFile(_ctx);
+            const allMatches = excludeSessionPath(
+              await searchFiles(params.pattern, sessionsDir),
+              ownSession,
+            );
             if (allMatches.length === 0) {
               return {
                 content: [
@@ -494,12 +654,31 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
             const limit = positiveLimit(params.limit) ?? 10;
             const topSessions = filtered.slice(0, limit);
 
+            // The result leads with passages, not a count: aggregate numbers
+            // say how much matched, never what matched. Reads are bounded by
+            // the session limit above and MAX_BATCH_LINES below.
+            const passages = await batchPassages(topSessions, params.pattern);
+
             const lines: string[] = [
               `## Batch: "${params.pattern}"`,
               ``, //
-              `**Total matches:** ${totalMatches} in ${filtered.length} session${filtered.length === 1 ? "" : "s"}`,
-              ``, //
             ];
+            if (passages.length > 0) {
+              lines.push(
+                `**Matched lines** (${passages.length} of ${totalMatches} matches, ranked):`,
+              );
+              lines.push(...passages);
+            } else {
+              lines.push(
+                `**Matched lines:** none rendered - the matching sessions carry the pattern only in ` +
+                  `text this reader does not extract (tool results, metadata).`,
+              );
+            }
+            lines.push("");
+            lines.push(
+              `**Aggregates:** ${totalMatches} match${totalMatches === 1 ? "" : "es"} in ${filtered.length} session${filtered.length === 1 ? "" : "s"}`,
+            );
+            lines.push("");
 
             // By project
             const projectEntries = Object.entries(byProject).sort((a, b) => b[1] - a[1]);
@@ -533,6 +712,8 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
                 pattern: params.pattern,
                 totalMatches,
                 sessionCount: filtered.length,
+                renderedPassages: passages.length,
+                selfSessionExcluded: Boolean(ownSession),
                 byProject: projectEntries,
                 byMonth: monthEntries,
                 topSessions: topSessions.map((m) => ({
@@ -892,7 +1073,7 @@ export default function sessionRecallExtension(pi: ExtensionAPI) {
           }
           default:
             throw new Error(
-              `Unknown session action: ${params?.action}. Use: search, query, batch, stats, analyze, context.`,
+              `Unknown session action: ${params?.action}. Use: search, ask, query, batch, stats, analyze, context.`,
             );
         }
       } catch (err) {

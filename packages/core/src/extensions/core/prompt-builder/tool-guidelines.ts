@@ -128,7 +128,7 @@ export const TOOL_GUIDELINES: Record<string, string> = {
 
   // ── session-recall (default-enabled) ──
   session:
-    "when: prior-work context needed across sessions (search/query/analyze/stats); args: action + query/sessionPath; caveat: project-scoped by default",
+    "when: prior-work context needed across sessions (search/query/analyze/stats), or a question about what was said or decided earlier (ask, which cites project, session, line and time); args: action + query/sessionPath; caveat: project-scoped by default, and ask refuses when the corpus index cannot answer",
 
   // ── error-tracking (opt-in) ──
   error:

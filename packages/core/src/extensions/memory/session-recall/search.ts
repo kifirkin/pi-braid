@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -767,28 +767,79 @@ export async function searchLines(
   filePath: string,
   limit: number,
 ): Promise<string[]> {
-  const results: Array<{ line: string; hits: number }> = [];
+  return (await searchLineHits(query, filePath, limit)).map((hit) => hit.text);
+}
+
+/** A matching line with the line number a citation needs. */
+export interface LineHit {
+  /** 1-based line number in the session file. */
+  line: number;
+  /** The raw JSONL line, as read. */
+  text: string;
+  /** Distinct query terms the line carries. */
+  hits: number;
+}
+
+/**
+ * Matching lines with their line numbers, ranked.
+ *
+ * Ranked the same way as file order: lines carrying more query terms first, and
+ * the stable sort keeps the earliest occurrence first inside a tie. The line
+ * number is what makes a rendered snippet citable - a passage an agent cannot
+ * point back to is a claim, not evidence.
+ */
+export async function searchLineHits(
+  query: string,
+  filePath: string,
+  limit: number,
+): Promise<LineHit[]> {
+  const results: LineHit[] = [];
   const queryTerms = terms(query);
   const needles = queryTerms.length > 1 ? queryTerms : [query.toLowerCase()];
 
   try {
     const content = await readFile(filePath, "utf-8");
-    for (const line of content.split("\n")) {
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] as string;
       const hits = hitsFor(line, needles);
-      if (hits > 0) results.push({ line, hits });
+      if (hits > 0) results.push({ line: i + 1, text: line, hits });
     }
   } catch {
-    // Unreadable session file — partial results are still useful for recall.
+    // Unreadable session file - partial results are still useful for recall.
   }
 
   // A file can be in the result set on one term alone, so snippet order is
   // ranked the same way as file order: lines matching more terms first, and
   // the stable sort keeps the earliest occurrence first inside a tie.
-  if (needles.length <= 1) return results.slice(0, limit).map((c) => c.line);
-  return results
-    .sort((a, b) => b.hits - a.hits)
-    .slice(0, limit)
-    .map((candidate) => candidate.line);
+  if (needles.length <= 1) return results.slice(0, limit);
+  return results.sort((a, b) => b.hits - a.hits).slice(0, limit);
+}
+
+/**
+ * Drop the calling session's own file from a match list.
+ *
+ * A session that matches its own transcript first is the shape that made the
+ * archive unreadable: the agent's current words crowd out the human's earlier
+ * ones. The comparison resolves symlinked spellings of the same file, so a
+ * match reached through another path cannot slip past it.
+ */
+export function excludeSessionPath<T extends { path: string }>(
+  matches: T[],
+  sessionFile: string | null | undefined,
+): T[] {
+  if (!sessionFile) return matches;
+  const target = resolveReal(sessionFile);
+  return matches.filter((match) => resolveReal(match.path) !== target);
+}
+
+/** A path with its symlinks resolved where it exists, else its lexical form. */
+function resolveReal(filePath: string): string {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return filePath;
+  }
 }
 
 function hitsFor(line: string, needles: string[]): number {
