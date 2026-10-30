@@ -84,6 +84,7 @@ const CONST_SOURCES = {
   OVER_CORRECTION_GATE_DEFAULTS: SETTINGS,
   CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS: SETTINGS,
   SKILLS_RANKING_DEFAULT: SETTINGS,
+  SKILLS_INFORM_DEFAULT: SETTINGS,
   PRESGUARD_DEFAULT_ENABLED: "packages/providers/presend-guard.ts",
   DEFAULT_PROBE_FRESHNESS_MS: "packages/providers/ring-lifecycle.ts",
   DEFAULT_OUTAGE_CONFIG: "packages/providers/outage-watch.ts",
@@ -249,8 +250,16 @@ const MECHANICAL_ROWS = [
     type: "string",
     description:
       "Tier policy for the list_skills relevance ranking (keyword; auto/model reserved).",
-    read: { file: SETTINGS, line: 602, evidence: "readSettings().braid?.skills?.ranking" },
+    read: { file: SETTINGS, line: 627, evidence: "readSettings().braid?.skills?.ranking" },
     mech: { const: "SKILLS_RANKING_DEFAULT", prop: null },
+  },
+  {
+    path: "braid.skills.inform",
+    type: "string",
+    description:
+      "At-use line after a completed call in a family a skill's governs: declaration names (off; inform enables).",
+    read: { file: SETTINGS, line: 660, evidence: "readSettings().braid?.skills?.inform" },
+    mech: { const: "SKILLS_INFORM_DEFAULT", prop: null },
   },
   {
     path: "braid.telegram.sendMaxChars",

@@ -346,7 +346,10 @@ export function recordDriftDrop(tracker: DriftTracker): void {
   tracker.entries = {};
 }
 
-/** Note that a skill surface (a suggestion or a SKILL.md read) just landed. */
+/**
+ * Note that a skill surface (a suggestion, an at-use line, or a SKILL.md read)
+ * just landed.
+ */
 export function noteDriftSurface(tracker: DriftTracker): void {
   tracker.lastSurface = tracker.calls;
 }

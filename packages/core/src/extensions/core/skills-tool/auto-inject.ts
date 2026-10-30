@@ -95,6 +95,15 @@
  *      and never within that window of a suggestion or a SKILL.md read). The
  *      rule and its bounds live in loading-guidance.ts beside the floor text
  *      the line points at; this module only wires them to tool results.
+ *  11. At-use inform (`braid.skills.inform`, default off): a COMPLETED call in
+ *      a family a visible skill's file declares with `governs:` and no read of
+ *      that body on the session record gets one steer line naming the file and
+ *      the obligation. Once per session per skill, suppressed by the same
+ *      obligation record the legs already write (the `informed` leg). It
+ *      observes a call that already ran and can only add a line: no refusal,
+ *      no delay, and no rewrite of the result it arrives after. This is the
+ *      timed alternative to refusing the call, and the difference is the whole
+ *      point of it.
  *
  * Structure matches the existing steer whisper pattern used by topic-drift,
  * turn-outcome, compaction-retry, context-lifecycle, and others.
@@ -128,6 +137,8 @@ import type { SkillApplicabilityVerdict } from "./applicability.js";
 import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import { toolFamilyToken } from "./skill-families.js";
+import { getSkillsInformMode } from "../../../lib/config/braid-settings.js";
+import type { SkillsInformMode } from "../../../lib/config/braid-settings.js";
 import {
   advanceDrift,
   driftDirectoryFor,
@@ -296,6 +307,12 @@ interface AutoInjectState {
   applicability: ApplicabilityState;
   /** What the session did with each skill body it met (see ObligationState). */
   obligations: ObligationState;
+  /**
+   * The resolved `braid.skills.inform` policy, read once per session. A
+   * settings edit takes effect in the next session, the same way the session
+   * profile does, so a tool_result never reads and parses settings.json.
+   */
+  informMode?: SkillsInformMode;
 }
 
 /**
@@ -1305,6 +1322,7 @@ function legsFor(state: AutoInjectState, name: string): ObligationLegs {
       skill: name,
       suggested: false,
       listed: false,
+      informed: false,
       read: false,
       called: false,
       applied: false,
@@ -1323,7 +1341,14 @@ function legsFor(state: AutoInjectState, name: string): ObligationLegs {
 function appendObligationRow(ctx: ExtensionContext, state: AutoInjectState, name: string): void {
   const legs = state.obligations.legs.get(name);
   if (!legs) return;
-  const signature = [legs.suggested, legs.listed, legs.read, legs.called, legs.applied]
+  const signature = [
+    legs.suggested,
+    legs.listed,
+    legs.informed,
+    legs.read,
+    legs.called,
+    legs.applied,
+  ]
     .map((flag) => (flag ? "1" : "0"))
     .join("");
   if (state.obligations.written.get(name) === signature) return;
@@ -1442,6 +1467,95 @@ function stepFamilyCalls(
 }
 
 /**
+ * The at-use line: the payload names the file and the obligation, and nothing
+ * else.
+ *
+ * Both facts are derivable from the declaration and the catalog entry. The path
+ * is the cached skill's own file path, never constructed; the family is the
+ * token the call's own name yields, which is the same token the declaration is
+ * written in. No skill name is invented in code, no tool argument is echoed,
+ * and there is nothing here for a model to reconcile with the result it just
+ * received. Pure.
+ */
+export function formatInformPayload(filePath: string, family: string): string {
+  return (
+    `[SKILL INFORM] \`${filePath}\` governs the \`${family}\` tool family; ` +
+    `a call in it just ran, and that file has not been read this session. ` +
+    `Read it before the next call in the family.`
+  );
+}
+
+/**
+ * Inform at use: a COMPLETED call landed in a tool family a visible skill's
+ * file declares with `governs:`, and no read of that body is on the session
+ * record. One steer line, once per session per skill.
+ *
+ * This is the timed alternative to refusing the call. It runs after the result
+ * exists, it touches no result, and the only thing it can do is add a line to
+ * the stream; every gating decision below can only make it quieter. The
+ * suppression is the obligation record itself (the `informed` leg, beside the
+ * `read` leg), not a parallel set, so the record that says what the session did
+ * and the record that stops a second line are one row.
+ *
+ * The applied leg counts a failed call because a refusal would fire before the
+ * tool ran and could not know the outcome; this line does not, because its
+ * premise is a call that ran in a family the body governs.
+ */
+function stepInform(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  ev: ToolResultEvent,
+): void {
+  state.informMode ??= getSkillsInformMode();
+  if (state.informMode !== "inform") return;
+  if (!ev?.toolName) return;
+  if (ev.isError) return;
+  const family = toolFamilyToken(ev.toolName);
+  if (!family) return;
+  for (const skill of _skillsCache) {
+    // The at-use line is an advertisement with a path: a body the prompt
+    // deliberately hides from the model must not be named by it either.
+    if (skill.disableModelInvocation) continue;
+    if (!skill.families?.length || !skill.families.includes(family)) continue;
+    const held = state.obligations.legs.get(skill.name);
+    if (held?.read) continue; // the body is in context; the obligation is met
+    if (held?.informed) continue; // one line per session per skill
+    const delivered = sendTrackedMessage(
+      pi,
+      {
+        customType: "skills-inform",
+        content: [{ type: "text" as const, text: formatInformPayload(skill.filePath, family) }],
+        display: true,
+        details: {
+          [BRAID_INJECTED]: true,
+          [BRAID_SOURCE]: "skills-auto-inject",
+          skill: skill.name,
+          family,
+        },
+      },
+      { delivery: "park", deliverAs: "steer" },
+      { type: "context", source: "skills-auto-inject" },
+      // The module's own budget is the bound: one line per session per skill,
+      // and only on a call in a family the body itself declares. A flood cap
+      // would drop the line in exactly the call it exists for.
+      { bypassFloodCap: true },
+    );
+    if (!delivered) {
+      log.debug("[skills-auto-inject] at-use line suppressed before delivery; not counted");
+      continue;
+    }
+    const legs = legsFor(state, skill.name);
+    legs.informed = true;
+    appendObligationRow(ctx, state, skill.name);
+    // The line is a skill surface: the drift trigger stays quiet for its
+    // window, because the pointer it exists to supply has just landed.
+    noteDriftSurface(state.drift);
+    log.info(`[skills-auto-inject] at-use line for "${skill.name}" (family ${family})`);
+  }
+}
+
+/**
  * Fire the drift line when the work has moved into a new work area (the rule
  * and its bounds live in loading-guidance.ts, beside the floor text the line
  * points at). The floor is the catalog against the prompt that was in view;
@@ -1517,6 +1631,9 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       // detector so a SKILL.md read of the very tool call in flight is already
       // on record when the family is looked up.
       stepFamilyCalls(ctx, state, ev);
+      // The at-use line runs after both: it needs the read leg (a read in this
+      // very result silences it) and it does not depend on the applied leg.
+      stepInform(pi, ctx, state, ev);
       stepDrift(pi, ctx, state, ev);
     } catch {
       // best-effort — never break the tool loop over a counter or a whisper

@@ -88,13 +88,17 @@ interface BraidConfig {
    * Skills-layer config. `ranking` picks the tier policy of the `list_skills`
    * relevance ranking: "auto" (default: the deterministic scorer answers, and
    * the utility model is asked only when that answer is ambiguous), "keyword"
-   * (never call the model), "model" (always).
+   * (never call the model), "model" (always). `inform` enables the at-use
+   * line: after a call in a tool family a visible skill declares with
+   * `governs:`, one steer names the file and the obligation to read it.
    *
-   * Example: "braid": { "skills": { "ranking": "keyword" } }
+   * Example: "braid": { "skills": { "ranking": "keyword", "inform": "inform" } }
    */
   skills?: {
-    /** "auto" | "keyword" | "model" — an unknown value falls back to "auto". */
+    /** "auto" | "keyword" | "model" - an unknown value falls back to "auto". */
     ranking?: string;
+    /** "off" (default) | "inform" - an unknown value falls back to "off". */
+    inform?: string;
   };
   /**
    * Memory-layer config. Review-before-write quality gate on durable episode
@@ -621,6 +625,41 @@ export function resolveSkillsRankingMode(raw: unknown): SkillsRankingMode {
 /** Read braid.skills.ranking from settings.json (default: "keyword"). */
 export function getSkillsRankingMode(): SkillsRankingMode {
   return resolveSkillsRankingMode(readSettings().braid?.skills?.ranking);
+}
+
+// ── skills inform (braid.skills.inform) ────────────────────────────────────
+
+/**
+ * What the skills module does when a completed call lands in a tool family a
+ * visible skill's file declares with `governs:` and no read of that body is on
+ * the session record.
+ *
+ *   off    - nothing. The declaration still feeds the applied leg of the
+ *            session record; it is never spoken about. The default, because a
+ *            skill body already has a voice in the suggestion whisper and a
+ *            second one must be asked for.
+ *   inform - one steer line per session per skill: the file path and the
+ *            obligation. It observes a call that already ran; it never
+ *            refuses, delays or rewrites one.
+ */
+export type SkillsInformMode = "off" | "inform";
+
+export const SKILLS_INFORM_DEFAULT: SkillsInformMode = "off";
+
+/**
+ * Resolve the inform mode from a raw setting value. Unknown or malformed
+ * values fall back to the default: a typo must never turn a whisper on. Pure.
+ */
+export function resolveSkillsInformMode(raw: unknown): SkillsInformMode {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return value === "inform" || value === "off"
+    ? (value as SkillsInformMode)
+    : SKILLS_INFORM_DEFAULT;
+}
+
+/** Read braid.skills.inform from settings.json (default: "off"). */
+export function getSkillsInformMode(): SkillsInformMode {
+  return resolveSkillsInformMode(readSettings().braid?.skills?.inform);
 }
 
 // ── stale toolResult offload (braid.context.staleToolResultOffload) ────

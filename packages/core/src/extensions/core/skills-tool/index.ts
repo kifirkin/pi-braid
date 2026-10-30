@@ -36,7 +36,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { createLogger } from "../../../lib/core/logger.js";
-import { getSkillsRankingMode } from "../../../lib/config/braid-settings.js";
+import { getSkillsInformMode, getSkillsRankingMode } from "../../../lib/config/braid-settings.js";
 import type { SkillsRankingMode } from "../../../lib/config/braid-settings.js";
 import {
   registerAutoInject,
@@ -58,6 +58,7 @@ import {
   readSkillReach,
 } from "./reach.js";
 import {
+  getInformRate,
   getMonthlyAdoptionRollup,
   getObligationRate,
   getSessionApplicability,
@@ -477,6 +478,13 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       // obligation row at all: a build that predates the leg reads the same
       // sessions and must see the same payload.
       const obligationRate = getObligationRate();
+      // The at-use line's counters, folded from the same store as the channel
+      // arm beside them. Absent when the mode is off and no row was ever
+      // written, so a reader of a pre-inform store is unchanged.
+      const informRate = getInformRate();
+      const informMode = getSkillsInformMode();
+      const inform =
+        informMode !== "off" || informRate ? { mode: informMode, ...informRate } : undefined;
       return {
         content: [
           {
@@ -500,6 +508,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
                 ...(applicability ? { applicability } : {}),
                 ...(obligations ? { obligations } : {}),
                 ...(obligationRate ? { obligationRate } : {}),
+                ...(inform ? { inform } : {}),
                 discovery: {
                   // Whether the stock skill catalog sits in the persisted
                   // transcript (it re-enters via pi's post-compaction
@@ -531,6 +540,17 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
               }
             : {}),
           ...(obligationRate ? { obligationRate } : {}),
+          ...(inform
+            ? {
+                inform: {
+                  mode: informMode,
+                  informs: informRate?.informs ?? 0,
+                  readFollowed: informRate?.readFollowed ?? 0,
+                  conversion: informRate?.conversion ?? 0,
+                  verdict: informRate?.verdict ?? "undecided",
+                },
+              }
+            : {}),
         },
       };
     },

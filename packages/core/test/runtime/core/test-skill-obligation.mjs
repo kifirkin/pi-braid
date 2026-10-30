@@ -140,6 +140,7 @@ const legs = (skill, over = {}) => ({
   skill,
   suggested: false,
   listed: false,
+  informed: false,
   read: false,
   called: false,
   applied: false,
@@ -296,9 +297,9 @@ await test("listed and read legs land, and a repeated leg writes one row", async
 await test("the fold ORs the legs, keeps the newest session facts, and drops malformed rows", () => {
   const base = { kind: "obligation", sessionId: "fold-me", role: "tester", month: "2026-10", updatedAt: "2026-10-01T00:00:00.000Z", skill: "a" };
   const folded = foldObligationRecords([
-    { ...base, suggested: true, listed: false, read: false, called: false, applied: false },
-    { ...base, updatedAt: "2026-10-02T00:00:00.000Z", role: "later", suggested: false, listed: true, read: true, called: false, applied: false },
-    { ...base, skill: "b", suggested: false, listed: false, read: false, called: true, applied: false },
+    { ...base, suggested: true, listed: false, informed: false, read: false, called: false, applied: false },
+    { ...base, updatedAt: "2026-10-02T00:00:00.000Z", role: "later", suggested: false, listed: true, informed: false, read: true, called: false, applied: false },
+    { ...base, skill: "b", suggested: false, listed: false, informed: false, read: false, called: true, applied: false },
   ]);
   assert.equal(folded.length, 1);
   assert.equal(folded[0].role, "later", "the newest row carries the session facts");
@@ -319,8 +320,8 @@ await test("the reader keeps the two records' vocabularies apart", () => {
   assert.equal("evidence" in row, false);
   assert.deepEqual(
     Object.keys(row).sort(),
-    ["applied", "called", "kind", "listed", "month", "read", "role", "sessionId", "skill", "suggested", "updatedAt"],
-    "the four adoption legs, the call facts, and the session identity — nothing else",
+    ["applied", "called", "informed", "kind", "listed", "month", "read", "role", "sessionId", "skill", "suggested", "updatedAt"],
+    "the offered surfaces, the call facts, and the session identity - nothing else",
   );
 });
 

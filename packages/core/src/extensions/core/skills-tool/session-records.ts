@@ -628,9 +628,10 @@ export function getSessionApplicability(
  * no family; most declare none, and an obligation that names no family is
  * satisfied by the read alone.
  *
- * `suggested` and `listed` are the surfaces that made the body findable in
- * this session (a delivered suggestion, a list_skills row); they carry the
- * "was it offered" half of adoption, which the call facts cannot.
+ * `suggested`, `listed` and `informed` are the surfaces that offered the body
+ * in this session (a delivered suggestion, a list_skills row, a delivered
+ * at-use line); they carry the "was it offered" half of adoption, which the
+ * call facts cannot.
  */
 export interface ObligationLegRecord {
   kind: "obligation";
@@ -641,16 +642,19 @@ export interface ObligationLegRecord {
   skill: string;
   suggested: boolean;
   listed: boolean;
+  /** An at-use inform was DELIVERED for this body in this session. */
+  informed: boolean;
   read: boolean;
   called: boolean;
   applied: boolean;
 }
 
-/** A record's five legs, read back as one row per skill. */
+/** A record's six legs, read back as one row per skill. */
 export interface ObligationLegs {
   skill: string;
   suggested: boolean;
   listed: boolean;
+  informed: boolean;
   read: boolean;
   called: boolean;
   applied: boolean;
@@ -683,6 +687,7 @@ export function normalizeObligationRecord(raw: unknown): ObligationLegRecord | n
     skill: r.skill,
     suggested: r.suggested === true,
     listed: r.listed === true,
+    informed: r.informed === true,
     read: r.read === true,
     called: r.called === true,
     applied: r.applied === true,
@@ -717,11 +722,11 @@ export function readObligationRecords(
 }
 
 /**
- * Fold a session's obligation rows into one record: the five legs OR across
- * every row, so a row that saw one leg never erases a leg a later row did not
- * have. `called`/`applied` are written once per skill, so the OR is exact
- * rather than convenient. A torn or duplicated row folds; a malformed one is
- * dropped at normalize, before this sees it.
+ * Fold a session's obligation rows into one record: the legs OR across every
+ * row, so a row that saw one leg never erases a leg a later row did not have.
+ * `called`/`applied` are written once per skill, so the OR is exact rather
+ * than convenient. A torn or duplicated row folds; a malformed one is dropped
+ * at normalize, before this sees it.
  */
 export function foldObligationRecords(records: ObligationLegRecord[]): SessionObligation[] {
   const bySession = new Map<string, SessionObligation>();
@@ -747,6 +752,7 @@ export function foldObligationRecords(records: ObligationLegRecord[]): SessionOb
         skill: rec.skill,
         suggested: rec.suggested,
         listed: rec.listed,
+        informed: rec.informed,
         read: rec.read,
         called: rec.called,
         applied: rec.applied,
@@ -755,6 +761,7 @@ export function foldObligationRecords(records: ObligationLegRecord[]): SessionOb
     }
     held.suggested = held.suggested || rec.suggested;
     held.listed = held.listed || rec.listed;
+    held.informed = held.informed || rec.informed;
     held.read = held.read || rec.read;
     held.called = held.called || rec.called;
     held.applied = held.applied || rec.applied;
@@ -780,6 +787,7 @@ export function recordObligationLegs(
       skill: legs.skill,
       suggested: legs.suggested,
       listed: legs.listed,
+      informed: legs.informed,
       read: legs.read,
       called: legs.called,
       applied: legs.applied,
@@ -863,6 +871,7 @@ export function judgeSessionObligations(
       skill,
       suggested: false,
       listed: false,
+      informed: false,
       read: false,
       called: false,
       applied: false,
@@ -982,6 +991,189 @@ export function getObligationRate(
       foldApplicabilityRecords(readApplicabilityRecords(storePath)),
       foldObligationRecords(obligationRecords),
     );
+  } catch (err) {
+    reportRecordFailure(err);
+    return undefined;
+  }
+}
+
+// The at-use inform, measured against the suggestion channel
+
+/**
+ * The suggestion channel's pair conversion as published from session-file
+ * mining: 95 read-followed pairs out of 506 delivered ones, Wilson 15.6-22.4.
+ *
+ * It is a measurement constant, not a target: it stands in as the comparison
+ * arm only while the same store carries too few suggested pairs of its own to
+ * stand on its own (see INFORM_DECISION_MIN_PAIRS). A two-pair store arm that
+ * happens to have converted nothing is not a baseline; it is a sample. The
+ * moment the store holds the floor of suggested pairs, their own fold answers
+ * and this number is not read.
+ */
+export const CHANNEL_PUBLISHED_CONVERSION = 0.188;
+
+/** Wilson 95% bounds for that published figure, as proportions. */
+export const CHANNEL_PUBLISHED_INTERVAL: WilsonInterval = { lower: 0.156, upper: 0.224 };
+
+/**
+ * Informs needed before the comparison decides anything. Below this the
+ * answer is "undecided": a verdict from a handful of pairs would be a verdict
+ * about the sample, and the report's decision rule says so in writing before
+ * the first inform lands. The same floor governs the comparison arm: a store
+ * carrying fewer suggested pairs than this is not a baseline to beat.
+ */
+export const INFORM_DECISION_MIN_PAIRS = 20;
+
+/** A two-sided interval on a proportion, both ends in 0-1. */
+export interface WilsonInterval {
+  lower: number;
+  upper: number;
+}
+
+/**
+ * Wilson score interval for k successes in n trials (95% by default). Chosen
+ * over the normal approximation because the inform population is small and a
+ * small-sample interval is the only one that can say "undecided" honestly.
+ * Returns zeros for n = 0. Pure.
+ */
+export function wilsonInterval(successes: number, total: number, z = 1.959963985): WilsonInterval {
+  if (!total || total < 0) return { lower: 0, upper: 0 };
+  const p = Math.min(1, Math.max(0, successes / total));
+  const denominator = 1 + (z * z) / total;
+  const centre = (p + (z * z) / (2 * total)) / denominator;
+  const half = (z * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total))) / denominator;
+  return {
+    lower: round4(Math.max(0, centre - half)),
+    upper: round4(Math.min(1, centre + half)),
+  };
+}
+
+/** One skill's at-use pairs: informs delivered, and how many a read followed. */
+export interface InformSkillRow {
+  skill: string;
+  informs: number;
+  readFollowed: number;
+}
+
+/** Where the comparison arm's number came from. */
+export type ChannelBaselineSource = "store" | "published";
+
+/**
+ * The at-use line's numbers beside the suggestion channel's, same store.
+ *
+ * A pair is (session, skill). An inform pair carries `informed: true`; it
+ * converted when that session also carries the `read` leg for the same skill.
+ * The read leg is ordered by construction here: a read silences the inform, so
+ * a pair that has both legs can only have read after the line landed.
+ */
+export interface InformRate {
+  /** Inform pairs in the store. */
+  informs: number;
+  /** Of those, pairs whose session carries the read leg. */
+  readFollowed: number;
+  /** readFollowed / informs, 4 decimals; 0 when no inform. */
+  conversion: number;
+  /** Wilson 95% bounds on `conversion`. */
+  ci: WilsonInterval;
+  /** Per skill, in first-seen order (only skills with an inform). */
+  skills: InformSkillRow[];
+  /** The comparison arm: the same fold's suggested pairs. */
+  channel: {
+    pairs: number;
+    readFollowed: number;
+    conversion: number;
+    ci: WilsonInterval;
+    source: ChannelBaselineSource;
+  };
+  /** conversion - channel.conversion, in percentage points, 2 decimals. */
+  gapPoints: number;
+  /** False below INFORM_DECISION_MIN_PAIRS: no verdict is derivable. */
+  decidable: boolean;
+  /** undecided | beats | noise (see the report's pre-registered rule). */
+  verdict: "undecided" | "beats" | "noise";
+}
+
+/**
+ * Fold the obligation rows into the at-use rate and the channel arm beside it.
+ * Pure.
+ *
+ * The rule, applied literally: fewer than the floor is undecided; at the floor
+ * the inform beats the channel only when its point estimate is above the
+ * channel's AND its lower Wilson bound is above it too. Anything else at the
+ * floor is noise, which is the falsifier firing rather than a neutral result.
+ */
+export function computeInformRate(obligations: SessionObligation[]): InformRate {
+  let informs = 0;
+  let informRead = 0;
+  let channelPairs = 0;
+  let channelRead = 0;
+  const bySkill = new Map<string, InformSkillRow>();
+  for (const session of obligations) {
+    for (const legs of session.skills) {
+      if (legs.suggested) {
+        channelPairs++;
+        if (legs.read) channelRead++;
+      }
+      if (!legs.informed) continue;
+      informs++;
+      if (legs.read) informRead++;
+      let row = bySkill.get(legs.skill);
+      if (!row) {
+        row = { skill: legs.skill, informs: 0, readFollowed: 0 };
+        bySkill.set(legs.skill, row);
+      }
+      row.informs++;
+      if (legs.read) row.readFollowed++;
+    }
+  }
+  const conversion = informs ? round4(informRead / informs) : 0;
+  const channel =
+    channelPairs >= INFORM_DECISION_MIN_PAIRS
+      ? {
+          pairs: channelPairs,
+          readFollowed: channelRead,
+          conversion: round4(channelRead / channelPairs),
+          ci: wilsonInterval(channelRead, channelPairs),
+          source: "store" as ChannelBaselineSource,
+        }
+      : {
+          pairs: channelPairs,
+          readFollowed: channelRead,
+          conversion: CHANNEL_PUBLISHED_CONVERSION,
+          ci: CHANNEL_PUBLISHED_INTERVAL,
+          source: "published" as ChannelBaselineSource,
+        };
+  const ci = wilsonInterval(informRead, informs);
+  const decidable = informs >= INFORM_DECISION_MIN_PAIRS;
+  const verdict: InformRate["verdict"] = !decidable
+    ? "undecided"
+    : conversion > channel.conversion && ci.lower > channel.conversion
+      ? "beats"
+      : "noise";
+  return {
+    informs,
+    readFollowed: informRead,
+    conversion,
+    ci,
+    skills: [...bySkill.values()],
+    channel,
+    gapPoints: Math.round((conversion - channel.conversion) * 10000) / 100,
+    decidable,
+    verdict,
+  };
+}
+
+/**
+ * The store-wide at-use rate, or undefined when the store carries no inform row
+ * at all. Undefined keeps every existing `skill_stats` payload byte-identical
+ * for a build or an install that never emitted one.
+ */
+export function getInformRate(options: { storePath?: string } = {}): InformRate | undefined {
+  try {
+    const storePath = options.storePath ?? getSkillsSessionsFilePath();
+    const records = readObligationRecords(storePath);
+    if (!records.some((rec) => rec.informed)) return undefined;
+    return computeInformRate(foldObligationRecords(records));
   } catch (err) {
     reportRecordFailure(err);
     return undefined;
