@@ -131,13 +131,17 @@ function makePi() {
   return pi;
 }
 
-/** One tool call the way the real handlers see it. */
-async function callTool(pi, ctx, tool, id) {
-  // enforcement tool_call handler records the loop-state history entry
-  recordToolCall(getToolLoopState(ctx), tool);
-  // ...and pushes to the enforcement toolLog (register-tool-call.ts line ~88).
-  // The dreamer's detectToolLoopFromSequence path 1 reads gs.toolLog, so the
-  // sequence must reach it for the 4-emitter drive to be honest.
+let callId = 0;
+
+/** One tool call the way the real handlers see it. The 4th argument is the
+ *  call's arguments: a loop is the same call repeating, so a stuck-loop
+ *  scenario passes the same input every time and a chain scenario passes a
+ *  new one. */
+async function callTool(pi, ctx, tool, input) {
+  const id = `call${callId++}`;
+  // enforcement tool_call handler records the loop-state entry (tool + the
+  // argument identity) and the enforcement toolLog (names only).
+  recordToolCall(getToolLoopState(ctx), tool, input);
   getEnforcementState(ctx).toolLog.push(tool);
   // analytics tool_execution_start/end build the per-turn sequence
   await pi.fire(TOOL_EXECUTION_START, { toolCallId: id, toolName: tool }, ctx);
@@ -158,6 +162,9 @@ async function endTurn(pi, ctx, tools) {
   // production order via handler-registry.ts)
   await dreamerHandler(pi, event, ctx);
 }
+
+/** The one call a stuck-loop scenario repeats: identical arguments every time. */
+const STUCK_GREP = { pattern: "needle", path: "src" };
 
 function whisperText(s) {
   return s.params?.content?.find((c) => c.type === "text")?.text ?? "";
@@ -181,8 +188,8 @@ await test("consolidated stuck-loop delivers exactly ONE whisper (no wake)", asy
   // (12 turns total: the analytics dominance window needs >=10 per-turn
   // entries to cross its own addiction gate, proving the fold below.)
   for (let turn = 0; turn < 12; turn++) {
-    await callTool(pi, ctx, "grep", `g${turn * 2}`);
-    await callTool(pi, ctx, "grep", `g${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
 
@@ -242,16 +249,16 @@ await test("continuing the same stuck-loop does not re-emit (per-episode single 
   const ctx = { cwd: "/tmp/loop-emitter-continued" };
 
   for (let turn = 0; turn < 8; turn++) {
-    await callTool(pi, ctx, "grep", `g${turn * 2}`);
-    await callTool(pi, ctx, "grep", `g${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
   assert.equal(pi.sent.length, 1, "first episode: one whisper");
 
   // 4 more turns of the same stuck loop (inside the 8-turn cooldown)
   for (let turn = 8; turn < 12; turn++) {
-    await callTool(pi, ctx, "grep", `g${turn * 2}`);
-    await callTool(pi, ctx, "grep", `g${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
 
@@ -277,23 +284,23 @@ await test("a genuinely new stuck-loop re-fires the surviving detector exactly o
 
   // Episode 1: 16 consecutive grep
   for (let turn = 0; turn < 8; turn++) {
-    await callTool(pi, ctx, "grep", `a${turn * 2}`);
-    await callTool(pi, ctx, "grep", `a${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
   assert.equal(pi.sent.length, 1, "episode 1: exactly one whisper");
 
   // Break the loop for 9 turns (non-grep work; elapses the 8-turn cooldown)
   for (let turn = 0; turn < 9; turn++) {
-    await callTool(pi, ctx, "bash", `b${turn}`);
-    await callTool(pi, ctx, "read", `r${turn}`);
+    await callTool(pi, ctx, "bash", { command: `git status --short # turn ${turn}` });
+    await callTool(pi, ctx, "read", { path: `/tmp/wt-break-${turn}.txt` });
     await endTurn(pi, ctx, ["bash", "read"]);
   }
 
   // Episode 2: 16 consecutive grep again
   for (let turn = 0; turn < 8; turn++) {
-    await callTool(pi, ctx, "grep", `c${turn * 2}`);
-    await callTool(pi, ctx, "grep", `c${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
 
@@ -330,20 +337,23 @@ await test("intentional-use inside the window suppresses the loop whisper entire
   // the
   // authoritative detector fired a loop whisper here (the exact false-positive
   // class the threshold raise targeted).
-  await callTool(pi, ctx, "think", "t0");
+  await callTool(pi, ctx, "think", { type: "reflect", decision: "re-evaluate the grep target" });
   for (let turn = 0; turn < 8; turn++) {
-    await callTool(pi, ctx, "grep", `g${turn * 2}`);
-    await callTool(pi, ctx, "grep", `g${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
 
   // The loop state still holds 16 consecutive greps + the think in-window...
   const ls = getToolLoopState(ctx);
   assert.ok(
-    ls.history.filter((t) => t === "grep").length >= TOOL_LOOP_THRESHOLD,
+    ls.history.filter((c) => c.tool === "grep").length >= TOOL_LOOP_THRESHOLD,
     "history recorded 16+ consecutive greps (the fixture genuinely reached the threshold)",
   );
-  assert.ok(ls.history.includes("think"), "think is inside the window");
+  assert.ok(
+    ls.history.some((c) => c.tool === "think"),
+    "think is inside the window",
+  );
   // ...but the authoritative detector refuses to call it a loop.
   const verdict = detectToolLoop(ls);
   assert.equal(
@@ -380,8 +390,8 @@ await test("dreamer loop-path whisper is folded: exactly ONE enforcement deliver
   // 16 consecutive greps drive path 1 in BOTH the enforcement detector and the
   // dreamer (detectToolLoopFromSequence on gs.toolLog).
   for (let turn = 0; turn < 8; turn++) {
-    await callTool(pi, ctx, "grep", `g${turn * 2}`);
-    await callTool(pi, ctx, "grep", `g${turn * 2 + 1}`);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
+    await callTool(pi, ctx, "grep", STUCK_GREP);
     await endTurn(pi, ctx, ["grep", "grep"]);
   }
 

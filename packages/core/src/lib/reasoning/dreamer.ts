@@ -12,6 +12,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getExtensionState } from "../state/extension-state.js";
 import { dreamerCooldownMs as dynamicCooldown } from "../reasoning/advice-tracker.js";
 import { detectToolLoopFromSequence } from "../detection/tool-loop-detector.js";
+import type { ToolCallLike } from "../detection/tool-loop-detector.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,6 +132,7 @@ export function dream(
   ctx: ExtensionContext,
   currentSequence: string[],
   historicalSequences?: string[][],
+  loopSequence?: ToolCallLike[],
 ): DreamAdvice | null {
   const state = getState(ctx);
   const now = Date.now();
@@ -139,12 +141,17 @@ export function dream(
   if (now - state.lastDreamAt < dynamicCooldown) return null;
 
   // Path 1: detect a tool loop in the current sequence (consecutive-
-  // same-tool heuristic). The threshold, window, cooldown, and message
-  // format are all owned by lib/detection/tool-loop-detector - the single
-  // source of truth. Delegating avoids the contradictory-whisper failure:
-  // separate detectors with separate thresholds firing in one turn hand
-  // the agent conflicting remedies.
-  const loopResult = detectToolLoopFromSequence(currentSequence);
+  // same-call heuristic). The threshold, window, cooldown, identity rule, and
+  // message format are all owned by lib/detection/tool-loop-detector - the
+  // single source of truth. Delegating avoids the contradictory-whisper
+  // failure: separate detectors with separate thresholds firing in one turn
+  // hand the agent conflicting remedies.
+  //
+  // loopSequence carries the recorded calls (name + argument identity). A
+  // caller that holds only the name log passes nothing, and the detector then
+  // returns no loop: names cannot show one call repeating, only one name
+  // repeating.
+  const loopResult = detectToolLoopFromSequence(loopSequence ?? currentSequence);
   if (loopResult.isLoop) {
     state.lastDreamAt = now;
     return {

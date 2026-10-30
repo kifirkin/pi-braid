@@ -46,9 +46,12 @@ export function registerToolCallHandler(pi: ExtensionAPI): void {
 
     recordToolCall(toolName, ctx);
 
-    // Record tool call for tool-loop-detector (per-turn tool sets)
+    // Record tool call for tool-loop-detector (per-turn tool sets). The
+    // arguments ride along: a loop is the same call repeating, and the tool
+    // name alone cannot say whether sixteen `bash` calls are sixteen commands
+    // or one command sixteen times.
     const loopState = getToolLoopState(ctx);
-    recordLoopToolCall(loopState, toolName);
+    recordLoopToolCall(loopState, toolName, input);
     recordToolInput(toolName, input, getState(ctx));
 
     if (toolName === "bash") {

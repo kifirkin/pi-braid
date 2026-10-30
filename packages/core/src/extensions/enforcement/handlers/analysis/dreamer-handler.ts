@@ -9,6 +9,7 @@ import { emitSignal } from "../../../../lib/reasoning/belief-policy-engine.js";
 import { dream } from "../../../../lib/reasoning/dreamer.js";
 import { recordAdvice } from "../../../../lib/reasoning/advice-tracker.js";
 import { tryClaim } from "../../../../lib/enforcement/turn-dedup.js";
+import { getToolLoopState } from "../../../../lib/detection/tool-loop-detector.js";
 import { getState } from "../../state.js";
 
 const log = createLogger("enforcement:dreamer");
@@ -25,7 +26,10 @@ export async function dreamerHandler(pi: any, _event: any, ctx: ExtensionContext
     }
   }
 
-  const dreamAdvice = dream(ctx, gs.toolLog, historicalSequences);
+  // The loop path reads the detector's own recorded calls (tool + argument
+  // identity); gs.toolLog is names only and cannot distinguish one call
+  // repeated from many different calls under one name.
+  const dreamAdvice = dream(ctx, gs.toolLog, historicalSequences, getToolLoopState(ctx).history);
   if (!dreamAdvice) return;
 
   emitSignal(ctx, "stability", "predicted-decline", "info", false, {
