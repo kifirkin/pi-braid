@@ -53,6 +53,50 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.7 (2026-10-30: an ignored skill is visible, and two rates say whether the obligation held)
+
+- **A skill that applied and was ignored is now distinguishable from one that never applied.** The
+  subsystem could tell whether an agent read a skill and could not tell whether it should have. It now
+  records, per session and per skill, a verdict with the phrase that decided it and where the skill
+  declares it: `read`, `ignored`, or `not-applicable`, plus a census row naming the installed skills whose
+  files declare no condition at all. The record is additive by construction: a new record kind on the
+  existing store, refused by the adoption reader so the two cannot silently merge, and an existing
+  reader's output is byte-identical when the record is absent. `ignored` over `read + ignored` is the
+  rate nobody could compute before, and it is computable from the record alone.
+- **The condition is the author's own declaration, not a coincidence.** Applicability reads the trigger
+  phrases the injector already matches, with the injector's own word-boundary rule, so the verdict can
+  never disagree with the whisper about whether a phrase is present; 1,098 phrase/text pairs over both
+  installed packs were checked for that agreement. The addition is polarity: "do not research this" is a
+  session where research did not apply. The negation rule is one cue, not a composed one, so a double
+  negative reads as negation and the ignored rate is a lower bound; that is pinned by a test with its
+  reason rather than left as a surprise.
+- **A skill declares the tool family its body directs, and the session records what it did with it.** Three
+  of the shipped skills declare a family, five declare none because a body that governs no tool family
+  genuinely has none, and the contract reports both numbers rather than padding the count. The per-session
+  leg records `suggested`, `listed`, `read`, `called`, `applied`, where `applied` is ordered: a call made
+  before the read cannot be credited, and a read with no call still satisfies. An applicable skill with no
+  leg row is counted unsatisfied rather than dropped, which keeps the ignored population inside the
+  denominator.
+- **The obligation rate ships with its own falsifier.** `allSatisfied` over the sessions that carry both a
+  verdict and a leg row, reported beside the read rate with that denominator stated rather than implied,
+  and a gap below five points marks the metric as non-discriminating. On a constructed population the two
+  rates separate three satisfied sessions from four that all read, so the number distinguishes what it
+  claims to.
+- **The label vocabulary refuses both spellings on both surfaces.** The source gate's vocabulary was
+  uppercase while the spelling seats actually typed was lowercase, so 73 handles sat in 22 fixture files
+  the gate never saw, plus 23 glued spellings inside them and 11 more in two files the sweep could not
+  name. They are renamed to the fixtures' own subjects, the shared set now matches either case, and the
+  history gate's two redundant patterns are gone so one subject yields one problem line. A planted token
+  reddens the gate at a named line and column; a word character before a handle, two digits, four digits,
+  and an ISO calendar week are none of them hits.
+- **A refusal was designed, measured, and killed by its own test.** The candidate enforcement was to refuse
+  the first call in a declared family once when the body was never read. Simulated over 703 sessions and
+  107,463 tool calls with the production functions imported, 2 of 30 refused calls changed course (6.7%,
+  interval 1.8 to 21.3%), 0 of 30 on a stricter reading, and the gate could reach at most 8% of the calls
+  it governs. The best case in the data refutes the shape: the model read the body when the body mattered,
+  after the work it needed, without a gate. What ships is the measurement that makes that answer
+  possible; what does not ship is the gate.
+
 ## Core — 0.43.6 (2026-10-29: the rule says one thing, and a merge states what landed)
 
 - **The identity block contradicted itself, and the contradiction is gone.** One sentence forbade
