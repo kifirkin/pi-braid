@@ -32,6 +32,9 @@
  *   - An embedded HTML page collapses to ONE line: status + first prose
  *     excerpt (≤120 chars; tag, style, script and comment contents stripped)
  *     + content type + size — e.g. `403 Blocked (text/html, ~12KB)`.
+ *   - A page span ends where the page ends: at its closing tag; for a fragment
+ *     with no closing tag, at the end of its own line or the page cap,
+ *     whichever comes first. Nothing after the span is touched.
  *   - Base64-class runs are replaced with a length-only marker.
  *   - The edge filter's request trigger (a dot, the `execSync` identifier, an
  *     open paren) gains a space before the paren: neutralized wherever it
@@ -46,6 +49,10 @@
  * its own response handling and does not route through callLlm's
  * error-sanitization path.
  */
+
+import { createLogger } from "../core/logger.js";
+
+const log = createLogger("payload-hygiene");
 
 /** A page open: the marker that turns the rest of the text into a body. */
 const HTML_START_PATTERN = /<!doctype\s+html|<html[\s>]/i;
@@ -187,12 +194,41 @@ export interface RequestHygieneResult {
   redactions: number;
 }
 
-/** First page span (`<!doctype html`/`<html` … `</html>` or EOF), if any. */
-function findPageSpan(text: string): { start: number; end: number } | null {
+/** First page span (`<!doctype html`/`<html` … `</html>`), if any. */
+interface PageSpan {
+  start: number;
+  end: number;
+  /** Where the end came from; anything but "closing-tag" means the page was unterminated. */
+  bound: "closing-tag" | "line-end" | "cap" | "end-of-input";
+}
+
+/**
+ * A page fragment with no closing tag ends at its own line or at this cap.
+ * The cap is far above any observed page (the largest live block page seen is
+ * ~12KB), so it binds only on a single-line dump.
+ */
+const REQUEST_PAGE_MAX_CHARS = 65_536;
+
+/**
+ * First page span, if any. A page that carries its closing tag ends there.
+ * A fragment that does not (a clipped tool result, a truncated dump) ends at
+ * the smaller of its enclosing line's end and REQUEST_PAGE_MAX_CHARS: the
+ * fragment is a piece of one line, so the next line is no longer part of it,
+ * and an unterminated span must never run to end-of-input: that deletes the
+ * payload behind the page, which is the bytes this sanitizer exists to keep
+ * (it classified the page, not the tail).
+ */
+function findPageSpan(text: string): PageSpan | null {
   const start = text.search(HTML_START_PATTERN);
   if (start < 0) return null;
   const closeAt = text.toLowerCase().lastIndexOf("</html>");
-  return { start, end: closeAt >= start ? closeAt + "</html>".length : text.length };
+  if (closeAt >= start) return { start, end: closeAt + "</html>".length, bound: "closing-tag" };
+  const newlineAt = text.indexOf("\n", start);
+  const atLineEnd = newlineAt < 0 ? text.length : newlineAt;
+  const atCap = start + REQUEST_PAGE_MAX_CHARS;
+  const end = Math.min(atLineEnd, atCap);
+  const bound = end === atCap ? "cap" : end === text.length ? "end-of-input" : "line-end";
+  return { start, end, bound };
 }
 
 /**
@@ -243,6 +279,14 @@ export function sanitizeLlmRequestText(text: string): RequestHygieneResult {
     const hasEdgeMarker = REQUEST_EDGE_MARKERS.some((marker) => lower.includes(marker));
     const hasAsset = REQUEST_BASE64_RUN_PATTERN.test(page);
     if (!hasEdgeMarker && !hasAsset) break;
+    if (span.bound !== "closing-tag") {
+      // A silent tail loss becomes a visible one: the span had no closing tag,
+      // so the bound decided where it stopped, and the byte count says how much
+      // the page claimed. Bytes after it are kept.
+      log.warn(
+        `page span without a closing tag: ${span.end - span.start} chars redacted (${span.bound}); bytes after it are kept`,
+      );
+    }
     const marker = `[redacted edge/WAF page fragment: ${page.length} chars]`;
     out = `${out.slice(0, span.start)}${marker}${out.slice(span.end)}`;
     redactions++;

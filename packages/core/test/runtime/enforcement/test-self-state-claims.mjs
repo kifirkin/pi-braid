@@ -254,7 +254,7 @@ await test("byte-stability: no-candidate prompt is byte-identical to the golden"
   // GOLDEN (deliberate-update note at file top): re-bake on intentional
   // formatting changes to buildVerificationPrompt, same commit.
   const golden =
-    "## USER REQUEST\nShip the report\n\n## TOOLS USED\nbash, finalize\n\n## TOOL EXECUTION LOG\nTurn 2: [finalize]\n\n## CODE CHANGES: NO\n\n## AGENT RESPONSE (visible text)\ndone";
+    "## USER REQUEST\nShip the report\n\n## TOOLS USED\nbash, finalize\n\n## CODE CHANGES: NO\n\n## TOOL EXECUTION LOG\nTurn 2: [finalize]\n\n## AGENT RESPONSE (visible text)\ndone";
   assert.strictEqual(judge.buildVerificationPrompt(ctxOf({})), golden, "exact bytes preserved");
 });
 

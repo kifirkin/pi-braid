@@ -173,6 +173,34 @@ await test("prompt renders TASK EVIDENCE section above the current-window TOOL E
   assert.ok(prompt.includes("Turn 9: [finalize]"), "current-window TOOL EXECUTION LOG kept as-is");
 });
 
+await test("ground-truth sections precede every bounded section", async () => {
+  const { buildVerificationPrompt } = await import(
+    join(ROOT, "dist/extensions/enforcement/verification-judge.js")
+  );
+  const prompt = buildVerificationPrompt({
+    userRequest: "Ship the fix",
+    toolsUsed: ["bash", "write"],
+    toolLog: ["Turn 9: [bash] $ npm test: 81 passed"],
+    hasCodeChanges: true,
+    lastResponse: "done",
+    thinking: "the tests passed, the commit is in place",
+    gitHistory: "abc1234 a commit",
+    deliverables: [{ path: "notes/fix.md", exists: true, sha256Match: true }],
+    taskEvidence: ["09:00:00 ── task start: user ── Ship the fix", "09:01:00 bash [OK]: $ npm test"],
+  });
+  const at = (name) => prompt.indexOf(`## ${name}`);
+  const groundTruth = ["USER REQUEST", "GIT HISTORY", "DELIVERABLES MANIFEST", "CODE CHANGES"];
+  const bounded = ["TASK EVIDENCE", "TOOL EXECUTION LOG", "AGENT REASONING", "AGENT RESPONSE"];
+  for (const name of [...groundTruth, ...bounded]) {
+    assert.ok(at(name) !== -1, `${name} section present`);
+  }
+  for (const g of groundTruth) {
+    for (const b of bounded) {
+      assert.ok(at(g) < at(b), `${g} must precede ${b}`);
+    }
+  }
+});
+
 // ── 2. Task boundary semantics ───────────────────────────────────────────────
 
 await test("a new real user message resets the evidence window", async () => {

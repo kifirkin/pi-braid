@@ -126,6 +126,13 @@ export interface JudgeContext {
 
 /**
  * Build the verification analysis prompt. Exported for tests.
+ *
+ * Order is load-bearing: the ground-truth sections (git history, the
+ * disk-checked deliverables manifest, the code-changes flag) come BEFORE the
+ * bounded ones (task evidence, tool log, reasoning, response). The bounded
+ * sections are the ones a bound can shorten: a head kept under a size cap, a
+ * tail cut by a redaction. A reader that meets the verdict-bearing sections
+ * first cannot have them removed by whatever truncated the evidence.
  */
 export function buildVerificationPrompt(context: JudgeContext): string {
   const sections: string[] = [];
@@ -137,31 +144,6 @@ export function buildVerificationPrompt(context: JudgeContext): string {
   sections.push("## TOOLS USED");
   sections.push(context.toolsUsed.length > 0 ? context.toolsUsed.join(", ") : "(none)");
   sections.push("");
-
-  // Task-wide evidence (since last user message, session-store
-  // backed) comes BEFORE the current-window tool log — it is the surviving
-  // view when turn breaks cut toolLog down to the tail turn.
-  if (context.taskEvidence && context.taskEvidence.length > 0) {
-    sections.push("## TASK EVIDENCE (since last user message, disk/session-surviving)");
-    sections.push(context.taskEvidence.join("\n"));
-    sections.push("");
-  }
-
-  if (context.toolLog.length > 0) {
-    sections.push("## TOOL EXECUTION LOG");
-    sections.push(context.toolLog.slice(-50).join("\n")); // Last 50 entries (matches turnHistory cap)
-    sections.push("");
-  }
-
-  sections.push(`## CODE CHANGES: ${context.hasCodeChanges ? "YES" : "NO"}`);
-  // (Verification evidence comes from the TOOL EXECUTION LOG above, not a boolean)
-  sections.push("");
-
-  if (context.thinking) {
-    sections.push("## AGENT REASONING (thinking blocks)");
-    sections.push(context.thinking);
-    sections.push("");
-  }
 
   if (context.gitHistory) {
     sections.push("## GIT HISTORY (recent commits)");
@@ -185,6 +167,31 @@ export function buildVerificationPrompt(context: JudgeContext): string {
         ? "\nAll claimed deliverables exist on disk → work is verified."
         : "\nSome deliverables missing on disk → real unverified risk.",
     );
+    sections.push("");
+  }
+
+  sections.push(`## CODE CHANGES: ${context.hasCodeChanges ? "YES" : "NO"}`);
+  // (Verification evidence comes from the TOOL EXECUTION LOG, not a boolean)
+  sections.push("");
+
+  // Task-wide evidence (since last user message, session-store backed) comes
+  // BEFORE the current-window tool log — it is the surviving view when turn
+  // breaks cut toolLog down to the tail turn.
+  if (context.taskEvidence && context.taskEvidence.length > 0) {
+    sections.push("## TASK EVIDENCE (since last user message, disk/session-surviving)");
+    sections.push(context.taskEvidence.join("\n"));
+    sections.push("");
+  }
+
+  if (context.toolLog.length > 0) {
+    sections.push("## TOOL EXECUTION LOG");
+    sections.push(context.toolLog.slice(-50).join("\n")); // Last 50 entries (matches turnHistory cap)
+    sections.push("");
+  }
+
+  if (context.thinking) {
+    sections.push("## AGENT REASONING (thinking blocks)");
+    sections.push(context.thinking);
     sections.push("");
   }
 
