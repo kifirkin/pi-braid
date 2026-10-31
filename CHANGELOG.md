@@ -53,6 +53,45 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.8 (2026-10-31: the harness stops accusing work that happened, and starts answering from the archive)
+
+- **An unterminated page cannot delete the evidence tail any more.** A redaction of a detected HTML page
+  ended at the end of the whole outbound prompt whenever the page arrived without its closing tag, and that
+  sanitizer runs on every internal LLM body, judges included. One unterminated page inside one tool result
+  deleted 85 of 140 evidence lines and all four ground-truth sections before the model saw them, and a
+  verification judge, whose schema has no way to say "cannot verify", then reported work-not-done against a
+  delivered project. The span now ends at the end of the enclosing line or at a page cap far above any
+  observed page, whichever comes first, and a clamped span logs one line naming the byte count so a tail loss
+  is visible instead of silent. The judge's prompt also puts git history, the deliverables manifest and the
+  code-changes flag ahead of the bounded sections, so a future bound degrades evidence rather than truth. The
+  module had no test before; it has one now, and it carries both directions, including the control that an
+  oversized unterminated page is still redacted up to the cap.
+- **The loop whisper counts calls, not tool names.** The detector kept an array of tool names and fired on
+  sixteen consecutive equal names, so a chain of seventeen different shell commands was indistinguishable from
+  seventeen identical retries, and the message claimed "no progress" while looking at nothing but names. In
+  the archive that whisper appears in 485 of 2,526 sessions, and both owner-run sessions examined were false
+  accusations: twenty distinct commands in one, seventeen in the other. A call now has an identity (name plus
+  normalized arguments); consecutive identical calls still fire, two alternating calls still fire, a long
+  chain of distinct calls never does, and the sentence names the repeated call and its count instead of
+  claiming progress it cannot observe.
+- **The archive's own words are queryable.** Every user turn in the session corpus is a quarter of one
+  percent of it: 20,484 turns totalling 9.66 MB across 3,833 sessions and 341 projects, out of an archive of
+  3.8 GB. A derived index of exactly those turns is built in under two seconds and refreshed by file mtime, and
+  a `session ask` verb answers a question from them with citations, excluding the calling session by
+  construction. Recall at three is eight of ten on a pre-registered question set, with both misses shown and
+  mechanised, and the two existing search verbs are byte-identical when the index is absent.
+- **A skill names the family it governs, and the harness says so once, after the call.** A refusal was
+  designed, measured and killed: simulated over 703 sessions and 107,463 tool calls, 2 of 30 refused calls
+  changed course. The mechanism that ships instead is an at-use inform, one line after a completed call in a
+  declared family when the body was never read, off by default, with its falsifier pre-registered: it must beat
+  the suggestion channel's own 18.8% read-follow conversion or it is noise to be deleted. Its own verdict is
+  undecided at zero informs, and 20 informs with 8 conversions is what would decide it.
+- **The obligation rate exists and discriminates.** Per session and per skill, `suggested`, `listed`, `read`,
+  `called`, `applied`, where a call made before the read cannot be credited and a read with no call still
+  satisfies; an applicable skill with no leg row is counted unsatisfied rather than dropped. `allSatisfied`
+  over the sessions that carry both a verdict and a leg row, reported beside the read rate with that
+  denominator stated rather than implied, and a gap under five points marks the metric as worthless.
+
 ## Core — 0.43.7 (2026-10-30: an ignored skill is visible, and two rates say whether the obligation held)
 
 - **A skill that applied and was ignored is now distinguishable from one that never applied.** The
