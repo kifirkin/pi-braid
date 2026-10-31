@@ -53,6 +53,39 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.9 (2026-10-31: a query is read as tokens, and the store can be told what to keep)
+
+- **A question could not match a word it contained.** Recall split a query on whitespace alone, so a
+  question ending in `APIs?` carried the token `apis?` and never matched the stored word `apis`: the
+  content was invisible to the matcher, and no amount of weighting could reach it, because a token the
+  matcher cannot see cannot be weighted. Measured on a 260-entry store, that single defect kept a correct
+  answer out of a five-item result list entirely; it now returns at rank one. The query is tokenized on
+  non-alphanumeric characters as well as whitespace, and the test plants the revert: restoring the old
+  splitter reddens exactly the punctuation case and nothing else.
+- **Function words stop counting as evidence, and rare words start.** Every query word longer than two
+  characters scored the same, so `which`, `should` and `when` each counted as a hit and a long entry
+  outranked a short precise one. A generic English stop list and `idf(w) = ln(1 + N/df)` now weight the
+  terms, and the effect was measured against a control of five ordinary entries chosen by margin rather
+  than by taste: all five hold rank one, and the leader-to-runner-up margins widen from 1.10–1.92× to
+  2.06–3.55×. The honest attribution is in the report: the stop list and the weights alone moved no rank,
+  because tokenization was the defect; they sharpen what tokenization made reachable.
+- **What the store keeps can be configured, and by default nothing changes.** `pruneMemories` ordered
+  every entry by utility alone, so a backfilled provenance entry scored 0.53 against a floor of 0.605 and
+  a prune one hour after the write kept four of sixty. A reserved partition — entries whose `source`
+  starts with a configured prefix may occupy up to a configured number of slots — ships **off**, and with
+  nothing configured the prune returns an element-identical id sequence to the previous build at one
+  minute, one hour and one day after the write. Configured at twenty slots it keeps twenty of sixty, and
+  the cost is stated rather than hidden: twenty ordinary entries leave the store, the reserve is a hard
+  cap rather than a home for all sixty, and which twenty survive among utility ties is the shipped
+  comparator's order, not anything about the entry.
+- **The retrieval goal it was aimed at is one third reached, and the reason is not lexical.** Ten questions
+  were pre-registered; a presence scan then showed only three of them name an answer that both exists in
+  the corpus and survives the classifier, so the ceiling for any reordering was three. One is now at rank
+  one. The second cannot be reached by any scoring change: the winner and the correct ruling match exactly
+  the same two query terms, and the 1.5× gap is utility (0.815 against 0.670) plus a project boost the
+  ruling cannot earn plus an access boost its rival has. That is a policy question about provenance
+  entries, not a ranking question, and it is named here so the next change starts from the measurement.
+
 ## Core — 0.43.8 (2026-10-31: the harness stops accusing work that happened, and starts answering from the archive)
 
 - **An unterminated page cannot delete the evidence tail any more.** A redaction of a detected HTML page
