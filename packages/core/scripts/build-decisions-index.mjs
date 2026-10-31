@@ -2,12 +2,14 @@
 /**
  * build-decisions-index — backfill owner rulings into the semantic memory store.
  *
- * The read half is `lib/memory/decision-extraction.ts`: one user turn in, one
- * candidate ruling or nothing. This script is the write half. It reads the
- * corpus shards the `session ask` index already owns, classifies every user
- * turn, applies the caps, skips what the store already carries, and writes
- * through `saveMemory` — the store's own locked, atomic, merge-on-write path.
- * A second run adds nothing.
+ * The read half is split along the line the placement gate draws:
+ * `lib/memory/decision-grammar.ts` carries the generic grammar and the tag
+ * derivation, and `lib/orchestrator/owner-speech.ts` decides whether a turn is
+ * the owner speaking and files the result in braid's shape. This script is the
+ * write half. It reads the corpus shards the `session ask` index already owns,
+ * classifies every user turn, applies the caps, skips what the store already
+ * carries, and writes through `saveMemory` — the store's own locked, atomic,
+ * merge-on-write path. A second run adds nothing.
  *
  *   node packages/core/scripts/build-decisions-index.mjs                 # census, no write
  *   node packages/core/scripts/build-decisions-index.mjs --write         # backfill
@@ -20,8 +22,8 @@
  *
  *  - **The store is a 200-entry working set** (`MAX_ENTRIES`), pruned by
  *    utility. A backfill is a population competing for those slots, so the
- *    default budget is a slice of the cap rather than the whole corpus; a
- *    later wave can raise `--max-total` deliberately.
+ *    default budget is a slice of the cap rather than the whole corpus; the
+ *    budget is a flag, so a later run can raise it deliberately.
  *  - **Recency is the only ordering.** The caps keep the newest rulings
  *    first; nothing here infers that a later ruling replaced an earlier one,
  *    because that inference needs a judgement the transcript does not carry.
@@ -126,8 +128,9 @@ if (sinceArg !== undefined && Number.isNaN(sinceMs)) {
   die(2, `build-decisions-index: --since takes an ISO-8601 timestamp (got "${sinceArg}")`);
 }
 
-const { classifyOwnerRuling, projectTag, rulingDuplicateKey, rulingPointer, rulingTags } =
-  await loadDist(join("lib", "memory", "decision-extraction.js"));
+const { classifyOwnerRuling, rulingBaseTags, rulingDuplicateKey, rulingPointer, rulingPointerPattern } =
+  await loadDist(join("lib", "orchestrator", "owner-speech.js"));
+const { deriveTopicTags } = await loadDist(join("lib", "memory", "decision-grammar.js"));
 const { readStoreFile, saveMemory } = await loadDist(join("lib", "memory", "storage.js"));
 const { calculateUtility } = await loadDist(join("lib", "memory", "lifecycle.js"));
 const { generateId } = await loadDist(join("lib", "memory", "utils.js"));
@@ -253,7 +256,9 @@ const budgeted = survivors.slice(0, maxTotal);
 const existing = await readStoreFile();
 const storeBefore = existing?.memories ?? [];
 const knownKeys = new Set();
-const POINTER = /^owner ruling: (.+):(\d+) \(/;
+// The label is the writer's, read back from the module that stamps it: a second
+// spelling here would make the duplicate scan blind to its own entries.
+const POINTER = rulingPointerPattern();
 for (const entry of storeBefore) {
   const match = typeof entry.source === "string" ? POINTER.exec(entry.source) : null;
   if (!match) continue;
@@ -270,6 +275,23 @@ for (const candidate of budgeted) {
   }
   toWrite.push(candidate);
 }
+
+// The population a quote's tags are derived from: every entry the store holds
+// now, plus the entry each survivor is about to become. Measured this way the
+// same run on the same corpus derives the same tags, and a second run (which
+// writes nothing) is never consulted for a ranking it cannot change.
+const frequency = new Map();
+const countDocument = (text) => {
+  for (const token of new Set(String(text ?? "").toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? [])) {
+    frequency.set(token, (frequency.get(token) ?? 0) + 1);
+  }
+};
+for (const entry of storeBefore) countDocument(entry.content);
+for (const candidate of toWrite) countDocument(candidate.quote);
+const tagPopulation = {
+  total: storeBefore.length + toWrite.length,
+  count: (token) => frequency.get(token) ?? 0,
+};
 
 const storePath = semanticMemoryFilePath();
 const result = {
@@ -329,7 +351,7 @@ if (write && toWrite.length > 0) {
       id: generateId(),
       content: candidate.quote,
       type: "preference",
-      tags: rulingTags(candidate),
+      tags: [...rulingBaseTags(candidate), ...deriveTopicTags(candidate.quote, tagPopulation)],
       timestamp,
       accessCount: 0,
       lastAccessed: timestamp,

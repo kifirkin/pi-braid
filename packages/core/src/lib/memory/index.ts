@@ -45,16 +45,15 @@ export {
   generateAutoTags,
 } from "./utils.js";
 export {
-  classifyOwnerRuling,
-  projectTag,
-  rulingDuplicateKey,
-  rulingPointer,
-  rulingTags,
+  classifyRulingBody,
+  deriveTopicTags,
   QUOTE_LIMIT,
-  type OwnerRulingCandidate,
+  TAG_LIMIT,
+  type GrammarVocabulary,
   type RulingClass,
-  type RulingTurn,
-} from "./decision-extraction.js";
+  type RulingShape,
+  type TagPopulation,
+} from "./decision-grammar.js";
 
 // shouldStore, calculateUtility, pruneMemories, consolidate, and the
 // constants (MAX_ENTRIES, MIN_UTILITY_THRESHOLD, CATEGORY_BASE_UTILITY)
