@@ -44,6 +44,17 @@ export {
   parseStructuredContent,
   generateAutoTags,
 } from "./utils.js";
+export {
+  classifyOwnerRuling,
+  projectTag,
+  rulingDuplicateKey,
+  rulingPointer,
+  rulingTags,
+  QUOTE_LIMIT,
+  type OwnerRulingCandidate,
+  type RulingClass,
+  type RulingTurn,
+} from "./decision-extraction.js";
 
 // shouldStore, calculateUtility, pruneMemories, consolidate, and the
 // constants (MAX_ENTRIES, MIN_UTILITY_THRESHOLD, CATEGORY_BASE_UTILITY)
