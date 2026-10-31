@@ -46,6 +46,7 @@ export const READER_FILES = [
   "packages/core/src/lib/config/braid-settings.ts",
   "packages/core/src/lib/config/per-tool-settings.ts",
   "packages/core/src/lib/memory/write-quality.ts",
+  "packages/core/src/lib/memory/constants.ts",
   "packages/core/src/loader/loader.ts",
   "packages/contrib/browser/index.ts",
   "packages/contrib/path-security/index.ts",
@@ -72,6 +73,7 @@ const SETTINGS = `${CORE}/src/lib/config/braid-settings.ts`;
 const CONST_SOURCES = {
   DEFAULT_TIME_ZONE: SETTINGS,
   MEMORY_WRITE_GATE_DEFAULTS: `${CORE}/src/lib/memory/write-quality.ts`,
+  RESERVED_PROVENANCE_DEFAULTS: `${CORE}/src/lib/memory/constants.ts`,
   MAX_WAKE_ATTEMPTS_DEFAULT: SETTINGS,
   WAKE_DELIVERY_ALERT_DEFAULT: SETTINGS,
   TOOL_RESULT_SIZE_CAP_DEFAULTS: SETTINGS,
@@ -131,13 +133,34 @@ const MECHANICAL_ROWS = [
     mech: { const: "MEMORY_WRITE_GATE_DEFAULTS", prop: "mode" },
   },
   {
+    path: "braid.memory.reservedProvenance.prefix",
+    type: "string",
+    description: "Source prefix naming the class the prune reserves slots for.",
+    read: {
+      file: SETTINGS,
+      line: 630,
+      evidence: "settings.braid?.memory?.reservedProvenance",
+    },
+    mech: { const: "RESERVED_PROVENANCE_DEFAULTS", prop: "prefix" },
+  },
+  {
+    path: "braid.memory.reservedProvenance.slots",
+    type: "integer",
+    description: "Slots of the entry cap the configured class may occupy (0 disables).",
+    read: {
+      file: SETTINGS,
+      line: 630,
+      evidence: "settings.braid?.memory?.reservedProvenance",
+    },
+    mech: { const: "RESERVED_PROVENANCE_DEFAULTS", prop: "slots" },
+  },
+  {
     path: "braid.timers.maxWakeAttempts",
     type: "integer",
     description: "Redelivery bound for a failed timer wake fire before drop.",
     read: { file: SETTINGS, line: 1009, evidence: "readSettings().braid?.timers?.maxWakeAttempts" },
     mech: { const: "MAX_WAKE_ATTEMPTS_DEFAULT", prop: null },
-  },
-  {
+  },  {
     path: "braid.enforcement.overCorrectionGate.mode",
     type: "string",
     enum: ["off", "shadow", "on"],

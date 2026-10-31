@@ -15,19 +15,19 @@
                   "default": 60,
                   "description": "Usage percent at or above which an observation counts toward arming.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1065"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1116"
                 },
                 "confirmTicks": {
                   "default": 2,
                   "description": "Consecutive above-threshold observations required before arming.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1065"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1116"
                 },
                 "enabled": {
                   "default": true,
                   "description": "Usage-driven auto-arm of a deterministic slide compaction.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1065"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1116"
                 }
               },
               "type": "object"
@@ -38,25 +38,25 @@
                   "default": true,
                   "description": "On a 413, shrink the largest tool results and retry once.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:896"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:947"
                 },
                 "keepRecentTurns": {
                   "default": 1,
                   "description": "Keep the latest tool result visible in an emergency.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:896"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:947"
                 },
                 "maxCharsPerRun": {
                   "default": 1048576,
                   "description": "Per-run offload budget.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:896"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:947"
                 },
                 "minChars": {
                   "default": 262144,
                   "description": "Size floor (chars) for emergency eligibility.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:896"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:947"
                 }
               },
               "type": "object"
@@ -64,7 +64,7 @@
             "contextLimitTokens": {
               "description": "Effective window braid computes with (unset falls through to the provider window).",
               "type": "number",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:1451"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:1502"
             },
             "presendGuard": {
               "properties": {
@@ -83,31 +83,31 @@
                   "default": false,
                   "description": "Age/size offload of stale large tool results; OFF unless opted in.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:790"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:841"
                 },
                 "keepRecentTurns": {
                   "default": 20,
                   "description": "Never touch the last N tool results.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:790"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:841"
                 },
                 "maxOffloadCharsPerRun": {
                   "default": 65536,
                   "description": "Per-LLM-call offload budget.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:790"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:841"
                 },
                 "minChars": {
                   "default": 4000,
                   "description": "Minimum result size (chars) to be eligible.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:790"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:841"
                 },
                 "stalenessTurns": {
                   "default": 40,
                   "description": "Minimum age (tool results since) to be eligible.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:790"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:841"
                 }
               },
               "type": "object"
@@ -118,13 +118,13 @@
                   "default": true,
                   "description": "Capture-time cap: oversized tool results flushed to disk + stubbed.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:972"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1023"
                 },
                 "maxChars": {
                   "default": 262144,
                   "description": "Size above which a captured tool result is flushed + stubbed.",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:972"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1023"
                 }
               },
               "type": "object"
@@ -331,7 +331,7 @@
               "default": {},
               "description": "Per-nudge-type overrides, validated by the NudgeManager.",
               "type": "object",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:411"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:425"
             },
             "overCorrectionGate": {
               "properties": {
@@ -344,7 +344,7 @@
                     "on"
                   ],
                   "type": "string",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:470"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:484"
                 }
               },
               "type": "object"
@@ -354,19 +354,36 @@
         },
         "memory": {
           "properties": {
+            "reservedProvenance": {
+              "properties": {
+                "prefix": {
+                  "default": "",
+                  "description": "Source prefix naming the class the prune reserves slots for.",
+                  "type": "string",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:630"
+                },
+                "slots": {
+                  "default": 0,
+                  "description": "Slots of the entry cap the configured class may occupy (0 disables).",
+                  "type": "integer",
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:630"
+                }
+              },
+              "type": "object"
+            },
             "writeGate": {
               "properties": {
                 "cooldownMs": {
                   "default": 1200000,
                   "description": "Minimum interval between gated heartbeat writes (anti-thrash).",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:540"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:554"
                 },
                 "enabled": {
                   "default": true,
                   "description": "Review-before-write quality gate on durable episode writes.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:540"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:554"
                 },
                 "mode": {
                   "default": "enforce",
@@ -376,7 +393,7 @@
                     "warn"
                   ],
                   "type": "string",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:540"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:554"
                 },
                 "sites": {
                   "default": {},
@@ -406,7 +423,7 @@
                 "enforce"
               ],
               "type": "string",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:525"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:539"
             }
           },
           "type": "object"
@@ -493,19 +510,19 @@
                   "default": true,
                   "description": "Route-failure wake breaker; false makes the whole breaker inert.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1281"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1332"
                 },
                 "floorMs": {
                   "default": 3600000,
                   "description": "Cadence of the one self-started turn released while the route latch stays open (ms).",
                   "type": "number",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1281"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1332"
                 },
                 "threshold": {
                   "default": 3,
                   "description": "Provider failures since the last successful call before self-started turns park.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1281"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1332"
                 }
               },
               "type": "object"
@@ -516,13 +533,13 @@
                   "default": true,
                   "description": "Terminal-error wake breaker; false disables the gate entirely.",
                   "type": "boolean",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1177"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1228"
                 },
                 "threshold": {
                   "default": 3,
                   "description": "Terminal-class errors before timer wakes stop starting turns.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1177"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1228"
                 }
               },
               "type": "object"
@@ -536,13 +553,13 @@
               "default": "off",
               "description": "At-use line after a completed call in a family a skill's governs: declaration names (off; inform enables).",
               "type": "string",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:662"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:713"
             },
             "ranking": {
               "default": "keyword",
               "description": "Tier policy for the list_skills relevance ranking (keyword; auto/model reserved).",
               "type": "string",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:627"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:678"
             }
           },
           "type": "object"
@@ -551,7 +568,7 @@
           "default": false,
           "description": "Disable all braid cognitive nudges (enforcement, heartbeat, feedback).",
           "type": "boolean",
-          "x-source": "packages/core/src/lib/config/braid-settings.ts:388"
+          "x-source": "packages/core/src/lib/config/braid-settings.ts:402"
         },
         "telegram": {
           "properties": {
@@ -609,7 +626,7 @@
               "default": 3,
               "description": "Redelivery bound for a failed timer wake fire before drop.",
               "type": "integer",
-              "x-source": "packages/core/src/lib/config/braid-settings.ts:1115"
+              "x-source": "packages/core/src/lib/config/braid-settings.ts:1166"
             },
             "wakeAlert": {
               "properties": {
@@ -621,13 +638,13 @@
                     "off"
                   ],
                   "type": "string",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1355"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1406"
                 },
                 "outcomeTimeouts": {
                   "default": 2,
                   "description": "Outcome timeouts for one fire before the early stall page.",
                   "type": "integer",
-                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1355"
+                  "x-source": "packages/core/src/lib/config/braid-settings.ts:1406"
                 }
               },
               "type": "object"
@@ -639,7 +656,7 @@
           "default": "Europe/Moscow",
           "description": "Owner time zone (IANA) for local-time rendering.",
           "type": "string",
-          "x-source": "packages/core/src/lib/config/braid-settings.ts:592"
+          "x-source": "packages/core/src/lib/config/braid-settings.ts:643"
         }
       },
       "type": "object"

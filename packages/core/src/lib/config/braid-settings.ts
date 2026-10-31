@@ -21,6 +21,7 @@ import {
   type MemoryWriteGateMode,
   type WriteGateSite,
 } from "../memory/write-quality.js";
+import { MAX_ENTRIES, RESERVED_PROVENANCE_DEFAULTS } from "../memory/constants.js";
 import { getSettingsPath } from "./per-tool-settings.js";
 
 const _log = createLogger("braid-settings");
@@ -125,6 +126,19 @@ interface BraidConfig {
       cooldownMs?: number;
       mode?: MemoryWriteGateMode;
       sites?: Partial<Record<WriteGateSite, boolean>>;
+    };
+    /**
+     * Reserved partition for the semantic store's prune: entries whose
+     * `source` starts with `prefix` may occupy up to `slots` of the entry cap,
+     * and everything else competes for what remains. Unset, or with an empty
+     * prefix or `slots: 0`, the prune is unchanged.
+     *
+     * Example:
+     *   "braid": { "memory": { "reservedProvenance": { "prefix": "decision: ", "slots": 20 } } }
+     */
+    reservedProvenance?: {
+      prefix?: unknown;
+      slots?: unknown;
     };
   };
   /**
@@ -577,6 +591,43 @@ function normalizeWriteGateSites(raw: unknown): Partial<Record<WriteGateSite, bo
     if (typeof value === "boolean") sites[site] = value;
   }
   return sites;
+}
+
+/** A reserved partition: which source prefix is protected, and for how many slots. */
+export interface ReservedProvenanceConfig {
+  prefix: string;
+  slots: number;
+}
+
+/**
+ * Pure resolver for the braid.memory.reservedProvenance block. Absent or
+ * malformed fields fall back to RESERVED_PROVENANCE_DEFAULTS (partition off),
+ * so a typo cannot start holding slots for a class nobody named. `slots` is
+ * clamped to MAX_ENTRIES: a reservation at or above the cap would leave the
+ * general pool no room at all. Kept pure so the merge is testable without
+ * touching live settings.json.
+ */
+export function resolveReservedProvenance(raw?: {
+  prefix?: unknown;
+  slots?: unknown;
+}): ReservedProvenanceConfig {
+  const prefixValue = typeof raw?.prefix === "string" ? raw.prefix.trim() : "";
+  const prefix = prefixValue || RESERVED_PROVENANCE_DEFAULTS.prefix;
+  const slotsValue = raw?.slots;
+  const slots =
+    typeof slotsValue === "number" && Number.isInteger(slotsValue) && slotsValue >= 0
+      ? Math.min(slotsValue, MAX_ENTRIES)
+      : RESERVED_PROVENANCE_DEFAULTS.slots;
+  return { prefix, slots };
+}
+
+/**
+ * Read braid.memory.reservedProvenance from settings.json, fresh on every call
+ * (no caching), like the other readers. Default: no partition.
+ */
+export function getMemoryReservedProvenance(): ReservedProvenanceConfig {
+  const settings = readSettings();
+  return resolveReservedProvenance(settings.braid?.memory?.reservedProvenance);
 }
 
 /**

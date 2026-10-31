@@ -15,6 +15,7 @@
 
 import type { CognitiveMemoryEntry, CognitiveMemoryType, CognitiveMemoryStore } from "./types.js";
 import { jaccardSimilarity } from "./utils.js";
+import { getMemoryReservedProvenance } from "../config/braid-settings.js";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,34 +73,67 @@ export function calculateUtility(
 }
 
 /**
- * Prune memories down to MAX_ENTRIES, keeping recent-access and
- * high-utility entries. Recent (last 5 min) entries are always kept.
- * Other entries are sorted by utility, then timestamp, and trimmed.
+ * The order the prune applies: a utility difference larger than 0.1 decides,
+ * and inside that tolerance the newer entry wins. Extracted so the reserved
+ * partition ranks its own population exactly as the general pool is ranked.
  */
-export function pruneMemories(memories: CognitiveMemoryEntry[]): CognitiveMemoryEntry[] {
+function byUtilityThenRecency(a: CognitiveMemoryEntry, b: CognitiveMemoryEntry): number {
+  if (Math.abs(a.utility - b.utility) > 0.1) return b.utility - a.utility;
+  return b.timestamp - a.timestamp;
+}
+
+/**
+ * Keep the top `cap` entries: everything touched in the last five minutes is
+ * kept outside the competition for slots, and the rest is ranked by
+ * byUtilityThenRecency.
+ */
+function pruneToCap(memories: CognitiveMemoryEntry[], cap: number): CognitiveMemoryEntry[] {
   const now = Date.now();
   const RECENT_ACCESS_MS = 5 * 60 * 1000;
 
   const recent = memories.filter((m) => now - m.lastAccessed < RECENT_ACCESS_MS);
   const others = memories.filter((m) => now - m.lastAccessed >= RECENT_ACCESS_MS);
 
-  const sorted = [...others].sort((a, b) => {
-    if (Math.abs(a.utility - b.utility) > 0.1) return b.utility - a.utility;
-    return b.timestamp - a.timestamp;
-  });
+  const sorted = [...others].sort(byUtilityThenRecency);
 
-  const remainingSlots = Math.max(0, MAX_ENTRIES - recent.length);
+  const remainingSlots = Math.max(0, cap - recent.length);
   const pruned = sorted
     .filter((m, i) => i < remainingSlots || m.utility >= MIN_UTILITY_THRESHOLD)
     .slice(0, remainingSlots);
 
-  const combined = [...recent, ...pruned];
-  return combined
-    .sort((a, b) => {
-      if (Math.abs(a.utility - b.utility) > 0.1) return b.utility - a.utility;
-      return b.timestamp - a.timestamp;
-    })
-    .slice(0, MAX_ENTRIES);
+  return [...recent, ...pruned].sort(byUtilityThenRecency).slice(0, cap);
+}
+
+/**
+ * Prune memories down to MAX_ENTRIES, keeping recent-access and
+ * high-utility entries. Recent (last 5 min) entries are always kept.
+ * Other entries are sorted by utility, then timestamp, and trimmed.
+ *
+ * A configured partition (`braid.memory.reservedProvenance`) takes its slots
+ * first: entries whose `source` starts with the configured prefix may occupy
+ * up to `slots` of the cap, and everything else, including class entries that
+ * did not win a slot, competes for what remains. The class arrives as
+ * configuration because which entries carry provenance is a property of the
+ * writer that filed them; the store only reads the prefix as an opaque
+ * string. Absent or zero, this function is the prune it always was.
+ */
+export function pruneMemories(memories: CognitiveMemoryEntry[]): CognitiveMemoryEntry[] {
+  const { prefix, slots } = getMemoryReservedProvenance();
+  const classEntries =
+    prefix && slots > 0
+      ? memories.filter(
+          (memory) => typeof memory.source === "string" && memory.source.startsWith(prefix),
+        )
+      : [];
+  if (classEntries.length === 0) return pruneToCap(memories, MAX_ENTRIES);
+
+  const reserved = [...classEntries].sort(byUtilityThenRecency).slice(0, slots);
+  const reservedIds = new Set(reserved.map((memory) => memory.id));
+  const general = pruneToCap(
+    memories.filter((memory) => !reservedIds.has(memory.id)),
+    Math.max(0, MAX_ENTRIES - reserved.length),
+  );
+  return [...reserved, ...general];
 }
 
 /**

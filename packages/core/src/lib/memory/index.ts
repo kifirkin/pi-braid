@@ -13,7 +13,14 @@ import type {
   MemoryContext,
   MemoryLink,
 } from "./types.js";
-import { MAX_ENTRIES, CONSOLIDATION_INTERVAL } from "./constants.js";
+import {
+  MAX_ENTRIES,
+  CONSOLIDATION_INTERVAL,
+  QUERY_MIN_TOKEN_LENGTH,
+  QUERY_STOP_WORDS,
+  MEMORY_TAG_BONUS_WORDS,
+  MEMORY_REFERENCE_DF_FRACTION,
+} from "./constants.js";
 import { loadMemory, saveMemory } from "./storage.js";
 import { generateAutoTags, generateId } from "./utils.js";
 
@@ -42,6 +49,20 @@ export {
 // constants (MAX_ENTRIES, MIN_UTILITY_THRESHOLD, CATEGORY_BASE_UTILITY)
 // are now in ./lifecycle.ts. The class below uses them.
 import { shouldStore, calculateUtility, pruneMemories, consolidate } from "./lifecycle.js";
+
+/**
+ * The tokens a matcher can see: lowercase, split on everything except letters,
+ * digits and inner hyphens, and long enough to name something. Splitting the
+ * query this way is what lets a question ending in "APIs?" reach the stored
+ * token "apis" instead of carrying "apis?" to a substring test that can never
+ * match it. The same split runs over content, so a phrase test compares tokens
+ * with tokens instead of punctuation with punctuation.
+ */
+function matchTokens(text: string): string[] {
+  return (text.toLowerCase().match(/[a-z0-9-]+/g) ?? []).filter(
+    (token) => token.length >= QUERY_MIN_TOKEN_LENGTH,
+  );
+}
 
 // INTENTIONAL: CognitiveMemory is a cross-session knowledge base (memories
 // from past sessions inform new sessions via memory-recall). The singleton
@@ -331,12 +352,37 @@ export class CognitiveMemory {
     },
   ): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
     const lowerQuery = query.toLowerCase();
-    const queryWords = lowerQuery.split(/\s+/).filter((w) => w.length > 2);
+    const queryWords = matchTokens(lowerQuery).filter((word) => !QUERY_STOP_WORDS.has(word));
+    const phrase = queryWords.join(" ");
     const limit = options?.limit ?? 5;
+
+    // Rarity is measured over the live store, once per call: df(w) is the
+    // number of entries carrying w, and a matched word weighs ln(1 + N/df). A
+    // word no entry carries (df 0) earns the maximum weight, which is what a
+    // word the store has never seen should earn. What this buys: a store's
+    // common words stop deciding by count, so four of them no longer outweigh
+    // the one rare word a question is about.
+    const live = this.filterExpired(this.memoryStore.memories);
+    const contentTokens = new Map<string, string[]>();
+    const documentFrequency = new Map<string, number>();
+    for (const memory of live) {
+      const tokens = matchTokens(memory.content);
+      contentTokens.set(memory.id, tokens);
+      for (const token of new Set(tokens)) {
+        documentFrequency.set(token, (documentFrequency.get(token) ?? 0) + 1);
+      }
+    }
+    const idf = (word: string): number =>
+      Math.log(1 + live.length / Math.max(1, documentFrequency.get(word) ?? 1));
+    const phraseWeight = queryWords.reduce((sum, word) => sum + idf(word), 0);
+    // A tag stays worth MEMORY_TAG_BONUS_WORDS ordinary terms, measured at the
+    // reference document frequency, so the bonus keeps its shipped meaning on
+    // the rarity scale.
+    const tagBonus = MEMORY_TAG_BONUS_WORDS * Math.log(1 + 1 / MEMORY_REFERENCE_DF_FRACTION);
 
     const results: Array<{ memory: CognitiveMemoryEntry; relevance: number }> = [];
 
-    for (const memory of this.filterExpired(this.memoryStore.memories)) {
+    for (const memory of live) {
       if (options?.type && memory.type !== options.type) continue;
       if (options?.tags?.length && !options.tags.some((t) => memory.tags.includes(t))) continue;
 
@@ -351,14 +397,19 @@ export class CognitiveMemory {
         continue;
       }
 
-      const contentLower = memory.content.toLowerCase();
+      const haystack = (contentTokens.get(memory.id) ?? []).join(" ");
       let matches = 0;
-      for (const word of queryWords) {
-        if (contentLower.includes(word)) matches++;
+      if (phrase && haystack.includes(phrase)) {
+        // The whole normalized query, in order: the strongest lexical signal
+        // the store can offer, so it is scored as every term matched.
+        matches = phraseWeight;
+      } else {
+        for (const word of queryWords) {
+          if (haystack.includes(word)) matches += idf(word);
+        }
       }
-      if (contentLower.includes(lowerQuery)) matches += queryWords.length;
       for (const tag of memory.tags) {
-        if (lowerQuery.includes(tag.toLowerCase())) matches += 2;
+        if (lowerQuery.includes(tag.toLowerCase())) matches += tagBonus;
       }
 
       const relevance = matches * (0.5 + memory.utility * 0.5);
