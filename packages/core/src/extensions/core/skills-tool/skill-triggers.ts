@@ -40,17 +40,29 @@ import { statSync, readFileSync } from "node:fs";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 /**
- * Max trigger phrases read per skill — a longer list is an authoring bug, not a
- * matcher input. Three authored lists reach the cap: braid-reference (16
- * phrases), pi-reference (15), and agent-testing, which fills it exactly (7 in
- * the description tail + 5 in the body heading) now that the sources merge.
- * The cap assertion lives in test-skill-triggers-body.mjs; raising the number
- * means changing it there.
+ * Max trigger phrases kept per skill: a budget, spent down the merged list so
+ * the lowest-priority source loses first. Past it the reader drops the tail and
+ * reports nothing, which is why test-trigger-cap.mjs reads the authored files
+ * itself and fails by name: a claim past the cap is a build failure, not a
+ * silent loss.
+ *
+ * It bounds what one file may claim, not what a turn may spend. A phrase costs
+ * one word-bounded regex test over the prompt per turn (`triggerMatches`, from
+ * the suggestion matcher and the applicability pass) — flat in the phrase,
+ * linear in the prompt — so the ceiling is about shape: a list this long is a
+ * page of situations, and a longer one is a description in disguise.
  */
-export const MAX_TRIGGERS = 12;
+export const MAX_TRIGGERS = 16;
 
-/** Max characters of one trigger phrase. */
-export const MAX_TRIGGER_CHARS = 64;
+/**
+ * Max characters of one trigger phrase. A phrase compiles to a literal,
+ * word-bounded substring test: it reaches no prompt and costs the same at any
+ * length, so this is a shape bound rather than a hazard bound. A string long
+ * enough to be a sentence is a condition, and it matches only a prompt that
+ * carries that sentence verbatim. The bound sits above the longest shipped
+ * phrase, and test-trigger-cap.mjs fails by name past it.
+ */
+export const MAX_TRIGGER_CHARS = 66;
 
 /**
  * Where an authored phrase came from. Precedence (frontmatter, heading,

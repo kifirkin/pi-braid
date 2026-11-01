@@ -465,8 +465,14 @@ test("formatWhisper excerpt stays bounded beside the read pointer (≤ MAX_EXCER
 
 // ── frontmatter triggers: the file side ──────────────────────────────
 
-const { readSkillTriggers, normalizeTriggers, triggerMatches, clearSkillTriggerCache } =
-  await import(join(ROOT, "dist", "extensions", "core", "skills-tool", "skill-triggers.js"));
+const {
+  readSkillTriggers,
+  normalizeTriggers,
+  triggerMatches,
+  clearSkillTriggerCache,
+  MAX_TRIGGERS,
+  MAX_TRIGGER_CHARS,
+} = await import(join(ROOT, "dist", "extensions", "core", "skills-tool", "skill-triggers.js"));
 
 test("normalizeTriggers: lists and comma strings, trimmed, capped, deduped", () => {
   assert.deepEqual(normalizeTriggers([" Pane topology ", "pane topology", 42, ""]), [
@@ -474,8 +480,17 @@ test("normalizeTriggers: lists and comma strings, trimmed, capped, deduped", () 
   ]);
   assert.deepEqual(normalizeTriggers("a, b ,, c"), ["a", "b", "c"]);
   assert.deepEqual(normalizeTriggers(undefined), []);
-  assert.equal(normalizeTriggers(["x".repeat(65)]).length, 0, "overlong phrase dropped");
-  assert.equal(normalizeTriggers(Array.from({ length: 20 }, (_, i) => `t${i}`)).length, 12);
+  // Both bounds come from the reader, so a moved cap moves this check with it
+  // instead of leaving a fixture asserting a number the code no longer has.
+  assert.equal(
+    normalizeTriggers(["x".repeat(MAX_TRIGGER_CHARS + 1)]).length,
+    0,
+    "overlong phrase dropped",
+  );
+  assert.equal(
+    normalizeTriggers(Array.from({ length: MAX_TRIGGERS + 8 }, (_, i) => `t${i}`)).length,
+    MAX_TRIGGERS,
+  );
 });
 
 test("readSkillTriggers parses the frontmatter list; missing frontmatter → none", () => {

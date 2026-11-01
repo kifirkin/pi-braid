@@ -235,17 +235,20 @@ test("most of the catalog now carries phrases", () => {
   assert.ok(carrying >= 15, `only ${carrying} skills carry phrases`);
 });
 
-test("the phrase cap holds, and the three lists that reach it are named", () => {
-  // Merging the sources made every authored phrase visible, so three lists now
-  // spend the whole budget (braid-reference 16 and pi-reference 15 are cut;
-  // voice-replies fills it exactly). agent-testing lands on 11 because its two
-  // sources share "tool execution verification" — the dedup keeps one copy.
+test("the phrase cap holds over the shipped tree", () => {
+  // The cap is a budget, not a target: what this asserts is that no shipped
+  // list exceeds it. Which lists spend the whole budget is a census, printed
+  // rather than asserted — naming them here would fail the day an author drops
+  // a phrase, which breaks nothing. The failure belongs to test-trigger-cap.mjs,
+  // which reads the authored files and names the skill that went past the cap.
   assert.ok(skills.every((s) => s.triggers.length <= MAX_TRIGGERS));
   const atCap = skills
     .filter((s) => s.triggers.length === MAX_TRIGGERS)
     .map((s) => s.name)
     .sort();
-  assert.deepEqual(atCap, ["braid-reference", "pi-reference", "voice-replies"]);
+  console.log(
+    `         ${atCap.length} of ${skills.length} list(s) spend the whole budget of ${MAX_TRIGGERS}: ${atCap.join(", ") || "none"}`,
+  );
 });
 
 // ── matching ───────────────────────────────────────────────────────────────

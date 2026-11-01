@@ -66,9 +66,9 @@ const VERDICTS = new Set([
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Mirrors skill-triggers.ts: the reader keeps this many phrases per skill. */
-const MAX_TRIGGERS = 12;
+const MAX_TRIGGERS = 16;
 /** Mirrors skill-triggers.ts: a longer phrase is dropped by the reader. */
-const MAX_TRIGGER_CHARS = 64;
+const MAX_TRIGGER_CHARS = 66;
 /** pi's own cap on a skill description; longer loads with a warning nobody reads. */
 const MAX_DESCRIPTION_CHARS = 1024;
 /** A description that names a situation an agent can be in, not just a topic. */

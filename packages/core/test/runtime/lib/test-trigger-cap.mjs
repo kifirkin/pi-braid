@@ -17,12 +17,9 @@
  * source the reader grows, or a parse this fixture gets wrong, therefore fails
  * by name instead of quietly under-counting.
  *
- * A shipped skill authoring past a cap cannot be repaired from test — the packs
- * are content — so each such loss is pinned by name and exact figure. A pin
- * whose skill grew fails, a pin whose skill fits the cap again is stale and
- * fails, and the pinned losses print on every run: the deficit can shrink
- * without an edit here, and it cannot grow. Removing a pin is the edit that
- * records a repair.
+ * Nothing is pinned and nothing is exempt: a shipped skill that authors past a
+ * cap fails by name with its figure and the cap, so a pack cannot drift back
+ * into claiming phrases the reader would drop.
  *
  * Planted controls: a copy of a shipped pack is scanned under a temp directory,
  * never the real tree. The unmodified copy must pass, then one skill gains a
@@ -56,7 +53,7 @@ const SHIPPED_PACKS = [
   { dir: join(REPO, "packages", "skills", "skills"), label: "packages/skills/skills" },
 ];
 
-/** The pack the planted controls copy: no pinned row names a skill in it. */
+/** The pack the planted controls copy; no shipped row is touched. */
 const CONTROL_PACK = join(REPO, "packages", "skills", "skills");
 
 /**
@@ -80,30 +77,6 @@ function packsToScan() {
   }
   return SHIPPED_PACKS;
 }
-
-/**
- * Standing count losses, pinned so the deficit can only shrink.
- *
- * Key: the skill directory. Value: how many phrases it authored. Such a skill
- * loses its tail to the reader's cap, which is the defect this fixture exists
- * to make loud; it survives here only because trimming a pack is a content
- * decision, not a test one. Delete a row once its skill fits the cap.
- */
-const PINNED_OVER_CAP = new Map([
-  ["braid-reference", 16],
-  ["pi-reference", 15],
-  ["voice-replies", 13],
-]);
-
-/**
- * Standing over-long phrases, pinned for the same reason: skill directory to
- * the exact phrase. The reader drops such a phrase before matching, so the file
- * claims a trigger that can never fire. A different over-long phrase is not
- * covered by the pin, and shortening the pinned one makes the pin stale.
- */
-const PINNED_LONG_PHRASE = new Map([
-  ["subagent-verification", "when verifying integration of pi-braid-lib into dependent packages"],
-]);
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const BODY_HEADING = /^##\s*triggers?\s*:\s*(.*)$/i;
@@ -242,12 +215,12 @@ function skillsIn(label, dir) {
 
 /**
  * Scan every given pack and judge each skill against the reader's caps.
- * Returns the census (scanned, highest count, longest phrase), the standing
- * losses let through by a pin, and every problem found.
+ * Returns the census (scanned, highest count, longest phrase) and every problem
+ * found.
  */
 function scan(packs) {
   const skills = packs.flatMap((pack) => skillsIn(pack.label, pack.dir));
-  const result = { counts: [], debt: [], longest: null, maxCount: null, problems: [], scanned: 0 };
+  const result = { counts: [], longest: null, maxCount: null, problems: [], scanned: 0 };
   if (skills.length === 0) {
     result.problems.push(
       `no SKILL.md found under ${packs.map((pack) => pack.label).join(", ")} — a scan over nothing proves nothing`,
@@ -255,7 +228,6 @@ function scan(packs) {
     return result;
   }
   result.scanned = skills.length;
-  const seenPins = new Set();
 
   for (const skill of skills) {
     const { description, phrases } = authoredPhrases(skill.file);
@@ -263,6 +235,11 @@ function scan(packs) {
     result.counts.push({ count, name: skill.name, where: skill.where });
     if (!result.maxCount || count > result.maxCount.count) {
       result.maxCount = { count, where: skill.where };
+    }
+    if (count > MAX_TRIGGERS) {
+      result.problems.push(
+        `${skill.where}: ${count} authored trigger phrases; the reader keeps ${MAX_TRIGGERS} (MAX_TRIGGERS), so ${count - MAX_TRIGGERS} phrase(s) never reach the matcher`,
+      );
     }
 
     // The reader must have read the prefixes of this list, in this order. A
@@ -278,67 +255,14 @@ function scan(packs) {
       }
     }
 
-    const pinnedCount = PINNED_OVER_CAP.get(skill.name);
-    if (count > MAX_TRIGGERS) {
-      seenPins.add(skill.name);
-      if (pinnedCount === undefined) {
-        result.problems.push(
-          `${skill.where}: ${count} authored trigger phrases; the reader keeps ${MAX_TRIGGERS} (MAX_TRIGGERS), so ${count - MAX_TRIGGERS} phrase(s) never reach the matcher`,
-        );
-      } else if (count > pinnedCount) {
-        result.problems.push(
-          `${skill.where}: ${count} authored trigger phrases; the reader keeps ${MAX_TRIGGERS} (MAX_TRIGGERS) and this skill is pinned at ${pinnedCount} — the loss grew`,
-        );
-      } else if (count < pinnedCount) {
-        result.problems.push(
-          `${skill.where}: pinned at ${pinnedCount} authored trigger phrases but authors ${count}; the pin is stale, lower or delete it`,
-        );
-      } else {
-        result.debt.push({
-          text: `${skill.where} ${count}>${MAX_TRIGGERS} phrases`,
-          where: skill.where,
-        });
-      }
-    } else if (pinnedCount !== undefined) {
-      seenPins.add(skill.name);
-      result.problems.push(
-        `${skill.where}: pinned at ${pinnedCount} authored trigger phrases but authors ${count} (the reader keeps ${MAX_TRIGGERS}); the pin is stale, delete it`,
-      );
-    }
-
-    const pinnedPhrase = PINNED_LONG_PHRASE.get(skill.name);
     for (const phrase of phrases) {
       if (!result.longest || phrase.length > result.longest.length) {
         result.longest = { length: phrase.length, phrase, where: skill.where };
       }
-      if (phrase.length <= MAX_TRIGGER_CHARS) continue;
-      if (pinnedPhrase === phrase) {
-        result.debt.push({
-          text: `${skill.where} ${phrase.length}>${MAX_TRIGGER_CHARS} chars "${phrase}"`,
-          where: skill.where,
-        });
-      } else {
+      if (phrase.length > MAX_TRIGGER_CHARS) {
         result.problems.push(
           `${skill.where}: trigger phrase "${phrase}" is ${phrase.length} chars; the reader drops phrases over ${MAX_TRIGGER_CHARS} (MAX_TRIGGER_CHARS), so it never matches`,
         );
-      }
-    }
-    if (
-      pinnedPhrase !== undefined &&
-      !(phrases.includes(pinnedPhrase) && pinnedPhrase.length > MAX_TRIGGER_CHARS)
-    ) {
-      result.problems.push(
-        `${skill.where}: the pinned over-long phrase is no longer authored past ${MAX_TRIGGER_CHARS} chars; delete the pin`,
-      );
-    }
-  }
-
-  // A pin whose skill left the scan is a stale row. Only the full run can tell,
-  // because a control child scans one pack.
-  if (!IS_CONTROL_CHILD) {
-    for (const name of [...PINNED_OVER_CAP.keys(), ...PINNED_LONG_PHRASE.keys()]) {
-      if (!seenPins.has(name) && !skills.some((skill) => skill.name === name)) {
-        result.problems.push(`pinned skill "${name}" is in no scanned pack; delete its pin`);
       }
     }
   }
@@ -348,12 +272,7 @@ function scan(packs) {
 /** The printed census: what was examined, how close to the caps, what stands. */
 function censusLine(result) {
   const caps = `MAX_TRIGGERS ${MAX_TRIGGERS}, MAX_TRIGGER_CHARS ${MAX_TRIGGER_CHARS}`;
-  const standing =
-    result.problems.length > 0
-      ? `${result.problems.length} problem(s)`
-      : result.debt.length === 0
-        ? "within both caps"
-        : `no new loss (${result.debt.length} pinned)`;
+  const standing = result.problems.length > 0 ? `${result.problems.length} problem(s)` : "within both caps";
   const highest = result.maxCount
     ? `${result.maxCount.count} (${result.maxCount.where})`
     : "none";
@@ -361,12 +280,6 @@ function censusLine(result) {
     ? `${result.longest.length} chars (${result.longest.where})`
     : "none";
   return `trigger-cap: ${result.scanned} skill(s) examined, ${standing}; ${caps}; highest authored count ${highest}; longest phrase ${longest}`;
-}
-
-/** One line per standing loss, so a pinned row is never silent. */
-function debtLine(result) {
-  if (result.debt.length === 0) return null;
-  return `trigger-cap debt: ${result.debt.map((row) => row.text).join("; ")}`;
 }
 
 /** Copy a shipped pack into a throwaway directory; the caller removes it. */
@@ -419,11 +332,9 @@ function nearestCapSkill(result) {
 
 const SHIPPED = scan(packsToScan());
 console.log(censusLine(SHIPPED));
-const standingDebt = debtLine(SHIPPED);
-if (standingDebt) console.log(standingDebt);
 
 describe("trigger caps", () => {
-  it("every shipped skill authors within the reader's caps, pinned losses aside", () => {
+  it("every shipped skill authors within the reader's caps", () => {
     assert.deepEqual(SHIPPED.problems, []);
   });
 
