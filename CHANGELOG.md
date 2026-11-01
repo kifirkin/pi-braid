@@ -53,6 +53,23 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.12 (2026-11-01: a skill that says it is retired stops being advertised)
+
+- **A retired skill no longer competes with its successor.** Four skills in the packs declare
+  `status: merged` and nothing read the declaration, so `code-search` was still listed beside
+  `code-refactoring` — two entries for one job, no sign which was current. A declared status of
+  `merged`, `archived` or `deprecated` now rides the exclusion the cache already had, so the catalog,
+  the suggestion whisper, the at-use line, both catalog accessors and `list_skills` agree without a
+  second concept. The file stays on disk and an explicit read of it still resolves: the skill stops
+  being advertised, it does not become unreadable. The status comes from the frontmatter parse the
+  trigger phrases already paid for, so no skill file is read a third time.
+- **The budget gate it disturbed now tests the rule rather than its own reflection.** One existing
+  measurement asserted that every skill in the pack appears in one catalog page; with a retired skill
+  legitimately absent, the writer's first repair compared the page to the module's own accessor, which
+  is the same code on both sides and cannot catch a _wrong_ exclusion. The assertion instead derives the
+  expected population from the SKILL.md files themselves, so a skill retired for no reason in its
+  frontmatter reddens the gate. The seat verified that by planting one.
+
 ## Core — 0.43.11 (2026-11-01: an owner ruling becomes findable, and the pointer rule stops licensing the skip)
 
 - **The pointer rule no longer licenses skipping the read.** The sentence it carried — `The prompt already
