@@ -440,10 +440,8 @@ describe("prompt-builder (structural de-dup regression guard)", () => {
       "re-read rule must render (compressed form)",
     );
     assert.ok(
-      output.includes(
-        "The prompt already covering the domain is the only reason to skip the read",
-      ),
-      "when-not test must render (compressed form)",
+      output.includes("If the body itself is already in this prompt you have read it"),
+      "the body condition must render: a summary is not the body",
     );
     assert.ok(
       output.includes("Mechanical trigger, no judgment call"),

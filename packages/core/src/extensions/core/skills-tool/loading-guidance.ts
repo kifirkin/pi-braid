@@ -64,8 +64,8 @@ export function skillsCatalogRule(readRoot: string, grouped = false): string {
   return `This catalog is every installed skill: one row per skill, name and description.${readPath} When the task enters a listed skill's domain, read the WHOLE SKILL.md before acting in that domain; never act from memory of a skill's contents.`;
 }
 
-/** Paragraph 2: the pointer rule (pinned verbatim by test-prompt-budget.mjs). */
-export const SKILLS_POINTER_RULE = `Pointer rule: the catalog one-liner is metadata, not content — the SKILL.md path is the knowledge. The prompt already covering the domain is the only reason to skip the read.`;
+/** Paragraph 2: the pointer rule, exported so a fixture can pin its text. */
+export const SKILLS_POINTER_RULE = `Pointer rule: the catalog one-liner is metadata, not content — the SKILL.md path is the knowledge. If the body itself is already in this prompt you have read it; if you have only a description or an excerpt, you have not.`;
 
 const MECHANICAL_TRIGGER_LEAD = `Mechanical trigger, no judgment call: about to use a tool family whose word appears in a skill's name`;
 const MECHANICAL_TRIGGER_TAIL = `→ read that SKILL.md before the first call in the family.`;
