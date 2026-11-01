@@ -28,6 +28,12 @@
  * capitalized ("MASTERSHIP TRANSFER: …"), and a phrase that only matched
  * lowercase text would be dead in production while a lowercase-only unit
  * fixture kept the suite green.
+ *
+ * The same parse also returns the file's declared lifecycle `status`, which is
+ * NOT matcher input: the skills-tool needs it once per file, at cache time, to
+ * decide whether the skill is still advertised. It rides this read because the
+ * file is already open here — a reader of its own would be a third read of the
+ * same bytes per process, and a status is not worth one.
  */
 
 import { statSync, readFileSync } from "node:fs";
@@ -65,6 +71,18 @@ interface TriggerCacheEntry {
   /** The description the entries were merged with: a different one is a miss. */
   description: string;
   entries: TriggerEntry[];
+  /** The declared lifecycle status, lowercased; "" when the file declares none. */
+  status: string;
+}
+
+/**
+ * One SKILL.md's trigger phrases plus the lifecycle status its frontmatter
+ * declares — everything one parse of the file answers.
+ */
+export interface SkillFrontmatterRead {
+  entries: TriggerEntry[];
+  /** Lowercased `status:` token, or "" when the file declares none. */
+  status: string;
 }
 
 const cache = new Map<string, TriggerCacheEntry>();
@@ -103,6 +121,15 @@ export function readSkillTriggers(filePath: string, description?: string): strin
 }
 
 /**
+ * Normalize a frontmatter `status` value into the token a caller matches on.
+ * Only a string is a declaration: a missing key, a null, or a nested shape is
+ * the absence of one. Pure.
+ */
+function normalizeSkillStatus(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+/**
  * Read a skill's authored phrases WITH their provenance, merged in priority
  * order: frontmatter (`trigger` or `triggers`), then a `## trigger:` body
  * heading, then the description's trailing "Triggers: …" segment.
@@ -112,13 +139,23 @@ export function readSkillTriggers(filePath: string, description?: string): strin
  * a miss, because the merged list depends on it).
  */
 export function readSkillTriggerEntries(filePath: string, description?: string): TriggerEntry[] {
+  return readSkillFrontmatter(filePath, description).entries;
+}
+
+/**
+ * Read a skill's trigger phrases WITH their provenance plus its declared
+ * lifecycle status, from one memoized parse. Same sources, precedence and
+ * memoization as readSkillTriggerEntries; the status is the frontmatter key of
+ * that name, lowercased, "" when absent or unreadable.
+ */
+export function readSkillFrontmatter(filePath: string, description?: string): SkillFrontmatterRead {
   const desc = description ?? "";
   let st;
   try {
     st = statSync(filePath);
   } catch {
     cache.delete(filePath);
-    return [];
+    return { entries: [], status: "" };
   }
   const cached = cache.get(filePath);
   if (
@@ -127,13 +164,15 @@ export function readSkillTriggerEntries(filePath: string, description?: string):
     cached.size === st.size &&
     cached.description === desc
   ) {
-    return cached.entries;
+    return { entries: cached.entries, status: cached.status };
   }
   const sources: TriggerEntry[][] = [];
+  let status = "";
   try {
     const { frontmatter, body } = parseFrontmatter(readFileSync(filePath, "utf-8"));
     const fm = frontmatter as Record<string, unknown>;
     const label = (source: TriggerSource) => (phrase: string) => ({ phrase, source });
+    status = normalizeSkillStatus(fm.status);
     sources.push(
       normalizeTriggers(fm.trigger).map(label("frontmatter")),
       normalizeTriggers(fm.triggers).map(label("frontmatter")),
@@ -148,8 +187,8 @@ export function readSkillTriggerEntries(filePath: string, description?: string):
       parseDescriptionTriggers(desc).map((phrase) => ({ phrase, source: "description" })),
     );
   const entries = mergeTriggerEntries(sources);
-  cache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, description: desc, entries });
-  return entries;
+  cache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, description: desc, entries, status });
+  return { entries, status };
 }
 
 /**

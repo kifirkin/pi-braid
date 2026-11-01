@@ -589,7 +589,14 @@ await test("the shipped pack's heaviest page fits the 12KB budget on production 
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
   const PACKAGE_SOURCE = `npm:${pkg.name}@${pkg.version}`;
   const skillsDir = join(ROOT, "skills");
+  // The expected population is derived from the FILES, not from the module
+  // under test: the page and the catalog accessor share the exclusion, so a
+  // comparison between them agrees even when the exclusion is wrong. Reading
+  // each SKILL.md's declared status is the one reference the module cannot
+  // move, and it reddens when a skill that is not retired stops being served.
+  const RETIRING_STATUSES = new Set(["merged", "archived", "deprecated"]);
   const rows = [];
+  const advertisedFromFiles = [];
   for (const name of readdirSync(skillsDir).sort()) {
     const filePath = join(skillsDir, name, "SKILL.md");
     let text;
@@ -599,6 +606,9 @@ await test("the shipped pack's heaviest page fits the 12KB budget on production 
       continue;
     }
     const { frontmatter } = parseFrontmatter(text);
+    const declared =
+      typeof frontmatter.status === "string" ? frontmatter.status.trim().toLowerCase() : "";
+    if (!RETIRING_STATUSES.has(declared)) advertisedFromFiles.push(name);
     rows.push({
       name,
       filePath,
@@ -636,7 +646,26 @@ await test("the shipped pack's heaviest page fits the 12KB budget on production 
   // fixture row without sourceInfo silently prices a different catalog.
   const firstPage = await pagesAt(DEFAULT_SECTIONS_MAX);
   const firstRow = JSON.parse(firstPage[0].text);
-  assert.equal(firstRow.total, rows.length, "every skill is in the catalog");
+  // A skill the files retire is not a row the page owes, so the reference is
+  // the count each SKILL.md's own status yields. The floor keeps the budget
+  // measuring a pack rather than a stub that fits for the wrong reason.
+  assert.ok(
+    advertisedFromFiles.length >= 20,
+    `expected the shipped pack to advertise most of itself, saw ${advertisedFromFiles.length} of ${rows.length}`,
+  );
+  assert.equal(
+    firstRow.total,
+    advertisedFromFiles.length,
+    "the page's total is the number of skills whose declared status does not retire them",
+  );
+  const paged = firstPage
+    .flatMap((page) => JSON.parse(page.text).skills.map((skill) => skill.name))
+    .sort();
+  assert.deepEqual(
+    paged,
+    [...advertisedFromFiles].sort(),
+    "the pages list exactly the skills whose declared status does not retire them",
+  );
   assert.equal(
     firstRow.skills[0].source,
     PACKAGE_SOURCE,

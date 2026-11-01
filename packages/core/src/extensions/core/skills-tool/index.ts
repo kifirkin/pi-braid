@@ -48,7 +48,7 @@ import {
   rankSkillsDeterministic,
 } from "./auto-inject.js";
 import type { DeterministicRanking, RankedSkill, RelevanceReason } from "./auto-inject.js";
-import { readSkillTriggerEntries } from "./skill-triggers.js";
+import { readSkillFrontmatter } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import { readGovernedFamilies } from "./skill-families.js";
 import {
@@ -78,9 +78,10 @@ interface CachedSkill {
   baseDir: string;
   sourceInfo?: { source?: string; package?: string };
   /**
-   * pi frontmatter flag: the skill is excluded from model selection and is
-   * reachable only through its explicit /skill:name command. braid must keep
-   * it out of the surfaces that advertise skills to the model.
+   * Excluded from model selection: pi's own frontmatter flag, or a status this
+   * cache reads as retired (see RETIRED_STATUSES). Either way braid keeps the
+   * skill out of the surfaces that advertise skills to the model, while the
+   * file stays on disk and an explicit read of it still resolves.
    */
   disableModelInvocation?: boolean;
   /** Frontmatter trigger phrases, resolved from SKILL.md at cache time. */
@@ -92,16 +93,39 @@ interface CachedSkill {
 let cachedSkills: CachedSkill[] = [];
 
 /**
+ * Statuses that mean the skill is no longer the place to look: its content
+ * lives in a successor, or the file is kept as history. The vocabulary is the
+ * pack's (a `status:` frontmatter key), and the exclusion is this module's:
+ * no file is deleted, renamed or edited to make a skill stop being advertised.
+ */
+const RETIRED_STATUSES = new Set(["merged", "archived", "deprecated"]);
+
+/** Whether a declared status retires the skill from model selection. */
+function isRetiredStatus(status: string): boolean {
+  return RETIRED_STATUSES.has(status);
+}
+
+/**
  * Called from prompt-builder's before_agent_start to populate the cache.
  * Resolves each skill's frontmatter trigger phrases here, once per turn:
  * the matcher scores triggers, pi's skill objects never carry them (fixed
  * shape), and the memoized read makes repeat turns stat-only.
+ *
+ * The same read answers the file's `status:`, and a retired status rides the
+ * `disableModelInvocation` exclusion rather than a second one: every surface
+ * that advertises skills already filters on that flag, so one derived field
+ * keeps the catalog, the whisper, the at-use line and the accessors in
+ * agreement. The row is still cached, so an explicit read of the file is still
+ * recognized — the skill stops being advertised, not becoming unreadable.
  */
 export function setCachedSkills(skills: CachedSkill[]): void {
+  let retired = 0;
   cachedSkills = skills.map((s) => {
-    const entries = readSkillTriggerEntries(s.filePath, s.description);
+    const { entries, status } = readSkillFrontmatter(s.filePath, s.description);
     const triggerSources: Record<string, TriggerSource> = {};
     for (const entry of entries) triggerSources[entry.phrase] = entry.source;
+    const isRetired = isRetiredStatus(status);
+    if (isRetired) retired++;
     return {
       ...s,
       triggers: entries.map((entry) => entry.phrase),
@@ -110,11 +134,15 @@ export function setCachedSkills(skills: CachedSkill[]): void {
       // frontmatter read the phrases come from (one extra parse per file per
       // process). An empty list is a declaration of no family, not a miss.
       families: readGovernedFamilies(s.filePath),
+      disableModelInvocation: s.disableModelInvocation === true || isRetired,
     };
   });
   // Sync with auto-inject subsystem (enriched cache — triggers ride along)
   updateSkillCache(cachedSkills);
-  log.debug(`Cached ${skills.length} skills for list_skills tool`);
+  log.debug(
+    `Cached ${skills.length} skills for list_skills tool` +
+      (retired ? ` (${retired} retired by status)` : ""),
+  );
 }
 
 /**
