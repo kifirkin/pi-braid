@@ -22,14 +22,32 @@
  *   5. The render is a pure function of its inputs: the same catalog in any
  *      order renders byte-identical text, and no install location or skill
  *      name is baked into the module.
+ *   6. The price printed at the end is the assembled prompt, not a design
+ *      estimate and not one pack's share of it. Every pack the tree ships is
+ *      discovered from its manifest, each pack's own block prints, and the
+ *      total is ONE composition over the union of their entries. Three
+ *      controls keep that total a measurement: a row dropped into a priced
+ *      pack moves it by exactly that row's bytes, a declared path that holds
+ *      no skills gives it nothing, and the union is never the sum of the
+ *      separate renders (the rule, the pointer rule and the trigger are
+ *      paid once, however many packs the catalog carries).
  *
  * Run: node test/runtime/core/test-skills-floor.mjs
  */
 
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -94,6 +112,7 @@ function readPack(packDir) {
   return entries;
 }
 
+const REPO_ROOT = join(CORE, "..", "..");
 const REPO_PACK = join(CORE, "skills");
 const REPO_ENTRIES = readPack(REPO_PACK);
 const TOOLS = [
@@ -116,6 +135,121 @@ function makePack(root, skills) {
     writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\nBody.\n`);
   }
   return readPack(root);
+}
+
+/**
+ * One composition of a population, with the numbers a price line prints.
+ * `count` is the rows the block actually renders, read back out of the text,
+ * so a row the renderer dropped cannot be priced as if it were there; the
+ * token figure is the crude four-bytes-per-token estimate this gate has
+ * always printed.
+ */
+function price(toolNames, entries) {
+  const text = skillsLoadingText(toolNames, entries);
+  const bytes = Buffer.byteLength(text, "utf8");
+  const count = text.split("\n").filter((line) => line.startsWith("- ")).length;
+  return { text, count, bytes, tokens: Math.ceil(bytes / 4) };
+}
+
+/** `N skills, B bytes, T est tokens`: the measure triple a price line carries. */
+function measure(priced) {
+  return `${priced.count} skills, ${priced.bytes} bytes, ${priced.tokens} est tokens`;
+}
+
+/** `floor: <measure>`: the line this gate printed before the union existed. */
+function legacyFloorLine(priced) {
+  return `floor: ${measure(priced)}`;
+}
+
+/** Directory headings in a rendered block: one per pack in a grouped catalog. */
+function headings(text) {
+  return text.split("\n").filter((line) => line.startsWith("/")).length;
+}
+
+/**
+ * Whether a directory holds at least one `<name>/SKILL.md` child. A path a
+ * manifest declares but nothing ships in is not a pack: it renders no row, so
+ * it costs no byte, and pricing it as one would print a pack that no agent
+ * carries.
+ */
+function holdsSkills(dir) {
+  try {
+    return readdirSync(dir).some((name) => existsSync(join(dir, name, "SKILL.md")));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every skill pack this tree ships, read from the workspace manifests rather
+ * than from a list here: a package declares its pack in `pi.skills` (a string
+ * or a list of directories, which pi accepts in both forms). Reading the
+ * manifests is what prices a pack added tomorrow without an edit: a hand list
+ * would keep printing one pack's figure while an agent read two.
+ */
+function discoverSkillPacks(root) {
+  const packs = [];
+  let workspaces;
+  try {
+    workspaces = readdirSync(join(root, "packages")).sort();
+  } catch {
+    return packs;
+  }
+  for (const workspace of workspaces) {
+    const workspaceDir = join(root, "packages", workspace);
+    let manifest;
+    try {
+      manifest = JSON.parse(readFileSync(join(workspaceDir, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const declared = manifest?.pi?.skills;
+    const declaredDirs = typeof declared === "string" ? [declared] : Array.isArray(declared) ? declared : [];
+    for (const declaredDir of declaredDirs) {
+      const packDir = resolve(workspaceDir, declaredDir);
+      if (packs.includes(packDir) || !holdsSkills(packDir)) continue;
+      packs.push(packDir);
+    }
+  }
+  return packs;
+}
+
+/**
+ * The packs the layout alone finds: every directory holding `<name>/SKILL.md`
+ * children. It reads no manifest, so it is the second instrument for the
+ * discovery - a pack the manifest walk misses, and a manifest pointing at a
+ * directory that ships nothing, both surface as a disagreement instead of as a
+ * smaller price.
+ */
+function layoutPackDirs(dir, found = [], depth = 0) {
+  let children;
+  try {
+    children = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  const subdirs = children.filter(
+    (child) => child.isDirectory() && child.name !== "node_modules" && child.name !== "dist",
+  );
+  if (subdirs.some((child) => existsSync(join(dir, child.name, "SKILL.md")))) found.push(dir);
+  if (depth >= 4) return found;
+  for (const child of subdirs) layoutPackDirs(join(dir, child.name), found, depth + 1);
+  return found;
+}
+
+/**
+ * A temp repo root whose `packages/<name>/package.json` manifests declare
+ * whatever the fixture needs, for the discovery controls.
+ */
+function makeRepo(manifests) {
+  const root = mkdtempSync(join(tmpdir(), "skills-price-"));
+  tempRoots.push(root);
+  for (const [workspace, manifest] of Object.entries(manifests)) {
+    const workspaceDir = join(root, "packages", workspace);
+    mkdirSync(workspaceDir, { recursive: true });
+    writeFileSync(join(workspaceDir, "package.json"), JSON.stringify(manifest));
+  }
+  return root;
 }
 
 /** Every `<dir>/<name>/SKILL.md` path the section states, by row order. */
@@ -297,11 +431,140 @@ test("the module hardcodes no install location and no skill name", () => {
   }
 });
 
-// ── report ─────────────────────────────────────────────────────────────────
+// ── 4. the union price ─────────────────────────────────────────────────────
+//
+// An agent reads the union of everything installed, so the price that matters
+// is one composition over that union. The figures below are printed, and the
+// controls keep them a measurement rather than a constant: a constant does not
+// move when an entry is added, and it does not shrink when the framing is
+// shared.
 
-const bytes = Buffer.byteLength(repoText, "utf8");
+const DISCOVERED = discoverSkillPacks(REPO_ROOT);
+const PRICED = DISCOVERED.map((dir) => {
+  const entries = readPack(dir);
+  return { dir, label: relative(REPO_ROOT, dir), entries, price: price(TOOLS, entries) };
+});
+const PRIMARY = PRICED.find((pack) => pack.dir === REPO_PACK);
+const UNION_ENTRIES = PRICED.flatMap((pack) => pack.entries);
+const UNION_PRICE = price(TOOLS, UNION_ENTRIES);
+const SEPARATE_BYTES = PRICED.reduce((total, pack) => total + pack.price.bytes, 0);
+/** The core pack's own block, computed from the entries every assertion above prices. */
+const LEGACY_PRICE = price(TOOLS, REPO_ENTRIES);
+
+test("every pack the tree ships is discovered from its manifest, and the layout agrees", () => {
+  assert.ok(PRIMARY, `the core pack ${REPO_PACK} is not discovered: a manifest stopped declaring it`);
+  const layout = layoutPackDirs(join(REPO_ROOT, "packages")).sort();
+  assert.deepEqual(
+    [...DISCOVERED].sort(),
+    layout,
+    "the manifests price a different set of packs than the tree ships",
+  );
+  assert.ok(
+    PRICED.length >= 2,
+    `the catalog carries ${PRICED.length} pack(s), so this gate prices one pack's block and not the union an agent reads`,
+  );
+  assert.equal(
+    UNION_PRICE.count,
+    UNION_ENTRIES.length,
+    "the union renders one row per entry: no pack dropped, none duplicated",
+  );
+});
+
+test("a declared pack that holds no skills contributes nothing", () => {
+  const root = makeRepo({
+    empty: { name: "empty", pi: { skills: ["./empty", "./absent"] } },
+    real: { name: "real", pi: { skills: "./skills" } },
+  });
+  const emptyDir = join(root, "packages", "empty", "empty");
+  mkdirSync(emptyDir, { recursive: true });
+  const realPack = join(root, "packages", "real", "skills");
+  const real = makePack(realPack, [["gamma-skill", "The only skill that ships."]]);
+
+  assert.deepEqual(
+    discoverSkillPacks(root),
+    [realPack],
+    "a declared directory with no SKILL.md child is not a pack, and an absent one is not either",
+  );
+  const text = price(TOOLS, [...real, ...readPack(emptyDir)]).text;
+  assert.equal(headings(text), 0, "a pack holding no skills renders no heading of its own");
+  assert.ok(!text.includes(emptyDir), "the empty pack's path never enters the block");
+});
+
+test("a row added to a priced pack moves the total by exactly that row's bytes", () => {
+  const anchor = tempPack([["anchor-skill", "An anchor row, so the pack is already priced."]]);
+  const packDir = dirname(dirname(anchor[0].filePath));
+  const baseline = price(TOOLS, [...UNION_ENTRIES, ...anchor]);
+
+  // The row carries a non-ASCII glyph on purpose: a price that counted
+  // characters where it says bytes would move by one less than this row is.
+  const description = "Synthetic row, measured by its own bytes: \u2605.";
+  const synthetic = makePack(packDir, [["synthetic-skill", description]]);
+  const after = price(TOOLS, [...UNION_ENTRIES, ...synthetic]);
+  const rowBytes = Buffer.byteLength(`- synthetic-skill: ${description}\n`, "utf8");
+
+  assert.equal(after.count, baseline.count + 1, "exactly one row was added");
+  assert.equal(headings(after.text), headings(baseline.text), "the pack's heading was already priced: the delta is a row");
+  assert.ok(after.bytes > baseline.bytes, "a price that cannot move is a constant");
+  assert.equal(
+    after.bytes - baseline.bytes,
+    rowBytes,
+    `the total moved by ${after.bytes - baseline.bytes} bytes for a ${rowBytes}-byte row`,
+  );
+});
+
+test("the total is one composition over the union, not the sum of the per-pack renders", () => {
+  assert.equal(headings(UNION_PRICE.text), PRICED.length, "one heading per pack");
+  assert.equal(
+    UNION_PRICE.text.split(SKILLS_POINTER_RULE).length - 1,
+    1,
+    "the pointer rule is stated once for the union, not once per pack",
+  );
+  assert.equal(
+    UNION_PRICE.text.split("Mechanical trigger, no judgment call").length - 1,
+    1,
+    "the trigger renders once for the union",
+  );
+  assert.ok(
+    UNION_PRICE.bytes < SEPARATE_BYTES,
+    `the total (${UNION_PRICE.bytes}) must be below the separate renders (${SEPARATE_BYTES}): the framing is paid once`,
+  );
+  for (const pack of PRICED) {
+    assert.ok(
+      UNION_PRICE.bytes >= pack.price.bytes,
+      `the total (${UNION_PRICE.bytes}) sits below ${pack.label}'s own block (${pack.price.bytes})`,
+    );
+  }
+});
+
+test("the floor line still prints one pack's block, in the shape it has always had", () => {
+  const line = legacyFloorLine(LEGACY_PRICE);
+  assert.match(line, /^floor: \d+ skills, \d+ bytes, \d+ est tokens$/, `the legacy line changed shape: ${line}`);
+  assert.equal(
+    line,
+    `floor: ${REPO_ENTRIES.length} skills, ${LEGACY_PRICE.bytes} bytes, ${LEGACY_PRICE.tokens} est tokens`,
+    "the legacy line prices the core pack's entries, not the union's",
+  );
+  assert.equal(
+    LEGACY_PRICE.bytes,
+    PRIMARY.price.bytes,
+    "the discovered core pack and the entries the assertions above read must be one block",
+  );
+});
+
+// ── report ─────────────────────────────────────────────────────────────────
+//
+// The `floor:` line keeps its exact printed shape and its subject (the core
+// pack priced above), because something may read it. Every pack prints under
+// `pack:` so no parser mistakes a second pack for a second floor, and the
+// union prints once under `total:`: the per-pack figures add up to more than
+// the total on purpose, and a reader who added them would price the framing
+// once per pack.
+
+console.log(`\n  ${legacyFloorLine(LEGACY_PRICE)}`);
+for (const pack of PRICED) console.log(`  pack ${pack.label}: ${measure(pack.price)}`);
+console.log(`  total across ${PRICED.length} packs: ${measure(UNION_PRICE)}`);
 console.log(
-  `\n  floor: ${REPO_ENTRIES.length} skills, ${bytes} bytes, ${Math.ceil(bytes / 4)} est tokens`,
+  `  (one composition: the rule, the pointer rule and the trigger render once, which is ${SEPARATE_BYTES - UNION_PRICE.bytes} bytes below the separate prices)`,
 );
 for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
 
