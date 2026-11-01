@@ -53,6 +53,37 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.11 (2026-11-01: an owner ruling becomes findable, and the pointer rule stops licensing the skip)
+
+- **The pointer rule no longer licenses skipping the read.** The sentence it carried — `The prompt already
+covering the domain is the only reason to skip the read` — named the wrong test: a prompt that covers a
+  domain carries a description, a catalog line or an excerpt, and the body is what the agent is supposed
+  to read. So it authorised skipping in precisely the case where a summary and the body part company, and
+  it called that the _only_ reason, denying the legitimate one. It now reads `If the body itself is
+already in this prompt you have read it; if you have only a description or an excerpt, you have not.` A
+  new fixture asserts this against the assembled prompt, reddens on three planted licences including the
+  retired sentence, and re-runs the whole check against a rebuilt copy of the module with the old
+  sentence restored. The behavioural effect is unmeasured and the report says so: this subsystem's claims
+  are structural until a probe with a control arm runs.
+- **Owner rulings are filed where recall can reach them, and split by layer.** A backfill reads the
+  session corpus, decides which user turns are the owner stating a standing instruction, and writes each
+  one into the semantic store with a pointer that re-reads the original transcript line. The classifier
+  is split along the line the placement gate draws: the generic decision grammar stays in the memory
+  layer, and everything braid-shaped — whisper envelopes, a seat's dispatch anatomy, pasted-brief
+  headings, session machinery, role vocabulary — lives in the orchestration domain layer that already
+  owns those words. A generic layer holding them is what refused this work the first time, at nine
+  literal hits with the exclusion budget full.
+- **A ruling's tags are derived from the store, because a flat bonus does not pay for rarity.** A
+  pre-registered measurement over ten questions found only three reachable answers and reached two of
+  them. The rule that did it is the opposite of the intuition: a tag's bonus is a constant, so how rare a
+  token is buys the entry nothing, and the only property worth maximising is whether a later question
+  names it — which is what store frequency measures. Measured against five control entries, both
+  reachable questions then hold rank one. The price is stated rather than hidden: across the twenty
+  questions that have an answer in the store, non-expected rulings appear in the top five 33 times
+  against 25 before, because a common tag fires on more queries. Four provenance scoring policies were
+  then measured as a replacement and none pays: they are inert on this store, and the one shape that
+  bites costs more noise and still leaves the target at rank two.
+
 ## Core — 0.43.9 (2026-10-31: a query is read as tokens, and the store can be told what to keep)
 
 - **A question could not match a word it contained.** Recall split a query on whitespace alone, so a
