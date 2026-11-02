@@ -53,6 +53,28 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.16 (2026-11-02: a skill stops claiming phrases the reader throws away)
+
+- **The trigger caps now fit what authors actually write, and a violation fails loudly.** The reader kept
+  12 phrases per skill and dropped the rest in silence, so three skills were claiming words that could
+  never match: `braid-reference` authored 16, `pi-reference` 15, `voice-replies` 13, and
+  `subagent-verification` had a 66-character phrase against a 64 cap. A question about `polyfill` or
+  `braid install paths` did not reach the skill that advertises it. The caps are 16 and 66, and the
+  justification is measured rather than argued: a phrase compiles to one word-bounded substring test over
+  the prompt, reaches no prompt, and costs the same at any length — 4.35 µs at 50 characters, 4.34 at 66,
+  4.32 at 98. So the old numbers bounded shape, not hazard, and the shape they bounded was wrong. A new
+  fixture reads the authored files itself and fails naming a skill that overflows, because the reader
+  cannot answer the question once the cap has already spent the list.
+- **The TypeBox surface is pinned to JSON Schema, so the announced pi-schema swap stays an import edit.**
+  A fixture refuses any constructor outside the eight the tree uses, the six features JSON Schema cannot
+  carry, and any imported symbol beyond `Type` and a type-only `Static`. The point is timing: the way a
+  mechanical swap becomes a rewrite is somebody reaching for `Type.Refine` for a good local reason six
+  weeks before the dependency moves.
+- **The skills block is priced the way an agent reads it.** The only gate that priced it measured one
+  pack; an agent reads the union. Every pack is now discovered from its manifest, each prices separately,
+  and one composition over the union prints the total, with controls proving the number moves when a row
+  moves and that the union is never the sum of separate renders.
+
 ## Core — 0.43.12 (2026-11-01: a skill that says it is retired stops being advertised)
 
 - **A retired skill no longer competes with its successor.** Four skills in the packs declare
