@@ -9,7 +9,7 @@
  * Authors wrote the phrases in three places, and all three are read:
  *   1. frontmatter, under `trigger:` (a comma-separated string) or
  *      `triggers:` (a YAML list) — the canonical field;
- *   2. a `## trigger:` body heading, quoted or bare (9 of core's 22 skills
+ *   2. a `## trigger:` body heading, quoted or bare (9 of core's 23 skills
  *      carry the phrases here and nowhere else);
  *   3. the description's trailing "Triggers: …" segment, the pack's older
  *      convention.

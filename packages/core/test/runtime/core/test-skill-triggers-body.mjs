@@ -3,7 +3,7 @@
  *
  * The suggestion matcher only ever saw frontmatter `triggers:` (a YAML list).
  * Authors wrote the phrases in three places: frontmatter under `trigger:` (5 of
- * core's 22 skills, comma-separated), frontmatter under `triggers:` (1 skill),
+ * core's 23 skills, comma-separated), frontmatter under `triggers:` (2 skills),
  * and a `## trigger: "…"` body heading (9 skills, and nowhere else). This suite
  * pins the reader against the real `skills/` tree, where the gaps live: a mock
  * skill carries whatever phrase the test author would write, so it cannot show
@@ -130,7 +130,7 @@ test("the phrases are the ones each heading declares", () => {
   const expected = {
     "agent-testing": "benchmarking",
     "braid-reference": "braid docs",
-    "meta-improvement": "creating new skills",
+    "meta-improvement": "self-improvement experiments",
     "misdirection-audit": "hygiene sweep",
     "pi-reference": "extension development",
     "placement-discipline": "placement ledger",
@@ -216,8 +216,9 @@ test("a frontmatter `trigger:` string is read as well as a `triggers:` list", ()
   assert.ok(byName.get("subagent-verification").triggers.length > 0);
   assert.ok(byName.get("voice-replies").triggers.includes("text-to-speech"));
   assert.ok(byName.get("healthcheck").triggers.includes("tool diagnostics"));
-  // One declares the plural key as a YAML list.
+  // Two declare the plural key as a YAML list.
   assert.ok(byName.get("pane-topology").triggers.includes("driving panes"));
+  assert.ok(byName.get("skill-authoring").triggers.includes("create a skill"));
 });
 
 test("the description's Triggers: tail still works when nothing else is declared", () => {

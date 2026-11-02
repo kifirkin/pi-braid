@@ -25,11 +25,9 @@
  *
  * Headings are parsed fence-aware. Skill files carry long fenced blocks of
  * shell, TypeScript and markdown samples whose comment lines start with `#`.
- * Over the 22 skills of the shipped pack, 293 lines are shaped like headings
- * and 248 are headings: 45 phantom entries, 1.18x. The ratio is not the
- * argument, the entries are. Those 45 lines are shell and TypeScript
- * commentary, and a fence-blind parse advertises them as document structure,
- * sending a reader to a line that holds no section.
+ * Those lines are commentary, not structure: a reader sent to one lands on no
+ * section. A fence-blind parse cannot tell the two apart, so this one skips
+ * fenced blocks.
  *
  * Two fence edges are known limits, not open bugs. A fence opener indented
  * four spaces is not a fence - the fence and ATX rules both stop at three

@@ -23,7 +23,7 @@ pi install npm:pi-braid
 
 `pi install` registers the package with pi, writes the declaration to
 `~/.pi/agent/settings.json`, and unpacks it under pi's npm directory. The next `pi` start loads the
-suite and the 22 skills that ship with it.
+suite and the 23 skills that ship with it.
 
 The package also installs one command, `pi-braid-fleet`: a supervisor process that drives local node
 sessions against a single SQLite journal. [docs/FLEET.md](docs/FLEET.md) is its guide.
@@ -68,7 +68,7 @@ reference: every key, its default, and worked examples. Module toggling has its 
 
 ## Skills
 
-22 skills ship in this package under `skills/`, declared by `pi.skills` in `package.json`. The
+23 skills ship in this package under `skills/`, declared by `pi.skills` in `package.json`. The
 separate `pi-braid-skills` package carries eight more for project-scoped loading. Skills are read on
 demand, not pasted into the prompt: `list_skills` ranks the catalog against the current task and
 prices each read, `skill_stats` counts what was suggested and what was actually opened.

@@ -1,88 +1,19 @@
 ---
 name: meta-improvement
-description: "Create new skills, run self-improving experiments, and measure skill performance. Covers: writing SKILL.md, building skills iteratively, archive-based evolution with staged evaluation, and testing improvements against baselines."
+description: "Run self-improving experiments and measure skill performance. Covers: archive-based evolution with staged evaluation, and testing improvements against baselines. Not for authoring a skill; `skill-authoring` owns the file, its frontmatter and its trigger phrases."
 validated: 2026-08-16
 verdict: KEEP
 ---
 
-## trigger: "creating new skills, writing SKILL.md, self-improvement experiments, skill performance measurement, iterative skill development"
+## trigger: "self-improvement experiments, skill performance measurement, archive-based evolution, staged evaluation, testing improvements against baselines"
 
 # Meta-Improvement
 
-Build skills from experience and run self-improving experiments.
+Run self-improving experiments against an archive that keeps every variant, not just the best.
 
----
+Authoring a skill is a different job: `skill-authoring` covers the file, its frontmatter, its trigger phrases, and the run that proves both. This file owns the loop that compares versions of one.
 
-## Part 1: Skill Creation
-
-### Core Loop
-
-1. **Understand** - What should this skill enable?
-2. **Draft** - Write the SKILL.md
-3. **Test** - Run test cases
-4. **Evaluate** - Does it trigger correctly? Is guidance clear?
-5. **Improve** - Refine based on results
-6. **Repeat** - Until satisfied
-
-### Anatomy of a Skill
-
-```
-skill-name/
-├── SKILL.md (required)
-│   ├── YAML frontmatter (name, description)
-│   └── Markdown instructions
-└── Bundled Resources (optional)
-    ├── scripts/
-    ├── references/
-    └── assets/
-```
-
-### Frontmatter
-
-| Field                      | Required | Description                                    |
-| -------------------------- | -------- | ---------------------------------------------- |
-| `name`                     | Yes      | Lowercase, hyphens, max 64 chars               |
-| `description`              | Yes      | When to trigger + what it does, max 1024 chars |
-| `disable-model-invocation` | No       | Skip loading to agent prompt                   |
-
-### Writing the Description
-
-Be specific about triggers - include contexts and user phrases:
-
-```
-# WEAK
-"Build dashboards."
-
-# SPECIFIC
-"Build dashboards to display metrics.
-Use when: dashboards, data visualization, metrics,
-internal data, charts, graphs, or displaying company data."
-```
-
-### Progressive Disclosure
-
-Skills load in layers:
-
-1. **Metadata** - name + description (~100 words)
-2. **SKILL.md body** - in context when triggered (<500 lines)
-3. **Bundled resources** - loaded as needed
-
-### Testing
-
-Create test cases, run the skill on realistic prompts, compare output to expected.
-
-### Common Issues
-
-| Issue              | Fix                                   |
-| ------------------ | ------------------------------------- |
-| Under-triggering   | More specific contexts in description |
-| Over-triggering    | Narrow description, add exclusions    |
-| Unclear guidance   | Add examples, explain the why         |
-| Missing edge cases | Add sections for edge cases           |
-
----
-
-## Part 2: Self-Improving Experiments
+## Self-Improving Experiments
 
 Based on: [Hyperagents (arXiv:2603.19461)](https://arxiv.org/abs/2603.19461)
 

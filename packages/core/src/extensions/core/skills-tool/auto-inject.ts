@@ -198,8 +198,8 @@ export const MIN_NON_NAME_SCORE = 2;
 
 /**
  * A keyword present in this many skill documents or more is corpus-common: it
- * appears in a large share of the catalog (5 of 22 skills = 23%), so it cannot
- * distinguish one skill from another and contributes NOTHING to the weak legs
+ * appears in a large share of the catalog, so it cannot distinguish one skill
+ * from another and contributes NOTHING to the weak legs
  * (description, catalog path) — or to the name leg's token-prefix rule, the one
  * name hit that can rest on a shared word.
  *
