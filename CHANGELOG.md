@@ -53,6 +53,21 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.17 (2026-11-02: a worker session stops being able to message the owner)
+
+- **The telegram extension is a factory-level gate now, and the launch that sets it exists.** The worker
+  role used to withhold only the poller control and the pull-inbox: `telegram_send`, both process-global
+  send seams and two lifecycle senders stayed registered, and nothing in `packages/` wrote the marker the
+  extension reads, so "workers never contact the owner" was prompt discipline. A worker session now returns
+  from the factory before anything is registered (the read-only poller liveness probe stays, and reads
+  false), and the orchestrator's spawn instruction prints the launch that carries the marker: split the
+  pane, `export BRAID_SESSION_ROLE=worker` in its shell, then start the agent, which inherits the variable
+  and stays addressable in the agent registry; the command-prefix form is documented for one-shot runs.
+  Verified live rather than argued: a worker launched this way sees `worker` in its own environment, the
+  consumer test is a census of registered tools and send keys in both roles, and a spawned-child test
+  proves the marker in the environment is what the factory reads. Residual, stated: a launch that does not
+  set the marker still looks like a seat.
+
 ## Core — 0.43.16 (2026-11-02: a skill stops claiming phrases the reader throws away)
 
 - **The trigger caps now fit what authors actually write, and a violation fails loudly.** The reader kept
