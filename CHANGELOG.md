@@ -53,6 +53,25 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.19 (2026-11-03: the pack learns how to write a skill)
+
+- **A skill for writing skills, taken from the two best public teachers and finished with this repository's
+  own contract.** The doctrine (a failing baseline before any writing, the form matched to the failure type,
+  a description that states conditions rather than the workflow) comes from `obra/superpowers`;
+  the should-fire and should-not-fire evaluation set comes from `anthropics/skills`. Neither could supply the
+  format half, because both are written for a runtime that has no phrase matcher, no phrase caps and no
+  contract script. The landed file passes the shared contract against a planted control that fails by name,
+  declares eleven phrases of which none is shared, and carries the six gates in the order a change meets
+  them.
+- **`meta-improvement` keeps the half it owns.** Its authoring Part 1 moves out with the phrases that
+  described it, so one phrase still names one skill; what remains is the experiment loop, with a pointer to
+  the new file for everything about the file itself.
+- **One clause was reworded to keep a route.** The 23rd skill pushed the word `edit` to the corpus-common
+  cut at five of twenty-three documents, and the verify-worker prompt stopped reaching
+  `subagent-verification` because of it. The description now says "an ordinary text change", the fixture was
+  left alone rather than re-pinned to the new behaviour, and the open item is that the cut was derived at
+  twenty-two documents and has not been re-measured at twenty-three.
+
 ## Core — 0.43.18 (2026-11-03: braid follows the 1.5.0 harness, and its home link leaves the repository)
 
 - **The harness pins move to 1.5.0 and the three surfaces it changed are handled where they live.** 1.5.0
