@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createProvider } from "@earendil-works/pi-ai";
-// `Type` ships with pi-ai's own typebox re-export, so the tool schema adds no
-// dependency to a package that resolves only @earendil-works/* from npm.
-import { Type } from "@earendil-works/pi-ai";
+// pi-ai re-exported typebox's `Type` until 1.5.0 and no longer does, so the
+// builder comes from the package that owns it, at the peer floor the sibling
+// packages declare.
+import { Type } from "typebox";
 import {
   completeSimple,
   openAICompletionsApi,

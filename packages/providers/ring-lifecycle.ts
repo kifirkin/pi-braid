@@ -80,14 +80,15 @@ export function shapeRetryMarker(status: number | null): string {
 }
 
 /**
- * Fatal account-level tokens pi-ai will not retry
- * (dist/utils/retry.js NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN), listed
- * verbatim and lowercased. pi-ai joins these same literals with "|" and tests
- * case-insensitively, so a literal substring test agrees with its regex for
- * this token set.
+ * Fatal account-level failures pi-ai will not retry
+ * (dist/utils/retry.js NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN). pi-ai joins
+ * its entries with "|" and tests case-insensitively. The literal entries below
+ * are listed verbatim and lowercased, so a literal substring test agrees with
+ * its regex; the one entry pi-ai declares as a pattern is tested as a pattern,
+ * in NON_RETRYABLE_ERROR_PATTERN.
  *
  * Pinned by test/key-ring-selfheal.test.mjs, which parses the installed pi-ai
- * module's pattern source and requires every token it declares to be refused
+ * module's pattern source and requires every entry it declares to be refused
  * below: an upstream addition turns that test red instead of silently
  * re-enabling the rewrite.
  */
@@ -101,7 +102,16 @@ const NON_RETRYABLE_ERROR_TOKENS = [
   "quota exceeded",
   "billing",
   "subscription_sharing_usage_limit_exceeded",
+  "subscription_sharing_workplace_individual_usage_limit_exceeded",
 ];
+
+/**
+ * The fatal entry pi-ai declares as a pattern rather than a literal: Zhipu/Z.ai
+ * plan-limit code 1308, matched as the JSON body it arrives in. The digit guard
+ * keeps a longer number from matching a 1308 prefix, which is also why it
+ * cannot be flattened into the literal list above.
+ */
+const NON_RETRYABLE_ERROR_PATTERN = /"code"\s*:\s*"?1308(?![0-9])/i;
 
 /**
  * True when appending SELF_HEAL_RETRY_MARKER can flip pi-core's retry
@@ -112,6 +122,7 @@ const NON_RETRYABLE_ERROR_TOKENS = [
 export function canReclassifyForTurnRetry(errorMessage: unknown): boolean {
   const text = String(errorMessage ?? "");
   if (!text.trim()) return false;
+  if (NON_RETRYABLE_ERROR_PATTERN.test(text)) return false;
   const lower = text.toLowerCase();
   return !NON_RETRYABLE_ERROR_TOKENS.some((tok) => lower.includes(tok));
 }

@@ -42,6 +42,16 @@ const EVOLVE_ACTIONS = [
   "benchmark",
 ] as const;
 
+/**
+ * The action union the schema declares. `StringEnum` returns a pi-schema
+ * `Schema<T>`, which TypeBox's `Static` cannot read, so the framework infers
+ * `params.action` as `unknown` while every hand-written field beside it keeps
+ * its type. The alias restores the declared union at the one read that needs a
+ * string; it coerces nothing, so a value the schema would not accept still
+ * cannot reach this file.
+ */
+type EvolveAction = (typeof EVOLVE_ACTIONS)[number];
+
 const healthMaintenanceSchema = Type.Object({
   action: StringEnum([...EVOLVE_ACTIONS], { description: "Action to perform" }),
   checkpoint: Type.Optional(Type.String({ description: "Checkpoint hash for rollback" })),
@@ -209,7 +219,7 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
         };
       } catch (error) {
         const errorResult: HealthMaintenanceResult = {
-          action: params.action,
+          action: params.action as EvolveAction,
           success: false,
           error: error instanceof Error ? error.message : String(error),
         };

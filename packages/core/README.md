@@ -3,7 +3,7 @@
 # pi-braid
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![pi-coding-agent ^1.2.0](https://img.shields.io/badge/pi--coding--agent-%5E1.2.0-blueviolet)](https://github.com/earendil-works/pi)
+[![pi-coding-agent ^1.5.0](https://img.shields.io/badge/pi--coding--agent-%5E1.5.0-blueviolet)](https://github.com/earendil-works/pi)
 
 <!-- braid:intro:start -->
 

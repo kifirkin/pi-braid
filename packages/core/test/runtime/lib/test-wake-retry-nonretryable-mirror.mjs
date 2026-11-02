@@ -50,25 +50,60 @@ const failedMessage = (errorMessage) => ({
 });
 
 /**
- * pi-ai's declared non-retryable literals. The constant is not exported, so the
- * array literal is read out of the shipped source; a shape change (rename,
- * computed array) fails loudly here instead of silently shrinking the set.
+ * A text each declared entry accepts. pi-ai declares most entries as plain
+ * fragments and one as a pattern (Zhipu/Z.ai's plan-limit code, which arrives
+ * inside a JSON body), so the sample is the entry itself for a fragment and is
+ * derived from the pattern for the rest: zero-or-more whitespace becomes
+ * nothing, a whitespace class becomes one space, an optional quote becomes
+ * nothing, and a lookahead constrains nothing. A sample that still carries
+ * regex syntax fails here rather than being probed as a literal.
+ */
+const REGEX_SYNTAX = /[\\()[\]{}?*+^$|]/;
+function sampleForEntry(entry) {
+  if (!REGEX_SYNTAX.test(entry)) return entry;
+  const sample = entry
+    .replace(/\\s\*/g, "")
+    .replace(/\\s/g, " ")
+    .replace(/"\?/g, "")
+    .replace(/\(\?![^)]*\)/g, "");
+  assert.ok(
+    !REGEX_SYNTAX.test(sample),
+    `cannot sample a probe from the non-literal entry ${JSON.stringify(entry)}: ` +
+      `${JSON.stringify(sample)} still carries regex syntax`,
+  );
+  return sample;
+}
+
+/**
+ * pi-ai's declared non-retryable entries, each as a text the pattern accepts.
+ * The constant is not exported, so the array literal is read out of the shipped
+ * source; a shape change (rename, computed array) fails loudly here instead of
+ * silently shrinking the set. The array ends at a line that opens with `]);`,
+ * because an entry's own text can carry a `])` (a lookahead over a character
+ * class does), which a lazy match to the nearest `])` would cut in half.
+ * Entries are written with either quote style - the plain fragments in double
+ * quotes, the pattern in single quotes because it contains double quotes - so
+ * both are read and the escapes are resolved to the pattern text pi-ai
+ * compiles.
  */
 function upstreamFatalTokens() {
   const declaration =
-    /const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN\s*=\s*buildProviderErrorPattern\(\[([\s\S]*?)\]\)/.exec(
+    /const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN\s*=\s*buildProviderErrorPattern\(\[([\s\S]*?)\n\s*\]\)/.exec(
       retryModuleSource,
     );
   assert.ok(
     declaration,
     `${retryModulePath}: NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN is no longer built from a literal array`,
   );
-  const parsed = [...declaration[1].matchAll(/"([^"]*)"/g)].map((match) => match[1]);
+  const body = declaration[1].replace(/\/\/[^\n]*/g, "");
+  const parsed = [...body.matchAll(/"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g)].map((match) =>
+    (match[1] ?? match[2]).replace(/\\(.)/g, "$1"),
+  );
   assert.ok(
     parsed.length >= 8,
     `${retryModulePath}: parsed ${parsed.length} fatal tokens: the pattern source shape changed`,
   );
-  return parsed;
+  return parsed.map(sampleForEntry);
 }
 
 /**

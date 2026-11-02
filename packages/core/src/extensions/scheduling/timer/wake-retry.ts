@@ -225,9 +225,11 @@ export const WAKE_RETRY_MAX_ATTEMPTS = MAX_WAKE_ATTEMPTS_DEFAULT;
  *
  *  Pinned by test/runtime/lib/test-wake-retry-nonretryable-mirror.mjs, which
  *  reads the token array out of the installed pi-ai module and requires each
- *  one to be vetoed here. The retryable side below is NOT pinned: it is a
- *  hand-written subset of pi-ai's retryable classes, so a failure pi-ai retries
- *  but this mirror does not match settles with no hold. */
+ *  entry to be vetoed here - including the one pi-ai declares as a pattern
+ *  rather than a literal (Zhipu/Z.ai's plan-limit code, matched as a JSON body
+ *  so the bare number does not veto the turn). The retryable side below is NOT
+ *  pinned: it is a hand-written subset of pi-ai's retryable classes, so a
+ *  failure pi-ai retries but this mirror does not match settles with no hold. */
 const WAKE_NON_RETRYABLE_ERROR_PATTERN = new RegExp(
   [
     "GoUsageLimitError",
@@ -239,6 +241,10 @@ const WAKE_NON_RETRYABLE_ERROR_PATTERN = new RegExp(
     "quota exceeded",
     "billing",
     "subscription_sharing_usage_limit_exceeded",
+    "subscription_sharing_workplace_individual_usage_limit_exceeded",
+    // Zhipu/Z.ai plan-limit code, matched as the JSON body pi-ai matches; the
+    // digit guard keeps a longer number from matching a 1308 prefix.
+    '"code"\\s*:\\s*"?1308(?![0-9])',
   ].join("|"),
   "i",
 );

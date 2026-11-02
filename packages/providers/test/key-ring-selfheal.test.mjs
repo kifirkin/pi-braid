@@ -305,38 +305,64 @@ test("guard: non-rotatable error (no quota/auth/403 phrase) neither exhausts nor
 });
 
 /**
- * The fatal-token set the INSTALLED pi-ai classifier vetoes, read from that
- * module rather than typed here: the shipped pattern source is parsed and
- * every token is re-checked against the real classifier, so a token this file
- * failed to parse, or one that is not fatal after all, is a red test and not a
- * silently weakened list.
+ * The fatal set the INSTALLED pi-ai classifier vetoes, each entry turned into a
+ * text the classifier's pattern accepts, read from that module rather than
+ * typed here: the shipped pattern source is parsed and every entry is
+ * re-checked against the real classifier, so an entry this file failed to
+ * parse, or one that is not fatal after all, is a red test and not a silently
+ * weakened list.
  *
- * Tokens are compared as literal lowercase substrings, which is how the mirror
- * under test matches them; an upstream token carrying regex metacharacters
- * fails the loop below on purpose, because a substring list can no longer
- * express it and the mirror's matching has to be reconsidered.
+ * Literal entries are returned as the lowercase substrings the mirror matches;
+ * the one entry pi-ai declares as a pattern is sampled into the text it
+ * matches (the mirror tests that one as a pattern, see
+ * NON_RETRYABLE_ERROR_PATTERN). A pattern entry with no derivable sample fails
+ * here instead of being probed as a literal.
  */
+const REGEX_SYNTAX = /[\\()[\]{}?*+^$|]/;
+
+/** A text the entry accepts: itself for a fragment, a sample for a pattern. */
+function sampleForEntry(entry) {
+  if (!REGEX_SYNTAX.test(entry)) return entry;
+  const sample = entry
+    .replace(/\\s\*/g, "")
+    .replace(/\\s/g, " ")
+    .replace(/"\?/g, "")
+    .replace(/\(\?![^)]*\)/g, "");
+  assert.ok(
+    !REGEX_SYNTAX.test(sample),
+    `cannot sample a probe from the non-literal entry ${JSON.stringify(entry)}: ` +
+      `${JSON.stringify(sample)} still carries regex syntax`,
+  );
+  return sample;
+}
+
 function piAiFatalTokens() {
   const retryPath = fileURLToPath(
     import.meta.resolve("@earendil-works/pi-ai/utils/retry"),
   );
   const source = readFileSync(retryPath, "utf8");
+  // The array ends at a line that opens with `]);`: an entry's own text can
+  // carry a `])` (a lookahead over a character class does), which a lazy match
+  // to the nearest `])` would cut in half.
   const declaration =
-    /const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN\s*=\s*buildProviderErrorPattern\(\[([\s\S]*?)\]\)/.exec(
+    /const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN\s*=\s*buildProviderErrorPattern\(\[([\s\S]*?)\n\s*\]\)/.exec(
       source,
     );
   assert.ok(
     declaration,
     `${retryPath}: the non-retryable pattern must still be built from a literal array`,
   );
-  const tokens = [...declaration[1].matchAll(/"([^"]*)"/g)].map(
-    (match) => match[1],
-  );
+  // Comments are stripped first: prose carries apostrophes, and a scanner that
+  // reads both quote styles would otherwise take one for an entry.
+  const body = declaration[1].replace(/\/\/[^\n]*/g, "");
+  const tokens = [
+    ...body.matchAll(/"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g),
+  ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, "$1"));
   assert.ok(
     tokens.length >= 8,
     `parsed ${tokens.length} fatal tokens from ${retryPath} — the pattern source shape changed`,
   );
-  return tokens;
+  return tokens.map(sampleForEntry);
 }
 
 /** The message shape isRetryableAssistantError inspects. */
