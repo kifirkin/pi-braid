@@ -53,6 +53,19 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.18 (2026-11-03: braid follows the 1.5.0 harness, and its home link leaves the repository)
+
+- **The harness pins move to 1.5.0 and the three surfaces it changed are handled where they live.** 1.5.0
+  validates tool schemas through `pi-schema`, and a `StringEnum` now loses its static type at its one read,
+  so the action union is named in the module that reads it; `pi-ai` no longer re-exports typebox's `Type`, so
+  the providers builder imports it from the package that owns it and declares the peer floor; and the
+  release's fatal-error vocabulary gains one token, mirrored in the two lists that already hold that class of
+  literal. Two fixtures pin the behaviour rather than the version: a JSON-Schema coercion case and a cost
+  reader that keeps `total` and `totalFromProvider` apart.
+- **The package's home link points at the deck, not the repository.** npm metadata is read per version, so
+  this release carries the move: `homepage` is `https://kifirkin.github.io` while `repository` stays the
+  monorepo, which is why the package page showed the same destination twice.
+
 ## Core — 0.43.17 (2026-11-02: a worker session stops being able to message the owner)
 
 - **The telegram extension is a factory-level gate now, and the launch that sets it exists.** The worker
