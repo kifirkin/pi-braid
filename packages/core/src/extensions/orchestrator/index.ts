@@ -876,9 +876,20 @@ Spec: ${spec}
 Output: ${outputFile}
 
 To spawn the worker:
-1. Use herdr to create a new pane
-2. Pass the branch name and locked files to the worker
-3. The worker should: git checkout ${branchName}, make changes, commit, then signal completion
+1. Split a pane for it: herdr_layout action=pane_split cwd=<project-root>
+2. Put the role marker in that pane's shell, before the agent starts:
+   herdr_pane action=run pane=<pane-id> command="export BRAID_SESSION_ROLE=worker"
+3. Start pi in the same pane through the agent channel, so the exported marker is inherited and the
+   seat can still drive and read the worker by name:
+   herdr_agent action=start pane=<pane-id> kind=pi name=<worker-id>
+4. The worker should: git checkout ${branchName}, make changes, commit, then signal completion
+
+A launch driven without the agent CLI (a one-shot json run, a pane nobody babysits) carries the
+marker as a command prefix instead: command="BRAID_SESSION_ROLE=worker pi". Same environment,
+no agent entry to prompt or read through.
+
+The marker is what makes the worker session a worker to the extensions that read it: a process
+started without it registers the seat's own outbound surfaces, including the Telegram channel.
 
 When the worker signals completion, use orchestrate action=verify-and-merge to review and merge.`,
           { entry: registered.entry },

@@ -1,11 +1,11 @@
 /**
  * poller-guard.test.mjs — the two ownership nets around the Telegram poller:
- * (1) the session-role gate (BRAID_SESSION_ROLE=worker registers only
- * telegram_send, never starts the poller, and the dead-poller warn does not
- * advise enabling it) and (2) the machine-wide ownership lock (a live
- * foreign pid refuses, a stale lock is taken over, disable releases, and a
- * seat's re-enable / reload re-arm keeps working). Drives the factory with
- * a fake ExtensionAPI and recorded-fixture fetch, like index.test.mjs.
+ * (1) the session-role gate (BRAID_SESSION_ROLE=worker registers no tool, no
+ * command and no turn_end sender, and never starts the poller) and (2) the
+ * machine-wide ownership lock (a live foreign pid refuses,
+ * a stale lock is taken over, disable releases, and a seat's re-enable /
+ * reload re-arm keeps working). Drives the factory with a fake ExtensionAPI
+ * and recorded-fixture fetch, like index.test.mjs.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -232,14 +232,18 @@ test("lock: release removes only our own lock", () => {
   assert.equal(existsSync(foreign), true);
 });
 
-test("worker role: only telegram_send registered; poller and inbox absent", async () => {
+test("worker role: no tool, no command, no turn_end sender", async () => {
   const pi = makeFakePi();
   await withEnv(baseEnv({ [ENV_SESSION_ROLE]: "worker" }), async () => {
     await telegramExtension(pi, { fetch: emptyUpdatesFetch() });
   });
-  assert.deepEqual(pi.tools.map((t) => t.name).sort(), ["telegram_send"]);
-  assert.equal(pi.commands.length, 1);
-  assert.equal(pi.commands[0].name, "telegram");
+  assert.deepEqual(pi.tools, []);
+  assert.deepEqual(pi.commands, []);
+  assert.deepEqual(
+    [...pi.handlers.keys()].sort(),
+    ["session_shutdown", "session_start"],
+    "the pre-gate TUI log sink is the only handler left; the turn_end senders are absent",
+  );
 });
 
 test("worker role: env auto-start is suppressed — no poll, no lock file", async () => {
@@ -263,22 +267,6 @@ test("worker role: env auto-start is suppressed — no poll, no lock file", asyn
     false,
     "worker role must never take the ownership lock",
   );
-});
-
-test("worker role: dead-poller warn says the seat owns the poller, no enable advice", async () => {
-  const env = baseEnv({ [ENV_SESSION_ROLE]: "worker" });
-  const fetchFn = makeFakeFetch(async () => jsonResponse(sendMessageResult(7)));
-  const pi = makeFakePi();
-  await withEnv(env, async () => {
-    await telegramExtension(pi, { fetch: fetchFn });
-    const send = pi.tools.find((t) => t.name === "telegram_send");
-    const r = await send.execute("id", { text: "hello" }, undefined, undefined);
-    const outcome = JSON.parse(r.content[0].text);
-    assert.equal(outcome.ok, true);
-    assert.match(outcome.warn, /inbound poller OFF/);
-    assert.match(outcome.warn, /orchestrator seat owns/);
-    assert.doesNotMatch(outcome.warn, /telegram_poller/);
-  });
 });
 
 test("no marker (seat default): all three tools, warn still advises telegram_poller", async () => {
@@ -439,28 +427,6 @@ test("seat: reload re-arm re-acquires its own pid's lock without release", async
     assert.equal(readPollerLock(lockFile).pid, process.pid);
     pi.emit("session_shutdown");
     await sleep(50);
-  });
-});
-
-test("worker /telegram enable is refused with the seat-ownership message", async () => {
-  const lockFile = tmpLockFile("worker-cmd");
-  const env = baseEnv({
-    [ENV_SESSION_ROLE]: "worker",
-    [ENV_POLLER_LOCK_FILE]: lockFile,
-  });
-  const pi = makeFakePi();
-  const notices = [];
-  const ctx = { ui: { notify: (m, t) => notices.push([m, t]) } };
-  await withEnv(env, async () => {
-    await telegramExtension(pi, {
-      fetch: emptyUpdatesFetch(),
-      pidAlive: () => true,
-    });
-    await pi.commands[0].handler("enable", ctx);
-    const [msg, type] = notices.at(-1);
-    assert.match(msg, /orchestrator seat owns/);
-    assert.equal(type, "warning");
-    assert.equal(existsSync(lockFile), false);
   });
 });
 

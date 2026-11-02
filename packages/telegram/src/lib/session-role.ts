@@ -1,11 +1,12 @@
 /**
  * Session role marker: which seat this pi session occupies in the braid
- * topology. The orchestrator seat exports BRAID_SESSION_ROLE=worker into a
- * worker's pane before pi starts; the telegram extension reads it at
- * registration time and keeps the poller-ownership surfaces seat-only —
- * Telegram's getUpdates is a per-bot singleton the orchestrator seat owns,
- * so a worker session never registers the poller control or the pull-inbox
- * tool and never starts the poller (telegram_send stays available).
+ * topology. The orchestrator exports BRAID_SESSION_ROLE=worker into the
+ * worker's pane shell before the agent starts; the telegram extension reads it
+ * at registration time and returns before registering any surface: a worker
+ * reaches the owner through the orchestrator, never through the channel it
+ * shares a bot token with. Only the exact value "worker" selects the worker
+ * role; unset (or any other value) keeps the seat default, so deployments
+ * without the marker are unchanged.
  */
 
 export const ENV_SESSION_ROLE = "BRAID_SESSION_ROLE";

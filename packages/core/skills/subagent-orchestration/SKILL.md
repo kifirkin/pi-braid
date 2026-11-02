@@ -84,10 +84,14 @@ Uses the built-in `orchestrate` tool for code-modification tasks in git repos. H
 1. Determine the task, target files, and repo
 2. orchestrate action=spawn-worker workerId=<id> slug=<kebab-task> files=[<file-paths>]
    — Creates branch worker/<id>/<slug> and locks the files
-3. The worker checks out the branch, makes changes, commits, signals completion
-4. orchestrate action=verify-and-merge workerId=<id> branch=worker/<id>/<slug>
+3. Launch it in its own pane, marked as a worker, with the commands the spawn result prints:
+   herdr action=pane_split cwd=<repo-dir>, then
+   herdr action=run pane=<pane> command="export BRAID_SESSION_ROLE=worker", then
+   herdr_agent start <name> --kind pi --pane <pane>
+4. The worker checks out the branch, makes changes, commits, signals completion
+5. orchestrate action=verify-and-merge workerId=<id> branch=worker/<id>/<slug>
    — Reads the diff, prompts for verification, squash-merges to main
-5. orchestrate action=release-locks workerId=<id>
+6. orchestrate action=release-locks workerId=<id>
 ```
 
 **Lock-only mode**: When CWD is not a git repo, orchestrate falls back to lock-only coordination. Use herdr for task handoff.
@@ -96,8 +100,9 @@ Uses the built-in `orchestrate` tool for code-modification tasks in git repos. H
 
 ```
 1. Create pane: herdr action=pane_split cwd=<target> label=worker-<task>
-2. Start TUI pi: herdr action=run pane=<worker> command="pi"
-3. Wait for pi to render its prompt, then give the task:
+2. Export the role marker in that pane's shell: herdr action=run pane=<worker> command="export BRAID_SESSION_ROLE=worker"
+3. Start TUI pi from that shell, through the agent channel: herdr_agent start <name> --kind pi --pane <worker>
+4. Wait for pi to render its prompt, then give the task:
    herdr action=send pane=<worker> text="[agent:orchestrator→worker] <task>"
 ```
 
@@ -108,13 +113,32 @@ The worker signals completion back via `herdr send`.
 
 ```
 1. Create pane: herdr action=pane_split cwd=<target> label=worker-<task>
-2. Start pi: herdr action=run pane=<worker> command="pi --mode json '<task>' 2>/dev/null"
+2. Start pi: herdr action=run pane=<worker> command="BRAID_SESSION_ROLE=worker pi --mode json '<task>' 2>/dev/null"
 3. Read output: herdr action=read pane=<worker> source=recent
 ```
 
 JSON mode exits after one turn. Use for simple extraction where you don't need ongoing control.
+It carries the marker as a command prefix because there is no agent entry to inherit an export
+through: the process is gone when the turn ends.
 
 **CRITICAL: `pane_split` creates a SHELL, not an agent.** You MUST `herdr action=run` to start pi inside the pane. `herdr action=send` is for signaling between already-running agents - it does NOT start a task. Use `herdr action=run` to start, then `herdr send` to signal.
+
+**Mark every worker launch.** The marker goes into the environment the agent process is exec'd
+with, so it has to be set before the agent starts:
+
+```
+herdr action=run pane=<worker> command="export BRAID_SESSION_ROLE=worker"
+herdr_agent start <name> --kind pi --pane <worker>
+```
+
+`herdr agent start` has `--kind`, `--pane`, `--timeout` and trailing agent arguments, no env
+option, so the export is the only way to give the agent the marker and keep it in the agent
+registry (lifecycle states, prompts, reads). A launch that is not driven through the agent CLI
+carries the marker as a command prefix instead, `command="BRAID_SESSION_ROLE=worker pi"`: the
+same environment, and no agent entry to babysit through. An unmarked worker is a seat to every
+extension that reads the marker: it registers the outbound surfaces a seat owns, the Telegram
+channel among them, so it can message the owner with the seat's own bot token and can try to
+take the getUpdates singleton the seat is polling.
 
 ### Which to use
 
