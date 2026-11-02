@@ -2,11 +2,11 @@
 
 <!-- status: current -->
 
-Eight skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
+Nine skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
 systems, visual work, and writing that has to land. Install once, usually per project, and the agent
 opens a skill when the task matches it.
 
-Skills are instructions, not tools. Installing this pack teaches the agent eight procedures; it
+Skills are instructions, not tools. Installing this pack teaches the agent nine procedures; it
 changes what the agent knows how to do, not what it can do.
 
 ## Install
@@ -39,7 +39,7 @@ Running from a checkout instead? Register the workspace path in `~/.pi/agent/set
 | `socratic-irony`         | Wit craft: incongruity as the engine, voice archetypes, dramatic structure, and where to stop                                                        | You are writing a roast, satire or sharp critique and need a sharper line                                                | Deprecated |
 | `twitter`                | Posts replies on X through browser automation and checks whether the bot answered                                                                    | You are working an X thread with a browser session                                                                       | Deprecated |
 
-Three of the eight are marked deprecated in their own frontmatter: `meme` points at a separate
+Three of the nine are marked deprecated in their own frontmatter: `meme` points at a separate
 project for animated work, `socratic-irony` overlaps the `tone-quality` skill, and `twitter` has no
 successor. They stay in the pack because their technique sections are useful reference; they are
 not what the pack is for.
@@ -54,7 +54,7 @@ not on its folder name, and you can always ask for one by name ("use the paper-w
 
 - pi only. These are `SKILL.md` files; another agent's loader may ignore them.
 - No code, no tools, no settings keys. The pack is instruction text.
-- Three skills are deprecated (see the table). The other five are the ones to install for.
+- Three skills are deprecated (see the table). The other six are the ones to install for.
 
 ## License
 
@@ -64,10 +64,10 @@ MIT. See [LICENSE](LICENSE).
 
 Every `SKILL.md` opens with frontmatter: `name` matches its directory, `description` is non-empty
 and under pi's 1024-character limit, `validated` is an ISO date, and the `verdict:` field (DEPRECATE
-/ IMPROVE) records the last review outcome. A body that directs a tool family may declare it under
-`governs:`; most declare none, and the declaration is optional. The monorepo's contract test enforces
-those fields before a release; the tarball does not carry the test. Shared fragment files live in `skills/_shared`
-and carry no `SKILL.md`.
+/ IMPROVE / UNVALIDATED) records the last review outcome. A body that directs a tool family may
+declare it under `governs:`; most declare none, and the declaration is optional. The monorepo's
+contract test enforces those fields before a release; the tarball does not carry the test. Shared
+fragment files live in `skills/_shared` and carry no `SKILL.md`.
 
 Releases are cut from the monorepo: the tarball carries `skills/`, this README, `AGENTS.md`,
 `LICENSE` and `package.json`.

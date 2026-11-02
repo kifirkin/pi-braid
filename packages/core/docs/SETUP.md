@@ -238,7 +238,7 @@ braid's skills come in two tiers.
   `pi.skills` in the package manifest). Registering `packages/core` loads it; it
   needs no settings entry of its own.
 - **On-demand set** - the separate `pi-braid-skills` pack
-  (`packages/skills/skills/`: eight `SKILL.md` plus shared content under
+  (`packages/skills/skills/`: nine `SKILL.md` plus shared content under
   `skills/_shared/`), registered in the settings file of the project that wants
   it (`pi install --local npm:pi-braid-skills`, or a `file:` spec from a
   checkout).
