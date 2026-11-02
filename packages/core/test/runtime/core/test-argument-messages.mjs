@@ -173,7 +173,7 @@ await test("think: accepted calls and pi's own range errors are untouched", asyn
   assert.equal(ok.type, "conclusion");
   const msg = refusal(think, { decision: "ship it", confidence: 1.5 });
   assert.match(msg, /confidence/, `a non-list constraint is still pi's to report: ${msg}`);
-  assert.match(msg, /must be <= 1/, `pi's own range text survives: ${msg}`);
+  assert.match(msg, /expected <= 1/, `pi's own range text survives: ${msg}`);
 });
 
 // ── no second copy of the accepted values ──────────────────────────────────

@@ -113,7 +113,7 @@ await test("the schema refuses a blank-filled config before the handler", async 
     threw = e;
   }
   assert.ok(threw, "framework validation refuses the blank-filled config");
-  assert.match(threw.message, /healthcheckMinScore: must be >= 1/);
+  assert.match(threw.message, /config\.healthcheckMinScore: expected >= 1/);
   assert.equal(
     getConfig().healthcheckMinScore,
     DEFAULTS.healthcheckMinScore,
@@ -226,7 +226,7 @@ await test("the schema refuses blank benchmark numerics through the framework", 
     threw = e;
   }
   assert.ok(threw, "framework validation refuses the blank-filled benchmark");
-  assert.match(threw.message, /passRate: must be >= 1/);
+  assert.match(threw.message, /benchmark\.passRate: expected >= 1/);
 });
 
 await test("a real benchmark still records (control)", async () => {
