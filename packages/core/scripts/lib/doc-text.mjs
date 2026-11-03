@@ -11,13 +11,22 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-/** Tracked `.md` files. Throws when git cannot list them: an empty scan is
- *  not a clean tree, and a gate that passes on zero files is decoration. */
+/** Markdown the gates must read: tracked files plus untracked ones that are not
+ *  ignored. A gate that reads only tracked files cannot see the document being
+ *  written, which is exactly the file it exists to gate: a new page passes the
+ *  local chain and fails on the commit, or worse, on CI after the push. Throws
+ *  when git cannot list them, because an empty scan is not a clean tree. */
 export function trackedMarkdown(root) {
-  return execSync("git ls-files '*.md'", { cwd: root, encoding: "utf-8" })
-    .trim()
-    .split("\n")
-    .filter(Boolean);
+  const list = (args) =>
+    execSync(`git ls-files ${args}`, { cwd: root, encoding: "utf-8" })
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+  const files = new Set([
+    ...list("'*.md'"),
+    ...list("--others --exclude-standard '*.md'"),
+  ]);
+  return [...files].sort();
 }
 
 export function readText(root, file) {

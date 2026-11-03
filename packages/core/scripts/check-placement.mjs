@@ -460,6 +460,10 @@ function scanProvenance(file, source, findings) {
         let match;
         while ((match = pattern.regex.exec(text)) !== null) {
           if (pattern.isoWeekGuard && isoWeekContext(text, match.index, match[0])) continue;
+          // A date inside a test tree is fixture data: the test reads it, so it is
+          // not a process timestamp nothing in the tree reads. The class stays
+          // on for every other token shape, which is where a real leak lives.
+          if (pattern.id === "iso-date" && /(^|\/)test\//.test(file)) continue;
           if (pattern.commentsOnly && span.kind !== "comment") continue;
           if (pattern.id === "wave-word" && metaWaveMention(text, match)) continue;
           if (pattern.phaseRule && !match[0].includes("-") && !PHASE_PROCESS_CUE.test(span.text)) {
