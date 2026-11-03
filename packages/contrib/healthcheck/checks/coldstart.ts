@@ -111,7 +111,7 @@ export function copyCredentialState(
   to: string,
 ): { copied: string[]; missing: boolean } {
   mkdirSync(to, { recursive: true });
-  let entries: string[] = [];
+  let entries: string[];
   try {
     entries = readdirSync(from);
   } catch {

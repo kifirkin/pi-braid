@@ -53,6 +53,48 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Contrib — 0.1.4 (2026-11-04: the cold rehearsal measures what it boots)
+
+- **The spawn is timed where it happens.** It sat outside the timed check, so a
+  step that installs 211 packages and calls a model reported 0ms, a duration no
+  reader should believe and a cost the report then hid.
+- **The child is the managed CLI, not whatever launched the probe.** The path came
+  from `process.argv[1]`, which is the pi CLI only when pi launched the process; a
+  rehearsal started from a script re-executed its own entry point and reported the
+  resulting module error as a probe failure.
+- **Credential resolution state is copied with the config.** Without the provider
+  key-ring and route files a fresh home answers "No API key found for the selected
+  model" and the probe never runs, which is also the true cause of a silent run
+  this instrument once reported as unexplained.
+- **A silent attempt buys exactly one retry**, because one attempt's silence does
+  not say why: the retry named the missing credential outright.
+
+## Skills — 0.2.5 (2026-11-04: the contract reads both skill trees)
+
+- **One implementation, two populations.** `skills-contract` now scans the pack and
+  the core tree, prints both counts, and fails closed on a tree that yields no
+  `SKILL.md`. Phrase uniqueness is checked across both: one phrase names one skill.
+- **The tool allowlist stays pack-scoped**, because a core skill legitimately names
+  tools the pack cannot reach. A foreign tool named by a pack skill still fails.
+- **The gate is in the chain**, so the core tree can no longer drift out of the
+  contract; a new fixture covers both trees, the scoping and the absent-versus-empty
+  populations.
+
+## Core — 0.43.23 (2026-11-04: 21 core skills declare their phrases where the matcher reads them)
+
+- **The core skill tree follows the contract it documents.** Of 23 skills, 21 moved
+  from a legacy `trigger:` key, a body `## trigger:` heading the validator refuses,
+  or no phrase at all, into a frontmatter `triggers:` list. Seven of them had no
+  phrase the matcher could read.
+- **Three descriptions lose a `Triggers:` tail** the reader silently drops past 200
+  characters, and five are rewritten to name the situation they serve. No body text
+  changed: the migration moved declarations and nothing else.
+- **Reach is not proven by a green gate.** The contract counts, lengths and
+  uniqueness; it cannot test whether a phrase appears in anything a person would
+  type. Measured on the trigger leg alone, five of eight natural prompts in a
+  third-party sample matched no phrase, so the next round belongs to adoption data
+  rather than another guess.
+
 ## Contrib — 0.1.3 (2026-11-03: the health check rehearses a machine that has no state)
 
 - **A `coldstart` category answers the question the other categories cannot.** Every existing probe
