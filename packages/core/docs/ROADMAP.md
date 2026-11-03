@@ -58,12 +58,16 @@ provenance; they are no longer work.
    (`~/.pi/agent/…`, `~/pi-braid/…`) and never a private home layout;
    `check-doc-links` fails on the latter, and every in-repo reference must
    resolve.
-5. **Skills pack** - finish validating the five skills still marked
-   `verdict: UNVALIDATED` (`braid-reference`, `misdirection-audit`,
-   `placement-discipline`, `probe-evaluation`, `voice-replies`); keep the pack
-   catalog fresh as decision rows land. The machine-local `tunnel-control`
-   skill is `KEEP` with its v2RayTun arm validated; its Happ and Incy arms
-   stay unvalidated until a host installs those clients.
+5. **Skills pack** - finish validating the six skills still marked
+   `verdict: UNVALIDATED` (`cv-improvement`, `misdirection-audit`,
+   `placement-discipline`, `probe-evaluation`, `skill-authoring`,
+   `voice-replies`); keep the pack catalog fresh as decision rows land. The
+   set is whatever
+   `grep -l '^verdict: UNVALIDATED' packages/core/skills/*/SKILL.md packages/skills/skills/*/SKILL.md`
+   prints, so the next pass re-derives it rather than trusting this line. The
+   machine-local `tunnel-control` skill is `KEEP` with its v2RayTun arm
+   validated; its Happ and Incy arms stay unvalidated until a host installs
+   those clients.
 6. **Extension surface** - ongoing de-bloat of tool/extension counts;
    subagent-RPC hardening. Worker-stats reporting shipped (`list-workers`
    `includeStats`); the orchestrator's metrics-emission half (writing

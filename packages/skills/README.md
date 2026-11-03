@@ -28,21 +28,26 @@ Running from a checkout instead? Register the workspace path in `~/.pi/agent/set
 
 ## What you get
 
-| Skill                    | What it does                                                                                                                                         | Use it when                                                                                                              | Status     |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| `adversarial-engagement` | Five probes that force a real answer out of a scripted one: incongruity, structural irony, world-building, binary-trap evasion, label contradiction  | A reply keeps getting deflected or templated, and the exchange is going in circles                                       | Usable     |
-| `design-system`          | Authors a `DESIGN.md` brand system: tokens for color, type, spacing and components, plus the consistency workflow                                    | You are building a brand system, writing a `DESIGN.md`, or enforcing design consistency across a project                 | Usable     |
-| `paper-writer`           | Structures and writes LaTeX papers for ML venues: IMRaD, abstract strategy, related work, figures, tables, citations, camera-ready conventions       | You are drafting or revising a NeurIPS, ICML, ICLR or ACL submission, an arXiv preprint, or a workshop paper             | Usable     |
-| `visual-creator`         | Creates visuals that survive critique: design principles, color, typography, layout, brand identity, and the create, analyze, validate, improve loop | You are building a UI, designing game assets, making brand material, or producing a visual that needs coherent reasoning | Usable     |
-| `visual-validator`       | Design critique with measurable, actionable fixes: sprite assets, game screenshots, UI designs, image quality                                        | You need a visual audited, a UI reviewed, or an image quality call                                                       | Usable     |
-| `meme`                   | Static canvas memes with Impact captions, posted through the browser clipboard                                                                       | You want a one-off static image meme                                                                                     | Deprecated |
-| `socratic-irony`         | Wit craft: incongruity as the engine, voice archetypes, dramatic structure, and where to stop                                                        | You are writing a roast, satire or sharp critique and need a sharper line                                                | Deprecated |
-| `twitter`                | Posts replies on X through browser automation and checks whether the bot answered                                                                    | You are working an X thread with a browser session                                                                       | Deprecated |
+| Skill                    | What it does                                                                                                                                         | Use it when                                                                                                              | Status      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| `adversarial-engagement` | Five probes that force a real answer out of a scripted one: incongruity, structural irony, world-building, binary-trap evasion, label contradiction  | A reply keeps getting deflected or templated, and the exchange is going in circles                                       | Usable      |
+| `cv-improvement`         | Measures and improves a CV: metric formulas, a failure catalogue keyed to the form, the fix order, and honesty rules on unconfirmed numbers          | You are improving or reviewing a CV or resume, a draft reads as machine-written, or the page budget is about to break    | Unvalidated |
+| `design-system`          | Authors a `DESIGN.md` brand system: tokens for color, type, spacing and components, plus the consistency workflow                                    | You are building a brand system, writing a `DESIGN.md`, or enforcing design consistency across a project                 | Usable      |
+| `paper-writer`           | Structures and writes LaTeX papers for ML venues: IMRaD, abstract strategy, related work, figures, tables, citations, camera-ready conventions       | You are drafting or revising a NeurIPS, ICML, ICLR or ACL submission, an arXiv preprint, or a workshop paper             | Usable      |
+| `visual-creator`         | Creates visuals that survive critique: design principles, color, typography, layout, brand identity, and the create, analyze, validate, improve loop | You are building a UI, designing game assets, making brand material, or producing a visual that needs coherent reasoning | Usable      |
+| `visual-validator`       | Design critique with measurable, actionable fixes: sprite assets, game screenshots, UI designs, image quality                                        | You need a visual audited, a UI reviewed, or an image quality call                                                       | Usable      |
+| `meme`                   | Static canvas memes with Impact captions, posted through the browser clipboard                                                                       | You want a one-off static image meme                                                                                     | Deprecated  |
+| `socratic-irony`         | Wit craft: incongruity as the engine, voice archetypes, dramatic structure, and where to stop                                                        | You are writing a roast, satire or sharp critique and need a sharper line                                                | Deprecated  |
+| `twitter`                | Posts replies on X through browser automation and checks whether the bot answered                                                                    | You are working an X thread with a browser session                                                                       | Deprecated  |
 
 Three of the nine are marked deprecated in their own frontmatter: `meme` points at a separate
 project for animated work, `socratic-irony` overlaps the `tone-quality` skill, and `twitter` has no
 successor. They stay in the pack because their technique sections are useful reference; they are
 not what the pack is for.
+
+The three status values say what a row is worth to you: Usable has been run against a real task,
+Unvalidated ships and loads but no run has yet shown the procedure working, and Deprecated stays
+for its reference sections rather than as the recommended way to do the work.
 
 ## How a skill gets used
 
@@ -54,7 +59,7 @@ not on its folder name, and you can always ask for one by name ("use the paper-w
 
 - pi only. These are `SKILL.md` files; another agent's loader may ignore them.
 - No code, no tools, no settings keys. The pack is instruction text.
-- Three skills are deprecated (see the table). The other six are the ones to install for.
+- Three skills are deprecated and one is `Unvalidated` (see the table); the other five are the ones to install for.
 
 ## License
 

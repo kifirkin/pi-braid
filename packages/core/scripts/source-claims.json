@@ -78,6 +78,19 @@
         "cmd": "awk '/^    id: \"/{n++} END{print n+0}' src/extensions/manifest.ts",
         "pattern": "^(\\d+)$"
       }
+    },
+    {
+      "id": "pack-skill-count",
+      "claim": "how many skills the standalone pack ships, as its README heading states it",
+      "stated": {
+        "file": "../skills/README.md",
+        "line": 5,
+        "pattern": "^(\\S+) skills for the"
+      },
+      "derived": {
+        "cmd": "find ../skills/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l",
+        "pattern": "^(\\d+)$"
+      }
     }
   ]
 }

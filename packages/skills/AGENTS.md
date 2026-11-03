@@ -65,7 +65,7 @@ Rules the contract test enforces, each with the failure it prevents:
 
 - `name` equals the directory, in `a-z0-9-`; a mismatch means the catalog and the folder disagree.
 - `description` is at most 1024 characters and contains a situation clause (`Use when ...`); a topic list never fires.
-- `triggers` holds at least two phrases, each at most 64 characters, and no phrase is shared with another skill: the matcher keeps a bounded list per skill, and a duplicated phrase makes the choice ambiguous.
+- `triggers` holds at least two phrases, each at most 66 characters (`MAX_TRIGGER_CHARS` in `packages/core/src/extensions/core/skills-tool/skill-triggers.ts`), and no phrase is shared with another skill: the matcher keeps a bounded list per skill, and a duplicated phrase makes the choice ambiguous.
 - No `Triggers:` tail in the description. The reader drops a tail longer than 200 characters and reports nothing, so a tail is a declaration that silently does not exist.
 - `validated` is an ISO date, `verdict` is one of the five values.
 - `status: deprecated` requires a `successor` and a description that opens with "Deprecated:" - a deprecation that reads as a live instruction is not a boundary.
