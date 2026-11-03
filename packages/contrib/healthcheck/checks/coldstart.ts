@@ -22,7 +22,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -51,7 +58,7 @@ export const PROBE_PROMPT = [
   "3) orchestrate with action list-workers;",
   "4) bash: printf bash-ok",
   "Then print exactly one line beginning with COLD_RESULT followed by a JSON object with keys memory,",
-  "scratchpad, orchestrate, bash, each \"ok\" or \"fail: <short reason>\", and notes for anything that",
+  'scratchpad, orchestrate, bash, each "ok" or "fail: <short reason>", and notes for anything that',
   "looked wrong without failing. If an empty answer cannot be told apart from a broken path, say so in",
   "notes. Write nothing after that line.",
 ].join("\n");
@@ -67,7 +74,10 @@ export function agentConfigDir(): string {
 
 /** Copy whatever of the manifest exists. A missing file is reported, never
  *  invented: credentials may legitimately live in the environment instead. */
-export function copyConfigManifest(from: string, to: string): { copied: string[]; missing: string[] } {
+export function copyConfigManifest(
+  from: string,
+  to: string,
+): { copied: string[]; missing: string[] } {
   mkdirSync(to, { recursive: true });
   const copied: string[] = [];
   const missing: string[] = [];
@@ -86,7 +96,10 @@ export function copyConfigManifest(from: string, to: string): { copied: string[]
 /** The child's environment. HOME, XDG roots and BRAID_HOME all point inside
  *  the throwaway tree, and the session role is cleared so a probe process never
  *  registers the seat's outbound surfaces. */
-export function buildColdStartEnv(root: string, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function buildColdStartEnv(
+  root: string,
+  base: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
   const home = join(root, "home");
   return {
     ...base,
@@ -126,7 +139,10 @@ function liveFingerprint(dir: string | null): string[] {
 export interface RehearsalOptions {
   timeoutMs?: number;
   /** Injected in tests so the fixture never spawns a process. */
-  runChild?: (env: NodeJS.ProcessEnv, root: string) => { status: number; stdout: string; stderr: string; timedOut: boolean };
+  runChild?: (
+    env: NodeJS.ProcessEnv,
+    root: string,
+  ) => { status: number; stdout: string; stderr: string; timedOut: boolean };
 }
 
 export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
@@ -135,7 +151,9 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
 
   const configDir = agentConfigDir();
   const manifest = (() => {
-    const present = CONFIG_MANIFEST.filter((file) => existsSync(join(configDir, file)));
+    const present = CONFIG_MANIFEST.filter((file) =>
+      existsSync(join(configDir, file)),
+    );
     return { dir: configDir, present };
   })();
 
@@ -160,7 +178,10 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
   const before = liveFingerprint(liveHome);
   const root = mkdtempSync(join(tmpdir(), "braid-health-coldstart-"));
   const env = buildColdStartEnv(root, process.env);
-  const { copied, missing } = copyConfigManifest(configDir, join(root, "home", ".pi", "agent"));
+  const { copied, missing } = copyConfigManifest(
+    configDir,
+    join(root, "home", ".pi", "agent"),
+  );
   const coldBraid = env.BRAID_HOME as string;
 
   let run = { status: 0, stdout: "", stderr: "", timedOut: false };
@@ -204,11 +225,15 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
       if (!verdict) {
         return {
           status: "warn",
-          message: "the probe printed no COLD_RESULT line, so nothing it did can be judged",
+          message:
+            "the probe printed no COLD_RESULT line, so nothing it did can be judged",
           details: tail(run.stdout) || tail(run.stderr),
         };
       }
-      return { status: "pass", message: `probe reported ${Object.keys(verdict).length} keys` };
+      return {
+        status: "pass",
+        message: `probe reported ${Object.keys(verdict).length} keys`,
+      };
     }),
   );
 
@@ -221,7 +246,9 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
           const ok = value.trim().toLowerCase().startsWith("ok");
           return {
             status: ok ? "pass" : "fail",
-            message: ok ? `${key} answered from empty state` : `${key}: ${value}`,
+            message: ok
+              ? `${key} answered from empty state`
+              : `${key}: ${value}`,
           };
         }),
       );
@@ -237,11 +264,17 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
     }
   }
 
-  const installPasses = run.stderr.split("\n").filter((line) => /^added \d+ packages?/.test(line));
+  const installPasses = run.stderr
+    .split("\n")
+    .filter((line) => /^added \d+ packages?/.test(line));
   results.push(
     check("coldstart", "first-boot-installs", () => {
       if (installPasses.length === 0) {
-        return { status: "pass", message: "boot fetched nothing: every pinned package was already installed" };
+        return {
+          status: "pass",
+          message:
+            "boot fetched nothing: every pinned package was already installed",
+        };
       }
       return {
         status: "warn",
@@ -253,9 +286,15 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
 
   results.push(
     check("coldstart", "state-created", () => {
-      const created = existsSync(coldBraid) ? readdirSync(coldBraid).sort() : [];
+      const created = existsSync(coldBraid)
+        ? readdirSync(coldBraid).sort()
+        : [];
       if (created.length === 0) {
-        return { status: "warn", message: "the cold run created no state at all: check that the probe reached braid" };
+        return {
+          status: "warn",
+          message:
+            "the cold run created no state at all: check that the probe reached braid",
+        };
       }
       return {
         status: "pass",
@@ -299,26 +338,26 @@ function defaultRunChild(timeoutMs: number) {
     if (!cli || !existsSync(cli)) {
       throw new Error(`cannot locate the running pi CLI at ${cli ?? "(none)"}`);
     }
-    const child = spawnSync(process.execPath, [cli, "-p", "--no-session", PROBE_PROMPT], {
-      cwd: root,
-      env,
-      encoding: "utf8",
-      timeout: timeoutMs,
-      maxBuffer: 32 * 1024 * 1024,
-    });
+    const child = spawnSync(
+      process.execPath,
+      [cli, "-p", "--no-session", PROBE_PROMPT],
+      {
+        cwd: root,
+        env,
+        encoding: "utf8",
+        timeout: timeoutMs,
+        maxBuffer: 32 * 1024 * 1024,
+      },
+    );
     return {
       status: child.status ?? -1,
       stdout: child.stdout ?? "",
       stderr: child.stderr ?? "",
-      timedOut: child.signal === "SIGTERM" || (child.error?.name === "ETIMEDOUT"),
+      timedOut: child.signal === "SIGTERM" || child.error?.name === "ETIMEDOUT",
     };
   };
 }
 
 function tail(text: string, lines = 6): string {
-  return text
-    .split("\n")
-    .filter(Boolean)
-    .slice(-lines)
-    .join(" | ");
+  return text.split("\n").filter(Boolean).slice(-lines).join(" | ");
 }

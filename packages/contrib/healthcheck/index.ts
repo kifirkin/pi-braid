@@ -127,7 +127,9 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       // The rehearsal spawns a real process and can take minutes, so naming no
       // category (the documented "all" default) must not pull it in: every
       // quick health check would quietly become slow.
-      const coldStartNamed = requestedCats?.some((cat) => cat.toLowerCase() === "coldstart") ?? false;
+      const coldStartNamed =
+        requestedCats?.some((cat) => cat.toLowerCase() === "coldstart") ??
+        false;
       if (coldStartNamed) {
         allChecks.push(...testColdStart());
       }

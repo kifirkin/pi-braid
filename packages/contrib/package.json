@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-contrib",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Twelve pi extensions that give your agent a real browser, repo analysis, guarded tool calls, and live system metrics.",
   "type": "module",
   "files": [

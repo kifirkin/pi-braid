@@ -53,6 +53,41 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Contrib — 0.1.3 (2026-11-03: the health check rehearses a machine that has no state)
+
+- **A `coldstart` category answers the question the other categories cannot.** Every existing probe
+  tests the machine the agent runs on, which is the machine least likely to be broken. The new category
+  copies the config manifest into a throwaway home, points `BRAID_HOME` at an empty directory inside it,
+  and runs one real process that asks memory, scratchpad, orchestration and bash to answer from nothing.
+  It is opt-in, because it spawns a process and a health check nobody runs is worse than none.
+- **A rehearsal that writes where it measures fails.** The live braid home is fingerprinted before and
+  after, so a probe cannot report a sandbox it did not keep. A boot that fetched pinned packages is a
+  warning rather than a pass, because that is what makes a first start slow and network-dependent.
+- **The probe reports its own blind spot.** Empty state and a broken path produce the same empty answer,
+  so the probe is asked to say which empties it could not tell apart, and the report carries that
+  sentence instead of a page of greens.
+
+## Telegram — 0.1.7 (2026-11-03: the poller lock judges liveness by instance and heartbeat, not by a pid)
+
+- **A pid is not evidence across boots.** The lock now records the instance it belongs to (hostname plus
+  boot identity) and a heartbeat the holder refreshes on an interval, and the acquisition rule decides on
+  those: same instance with a current heartbeat refuses, a heartbeat past the window is taken over, and a
+  holder from another boot is judged by its heartbeat alone because its pid says nothing here.
+- **A refusal an operator can act on.** The verdict carries a machine-readable reason, and the rendered
+  refusal names the holder's identity, pid, start time, role and heartbeat age, so a live holder, a stuck
+  holder, a dead container and a garbled file are tellable apart from the message.
+- **The upgrade step is a manual one, and named as such.** A lock file written before the identity existed
+  carries no heartbeat, so it refuses rather than guesses, and an operator removes it. That refusal is
+  deliberate: a record with no evidence cannot distinguish a crashed predecessor from a live container,
+  and a silent second poller splits the owner's messages.
+
+## Core — 0.43.22 (2026-11-03: a cold start can be measured before the new machine exists)
+
+- **The health check documents its cold-start half.** `healthcheck`'s skill now carries the reading order
+  for the new category: isolation before verdict, verdict before the subsystem rows, and a hang as the
+  answer no retry fixes. It also names what a clean machine will not have at all, which no state handling
+  can supply: the orchestrator workspace with its briefs, userland skills, and the pane multiplexer.
+
 ## Core — 0.43.21 (2026-11-03: a failed synthesizer falls back to text, not to a worse voice)
 
 - **The voice skill stops offering the offline voices as a substitute for a reply.** When the primary
