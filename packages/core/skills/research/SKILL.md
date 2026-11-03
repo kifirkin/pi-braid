@@ -2,11 +2,11 @@
 name: research
 description: "Research topics, verify facts, and find information online. Covers web search (DuckDuckGo HTML as primary, SearXNG as unreliable fallback), direct page fetching, fact-checking, literature review, and evidence gathering. Use when looking up information, verifying claims, comparing sources, or finding current data."
 triggers:
-  - "web search"
-  - "literature review"
+  - "research"
+  - "search the web"
+  - "look this up"
   - "verify a fact"
-  - "check the latest"
-  - "research this"
+  - "literature review"
 validated: 2026-08-16
 verdict: KEEP
 ---

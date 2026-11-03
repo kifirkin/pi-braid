@@ -2,7 +2,7 @@
 name: meta-improvement
 description: "Use when a skill change has to be measured rather than assumed: run self-improving experiments and measure skill performance. Covers archive-based evolution with staged evaluation, and testing improvements against baselines. Not for authoring a skill; `skill-authoring` owns the file, its frontmatter and its trigger phrases."
 triggers:
-  - "self-improvement experiments"
+  - "self-improvement experiment"
   - "archive-based evolution"
   - "staged evaluation"
   - "skill performance"
