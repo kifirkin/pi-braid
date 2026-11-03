@@ -53,6 +53,15 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.21 (2026-11-03: a failed synthesizer falls back to text, not to a worse voice)
+
+- **The voice skill stops offering the offline voices as a substitute for a reply.** When the primary
+  synthesizer fails, the reply goes out as text with the outage named in one clause, and voice is
+  retried on the next turn. The rule is the owner's judgement measured the hard way: a fallback voice
+  note was rejected by ear ("не работает так"), while the outage it was covering had already cleared
+  on its own. The offline paths stay documented for audio that is not the reply to a message, which is
+  what they were always good for.
+
 ## Core — 0.43.20 (2026-11-03: the gates learn to see what is being written)
 
 - **The doc gates see the file being written.** `trackedMarkdown` enumerates untracked, non-ignored
