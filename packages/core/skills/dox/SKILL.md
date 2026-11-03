@@ -1,6 +1,11 @@
 ---
 name: dox
 description: "Maintain AGENTS.md hierarchy — agent-maintained living documentation tree with pre-edit walk and post-change update. Use when project guidelines drift, AGENTS.md files are missing or stale, or you need to set up or repair the documentation hierarchy. Use before editing files in unfamiliar or undocumented areas."
+triggers:
+  - "agents.md"
+  - "agents.md hierarchy"
+  - "stale agents.md"
+  - "documentation hierarchy"
 validated: 2026-08-16
 verdict: KEEP
 ---

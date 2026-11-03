@@ -1,6 +1,12 @@
 ---
 name: code-refactoring
 description: "Use when restructure/move/rename files or symbols across a TypeScript codebase. Covers ast-grep import path rewrites, file moves, symbol renames, and multi-file batch updates. Always use ast-grep for structural changes over sed/regex."
+triggers:
+  - "refactor"
+  - "codemod"
+  - "ast-grep"
+  - "rename a symbol"
+  - "update imports"
 validated: 2026-08-16
 verdict: IMPROVE
 ---

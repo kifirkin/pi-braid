@@ -1,11 +1,15 @@
 ---
 name: braid-reference
 description: "Find braid's own documentation: context policy and compaction, timers and wakes, workers and the orchestrator registry, the Telegram channel, prompt and discipline rules, memory stores, the skills catalog, release and install paths, health maintenance, extensions and the polyfill. Use when a question is about braid internals, before editing braid, or when a braid behavior needs its owning doc named instead of guessed."
+triggers:
+  - "braid docs"
+  - "braid documentation"
+  - "braid internals"
+  - "braid compaction"
+  - "braid timers"
 validated: 2026-10-18
 verdict: KEEP
 ---
-
-## trigger: "braid docs, pi-braid documentation, braid context policy, braid compaction bands, braid timers and wakes, braid workers, orchestrator registry, braid telegram channel, braid prompt rules, braid memory stores, braid skills catalog, braid release, braid install paths, braid health maintenance, braid extension, polyfill"
 
 # Braid Reference
 

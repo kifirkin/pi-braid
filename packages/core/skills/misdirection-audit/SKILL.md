@@ -1,11 +1,14 @@
 ---
 name: misdirection-audit
 description: "Periodic self-audit for misdirected work: run the placement checker, grep generic layers for role/path policy, byte-diff assembled prompts between builds, then classify findings (wrong-layer fix, fake-generic presentation, enforcement gap, unmeasured innovation, doc drift, and more) into one ledger row per instance, where a recurring class earns a gate. Use at wave boundaries, before a release, or when a task asks for a misdirection, placement, or hygiene audit."
+triggers:
+  - "misdirection audit"
+  - "placement audit"
+  - "hygiene sweep"
+  - "self-audit"
 validated: 2026-09-15
 verdict: UNVALIDATED
 ---
-
-## trigger: "misdirection audit, placement audit, hygiene sweep, wave boundary audit, audit recent output, periodic self-audit"
 
 # Misdirection Audit
 

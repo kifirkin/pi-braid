@@ -1,11 +1,15 @@
 ---
 name: tone-quality
-description: "Read this skill before writing any text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Ask yourself: 'Am I writing meaningful text?' If yes, activate this skill first. Not a post-hoc review step; apply these principles while drafting. Covers directive density, cognitive reasoning density, voice artifacts, epistemic calibration, and signal density."
+description: "Use when writing or editing text that humans or agents will read - documentation, prompts, messages, skills, comments, and explanations. Read this skill before writing and ask yourself: 'Am I writing meaningful text?' If yes, activate this skill. Apply these principles while drafting; this is not a post-hoc review step. Covers directive density, cognitive reasoning density, voice artifacts, epistemic calibration, and signal density."
+triggers:
+  - "writing documentation"
+  - "writing prompts"
+  - "writing a skill"
+  - "editing text"
+  - "drafting text"
 validated: 2026-08-16
 verdict: KEEP
 ---
-
-## trigger: "writing documentation, writing prompts, writing messages, writing skills, writing comments, writing explanations, drafting text, editing text"
 
 # Tone Quality
 

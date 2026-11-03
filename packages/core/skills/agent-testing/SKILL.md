@@ -1,11 +1,15 @@
 ---
 name: agent-testing
-description: "Run and evaluate coding agents programmatically: drive pi in RPC mode (JSON events over stdin/stdout), parse agent event streams, run multi-trial benchmarks, and verify tool execution results. Use when building a test harness for an agent, benchmarking or comparing agent configurations and models, asserting on the tool calls an agent made, or extracting structured results from agent runs. Triggers: agent benchmark, RPC mode, agent evaluation, multi-trial comparison, test harness, agent event parsing, tool execution verification."
+description: "Run and evaluate coding agents programmatically: drive pi in RPC mode (JSON events over stdin/stdout), parse agent event streams, run multi-trial benchmarks, and verify tool execution results. Use when building a test harness for an agent, benchmarking or comparing agent configurations and models, asserting on the tool calls an agent made, or extracting structured results from agent runs."
+triggers:
+  - "rpc mode"
+  - "agent benchmark"
+  - "test harness"
+  - "multi-trial"
+  - "tool execution verification"
 validated: 2026-09-09
 verdict: KEEP
 ---
-
-## trigger: "benchmarking, multi-trial comparisons, tool execution verification, evaluating agent configurations, building test suites"
 
 # Agent Testing
 

@@ -1,7 +1,11 @@
 ---
 name: subagent-verification
 description: "Verify changes by spawning an isolated subagent before merging. Use when: modifying braid core or contrib, running tests after edits, validating that an integration doesn't break existing functionality. Covers: spawn-and-verify workflow, test-gate integration, failure diagnosis, and merge gates."
-trigger: "before merging changes to pi-braid core or contrib, after any edit that modifies test-covered code, when verifying integration of pi-braid-lib into dependent packages"
+triggers:
+  - "isolated subagent"
+  - "verifier subagent"
+  - "verify before merging"
+  - "spawn a verifier"
 validated: 2026-08-16
 verdict: IMPROVE
 ---
