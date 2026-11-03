@@ -27,6 +27,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
 } from "node:fs";
@@ -44,6 +45,16 @@ export const CONFIG_MANIFEST = [
   "auth.json",
   "models-store.json",
   "mcp.json",
+] as const;
+
+/** Credential resolution state, by prefix. The provider extension maps a key to
+ *  a route through these files, so a home without them answers "No API key
+ *  found for the selected model" and the probe never runs. They are copied
+ *  because the rehearsal stands in for an operator supplying the same
+ *  credentials, not because they are configuration. */
+export const CREDENTIAL_MANIFEST_PREFIXES = [
+  ".key-ring-state-",
+  ".provider-route-state",
 ] as const;
 
 /** A rehearsal that cannot finish in this window is the finding, so the child
@@ -93,6 +104,26 @@ export function copyConfigManifest(
   return { copied, missing };
 }
 
+/** Copy the credential-resolution state beside the config manifest. A missing
+ *  one is reported, never invented. */
+export function copyCredentialState(
+  from: string,
+  to: string,
+): { copied: string[]; missing: boolean } {
+  mkdirSync(to, { recursive: true });
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(from);
+  } catch {
+    return { copied: [], missing: true };
+  }
+  const wanted = entries.filter((name) =>
+    CREDENTIAL_MANIFEST_PREFIXES.some((prefix) => name.startsWith(prefix)),
+  );
+  for (const name of wanted) cpSync(join(from, name), join(to, name));
+  return { copied: wanted, missing: wanted.length === 0 };
+}
+
 /** The child's environment. HOME, XDG roots and BRAID_HOME all point inside
  *  the throwaway tree, and the session role is cleared so a probe process never
  *  registers the seat's outbound surfaces. */
@@ -125,6 +156,50 @@ export function parseVerdict(stdout: string): Record<string, string> | null {
   } catch {
     return null;
   }
+}
+
+/** The pi CLI the rehearsal boots. Resolved from the managed install the
+ *  environment names, not from `process.argv[1]`: argv[1] is the pi CLI only
+ *  when pi itself launched this process, so a rehearsal started from a script
+ *  or a scheduler would re-execute its own entry point, boot the wrong program,
+ *  and report a clean failure of the probe. */
+export function resolvePiCli(
+  env: NodeJS.ProcessEnv = process.env,
+  argv1: string | undefined = process.argv[1],
+): string {
+  const root = env.PI_MANAGED_INSTALL_ROOT;
+  if (root) {
+    try {
+      const version = readFileSync(
+        join(root, "current-version"),
+        "utf8",
+      ).trim();
+      const candidate = join(
+        root,
+        "releases",
+        version,
+        "node_modules",
+        ".bin",
+        "pi",
+      );
+      if (version && existsSync(candidate)) return candidate;
+    } catch {
+      // A managed root without a readable version is not fatal; fall through.
+    }
+  }
+  if (argv1 && /\.[cm]?js$/.test(argv1) && existsSync(argv1)) {
+    // Only the pi CLI is a legitimate fallback. Re-executing whatever else
+    // launched this process boots the wrong program and fails as a probe bug.
+    try {
+      const head = readFileSync(argv1, "utf8").slice(0, 4000);
+      if (/pi-coding-agent|pi-agent|pi-braid/.test(head)) return argv1;
+    } catch {
+      // An unreadable entry point is not a CLI.
+    }
+  }
+  throw new Error(
+    "cannot locate the pi CLI: PI_MANAGED_INSTALL_ROOT names no readable release and argv[1] is not a JS entry point",
+  );
 }
 
 function liveFingerprint(dir: string | null): string[] {
@@ -178,48 +253,98 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
   const before = liveFingerprint(liveHome);
   const root = mkdtempSync(join(tmpdir(), "braid-health-coldstart-"));
   const env = buildColdStartEnv(root, process.env);
-  const { copied, missing } = copyConfigManifest(
-    configDir,
-    join(root, "home", ".pi", "agent"),
-  );
+  const coldAgentDir = join(root, "home", ".pi", "agent");
+  const { copied, missing } = copyConfigManifest(configDir, coldAgentDir);
+  const credentials = copyCredentialState(configDir, coldAgentDir);
   const coldBraid = env.BRAID_HOME as string;
 
-  let run = { status: 0, stdout: "", stderr: "", timedOut: false };
-  try {
-    const runner = options.runChild ?? defaultRunChild(timeoutMs);
-    run = runner(env, root);
-  } catch (err) {
-    results.push(
-      check("coldstart", "boot", () => ({
-        status: "fail",
-        message: `rehearsal process could not start: ${err instanceof Error ? err.message : String(err)}`,
-      })),
-    );
-  }
+  // The spawn happens INSIDE the timed check on purpose: measuring it outside
+  // reported 0ms for a step that installs packages and calls a model, which is
+  // a duration no reader should believe and a cost the report then hides.
+  type RunResult = {
+    status: number;
+    stdout: string;
+    stderr: string;
+    timedOut: boolean;
+  };
+  let run: RunResult | null = null;
+  results.push(
+    check("coldstart", "boot", () => {
+      const runner = options.runChild ?? defaultRunChild(timeoutMs);
+      try {
+        run = runner(env, root);
+      } catch (err) {
+        return {
+          status: "fail" as const,
+          message: `rehearsal process could not start: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+      const done = run as RunResult;
+      if (done.timedOut) {
+        return {
+          status: "fail" as const,
+          message: `rehearsal was killed after ${timeoutMs}ms: a subsystem waits instead of failing on absent state`,
+          details: tail(done.stderr || done.stdout),
+        };
+      }
+      if (done.status !== 0) {
+        return {
+          status: "fail" as const,
+          message: `rehearsal exited ${done.status}`,
+          details: tail(done.stderr || done.stdout),
+        };
+      }
+      return {
+        status: "pass" as const,
+        message: "cold process ran to completion",
+        details: `stdout ${done.stdout.length}B, stderr ${done.stderr.length}B`,
+      };
+    }),
+  );
 
-  if (run !== null) {
+  let executed = run as RunResult | null;
+  let silentRetried = false;
+  let installLineSource = executed?.stderr ?? "";
+
+  // A run that prints nothing while fetching packages is not a verdict, and the
+  // reason for the silence is not in the output that a single attempt has. One
+  // observed silent run turned out to be a missing credential file, which the
+  // SECOND attempt named outright ("No API key found for the selected model")
+  // and which the first attempt could not distinguish from a slow install. So a
+  // silent attempt buys exactly one retry, and a retry that also prints nothing
+  // fails rather than warning.
+  const looksLikeBootstrap =
+    executed !== null &&
+    executed.stdout.trim() === "" &&
+    /^added \d+ packages?/m.test(executed.stderr);
+  if (looksLikeBootstrap) {
     results.push(
-      check("coldstart", "boot", () => {
-        if (run.timedOut) {
+      check("coldstart", "silent-run-retry", () => {
+        const runner = options.runChild ?? defaultRunChild(timeoutMs);
+        run = runner(env, root);
+        silentRetried = true;
+        const second = run as RunResult;
+        installLineSource = `${installLineSource}\n${second.stderr}`;
+        if (second.stdout.trim() === "") {
           return {
-            status: "fail",
-            message: `rehearsal was killed after ${timeoutMs}ms: a subsystem waits instead of failing on absent state`,
-            details: tail(run.stderr || run.stdout),
+            status: "fail" as const,
+            message:
+              "the second run in the same home also printed nothing, so the install path is not the whole story",
+            details: `stdout 0B, stderr ${second.stderr.length}B :: ${tail(second.stderr)}`,
           };
         }
-        if (run.status !== 0) {
-          return {
-            status: "fail",
-            message: `rehearsal exited ${run.status}`,
-            details: tail(run.stderr || run.stdout),
-          };
-        }
-        return { status: "pass", message: "cold process ran to completion" };
+        return {
+          status: "pass" as const,
+          message:
+            "the retry ran the probe, so the first attempt's silence was not a refusal",
+          details: `stdout ${second.stdout.length}B, stderr ${second.stderr.length}B`,
+        };
       }),
     );
+    executed = run as RunResult | null;
   }
 
-  const verdict = parseVerdict(run.stdout);
+  const verdict = executed === null ? null : parseVerdict(executed.stdout);
   results.push(
     check("coldstart", "verdict", () => {
       if (!verdict) {
@@ -227,7 +352,7 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
           status: "warn",
           message:
             "the probe printed no COLD_RESULT line, so nothing it did can be judged",
-          details: tail(run.stdout) || tail(run.stderr),
+          details: `stdout ${executed?.stdout.length ?? 0}B, stderr ${executed?.stderr.length ?? 0}B :: ${tail(executed?.stdout || executed?.stderr || "")}`,
         };
       }
       return {
@@ -264,7 +389,7 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
     }
   }
 
-  const installPasses = run.stderr
+  const installPasses = installLineSource
     .split("\n")
     .filter((line) => /^added \d+ packages?/.test(line));
   results.push(
@@ -278,7 +403,7 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
       }
       return {
         status: "warn",
-        message: `boot fetched ${installPasses.length} pinned source(s): a clean machine needs network and a longer first start`,
+        message: `boot fetched ${installPasses.length} pinned source(s): a clean machine needs network and a longer first start${silentRetried ? ", and the first attempt printed nothing" : ""}`,
         details: installPasses.join("; "),
       };
     }),
@@ -318,7 +443,7 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
       return {
         status: "pass",
         message: "the live braid home gained nothing",
-        details: `copied config: ${copied.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}`,
+        details: `copied config: ${copied.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}; credential state: ${credentials.copied.join(", ") || "none"}`,
       };
     }),
   );
@@ -334,10 +459,7 @@ export function testColdStart(options: RehearsalOptions = {}): CheckResult[] {
 
 function defaultRunChild(timeoutMs: number) {
   return (env: NodeJS.ProcessEnv, root: string) => {
-    const cli = process.argv[1];
-    if (!cli || !existsSync(cli)) {
-      throw new Error(`cannot locate the running pi CLI at ${cli ?? "(none)"}`);
-    }
+    const cli = resolvePiCli();
     const child = spawnSync(
       process.execPath,
       [cli, "-p", "--no-session", PROBE_PROMPT],
