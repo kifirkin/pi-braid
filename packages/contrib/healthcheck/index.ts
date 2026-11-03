@@ -20,6 +20,7 @@ import { testAgentConfiguration } from "./checks/agent.js";
 import { testAgentTools } from "./checks/tools.js";
 import { testBuiltinTools } from "./checks/builtin.js";
 import { testExtensionSystem } from "./checks/extensions.js";
+import { testColdStart } from "./checks/coldstart.js";
 import { generateReport, formatReport } from "./checks/report.js";
 import { resolveCategories } from "./tool-inputs.js";
 
@@ -48,7 +49,8 @@ const healthcheckSchema = Type.Object({
   categories: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "Categories to test: filesystem, paths, shell, state, resources, agent, tools, builtin, extensions. Default: all",
+        "Categories to test: filesystem, paths, shell, state, resources, agent, tools, builtin, extensions. Default: all. " +
+        "`coldstart` is opt-in only: it builds a throwaway home, copies config, and runs one real process against empty braid state, which takes minutes.",
     }),
   ),
 });
@@ -121,6 +123,13 @@ export default function healthcheckExtension(pi: ExtensionAPI) {
       }
       if (shouldRun("extensions")) {
         allChecks.push(...testExtensionSystem(pi));
+      }
+      // The rehearsal spawns a real process and can take minutes, so naming no
+      // category (the documented "all" default) must not pull it in: every
+      // quick health check would quietly become slow.
+      const coldStartNamed = requestedCats?.some((cat) => cat.toLowerCase() === "coldstart") ?? false;
+      if (coldStartNamed) {
+        allChecks.push(...testColdStart());
       }
 
       // Cleanup
