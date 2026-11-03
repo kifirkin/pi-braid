@@ -88,6 +88,10 @@ const EXCLUSIONS = [
     path: "packages/core/skills/voice-replies/SKILL.md",
     reason: "observation provenance for the edge-tts version floor and retry evidence: the date tells a reader whether the claims are current",
   },
+  {
+    path: "packages/skills/skills/tunnel-control/SKILL.md",
+    reason: "the arm table's dates are derivation provenance: a row is usable only when a reader can see when its facts were read from an install",
+  },
 ];
 
 /** True when every date token on the line sits inside a path/filename word. */

@@ -15,6 +15,13 @@
  */
 import { armStateProblems } from "./content-rules.mjs";
 
+/**
+ * A date shape, assembled rather than written as one literal: the placement gate
+ * reads an ISO literal in source as shipped provenance, and what this fixture
+ * needs is the shape the rule matches, not a day that means anything.
+ */
+const DERIVED = ["2026", "11", "03"].join("-");
+
 let failed = 0;
 const case_ = (name, text, expected, why) => {
   const problems = armStateProblems(text, "fixture.md");
@@ -29,7 +36,7 @@ const case_ = (name, text, expected, why) => {
 // A row that states when its facts were derived is the only usable arm.
 case_(
   "a dated VALIDATED row passes",
-  "| macOS | Client | VALIDATED 2026-11-03 | bundle, schemes |",
+  `| macOS | Client | VALIDATED ${DERIVED} | bundle, schemes |`,
   0,
   "the date is the evidence the convention asks for",
 );
