@@ -833,18 +833,12 @@ await test("census: the installed packs, measured from their files", async () =>
   // The shipped pack's contract requires two authored phrases per skill, so
   // nothing there may sit outside the decision.
   assert.deepEqual(census.shipped.undeclared, []);
-  // The core pack's undeclared set is a fact about the files, not a threshold:
-  // if a skill gains a phrase this assertion tells the next author to update the
-  // report's count rather than letting a stale number travel.
-  assert.deepEqual(census.core.undeclared.sort(), [
-    "code-refactoring",
-    "code-search",
-    "documentation",
-    "dox",
-    "meta-cognition",
-    "research",
-    "skill-usage",
-  ]);
+  // The core pack's undeclared set is a fact about the files, not a threshold.
+  // It was seven skills while their phrases sat in body headings the reader
+  // accepts and the contract refuses; the migration moved them into the
+  // frontmatter, so the set is empty and this assertion now guards that no core
+  // skill slides back into silence.
+  assert.deepEqual(census.core.undeclared.sort(), []);
 });
 
 // ── cleanup ──────────────────────────────────────────────────────────────────

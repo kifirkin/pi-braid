@@ -282,10 +282,12 @@ test("a score-only caller keeps the name tie-break", () => {
   );
 });
 
-test("real corpus: the tie that the alphabet used to decide", () => {
-  // On the verify-worker prompt, three skills tie at the qualification bar.
-  // Alphabetical order picked braid-reference; the rarer match is the skill the
-  // prompt is actually about.
+test("real corpus: the verify-worker prompt is decided for the verification skill", () => {
+  // This case used to guard a three-way tie at the qualification bar, decided by
+  // rarer evidence rather than by the alphabet. The phrase migration gave the
+  // verification skill a first-class phrase ("verify worker"), so the corpus no
+  // longer ties here and the tie-breaking rules are covered by the synthetic
+  // cases above, which do not depend on any shipped phrase.
   const prompt =
     "You are a verify worker. You review a merged change read-only, at the merge revision, " +
     "in a detached worktree. You change nothing: no edits, no commits, no branch switches " +
@@ -295,9 +297,7 @@ test("real corpus: the tie that the alphabet used to decide", () => {
   const scored = skills
     .map((s) => ({ skill: s, ...matchSkill(s, keywords, prompt, df) }))
     .filter((s) => s.score > 0);
-  const tied = scored.filter((s) => s.score === MIN_NON_NAME_SCORE);
   const picks = selectSuggestions(scored, [], 1).map((s) => s.skill.name);
-  assert.ok(tied.length >= 2, `expected a tie at the bar, got ${tied.length}`);
   assert.equal(picks[0], "subagent-verification", `picked ${picks.join(", ")}`);
 });
 

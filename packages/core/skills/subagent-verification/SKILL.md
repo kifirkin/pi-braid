@@ -2,6 +2,7 @@
 name: subagent-verification
 description: "Verify changes by spawning an isolated subagent before merging. Use when: modifying braid core or contrib, running tests after edits, validating that an integration doesn't break existing functionality. Covers: spawn-and-verify workflow, test-gate integration, failure diagnosis, and merge gates."
 triggers:
+  - "verify worker"
   - "isolated subagent"
   - "verifier subagent"
   - "verify before merging"

@@ -39,6 +39,7 @@ const {
   normalizeTriggers,
   triggerMatches,
   clearSkillTriggerCache,
+  readSkillTriggerEntries,
   MAX_TRIGGERS,
 } = await import(join(DIST, "skill-triggers.js"));
 
@@ -126,48 +127,50 @@ test("every body-heading skill yields its phrases", () => {
   }
 });
 
-test("the phrases are the ones each heading declares", () => {
-  const expected = {
-    "agent-testing": "benchmarking",
-    "braid-reference": "braid docs",
-    "meta-improvement": "self-improvement experiments",
-    "misdirection-audit": "hygiene sweep",
-    "pi-reference": "extension development",
-    "placement-discipline": "placement ledger",
-    "probe-evaluation": "pre-registered rubric",
-    "software-engineer": "code review",
-    "tone-quality": "writing documentation",
-  };
-  for (const [name, phrase] of Object.entries(expected)) {
-    assert.ok(
-      byName.get(name).triggers.includes(phrase),
-      `${name}: expected "${phrase}", read [${byName.get(name).triggers.join(", ")}]`,
+test("the phrases read are the ones a body heading declares", () => {
+  // Synthetic on purpose: the shipped core tree now declares its phrases in the
+  // frontmatter, so reading this behaviour off a real skill would tie a reader
+  // test to content the contract is allowed to move.
+  clearSkillTriggerCache();
+  const dir = mkdtempSync(join(tmpdir(), "braid-trigger-heading-"));
+  try {
+    const file = join(dir, "SKILL.md");
+    writeFileSync(
+      file,
+      '---\nname: sample\ndescription: d\n---\n\n## trigger: "benchmarking, evaluating configurations"\n',
+      "utf-8",
     );
+    assert.deepEqual(readSkillTriggers(file), ["benchmarking", "evaluating configurations"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("a skill that declares two sources carries both", () => {
-  // agent-testing is the case first-wins hid: seven description phrases (its
-  // tail) and five body-heading phrases, one of them shared. Under precedence
-  // the body heading replaced the tail and the tail's phrases never existed.
-  const agentTesting = byName.get("agent-testing");
-  for (const phrase of ["agent benchmark", "rpc mode", "agent event parsing"]) {
-    assert.ok(
-      agentTesting.triggers.includes(phrase),
-      `description-tail phrase "${phrase}" is unread: [${agentTesting.triggers.join(", ")}]`,
+test("a skill that declares two sources carries both, once each", () => {
+  // The case the first-wins rule hid: a tail and a body heading on one file.
+  // Synthetic for the same reason as above.
+  clearSkillTriggerCache();
+  const dir = mkdtempSync(join(tmpdir(), "braid-trigger-two-sources-"));
+  try {
+    const file = join(dir, "SKILL.md");
+    writeFileSync(
+      file,
+      '---\nname: sample\ndescription: "Use when testing. Triggers: agent benchmark, rpc mode, tool execution verification"\n---\n\n## trigger: "benchmarking, tool execution verification"\n',
+      "utf-8",
     );
-  }
-  for (const phrase of ["benchmarking", "evaluating agent configurations"]) {
-    assert.ok(
-      agentTesting.triggers.includes(phrase),
-      `body-heading phrase "${phrase}" is unread: [${agentTesting.triggers.join(", ")}]`,
+    const description = "Use when testing. Triggers: agent benchmark, rpc mode, tool execution verification";
+    const phrases = readSkillTriggerEntries(file, description).map((e) => e.phrase);
+    for (const phrase of ["agent benchmark", "rpc mode", "benchmarking", "tool execution verification"]) {
+      assert.ok(phrases.includes(phrase), `"${phrase}" is unread: [${phrases.join(", ")}]`);
+    }
+    assert.equal(
+      phrases.filter((p) => p === "tool execution verification").length,
+      1,
+      "a phrase both sources declare is kept once",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  assert.equal(
-    agentTesting.triggers.filter((t) => t === "tool execution verification").length,
-    1,
-    "a phrase both sources declare is kept once",
-  );
 });
 
 test("parseBodyTriggers reads the first heading, strips quotes, takes both spellings", () => {
