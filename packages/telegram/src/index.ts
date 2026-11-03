@@ -130,8 +130,13 @@ import {
   acquirePollerLock,
   defaultPollerLockPath,
   describeLockHolder,
+  describeLockReason,
   releasePollerLock,
+  startPollerHeartbeat,
+  stopPollerHeartbeat,
   type PollerLockInfo,
+  type PollerLockRefusalReason,
+  type PollerLockTakeoverReason,
 } from "./lib/poller-lock.js";
 import { isWorkerRole, resolveSessionRole } from "./lib/session-role.js";
 import {
@@ -477,22 +482,35 @@ let pollerWanted = false;
 /**
  * Why a start attempt did not start: `already-running` (this process's own
  * singleton), `role-forbidden` (worker session — the seat owns the poller),
- * `lock-held` (another LIVE process owns the machine-wide lock; `holder`
- * names it), or `lock-path-underivable` (no absolute braid root, so the
- * ownership lock has no home). Callers render the reason for their own
+ * `lock-held` (another process owns the machine-wide lock; `holder` names it,
+ * `refusalReason` says which kind of holder it is, and `path` is the file an
+ * operator inspects), or `lock-path-underivable` (no absolute braid root, so
+ * the ownership lock has no home). Callers render the reason for their own
  * surface.
  */
 type PollerStartRefusal =
   | { started: false; reason: "already-running" }
   | { started: false; reason: "role-forbidden" }
-  | { started: false; reason: "lock-held"; holder: PollerLockInfo }
+  | {
+      started: false;
+      reason: "lock-held";
+      holder: PollerLockInfo;
+      refusalReason: PollerLockRefusalReason;
+      path: string;
+    }
   | { started: false; reason: "lock-path-underivable" };
-type PollerStartOutcome = { started: true } | PollerStartRefusal;
+type PollerStartOutcome =
+  | {
+      started: true;
+      /** How the lock was won: an operator reads a takeover, not a silent start. */
+      lock: { tookOver: boolean; reason: PollerLockTakeoverReason };
+    }
+  | PollerStartRefusal;
 
 /** Refusal body call sites append to their own surface-specific prefix. */
 function describePollerStartRefusal(outcome: PollerStartRefusal): string {
   if (outcome.reason === "lock-held") {
-    return `ownership lock held by ${describeLockHolder(outcome.holder)}`;
+    return `ownership lock held by ${describeLockHolder(outcome.holder)}: ${describeLockReason(outcome.refusalReason, outcome.path)}`;
   }
   if (outcome.reason === "role-forbidden") {
     return "worker role — the orchestrator seat owns the Telegram poller";
@@ -577,14 +595,30 @@ function startSingletonPoller(opts: {
       role: resolveSessionRole(),
       startedBy: opts.startedBy,
     },
-    opts.pidAlive,
+    { pidAlive: opts.pidAlive },
   );
   if (!acquired.ok) {
     log(
       "warn",
-      `telegram poller not started: ${describeLockHolder(acquired.holder)} holds the ownership lock — refusing to steal the getUpdates singleton`,
+      `telegram poller not started: ${describeLockHolder(acquired.holder)} holds the ownership lock — ${describeLockReason(acquired.reason, acquired.path)}`,
     );
-    return { started: false, reason: "lock-held", holder: acquired.holder };
+    return {
+      started: false,
+      reason: "lock-held",
+      holder: acquired.holder,
+      refusalReason: acquired.reason,
+      path: acquired.path,
+    };
+  }
+  // The heartbeat is what makes this lock's liveness checkable by a process in
+  // another namespace: without it the pid is the only evidence, and the pid is
+  // the part that does not travel between namespaces.
+  startPollerHeartbeat(lockPath);
+  if (acquired.tookOver) {
+    log(
+      "info",
+      `telegram poller ownership lock taken over by ${opts.startedBy}: ${describeLockReason(acquired.reason, lockPath)}${acquired.previous ? `; previous holder ${describeLockHolder(acquired.previous)}` : ""}`,
+    );
   }
   activePoller = createInboundPoller({
     token: opts.token,
@@ -618,7 +652,10 @@ function startSingletonPoller(opts: {
   // poller is live — deferred to the first owner
   // message when the owner chat is not yet known.
   opts.onStart?.();
-  return { started: true };
+  return {
+    started: true,
+    lock: { tookOver: acquired.tookOver, reason: acquired.reason },
+  };
 }
 
 /** Lock file path: explicit env override first, then the braid-home default.
@@ -636,9 +673,14 @@ function stopSingletonPoller(): boolean {
   pollerStartedBy = undefined;
   // An explicit disable gives the channel up machine-wide; the reload-path
   // shutdown does NOT release — the session_start re-arm re-acquires our own
-  // pid's lock without a window where another process could claim it.
+  // pid's lock without a window where another process could claim it. The
+  // heartbeat stops with the release, so a released lock cannot keep being
+  // stamped fresh.
   const lockPath = pollerLockFile();
-  if (lockPath !== null) releasePollerLock(lockPath);
+  if (lockPath !== null) {
+    stopPollerHeartbeat(lockPath);
+    releasePollerLock(lockPath);
+  }
   log("info", "telegram poller stopped");
   return true;
 }
@@ -1601,8 +1643,15 @@ export default async function telegramExtension(
             ok: false,
             running: isPollerRunning(),
             error: `telegram_poller enable refused: ${describePollerStartRefusal(outcome)}`,
+            // The machine-readable half: an agent (or a log grep) can name the
+            // case without parsing the sentence, and `lockFile` is the path an
+            // operator has to inspect for the `stale-unknown` case.
             ...(outcome.reason === "lock-held"
-              ? { holder: outcome.holder }
+              ? {
+                  holder: outcome.holder,
+                  reason: outcome.refusalReason,
+                  lockFile: outcome.path,
+                }
               : {}),
           };
           return {
@@ -1618,10 +1667,11 @@ export default async function telegramExtension(
                 ok: true,
                 running: isPollerRunning(),
                 startedBy: pollerStartedBy,
+                lock: outcome.lock,
               }),
             },
           ],
-          details: { ok: true, running: isPollerRunning() },
+          details: { ok: true, running: isPollerRunning(), lock: outcome.lock },
         };
       }
       if (action === "disable") {

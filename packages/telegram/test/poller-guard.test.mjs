@@ -2,14 +2,17 @@
  * poller-guard.test.mjs — the two ownership nets around the Telegram poller:
  * (1) the session-role gate (BRAID_SESSION_ROLE=worker registers no tool, no
  * command and no turn_end sender, and never starts the poller) and (2) the
- * machine-wide ownership lock (a live foreign pid refuses,
- * a stale lock is taken over, disable releases, and a seat's re-enable /
- * reload re-arm keeps working). Drives the factory with a fake ExtensionAPI
- * and recorded-fixture fetch, like index.test.mjs.
+ * machine-wide ownership lock, whose liveness is a rule over an instance
+ * identity and a heartbeat rather than a bare pid: a holder on another boot is
+ * never displaced while it heartbeats, a holder that stopped heartbeating is
+ * taken over even while its pid answers alive, and every verdict is reported
+ * with a reason an operator can classify. Drives the factory with a fake
+ * ExtensionAPI and recorded-fixture fetch, like index.test.mjs.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -25,10 +28,16 @@ import {
   acquirePollerLock,
   defaultPollerLockPath,
   describeLockHolder,
+  describeLockReason,
   isPidAlive,
+  POLLER_HEARTBEAT_INTERVAL_MS,
+  POLLER_HEARTBEAT_STALE_MS,
   readPollerLock,
   releasePollerLock,
   releaseHeldLockAtExit,
+  resolveInstanceId,
+  startPollerHeartbeat,
+  stopPollerHeartbeat,
 } from "../dist/lib/poller-lock.js";
 import { resolveSessionRole } from "../dist/lib/session-role.js";
 import { runTelegramSend } from "../dist/lib/tool-logic.js";
@@ -152,81 +161,348 @@ test("isPidAlive: own pid alive, impossible pid dead", () => {
   assert.equal(isPidAlive(99999999), false); // beyond every real pid_max
 });
 
-test("lock: fresh acquire writes pid/startedAt/role/startedBy", () => {
-  const path = tmpLockFile("fresh");
-  const res = acquirePollerLock(path, {
-    pid: process.pid,
-    startedAt: 1234,
-    role: "seat",
-    startedBy: "/telegram enable",
-  });
-  assert.deepEqual(res, { ok: true, tookOver: false });
+// ── Acquisition arms: identity and heartbeat, not a bare pid ───────────────
+// The clock and the liveness predicate are injected, so each arm is decided by
+// arithmetic over a fixture rather than by this machine's process table (the
+// one arm that asserts about a real pid says so and uses the real probe).
+
+const INSTANCE = "testhost:test-boot";
+const FOREIGN_INSTANCE = "otherhost:other-boot";
+const IMPOSSIBLE_PID = 99999999; // beyond every real pid_max
+const OTHER_PID = process.pid + 1; // a different pid than ours
+const CLOCK = 1_700_000_000_000;
+
+/** Fixed clock: heartbeat freshness is a subtraction, not a sleep. */
+function fixedClock(start = CLOCK) {
+  let at = start;
+  return {
+    now: () => at,
+    set: (value) => {
+      at = value;
+    },
+  };
+}
+
+test("lock acquire: no holder takes the lock fresh and stamps identity and heartbeat", () => {
+  const path = tmpLockFile("arm-empty");
+  const clock = fixedClock();
+  const res = acquirePollerLock(
+    path,
+    {
+      pid: process.pid,
+      instanceId: INSTANCE,
+      role: "seat",
+      startedBy: "/telegram enable",
+    },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.deepEqual(res, { ok: true, reason: "fresh", tookOver: false });
   assert.deepEqual(readPollerLock(path), {
     pid: process.pid,
-    startedAt: 1234,
+    startedAt: CLOCK,
+    instanceId: INSTANCE,
+    heartbeatAt: CLOCK,
     role: "seat",
     startedBy: "/telegram enable",
   });
 });
 
-test("lock: live foreign holder refuses with holder named, file untouched", () => {
-  const path = tmpLockFile("foreign");
+test("lock acquire: same instance, different live pid, current heartbeat refuses as held", () => {
+  const path = tmpLockFile("arm-same-fresh");
+  const clock = fixedClock();
   writeLock(path, {
-    pid: FOREIGN_PID,
-    startedAt: 1700000000000,
+    pid: OTHER_PID,
+    startedAt: CLOCK - 9_000,
+    instanceId: INSTANCE,
+    heartbeatAt: CLOCK - 1_000,
     role: "seat",
     startedBy: "orchestrator seat",
   });
+  const before = readFileSync(path, "utf8");
   const res = acquirePollerLock(
     path,
-    { pid: process.pid, startedAt: 9999, role: "worker" },
-    (pid) => pid === FOREIGN_PID,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: (pid) => pid === OTHER_PID },
   );
   assert.equal(res.ok, false);
-  assert.equal(res.holder.pid, FOREIGN_PID);
-  assert.equal(res.holder.startedBy, "orchestrator seat");
-  // The refusal names pid, since, and role/session.
-  assert.match(describeLockHolder(res.holder), /pid 424242/);
-  assert.match(describeLockHolder(res.holder), /orchestrator seat/);
-  // The foreign lock is intact — never rewritten by a refused acquirer.
-  assert.equal(readPollerLock(path).pid, FOREIGN_PID);
+  assert.equal(res.reason, "held-same-instance");
+  assert.equal(res.holder.pid, OTHER_PID);
+  assert.equal(res.path, path);
+  const named = describeLockHolder(res.holder, CLOCK);
+  assert.match(named, new RegExp(`pid ${OTHER_PID}`));
+  assert.ok(
+    named.includes(INSTANCE),
+    `the refusal names the holder's identity: ${named}`,
+  );
+  assert.match(named, /heartbeat 1\.0s ago/);
+  assert.match(
+    describeLockReason(res.reason, path),
+    /refuses until that heartbeat goes stale/,
+  );
+  assert.equal(
+    readFileSync(path, "utf8"),
+    before,
+    "a refused acquirer never rewrites the holder's file",
+  );
 });
 
-test("lock: stale (dead pid) holder is taken over silently", () => {
-  const path = tmpLockFile("stale");
-  writeLock(path, { pid: FOREIGN_PID, startedAt: 1, role: "seat" });
+test("lock acquire: same instance, holder pid dead, takes over with a reported reason", () => {
+  const path = tmpLockFile("arm-same-dead");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 5_000,
+    instanceId: INSTANCE,
+    heartbeatAt: CLOCK - 500, // fresh, and still displaced: the pid is dead
+  });
   const res = acquirePollerLock(
     path,
-    { pid: process.pid, startedAt: 2, role: "seat" },
-    () => false,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
   );
-  assert.deepEqual(res, { ok: true, tookOver: true });
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "stale-same-instance");
+  assert.equal(res.tookOver, true);
+  assert.equal(res.previous.pid, IMPOSSIBLE_PID);
   assert.equal(readPollerLock(path).pid, process.pid);
 });
 
-test("lock: corrupt file is taken over; own pid re-acquire refreshes", () => {
-  const path = tmpLockFile("corrupt");
+test("lock acquire: same instance, pid alive, heartbeat past the window takes over", () => {
+  const path = tmpLockFile("arm-same-stale");
+  const clock = fixedClock();
+  // process.ppid is genuinely alive in this namespace and is not this process.
+  assert.equal(isPidAlive(process.ppid), true);
+  writeLock(path, {
+    pid: process.ppid,
+    startedAt: CLOCK - 120_000,
+    instanceId: INSTANCE,
+    heartbeatAt: CLOCK - POLLER_HEARTBEAT_STALE_MS - 1,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now },
+  );
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "stale-same-instance");
+  assert.equal(res.tookOver, true);
+  assert.equal(
+    isPidAlive(process.ppid),
+    true,
+    "a live pid whose heartbeat stopped is not polling: the takeover has to happen while the process table still answers alive",
+  );
+  assert.equal(readPollerLock(path).pid, process.pid);
+});
+
+test("lock acquire: the staleness window is the named constant, edge included", () => {
+  const clock = fixedClock();
+  const at = (age) => {
+    const path = tmpLockFile("arm-window");
+    writeLock(path, {
+      pid: OTHER_PID,
+      startedAt: CLOCK - 200_000,
+      instanceId: INSTANCE,
+      heartbeatAt: CLOCK - age,
+    });
+    return acquirePollerLock(
+      path,
+      { pid: process.pid, instanceId: INSTANCE },
+      { now: clock.now, pidAlive: () => true },
+    );
+  };
+  // Inside the window (and exactly on it) the holder still counts as polling.
+  assert.equal(at(POLLER_HEARTBEAT_STALE_MS - 1).ok, false);
+  assert.equal(at(POLLER_HEARTBEAT_STALE_MS).ok, false);
+  // One millisecond past it, the same pid stops counting.
+  assert.equal(at(POLLER_HEARTBEAT_STALE_MS + 1).ok, true);
+});
+
+test("lock acquire: self re-acquire wins while the same pid is recorded (reload re-arm)", () => {
+  const path = tmpLockFile("arm-self");
+  const clock = fixedClock();
+  const first = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE, startedBy: "first" },
+    { now: clock.now },
+  );
+  assert.equal(first.reason, "fresh");
+  clock.set(CLOCK + 2_000);
+  const second = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE, startedBy: "reload" },
+    { now: clock.now },
+  );
+  assert.equal(second.ok, true);
+  assert.equal(second.reason, "same-pid-refresh");
+  assert.equal(second.tookOver, true);
+  assert.equal(readPollerLock(path).heartbeatAt, CLOCK + 2_000);
+});
+
+test("lock acquire: another boot's holder with a current heartbeat is never displaced", () => {
+  const path = tmpLockFile("arm-foreign-fresh");
+  const clock = fixedClock();
+  // The pid is dead here — which is exactly the evidence that says nothing
+  // about a holder recorded on another boot. Only the heartbeat does.
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 3_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: CLOCK - 2_000,
+    role: "seat",
+  });
+  const before = readFileSync(path, "utf8");
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "held-across-namespace");
+  assert.equal(res.holder.instanceId, FOREIGN_INSTANCE);
+  assert.match(
+    describeLockReason(res.reason, path),
+    /its pid is not evidence here/,
+  );
+  assert.equal(readFileSync(path, "utf8"), before);
+});
+
+test("lock acquire: another boot's holder past the window is taken over", () => {
+  const path = tmpLockFile("arm-foreign-stale");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 90_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: CLOCK - POLLER_HEARTBEAT_STALE_MS - 5_000,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "stale-across-namespace");
+  assert.equal(res.tookOver, true);
+  assert.equal(res.previous.instanceId, FOREIGN_INSTANCE);
+  assert.equal(readPollerLock(path).instanceId, INSTANCE);
+});
+
+test("lock acquire: a heartbeat from the future counts as current, so a skewed clock cannot displace a holder", () => {
+  const path = tmpLockFile("arm-skew");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: CLOCK + 5_000,
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "held-across-namespace");
+  assert.match(
+    describeLockHolder(res.holder, CLOCK),
+    /heartbeat 5\.0s in the future/,
+  );
+});
+
+test("lock acquire: an unreadable heartbeat on another boot refuses and names the file", () => {
+  const path = tmpLockFile("arm-unknown");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 60_000,
+    instanceId: FOREIGN_INSTANCE,
+  });
+  const before = readFileSync(path, "utf8");
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "stale-unknown");
+  assert.ok(
+    describeLockReason(res.reason, path).includes(path),
+    "the refusal names the file an operator has to inspect",
+  );
+  assert.match(describeLockHolder(res.holder, CLOCK), /no heartbeat recorded/);
+  assert.equal(
+    readFileSync(path, "utf8"),
+    before,
+    "an unreadable file is never guessed away",
+  );
+});
+
+test("lock acquire: a garbled heartbeat on another boot reads as unknown, not as stale", () => {
+  const path = tmpLockFile("arm-garbled");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 60_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: "not-a-timestamp",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "stale-unknown");
+});
+
+test("lock acquire: a record without identity is judged by its heartbeat, never by its pid", () => {
+  const path = tmpLockFile("arm-legacy");
+  const clock = fixedClock();
+  // An older writer's file: no instanceId, no heartbeatAt.
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 60_000,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "stale-unknown");
+  assert.match(describeLockHolder(res.holder, CLOCK), /no identity/);
+});
+
+test("lock acquire: a file that names no holder is taken over with a reported reason", () => {
+  const path = tmpLockFile("arm-corrupt");
+  const clock = fixedClock();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, "{not json");
   assert.equal(readPollerLock(path), undefined);
-  assert.deepEqual(
-    acquirePollerLock(path, { pid: process.pid, startedAt: 3 }),
-    { ok: true, tookOver: false }, // corrupt file reads as "no holder"
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now },
   );
-  // Own pid: a reload-cycle re-acquire must succeed even though the file
-  // names a live pid.
-  assert.deepEqual(
-    acquirePollerLock(path, { pid: process.pid, startedAt: 4 }),
-    { ok: true, tookOver: true },
-  );
-  assert.equal(readPollerLock(path).startedAt, 4);
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "unreadable-file");
+  assert.equal(res.tookOver, false); // no holder was recorded, so none was displaced
+  assert.equal(readPollerLock(path).instanceId, INSTANCE);
 });
 
 test("lock: release removes only our own lock", () => {
   const ours = tmpLockFile("release-ours");
   const foreign = tmpLockFile("release-foreign");
   writeLock(ours, { pid: process.pid, startedAt: 1 });
-  writeLock(foreign, { pid: FOREIGN_PID, startedAt: 1 });
+  writeLock(foreign, {
+    pid: FOREIGN_PID,
+    startedAt: 1,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: Date.now(),
+  });
   assert.equal(releasePollerLock(ours), true);
   assert.equal(existsSync(ours), false);
   assert.equal(releasePollerLock(foreign), false); // foreign lock untouched
@@ -292,12 +568,17 @@ test("no marker (seat default): all three tools, warn still advises telegram_pol
   });
 });
 
-test("seat enable refused while a live foreign pid holds the lock; lock intact", async () => {
+test("seat enable refused while another boot's holder keeps its heartbeat current", async () => {
   const lockFile = tmpLockFile("live-holder");
   const env = baseEnv({ [ENV_POLLER_LOCK_FILE]: lockFile });
+  // Dead pid here, current heartbeat: the shape a live holder in another
+  // container has. A pid-only check would displace it and put two pollers on
+  // one bot, so this is the case the refusal exists for.
   writeLock(lockFile, {
     pid: FOREIGN_PID,
-    startedAt: 1700000000000,
+    startedAt: Date.now() - 4_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: Date.now() - 1_500,
     role: "seat",
     startedBy: "orchestrator seat",
   });
@@ -306,7 +587,7 @@ test("seat enable refused while a live foreign pid holds the lock; lock intact",
   await withEnv(env, async () => {
     await telegramExtension(pi, {
       fetch: fetchFn,
-      pidAlive: (pid) => pid === FOREIGN_PID,
+      pidAlive: () => false,
     });
     const poller = pi.tools.find((t) => t.name === "telegram_poller");
     const r = await poller.execute(
@@ -317,8 +598,14 @@ test("seat enable refused while a live foreign pid holds the lock; lock intact",
     );
     assert.equal(r.details.ok, false);
     assert.equal(r.details.running, false);
+    // The refusal names the holder: pid, its boot, its heartbeat age, and
+    // which rule decision this is.
     assert.match(r.details.error, /pid 424242/);
-    assert.match(r.details.error, /orchestrator seat/);
+    assert.ok(r.details.error.includes(FOREIGN_INSTANCE));
+    assert.match(r.details.error, /heartbeat 1\.\ds ago/);
+    assert.match(r.details.error, /its pid is not evidence here/);
+    assert.equal(r.details.reason, "held-across-namespace");
+    assert.equal(r.details.lockFile, lockFile);
     assert.equal(r.details.holder.pid, FOREIGN_PID);
     await sleep(120);
     assert.equal(
@@ -334,12 +621,14 @@ test("seat enable refused while a live foreign pid holds the lock; lock intact",
   });
 });
 
-test("seat enable takes over a stale lock silently", async () => {
+test("seat enable takes over a lock whose heartbeat stopped on another boot", async () => {
   const lockFile = tmpLockFile("stale-takeover");
   const env = baseEnv({ [ENV_POLLER_LOCK_FILE]: lockFile });
   writeLock(lockFile, {
     pid: FOREIGN_PID,
-    startedAt: 1700000000000,
+    startedAt: Date.now() - 600_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: Date.now() - POLLER_HEARTBEAT_STALE_MS - 30_000,
     role: "worker",
     startedBy: "some dead worker",
   });
@@ -356,6 +645,10 @@ test("seat enable takes over a stale lock silently", async () => {
     );
     assert.equal(r.details.ok, true);
     assert.equal(r.details.running, true);
+    assert.deepEqual(r.details.lock, {
+      tookOver: true,
+      reason: "stale-across-namespace",
+    });
     await waitFor(
       () => fetchFn.calls.some((c) => c.url.includes("getUpdates")),
       2000,
@@ -365,6 +658,46 @@ test("seat enable takes over a stale lock silently", async () => {
       process.pid,
       "the takeover must record the new holder",
     );
+    assert.equal(
+      readPollerLock(lockFile).instanceId,
+      resolveInstanceId(),
+      "the new holder stamps its own boot",
+    );
+    pi.emit("session_shutdown");
+    await sleep(50);
+  });
+});
+
+test("seat enable takes over this instance's lock after the holder stopped heartbeating", async () => {
+  const lockFile = tmpLockFile("dead-poller");
+  const env = baseEnv({ [ENV_POLLER_LOCK_FILE]: lockFile });
+  // The crash-in-process shape: the pid still answers alive (a live sibling
+  // process), the heartbeat stopped. Refusing on the pid alone is what turns
+  // this into a channel that never comes back.
+  writeLock(lockFile, {
+    pid: process.ppid,
+    startedAt: Date.now() - 600_000,
+    instanceId: resolveInstanceId(),
+    heartbeatAt: Date.now() - POLLER_HEARTBEAT_STALE_MS - 1_000,
+    role: "seat",
+  });
+  const fetchFn = emptyUpdatesFetch();
+  const pi = makeFakePi();
+  await withEnv(env, async () => {
+    await telegramExtension(pi, { fetch: fetchFn });
+    const poller = pi.tools.find((t) => t.name === "telegram_poller");
+    const r = await poller.execute(
+      "id",
+      { action: "enable" },
+      undefined,
+      undefined,
+    );
+    assert.equal(r.details.ok, true);
+    assert.deepEqual(r.details.lock, {
+      tookOver: true,
+      reason: "stale-same-instance",
+    });
+    assert.equal(readPollerLock(lockFile).pid, process.pid);
     pi.emit("session_shutdown");
     await sleep(50);
   });
@@ -386,6 +719,12 @@ test("seat: disable releases the lock, re-enable keeps working", async () => {
     );
     assert.equal(r1.details.ok, true);
     assert.equal(existsSync(lockFile), true, "running poller holds the lock");
+    const held = readPollerLock(lockFile);
+    assert.equal(held.instanceId, resolveInstanceId());
+    assert.ok(
+      Number.isFinite(held.heartbeatAt),
+      "the running poller stamps a heartbeat another boot can read",
+    );
     const r2 = await poller.execute(
       "id",
       { action: "disable" },
@@ -431,21 +770,28 @@ test("seat: reload re-arm re-acquires its own pid's lock without release", async
   });
 });
 
-test("seat /telegram enable refused under a live foreign holder names the pid", async () => {
+test("seat /telegram enable refused under another boot's holder names pid and heartbeat", async () => {
   const lockFile = tmpLockFile("seat-cmd");
   const env = baseEnv({ [ENV_POLLER_LOCK_FILE]: lockFile });
-  writeLock(lockFile, { pid: FOREIGN_PID, startedAt: 5, role: "seat" });
+  writeLock(lockFile, {
+    pid: FOREIGN_PID,
+    startedAt: Date.now() - 2_000,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: Date.now() - 500,
+    role: "seat",
+  });
   const pi = makeFakePi();
   const notices = [];
   const ctx = { ui: { notify: (m, t) => notices.push([m, t]) } };
   await withEnv(env, async () => {
     await telegramExtension(pi, {
       fetch: emptyUpdatesFetch(),
-      pidAlive: (pid) => pid === FOREIGN_PID,
+      pidAlive: () => false,
     });
     await pi.commands[0].handler("enable", ctx);
     const [msg, type] = notices.at(-1);
     assert.match(msg, /pid 424242/);
+    assert.match(msg, /heartbeat 0\.\ds ago/);
     assert.equal(type, "error");
   });
 });
@@ -505,4 +851,103 @@ test("exit hook: never removes a lock a successor has taken over", () => {
     "the successor's lock survives our exit",
   );
   assert.equal(readPollerLock(path).pid, FOREIGN_PID);
+});
+
+// ── Heartbeat: the half of the rule that a process table cannot answer ─────
+
+test("heartbeat: refreshes the stamp on the interval and stops when told", async () => {
+  const path = tmpLockFile("beat-tick");
+  const clock = fixedClock();
+  acquirePollerLock(path, { pid: process.pid }, { now: clock.now });
+  const beat = startPollerHeartbeat(path, { intervalMs: 15, now: clock.now });
+  clock.set(CLOCK + 40_000);
+  await waitFor(
+    () => readPollerLock(path)?.heartbeatAt === CLOCK + 40_000,
+    2000,
+  );
+  beat.stop();
+  clock.set(CLOCK + 90_000);
+  await sleep(80);
+  assert.equal(
+    readPollerLock(path).heartbeatAt,
+    CLOCK + 40_000,
+    "a stopped heartbeat leaves the last stamp alone",
+  );
+});
+
+test("heartbeat: a beat never overwrites a successor's record", () => {
+  const path = tmpLockFile("beat-successor");
+  const clock = fixedClock();
+  acquirePollerLock(path, { pid: process.pid }, { now: clock.now });
+  const beat = startPollerHeartbeat(path, {
+    now: clock.now,
+    intervalMs: 60_000,
+  });
+  writeLock(path, {
+    pid: FOREIGN_PID,
+    startedAt: CLOCK,
+    instanceId: FOREIGN_INSTANCE,
+    heartbeatAt: CLOCK,
+  });
+  clock.set(CLOCK + 5_000);
+  assert.equal(beat.beat(), false, "the lock is no longer ours");
+  assert.equal(readPollerLock(path).pid, FOREIGN_PID);
+  assert.equal(readPollerLock(path).heartbeatAt, CLOCK);
+  beat.stop();
+});
+
+test("heartbeat: release stops the beat and the lock cannot be re-stamped", () => {
+  const path = tmpLockFile("beat-release");
+  const clock = fixedClock();
+  acquirePollerLock(path, { pid: process.pid }, { now: clock.now });
+  const beat = startPollerHeartbeat(path, {
+    now: clock.now,
+    intervalMs: 60_000,
+  });
+  assert.equal(releasePollerLock(path), true);
+  assert.equal(existsSync(path), false);
+  assert.equal(beat.beat(), false, "a released lock cannot be re-stamped");
+  assert.equal(
+    stopPollerHeartbeat(path),
+    false,
+    "release already stopped the beat",
+  );
+});
+
+test("heartbeat: three refreshes fit inside the staleness window", () => {
+  assert.equal(POLLER_HEARTBEAT_INTERVAL_MS, 10_000);
+  assert.equal(POLLER_HEARTBEAT_STALE_MS, 30_000);
+  assert.ok(
+    POLLER_HEARTBEAT_INTERVAL_MS * 3 <= POLLER_HEARTBEAT_STALE_MS,
+    "one late tick must not cost a live holder the channel",
+  );
+});
+
+test("heartbeat: an unref'd timer leaves the process free to exit while the lock is held", () => {
+  const path = tmpLockFile("beat-exit");
+  const moduleUrl = new URL("../dist/lib/poller-lock.js", import.meta.url).href;
+  const script = [
+    `import { acquirePollerLock, startPollerHeartbeat } from ${JSON.stringify(moduleUrl)};`,
+    `const res = acquirePollerLock(${JSON.stringify(path)}, { pid: process.pid });`,
+    `if (!res.ok) { console.error("refused: " + res.reason); process.exit(3); }`,
+    `startPollerHeartbeat(${JSON.stringify(path)}, { intervalMs: 10 });`,
+    `console.log("armed");`,
+  ].join("\n");
+  const child = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", script],
+    { encoding: "utf8", timeout: 5000 },
+  );
+  assert.equal(
+    child.signal,
+    null,
+    `the child had to be killed, so the heartbeat held the event loop open: ${child.stderr}`,
+  );
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /armed/);
+  assert.equal(
+    existsSync(path),
+    false,
+    "the exit hook released the lock on the way out",
+  );
 });
