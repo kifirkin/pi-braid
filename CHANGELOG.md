@@ -53,13 +53,28 @@ record; the tag scheme above applies unchanged.
 
 ---
 
-## Core — 0.43.20 (2026-11-03: the line reopens so a sibling release can ship)
+## Core — 0.43.20 (2026-11-03: the gates learn to see what is being written)
 
-- **No core content moved; the version exists to satisfy the release gate.** `release:check` derives an
-  iteration version from the manifest and refuses a tree whose derived version sorts at or below the highest
-  tag in the namespace, so a commit past `v0.43.19` turns the chain red until the manifest moves. The publish
-  workflow runs that chain before it publishes anything, so a sibling release landing between core tags has
-  to reopen the core line rather than carry a gate it cannot satisfy.
+- **The doc gates see the file being written.** `trackedMarkdown` enumerates untracked, non-ignored
+  files as well as tracked ones, so a new page no longer passes the local chain and then fails on the
+  commit, or worse on CI after the push. A fixture proves an ignored file stays out of the scan.
+- **A fixture's own date is data, not provenance.** `check-placement` keeps its ISO-date rule
+  everywhere except inside a `test/` tree, where the literal is what the test reads rather than a
+  process timestamp nothing reads.
+- **The poller lock's exit hook releases only a lock it still holds.** It unlinked by path, so a
+  process exiting after a handover deleted the successor's lock and two seats could each believe they
+  owned the channel. `releaseHeldLockAtExit` goes through the ownership-checked release; two tests
+  cover the successor case and the ordinary one.
+- **The journal writer continues its sequence across a rotated archive.** Rotation moves a prefix out
+  of the live file, and a writer reading only that file restarted the chain at one, which breaks the
+  checker's archive boundary. The writer now reads `journal-YYYY.jsonl` for its floor; a fixture
+  covers the first entry after a rotation.
+
+- **The version also satisfies the release gate.** `release:check` derives an iteration version from
+  the manifest and refuses a tree whose derived version sorts at or below the highest tag in the
+  namespace, so a commit past `v0.43.19` turns the chain red until the manifest moves. The publish
+  workflow runs that chain before it publishes anything, so a sibling release landing between core
+  tags has to reopen the core line rather than carry a gate it cannot satisfy.
 
 ## Skills — 0.2.4 (2026-11-03: the pack learns to bring a tunnel back)
 
