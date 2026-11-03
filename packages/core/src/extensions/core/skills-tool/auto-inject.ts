@@ -214,13 +214,20 @@ export const MIN_NON_NAME_SCORE = 2;
  *   line); below it the words still describe work types (review, check, test,
  *   edit, documentation).
  *
- *   Labelled set. 26 recorded prompts, recall@2 by threshold: df ≥ 4 → 12/23,
- *   df ≥ 5 → 13/23, df ≥ 6 → 13/23, df ≥ 7 → 14/23, no gate at all → 12/23.
- *   Recall alone cannot choose the number: every step that weakens the gate
- *   admits more skills (45, 54, 67, 71, 106 admissions) and admitting more can
- *   only raise a top-2 recall figure. 5 is where the gate removes a quarter of
- *   the corpus-common mass without also deleting the work-type words that are
- *   sometimes a skill's only reachable evidence.
+ *   Labelled set. 26 recorded prompts, recall@2 by threshold, re-measured at the
+ *   23-skill catalog over 24 labelled pairs: df ≥ 4 → 11/24, df ≥ 5 → 13/24,
+ *   df ≥ 6 → 13/24, df ≥ 7 → 14/24, no gate at all → 14/24. Recall alone cannot
+ *   choose the number: every step that weakens the gate admits more skills, and
+ *   admitting more can only raise a top-2 recall figure. The rows above 5 are a
+ *   plateau rather than a preference: every cut from 7 to 23 returns 14/24, and
+ *   no gate returns it too, so that number reads "at least 7" and prices
+ *   nothing about the precision a weaker gate spends. 5 is where the gate
+ *   removes a quarter of the corpus-common mass without also deleting the
+ *   work-type words that are sometimes a skill's only reachable evidence.
+ *
+ *   The 400-prompt mass above was measured against the 22-skill catalog and has
+ *   not been re-run since the catalog reached 23, so its shares are a record of
+ *   that revision rather than a current reading.
  */
 export const COMMON_KEYWORD_DF = 5;
 

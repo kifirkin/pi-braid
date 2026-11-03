@@ -184,7 +184,7 @@ test("a corpus-common word still scores when it is the skill's own name", () => 
 });
 
 test("a generic word buried inside a name is not a name hit", () => {
-  // "line" is corpus-common (df 7 of 22) and sits inside two coined names:
+  // "line" is corpus-common (df 7 of 23) and sits inside two coined names:
   // placement-disc**line** and release-pi**peline**. The name leg used to award
   // both +2 plus the bar exemption for it, so a prompt about a line of install
   // text bought a slot from a skill about packaging. Neither is a name hit now.
