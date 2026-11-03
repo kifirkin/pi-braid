@@ -53,6 +53,14 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core — 0.43.20 (2026-11-03: the line reopens so a sibling release can ship)
+
+- **No core content moved; the version exists to satisfy the release gate.** `release:check` derives an
+  iteration version from the manifest and refuses a tree whose derived version sorts at or below the highest
+  tag in the namespace, so a commit past `v0.43.19` turns the chain red until the manifest moves. The publish
+  workflow runs that chain before it publishes anything, so a sibling release landing between core tags has
+  to reopen the core line rather than carry a gate it cannot satisfy.
+
 ## Skills — 0.2.3 (2026-11-03: the pack learns to read a CV)
 
 - **A skill for CV work, prose only.** `cv-improvement` carries a metric set with the formula and the failing
