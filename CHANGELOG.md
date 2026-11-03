@@ -61,6 +61,20 @@ record; the tag scheme above applies unchanged.
   workflow runs that chain before it publishes anything, so a sibling release landing between core tags has
   to reopen the core line rather than carry a gate it cannot satisfy.
 
+## Skills — 0.2.4 (2026-11-03: the pack learns to bring a tunnel back)
+
+- **A tunnel-recovery skill, generalized past one machine.** `tunnel-control` states the failure before
+  the fix: a GUI client's network extension can die while the app stays up, leaving routes through a
+  device that no longer carries traffic, so one service times out while everything else resolves. The
+  procedure puts reachability ahead of the client's own status, gives a probe ladder per platform, and
+  recovers through the client's own control surface, never by killing a process or touching the system
+  extension. The arm table is the load-bearing part: a row is usable only with the date its facts were
+  derived from an install, and the pack's content scan now refuses a row that claims VALIDATED without
+  one, so a capability cannot be promoted by editing prose.
+- **One arm is measured and the rest say so.** The macOS row carries the date its facts were derived;
+  Happ, Incy, Windows and Linux ship as `UNVALIDATED` with the reason, and the skill's first rule is
+  that an unvalidated arm is probe-only.
+
 ## Skills — 0.2.3 (2026-11-03: the pack learns to read a CV)
 
 - **A skill for CV work, prose only.** `cv-improvement` carries a metric set with the formula and the failing

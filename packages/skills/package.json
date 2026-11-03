@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-skills",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Skills for research papers, brand systems, illustrations, and design critique that load straight into the pi coding agent.",
   "keywords": [
     "pi-package",
@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "scripts": {
-    "test": "node test/skills-contract.mjs && node test/governs-declaration.mjs",
+    "test": "node test/skills-contract.mjs && node test/governs-declaration.mjs && node test/arm-state.mjs",
     "prepack": "node ../core/scripts/pack-provenance.mjs write",
     "postpack": "node ../core/scripts/pack-provenance.mjs remove"
   },

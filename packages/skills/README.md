@@ -2,11 +2,11 @@
 
 <!-- status: current -->
 
-Nine skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
-systems, visual work, and writing that has to land. Install once, usually per project, and the agent
-opens a skill when the task matches it.
+Ten skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
+systems, visual work, writing that has to land, and a tunnel that has to come back. Install once,
+usually per project, and the agent opens a skill when the task matches it.
 
-Skills are instructions, not tools. Installing this pack teaches the agent nine procedures; it
+Skills are instructions, not tools. Installing this pack teaches the agent ten procedures; it
 changes what the agent knows how to do, not what it can do.
 
 ## Install
@@ -28,19 +28,20 @@ Running from a checkout instead? Register the workspace path in `~/.pi/agent/set
 
 ## What you get
 
-| Skill                    | What it does                                                                                                                                         | Use it when                                                                                                              | Status      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| `adversarial-engagement` | Five probes that force a real answer out of a scripted one: incongruity, structural irony, world-building, binary-trap evasion, label contradiction  | A reply keeps getting deflected or templated, and the exchange is going in circles                                       | Usable      |
-| `cv-improvement`         | Measures and improves a CV: metric formulas, a failure catalogue keyed to the form, the fix order, and honesty rules on unconfirmed numbers          | You are improving or reviewing a CV or resume, a draft reads as machine-written, or the page budget is about to break    | Unvalidated |
-| `design-system`          | Authors a `DESIGN.md` brand system: tokens for color, type, spacing and components, plus the consistency workflow                                    | You are building a brand system, writing a `DESIGN.md`, or enforcing design consistency across a project                 | Usable      |
-| `paper-writer`           | Structures and writes LaTeX papers for ML venues: IMRaD, abstract strategy, related work, figures, tables, citations, camera-ready conventions       | You are drafting or revising a NeurIPS, ICML, ICLR or ACL submission, an arXiv preprint, or a workshop paper             | Usable      |
-| `visual-creator`         | Creates visuals that survive critique: design principles, color, typography, layout, brand identity, and the create, analyze, validate, improve loop | You are building a UI, designing game assets, making brand material, or producing a visual that needs coherent reasoning | Usable      |
-| `visual-validator`       | Design critique with measurable, actionable fixes: sprite assets, game screenshots, UI designs, image quality                                        | You need a visual audited, a UI reviewed, or an image quality call                                                       | Usable      |
-| `meme`                   | Static canvas memes with Impact captions, posted through the browser clipboard                                                                       | You want a one-off static image meme                                                                                     | Deprecated  |
-| `socratic-irony`         | Wit craft: incongruity as the engine, voice archetypes, dramatic structure, and where to stop                                                        | You are writing a roast, satire or sharp critique and need a sharper line                                                | Deprecated  |
-| `twitter`                | Posts replies on X through browser automation and checks whether the bot answered                                                                    | You are working an X thread with a browser session                                                                       | Deprecated  |
+| Skill                    | What it does                                                                                                                                                            | Use it when                                                                                                              | Status      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| `adversarial-engagement` | Five probes that force a real answer out of a scripted one: incongruity, structural irony, world-building, binary-trap evasion, label contradiction                     | A reply keeps getting deflected or templated, and the exchange is going in circles                                       | Usable      |
+| `cv-improvement`         | Measures and improves a CV: metric formulas, a failure catalogue keyed to the form, the fix order, and honesty rules on unconfirmed numbers                             | You are improving or reviewing a CV or resume, a draft reads as machine-written, or the page budget is about to break    | Unvalidated |
+| `design-system`          | Authors a `DESIGN.md` brand system: tokens for color, type, spacing and components, plus the consistency workflow                                                       | You are building a brand system, writing a `DESIGN.md`, or enforcing design consistency across a project                 | Usable      |
+| `paper-writer`           | Structures and writes LaTeX papers for ML venues: IMRaD, abstract strategy, related work, figures, tables, citations, camera-ready conventions                          | You are drafting or revising a NeurIPS, ICML, ICLR or ACL submission, an arXiv preprint, or a workshop paper             | Usable      |
+| `tunnel-control`         | Diagnoses and restores a dropped tunnel client: reachability as ground truth, the platform's own status commands, and recovery through the client's own control surface | One service times out while other traffic works, or a tunnel reports connected but nothing loads                         | Unvalidated |
+| `visual-creator`         | Creates visuals that survive critique: design principles, color, typography, layout, brand identity, and the create, analyze, validate, improve loop                    | You are building a UI, designing game assets, making brand material, or producing a visual that needs coherent reasoning | Usable      |
+| `visual-validator`       | Design critique with measurable, actionable fixes: sprite assets, game screenshots, UI designs, image quality                                                           | You need a visual audited, a UI reviewed, or an image quality call                                                       | Usable      |
+| `meme`                   | Static canvas memes with Impact captions, posted through the browser clipboard                                                                                          | You want a one-off static image meme                                                                                     | Deprecated  |
+| `socratic-irony`         | Wit craft: incongruity as the engine, voice archetypes, dramatic structure, and where to stop                                                                           | You are writing a roast, satire or sharp critique and need a sharper line                                                | Deprecated  |
+| `twitter`                | Posts replies on X through browser automation and checks whether the bot answered                                                                                       | You are working an X thread with a browser session                                                                       | Deprecated  |
 
-Three of the nine are marked deprecated in their own frontmatter: `meme` points at a separate
+Three of the ten are marked deprecated in their own frontmatter: `meme` points at a separate
 project for animated work, `socratic-irony` overlaps the `tone-quality` skill, and `twitter` has no
 successor. They stay in the pack because their technique sections are useful reference; they are
 not what the pack is for.
@@ -59,7 +60,7 @@ not on its folder name, and you can always ask for one by name ("use the paper-w
 
 - pi only. These are `SKILL.md` files; another agent's loader may ignore them.
 - No code, no tools, no settings keys. The pack is instruction text.
-- Three skills are deprecated and one is `Unvalidated` (see the table); the other five are the ones to install for.
+- Three skills are deprecated and two are `Unvalidated` (see the table); the other five are the ones to install for.
 
 ## License
 

@@ -96,6 +96,33 @@ const PROJECTS = new Map([
 const CALL_SHAPE = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\(/g;
 /** A backticked bare name: the pack's convention for marking a name as a name. */
 const BACKTICK_NAME = /`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g;
+/**
+ * An arm table row may claim VALIDATED only with the date its facts were
+ * derived. The convention exists so a capability matrix cannot be promoted by
+ * editing prose: a row is evidence when it names when somebody read the facts
+ * from a real install, and prose is not a date.
+ */
+const ARM_VALIDATED = /\bVALIDATED\b/;
+const ARM_DATE = /\b\d{4}-\d{2}-\d{2}\b/;
+
+/**
+ * Rows that claim VALIDATED without a derivation date, with their line. Pure.
+ * Word-bounded, so `UNVALIDATED` is not a claim.
+ */
+export function armStateProblems(text, where) {
+  const problems = [];
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (!line.trimStart().startsWith("|")) return;
+    if (!ARM_VALIDATED.test(line)) return;
+    if (ARM_DATE.test(line)) return;
+    problems.push(
+      `${where}:${index + 1}: a row claims VALIDATED with no derivation date - derive the facts from an install and write the date, or mark the row UNVALIDATED`,
+    );
+  });
+  return problems;
+}
+
 /** A project reference: this ecosystem's repo naming convention. */
 const PROJECT_SHAPE = /\bpi-[a-z0-9][a-z0-9-]*/g;
 
@@ -163,6 +190,7 @@ export function scanPack() {
           );
       }
     });
+    problems.push(...armStateProblems(text, rel));
   }
   return { problems, scanned: files.length };
 }
