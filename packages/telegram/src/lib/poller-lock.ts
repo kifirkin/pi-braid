@@ -67,17 +67,21 @@ export function isPidAlive(pid: number): boolean {
 let exitHookInstalled = false;
 let heldLockPath: string | undefined;
 
+/**
+ * The exit hook's body, exported so a test can run it without exiting.
+ * Ownership-checked on purpose: by the time a process exits, the file may name
+ * a successor that took the channel over, and unlinking by path would hand the
+ * singleton to a third process while the successor is still polling.
+ */
+export function releaseHeldLockAtExit(): void {
+  if (!heldLockPath) return;
+  releasePollerLock(heldLockPath);
+}
+
 function installExitRelease(): void {
   if (exitHookInstalled) return;
   exitHookInstalled = true;
-  process.on("exit", () => {
-    if (!heldLockPath) return;
-    try {
-      unlinkSync(heldLockPath);
-    } catch {
-      // best effort — the live-pid check covers a surviving file
-    }
-  });
+  process.on("exit", releaseHeldLockAtExit);
 }
 
 /**

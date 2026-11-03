@@ -28,6 +28,7 @@ import {
   isPidAlive,
   readPollerLock,
   releasePollerLock,
+  releaseHeldLockAtExit,
 } from "../dist/lib/poller-lock.js";
 import { resolveSessionRole } from "../dist/lib/session-role.js";
 import { runTelegramSend } from "../dist/lib/tool-logic.js";
@@ -482,4 +483,26 @@ test("runTelegramSend workerRole swap is purely the warn text", async () => {
   assert.match(worker.warn, /orchestrator seat owns/);
   assert.doesNotMatch(worker.warn, /enable via/);
   assert.match(seat.warn, /enable via telegram_poller action=enable/);
+});
+
+test("exit hook: releases our own lock", () => {
+  const path = tmpLockFile("exit-ours");
+  acquirePollerLock(path, { pid: process.pid, startedAt: 10 });
+  assert.equal(existsSync(path), true);
+  releaseHeldLockAtExit();
+  assert.equal(existsSync(path), false);
+});
+
+test("exit hook: never removes a lock a successor has taken over", () => {
+  const path = tmpLockFile("exit-successor");
+  acquirePollerLock(path, { pid: process.pid, startedAt: 11 });
+  // The handover: another seat acquires the channel while this process lives.
+  writeLock(path, { pid: FOREIGN_PID, startedAt: 12 });
+  releaseHeldLockAtExit();
+  assert.equal(
+    existsSync(path),
+    true,
+    "the successor's lock survives our exit",
+  );
+  assert.equal(readPollerLock(path).pid, FOREIGN_PID);
 });
