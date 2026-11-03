@@ -2,7 +2,7 @@
 /**
  * skills-contract.mjs — the catalog contract for shipped skills.
  *
- * Every `skills/<dir>/SKILL.md` opens with frontmatter carrying:
+ * Every `<tree>/skills/<dir>/SKILL.md` opens with frontmatter carrying:
  *   name        the skill's catalog name, equal to its directory name
  *   description a non-empty string that says when the skill applies
  *   validated   an ISO date (YYYY-MM-DD)
@@ -13,6 +13,11 @@
  *
  *   - at least two trigger phrases the production reader keeps, declared
  *     under `triggers:` (the reader's caps are mirrored below);
+ *   - declared in that one form: the reader also accepts a legacy `trigger:`
+ *     string and a `## trigger:` body heading, so a file can fire in
+ *     production while this contract counts nothing. Those two shapes are
+ *     refused by name rather than counted as zero, because the fix differs:
+ *     the phrases exist and need moving;
  *   - no `Triggers:` tail in the description: the reader drops a tail longer
  *     than 200 characters, silently, which is how two skills shipped with
  *     zero phrases while this test printed clean;
@@ -38,23 +43,75 @@
  *     the last because a call to the detector IS the read leg, so such a
  *     declaration would let an obligation satisfy itself.
  *
- * The content-rules fixture runs from here too, so `npm test` covers the
- * shipped text as well as the frontmatter.
+ * TWO POPULATIONS, ONE CONTRACT. The repository ships skills from two trees:
+ * this package's `skills/` (the on-demand pack) and the core set beside it
+ * (`packages/core/skills`). Every rule above holds for a skill wherever it
+ * lives, and the phrase namespace is shared: one phrase governing two skills
+ * is refused across the two trees, because the matcher then ranks those two
+ * files against each other on every prompt either one matches, and the loser
+ * is never suggested.
+ *
+ * What differs between the trees is ownership. The TOOLS and PROJECTS tables
+ * in content-rules.mjs name what a reader of THIS pack can reach, so the scan
+ * that applies them runs over the pack alone. A core skill legitimately names
+ * tools the pack cannot reach (`bash`, `telegram_send`, `herdr_pane`), and
+ * judging it against the pack's table would refuse those files for naming the
+ * tools they are written to direct. A core file is therefore judged on
+ * frontmatter and phrase uniqueness. The `governs:` family table is the pack's
+ * for the same reason, so the family membership test is pack-scoped while the
+ * shape rules are not.
+ *
+ * `--tree core|pack|all` selects the populations; the default is `all`, so the
+ * bare command cannot pass by leaving a tree unread. Every run prints the count
+ * of every population it read, because a scan that quietly shrank and a scan
+ * that found nothing to report look identical otherwise. A tree that is absent
+ * is named as absent and not judged — this package is also developed and
+ * published standalone, where the core tree is not there to read; a tree that
+ * is present and yields no skill fails, because a green run over nothing
+ * vouches for nothing.
  *
  * The values are audit evidence; this asserts shape only, never which verdict
- * a skill deserves. Directories without a SKILL.md (the shared fragment dir)
- * are skipped.
+ * a skill deserves.
  *
- * Run: npm test -w packages/skills
+ * Run: npm test -w packages/skills (the pack), and
+ *      node packages/skills/test/skills-contract.mjs --tree all from the
+ *      repository root (both trees, which is what the chain runs).
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanPack } from "./content-rules.mjs";
 import { TOOL_FAMILIES } from "./content-rules.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const skillsDir = join(__dirname, "..", "skills");
+const packRoot = join(__dirname, "..");
+
+/**
+ * The two populations, in scan order. `at` is the coordinate a failure prints,
+ * read from the repository root so the file can be opened without a lookup.
+ *
+ * `ownsToolTable` is the pack's claim, not a convenience: only the tree that
+ * ships the TOOLS table in content-rules.mjs is judged against it.
+ */
+const TREES = [
+  {
+    id: "pack",
+    dir: join(packRoot, "skills"),
+    at: "skills",
+    ownsToolTable: true,
+  },
+  {
+    // The sibling workspace: `packages/core/skills` in this repository, and the
+    // one path that says which second tree this contract is about.
+    id: "core",
+    dir: resolve(packRoot, "..", "core", "skills"),
+    at: "packages/core/skills",
+    ownsToolTable: false,
+  },
+];
+const TREE_IDS = TREES.map((tree) => tree.id);
+const EVERY_TREE = "all";
+const USAGE = `usage: skills-contract.mjs [--tree ${[...TREE_IDS, EVERY_TREE].join("|")}]`;
 
 const VERDICTS = new Set([
   "KEEP",
@@ -76,6 +133,11 @@ const SITUATION =
   /\buse (?:when|if|for|only|this|it|these)\b|\bwhen (?:a|an|the|you|there|it|someone|work)\b/i;
 /** The skill-name shape pi accepts. */
 const NAME_SHAPE = /^[a-z0-9-]+$/;
+
+/** The legacy frontmatter key the reader still accepts and the contract does not. */
+const LEGACY_TRIGGER_KEY = /^trigger\s*:/m;
+/** The legacy body heading the reader still accepts and the contract does not. */
+const BODY_TRIGGER_HEADING = /^##\s*triggers?\s*:/im;
 
 /** Mirrors skill-families.ts: the reader keeps this many families per file. */
 const MAX_GOVERNED_FAMILIES = 4;
@@ -162,21 +224,79 @@ function authoredFamilies(front) {
   return { present: true, entries };
 }
 
-function checkSkill(dirName) {
-  const rel = `skills/${dirName}/SKILL.md`;
+/** One `field: value` argument pair read without touching the filesystem. */
+function valueAfter(argv, index) {
+  const value = argv[index + 1];
+  return typeof value === "string" && !value.startsWith("-") ? value : "";
+}
+
+/**
+ * The trees a run is over: `--tree all` (the default), or one named tree.
+ * Returns the population list, or the one-line reason the flag was refused.
+ * Pure.
+ */
+function treeScope(argv) {
+  let requested = EVERY_TREE;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--tree") {
+      requested = valueAfter(argv, i);
+      i += 1;
+      if (requested === "")
+        return { problem: `--tree needs a value; ${USAGE}` };
+      continue;
+    }
+    if (arg.startsWith("--tree=")) {
+      requested = arg.slice("--tree=".length);
+      if (requested === "")
+        return { problem: `--tree needs a value; ${USAGE}` };
+      continue;
+    }
+    return { problem: `unknown argument '${arg}'; ${USAGE}` };
+  }
+  if (requested === EVERY_TREE) return { trees: TREES };
+  const named = TREES.filter((tree) => tree.id === requested);
+  if (named.length === 0)
+    return {
+      problem: `--tree '${requested}' is not one of ${[...TREE_IDS, EVERY_TREE].join(", ")}`,
+    };
+  return { trees: named };
+}
+
+/**
+ * The directories under a tree that carry a SKILL.md, in directory order. A
+ * directory without one is not a skill (the pack's shared fragment directory),
+ * so it is not part of the population. Pure over a readable tree.
+ */
+function skillDirs(tree) {
+  const dirs = [];
+  for (const entry of readdirSync(tree.dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    if (existsSync(join(tree.dir, entry.name, "SKILL.md")))
+      dirs.push(entry.name);
+  }
+  return dirs;
+}
+
+function checkSkill(tree, dirName) {
+  const rel = `${tree.at}/${dirName}/SKILL.md`;
   let text;
   try {
-    text = readFileSync(join(skillsDir, dirName, "SKILL.md"), "utf8");
-  } catch {
-    return false; // no SKILL.md: the shared fragment directory
+    text = readFileSync(join(tree.dir, dirName, "SKILL.md"), "utf8");
+  } catch (error) {
+    fail(
+      `${rel}: cannot be read (${error.code}) — a skill file the scan cannot open is a hole in the population`,
+    );
+    return;
   }
 
   const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!block) {
     fail(`${rel}: no frontmatter block (must open with "---")`);
-    return true;
+    return;
   }
   const front = block[1];
+  const body = text.slice(block[0].length);
 
   const name = field(front, "name");
   if (!name) fail(`${rel}: frontmatter is missing 'name'`);
@@ -204,6 +324,15 @@ function checkSkill(dirName) {
         `${rel}: the description names no situation ('use when ...'); a topic list does not tell an agent when to open the skill`,
       );
   }
+
+  if (LEGACY_TRIGGER_KEY.test(front))
+    fail(
+      `${rel}: the phrases are declared under the legacy 'trigger:' key; declare them as a 'triggers:' list, the one form the matcher and this contract share`,
+    );
+  if (BODY_TRIGGER_HEADING.test(body))
+    fail(
+      `${rel}: the phrases sit in a body '## trigger:' heading, which this contract refuses; move them under 'triggers:' in the frontmatter, where the validator counts them`,
+    );
 
   const phrases = [
     ...new Set(authoredTriggers(front).map((p) => p.toLowerCase())),
@@ -274,7 +403,7 @@ function checkSkill(dirName) {
         fail(
           `${rel}: governs entry '${DETECTOR_TOOL}' is the read detector's own tool — a call to it IS the read leg, so declaring it would let the obligation satisfy itself`,
         );
-      else if (!TOOL_FAMILIES.has(entry))
+      else if (tree.ownsToolTable && !TOOL_FAMILIES.has(entry))
         fail(
           `${rel}: governs entry '${entry}' is no family this pack admits — declare one of ${[...TOOL_FAMILIES].sort().join(", ")}, or drop it`,
         );
@@ -284,35 +413,83 @@ function checkSkill(dirName) {
       declared.add(`${rel}:${entry}`);
     }
   }
-
-  return true;
 }
 
-let checked = 0;
+/** Scan one population; returns what the summary reports about it. */
+function scanTree(tree) {
+  if (!existsSync(tree.dir))
+    return { id: tree.id, at: tree.at, skills: 0, absent: true };
+  const dirs = skillDirs(tree);
+  for (const dirName of dirs) checkSkill(tree, dirName);
+  return { id: tree.id, at: tree.at, skills: dirs.length, absent: false };
+}
+
+/**
+ * How one population reads in a summary line: its count, or the fact that there
+ * was no tree to count. The second form is the one that keeps a shrunken run
+ * from reading like a clean one. Pure.
+ */
+function populationLabel(population) {
+  if (population.absent)
+    return `no ${population.id} tree at ${population.at}, not judged`;
+  return `${population.skills} skill(s) in ${population.id}`;
+}
+
 const phraseOwners = new Map();
-for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-  if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-  if (checkSkill(entry.name)) checked += 1;
+
+const scope = treeScope(process.argv.slice(2));
+if (scope.problem) {
+  console.error(`skills-contract: ${scope.problem}`);
+  process.exit(1);
+}
+
+const populations = scope.trees.map(scanTree);
+
+// Fail closed on a tree that is there and declares nothing: a population of
+// zero is the shape a shrinking scan takes, and it would otherwise print as a
+// clean line over no file at all.
+for (const population of populations) {
+  if (population.absent || population.skills > 0) continue;
+  fail(
+    `${population.at}: no SKILL.md found — a scan over nothing proves nothing; this tree is in scope and declared no skill`,
+  );
 }
 
 // The shipped text, not just the frontmatter: a skill may only name a tool or
-// a project a reader of this package can reach. Fail closed on an empty run.
-const content = scanPack();
-if (content.scanned === 0)
-  fail(
-    "content-rules: read no shipped file — a scan over nothing proves nothing",
-  );
-for (const problem of content.problems) fail(problem);
+// a project a reader of this package can reach. Scoped to the pack on purpose —
+// its tables, its population (see the header).
+const pack = populations.find((population) => population.id === "pack");
+let content = null;
+if (pack && !pack.absent) {
+  content = scanPack();
+  if (content.scanned === 0)
+    fail(
+      "content-rules: read no shipped file — a scan over nothing proves nothing",
+    );
+  for (const problem of content.problems) fail(problem);
+}
+
+/** The pack's population, which the family sentence below counts over. */
+const checked = pack && !pack.absent ? pack.skills : 0;
 
 if (problems.length > 0) {
-  console.error(`skills-contract: ${problems.length} problem(s)`);
+  console.error(
+    `skills-contract: ${problems.length} problem(s) — population: ${populations.map(populationLabel).join(", ")}`,
+  );
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
 }
-if (checked === 0) {
-  console.error("skills-contract: no SKILL.md found under skills/");
-  process.exit(1);
+
+const parts = [
+  populations.map(populationLabel).join(", "),
+  "name/description/validated/verdict, >=2 trigger phrase(s) under 'triggers:' each, one phrase per skill across every tree read",
+];
+if (pack && !pack.absent) {
+  parts.push(
+    `${declared.size} family declaration(s) over ${declaringFiles.size} file(s), ${checked - declaringFiles.size} declaring none`,
+  );
+  parts.push(
+    `${content.scanned} shipped file(s) name only declared tools and projects`,
+  );
 }
-console.log(
-  `skills-contract: clean (${checked} skill(s): name/description/validated/verdict, >=2 trigger phrase(s) each; ${declared.size} family declaration(s) over ${declaringFiles.size} file(s), ${checked - declaringFiles.size} declaring none; ${content.scanned} shipped file(s) name only declared tools and projects)`,
-);
+console.log(`skills-contract: clean (${parts.join("; ")})`);

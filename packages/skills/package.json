@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "scripts": {
-    "test": "node test/skills-contract.mjs && node test/governs-declaration.mjs && node test/arm-state.mjs",
+    "test": "node test/skills-contract.mjs --tree pack && node test/skills-contract-trees.test.mjs && node test/governs-declaration.mjs && node test/arm-state.mjs",
     "prepack": "node ../core/scripts/pack-provenance.mjs write",
     "postpack": "node ../core/scripts/pack-provenance.mjs remove"
   },
