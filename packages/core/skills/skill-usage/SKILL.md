@@ -1,6 +1,12 @@
 ---
 name: skill-usage
 description: "Measure skill adoption from durable counters and session telemetry: per-skill suggested/loaded/claimed/actual counts, conversion rates, and active/needs-refresh/prune buckets. Use when measuring whether skills are actually used, taking before/after metrics around a skill or scoring change, deciding keep/refresh/deprecate for a skill, or reporting adoption - the skills-subsystem instrument (skill_stats tool, skills-usage.json, injection-tracker). Do NOT use for general research, code search, or project metrics outside the skills subsystem."
+triggers:
+  - "skill adoption"
+  - "skill usage"
+  - "skill_stats"
+  - "needs-refresh"
+  - "adoption report"
 validated: 2026-09-09
 verdict: KEEP
 ---

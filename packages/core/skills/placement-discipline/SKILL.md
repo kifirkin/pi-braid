@@ -1,11 +1,15 @@
 ---
 name: placement-discipline
 description: "The operational workflow around placement discipline: name the layer before building, keep domain facts out of shared layers (a fix lives where the invariant lives), carry the required ## Placement section in impl/audit/verify reports, append repairs to the placement ledger, and tamper-test the checker before trusting a green run. Use when planning or reviewing any change that touches a shared or generic layer, when writing a report, or when validating a worker's result."
+triggers:
+  - "wrong layer"
+  - "generic layer"
+  - "placement ledger"
+  - "tamper test"
+  - "placement discipline"
 validated: 2026-09-15
 verdict: UNVALIDATED
 ---
-
-## trigger: "placement, wrong layer, generic layer, domain fact in shared code, ## Placement section, placement ledger, tamper test, validating a worker result"
 
 # Placement Discipline
 

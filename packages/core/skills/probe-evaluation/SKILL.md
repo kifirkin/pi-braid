@@ -1,11 +1,15 @@
 ---
 name: probe-evaluation
 description: "Design and score a behavioral A/B probe so a null result is informative: pre-registered rubric and decision rule, control-arm sanity, blinded scoring, power and statistics (Wilson intervals, Fisher exact), and the failure catalog for probes that measured nothing. Use when probing whether a prompt, extension, or config change causes a behavioral delta, when extending a probe matrix, or when judging whether a probe's null vetoes or clears a change."
+triggers:
+  - "behavioral probe"
+  - "a/b probe"
+  - "pre-registered rubric"
+  - "probe came back null"
+  - "two-arm comparison"
 validated: 2026-09-15
 verdict: UNVALIDATED
 ---
-
-## trigger: "behavioral probe, A/B probe, prompt A/B test, probe came back null, scoring probe runs, pre-registered rubric, two-arm comparison"
 
 # Probe Evaluation
 

@@ -1,7 +1,11 @@
 ---
 name: release-pipeline
-description: "Release pipeline for braid packages: local builds, packing, installs, and verification; remote npm publication through GitHub Actions OIDC."
-trigger: "releasing packages, npm publish, local package install, building packages, packing npm packages, package verification"
+description: "Use when releasing braid packages: local builds, packing, installs, and verification; remote npm publication through GitHub Actions OIDC."
+triggers:
+  - "release pipeline"
+  - "npm publish"
+  - "npm pack"
+  - "release worktree"
 validated: 2026-10-18
 verdict: IMPROVE
 ---

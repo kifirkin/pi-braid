@@ -1,6 +1,12 @@
 ---
 name: meta-cognition
-description: "Close the loop on every action — observe, evaluate, adapt, persist. Signal-to-action mappings for enforcement whisper families (verification judge, tool loop, error burst, context advisory, unpersisted learnings, signal density warnings). Run at transitions — between tasks, after tool calls, on signals."
+description: "Use when an enforcement signal arrives or a transition is reached - between tasks, after tool calls, on signals. Signal-to-action mappings for enforcement whisper families (verification judge, tool loop, error burst, context advisory, unpersisted learnings, signal density warnings), then close the loop: observe, evaluate, adapt, persist."
+triggers:
+  - "verification judge"
+  - "tool loop"
+  - "error burst"
+  - "context advisory"
+  - "unpersisted learning"
 validated: 2026-08-16
 verdict: KEEP
 ---

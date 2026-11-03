@@ -1,6 +1,11 @@
 ---
 name: documentation
 description: "Analyze a repository and generate architecture documentation, README.md, or a full documentation ecosystem. Use when documenting a codebase, summarizing architecture, or creating project docs."
+triggers:
+  - "readme"
+  - "architecture docs"
+  - "codebase summary"
+  - "document the codebase"
 validated: 2026-08-16
 verdict: IMPROVE
 ---

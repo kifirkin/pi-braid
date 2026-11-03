@@ -1,7 +1,12 @@
 ---
 name: subagent-orchestration
-description: "Coordinate multi-agent work: spawn workers, manage lifecycles, signal between agents, transfer context, handle errors, and cascade to fresh sessions. Covers both orchestrator and worker roles — an orchestrator is a subagent that owns coordination; every subagent orchestrates its own tools."
-trigger: "spawning workers, delegating tasks, parallel execution, mastership transfer, context handoff, error recovery, context hygiene, multi-agent coordination"
+description: "Use when coordinating multi-agent work: spawn workers, manage lifecycles, signal between agents, transfer context, handle errors, and cascade to fresh sessions. Covers both orchestrator and worker roles - an orchestrator is a subagent that owns coordination; every subagent orchestrates its own tools."
+triggers:
+  - "spawn a worker"
+  - "spawn workers"
+  - "multi-agent"
+  - "mastership transfer"
+  - "context handoff"
 validated: 2026-08-16
 verdict: KEEP
 ---

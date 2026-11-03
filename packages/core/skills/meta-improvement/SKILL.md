@@ -1,11 +1,14 @@
 ---
 name: meta-improvement
-description: "Run self-improving experiments and measure skill performance. Covers: archive-based evolution with staged evaluation, and testing improvements against baselines. Not for authoring a skill; `skill-authoring` owns the file, its frontmatter and its trigger phrases."
+description: "Use when a skill change has to be measured rather than assumed: run self-improving experiments and measure skill performance. Covers archive-based evolution with staged evaluation, and testing improvements against baselines. Not for authoring a skill; `skill-authoring` owns the file, its frontmatter and its trigger phrases."
+triggers:
+  - "self-improvement experiment"
+  - "archive-based evolution"
+  - "staged evaluation"
+  - "skill performance"
 validated: 2026-08-16
 verdict: KEEP
 ---
-
-## trigger: "self-improvement experiments, skill performance measurement, archive-based evolution, staged evaluation, testing improvements against baselines"
 
 # Meta-Improvement
 

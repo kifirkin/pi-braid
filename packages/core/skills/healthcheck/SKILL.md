@@ -1,7 +1,12 @@
 ---
 name: healthcheck
-description: "Run a structured self-diagnostic of the agent environment: verify read/write/edit/bash/grep/find/ls, cognitive and memory tools, extension and skill availability, and ~/.pi writability; interpret pass/warn/fail results and clean up stale agent processes. Use when a tool misbehaves or fails, right after setup or a config change, before starting work in a fresh environment, or when many agent instances accumulated and the machine slows down. Triggers: health check, tool diagnostic, environment readiness, stale processes, post-setup validation."
-trigger: "troubleshooting tool failures, verifying environment readiness, post-setup validation, stale process cleanup, tool diagnostics"
+description: "Run a structured self-diagnostic of the agent environment: verify read/write/edit/bash/grep/find/ls, cognitive and memory tools, extension and skill availability, and ~/.pi writability; interpret pass/warn/fail results and clean up stale agent processes. Use when a tool misbehaves or fails, right after setup or a config change, before starting work in a fresh environment, or when many agent instances accumulated and the machine slows down."
+triggers:
+  - "healthcheck"
+  - "tool diagnostics"
+  - "stale processes"
+  - "post-setup"
+  - "environment readiness"
 validated: 2026-11-03
 verdict: IMPROVE
 ---

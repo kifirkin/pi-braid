@@ -1,7 +1,12 @@
 ---
 name: voice-replies
-description: "Reply to Telegram voice messages with synthesized speech: edge-tts (RU/EN/HE voices) → ffmpeg ogg/opus → Bot API sendVoice, matching the incoming message's language. Use when a voice message arrived and the reply should be a voice note in the same language, or when asked to send a Telegram voice reply. Triggers: voice reply, voice message, sendVoice, TTS, text-to-speech, edge-tts, Telegram audio reply. Includes offline fallbacks (piper, macOS say)."
-trigger: "voice replies, voice message reply, sendVoice, TTS, text-to-speech, edge-tts, piper, Telegram audio reply, responding in voice"
+description: "Reply to Telegram voice messages with synthesized speech: edge-tts (RU/EN/HE voices) → ffmpeg ogg/opus → Bot API sendVoice, matching the incoming message's language. Use when a voice message arrived and the reply should be a voice note in the same language, or when asked to send a Telegram voice reply. Includes offline fallbacks (piper, macOS say)."
+triggers:
+  - "voice reply"
+  - "voice message"
+  - "sendVoice"
+  - "text-to-speech"
+  - "edge-tts"
 validated: 2026-11-03
 verdict: UNVALIDATED
 ---
