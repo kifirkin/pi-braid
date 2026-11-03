@@ -41,7 +41,7 @@
  * cannot drift from the readers or from BRAID_HOME pinning.
  */
 
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -287,6 +287,24 @@ function readEntries(file) {
   return entries;
 }
 
+/**
+ * Seq state carried by the rotated archives beside the live file. Rotation moves
+ * a prefix out of the live journal, so a writer that reads only the live file
+ * would restart the chain at 1 and break the checker's archive boundary. The
+ * archive's numbers are part of the same chain: they are read, never rewritten.
+ */
+function readArchivedSeqs(dir) {
+  const seqs = new Set();
+  if (!existsSync(dir)) return seqs;
+  for (const name of readdirSync(dir)) {
+    if (!/^journal-\d{4}\.jsonl$/.test(name)) continue;
+    for (const entry of readEntries(join(dir, name))) {
+      if (Number.isInteger(entry.seq)) seqs.add(entry.seq);
+    }
+  }
+  return seqs;
+}
+
 // ── Arguments ──────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
@@ -322,6 +340,8 @@ try {
   entry = await withStoreLock(`${journalFile}.lock`, async () => {
     const entries = readEntries(journalFile);
     const seqs = new Set(entries.map((e) => e.seq).filter(Number.isInteger));
+    const archived = readArchivedSeqs(dirname(journalFile));
+    for (const seq of archived) seqs.add(seq);
     const supersededBy = new Map();
     for (const prior of entries) {
       if (Number.isInteger(prior.supersedes)) supersededBy.set(prior.supersedes, prior.seq);
