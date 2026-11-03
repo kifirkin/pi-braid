@@ -53,6 +53,20 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Skills — 0.2.3 (2026-11-03: the pack learns to read a CV)
+
+- **A skill for CV work, prose only.** `cv-improvement` carries a metric set with the formula and the failing
+  value for each, a failure catalogue keyed to the shape a wrong draft takes, the order to fix them in, and
+  the honesty rules that keep a rewrite from inventing a claim. It ships no code and declares no tool family,
+  because the judgment is the deliverable. Its phrase list is drawn from wording a user types rather than
+  from the subject: the recorded CV prompt that motivated the skill scored zero against the first draft, since
+  `cv` is below the matcher's keyword floor and no phrase occurred verbatim, so `my own cv` is a phrase now
+  and the near-misses that share its vocabulary still return nothing.
+- **The pack's own docs are derived rather than remembered.** `AGENTS.md` names the trigger cap the reader
+  actually enforces, the README table lists every shipped skill with its status, `Unvalidated` among them,
+  and the README's heading count is a gated claim that fails when the stated number and the directory census
+  disagree.
+
 ## Core — 0.43.19 (2026-11-03: the pack learns how to write a skill)
 
 - **A skill for writing skills, taken from the two best public teachers and finished with this repository's
