@@ -2,7 +2,7 @@
 name: voice-replies
 description: "Reply to Telegram voice messages with synthesized speech: edge-tts (RU/EN/HE voices) → ffmpeg ogg/opus → Bot API sendVoice, matching the incoming message's language. Use when a voice message arrived and the reply should be a voice note in the same language, or when asked to send a Telegram voice reply. Triggers: voice reply, voice message, sendVoice, TTS, text-to-speech, edge-tts, Telegram audio reply. Includes offline fallbacks (piper, macOS say)."
 trigger: "voice replies, voice message reply, sendVoice, TTS, text-to-speech, edge-tts, piper, Telegram audio reply, responding in voice"
-validated: 2026-09-09
+validated: 2026-11-03
 verdict: UNVALIDATED
 ---
 
@@ -16,6 +16,14 @@ edge-tts (TTS) → ffmpeg (ogg/opus convert) → Bot API `sendVoice`.
 Reply in the same modality **and language** as received:
 voice message in → voice reply in the same language. Text received → text reply.
 RU voiced in → Dmitry (RU). EN voiced in → Guy (EN). HE voiced in → Avri (HE).
+
+**A failed primary synthesizer falls back to TEXT, not to a worse voice.** The owner rejects the
+offline voices by ear: piper's output drew "у тебя чё-то с голосом не то, не работает так" the one
+time it was sent, while edge-tts failures are transient: `NoAudioReceived` on six consecutive attempts
+across the in-process and manual paths, then the first attempt succeeded minutes later with no
+intervention. So a synthesizer outage is a delay, not an occasion to trade quality: send the reply as
+text, name the outage in one clause, and retry voice on the next turn. A degraded voice note costs the
+reader more than the delay does.
 
 ## Install
 
@@ -95,7 +103,9 @@ uvx edge-tts --list-voices | grep -i <lang>                      # voice exists
 
 ## Offline Alternatives (lower priority)
 
-edge-tts is the primary zero-key path for RU/EN/HE. Offline fallbacks:
+edge-tts is the primary zero-key path for RU/EN/HE. These fallbacks are for audio you are not sending
+as the reply to a message (drafts, local artifacts, a transcript you want to hear), or for an owner who
+explicitly asks for voice during an outage. They are not the substitute for a reply (see Modality Rule).
 
 **piper** (offline, RU only):
 
@@ -113,8 +123,8 @@ say -v Milena -o out.aiff "<text>"     # Milena = ru-female
 ffmpeg -y -v error -i out.aiff -c:a libopus -b:a 40k -ar 48000 -ac 1 out.ogg
 ```
 
-In code, `say` is emergency-only (the owner dislikes its quality) and stays
-behind an explicit config choice (`source: "say"` or `"edge-tts+say"`).
+In code, `say` is emergency-only and both offline voices stay behind an explicit config choice
+(`source: "say"` or `"edge-tts+say"`); neither is a suitable default for an owner-facing reply.
 
 ## Dependency Note
 
