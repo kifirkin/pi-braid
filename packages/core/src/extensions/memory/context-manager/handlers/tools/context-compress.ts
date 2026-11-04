@@ -13,6 +13,8 @@
  */
 
 import { Type } from "typebox";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { CompactOptions, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getExtensionState, readExtensionState } from "../../../../../lib/state/extension-state.js";
 import { onEvent } from "../../../../../lib/events/event-types.js";
@@ -26,6 +28,7 @@ import { analyzeSession } from "../../analysis.js";
 import * as timerMod from "../../../../scheduling/timer/index.js";
 import { getState } from "../../../../enforcement/state.js";
 import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/context-thresholds.js";
+import { metricsDir } from "../../../../../lib/config/braid-paths.js";
 import { getCmState, isCompactionActive, log, recordNavigationAction } from "../shared.js";
 import { snapBoundaryOutsideToolBatch } from "../tool-batch-boundary.js";
 import { formatTokensK, tokenArms } from "../../../../../lib/detection/context-usage.js";
@@ -65,6 +68,35 @@ function captureUsage(ctx: any): { percent: number; tokens: number; contextWindo
     return audit.usage;
   } catch {
     return null;
+  }
+}
+
+/**
+ * One line per backstop fire.
+ *
+ * The backstop fired silently, so "how often does it fire in real sessions" was
+ * not answerable from any log: the site only called the drain. A JSON line makes
+ * the question countable (wc -l on the file, or any reader over it), and the
+ * write is wrapped because a counter that can break a turn is worse than an
+ * uncounted fire.
+ */
+function recordBackstopFire(usage: { tokens: number; contextWindow: number }): void {
+  try {
+    const dir = metricsDir();
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(
+      join(dir, "context-backstop.jsonl"),
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        event: "backstop-fire",
+        tokens: usage.tokens,
+        contextWindow: usage.contextWindow,
+        ratio: Number((usage.tokens / usage.contextWindow).toFixed(4)),
+        session: process.env.PI_SESSION_ID ?? null,
+      })}\n`,
+    );
+  } catch {
+    // Uncounted is better than a torn turn.
   }
 }
 
@@ -676,6 +708,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
       if (isCompactionActive(ctx)) return;
       const usage = captureUsage(ctx);
       if (!usage || usage.tokens < tokenArms(usage.contextWindow).backstop) return;
+      recordBackstopFire(usage);
       firePendingCompactionsIfSettled(ctx, st);
     } catch {
       // A failed backstop check must not tear the turn_end event pipeline;

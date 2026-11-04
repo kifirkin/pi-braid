@@ -30,7 +30,7 @@
  */
 
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -266,6 +266,18 @@ await test("the 0.90W backstop still cuts a live run (the single deliberate exce
     "aborted",
     "the backstop is a deliberate mid-run abort: overflow is the worse failure",
   );
+
+  // The fire must leave a countable trace. Before this counter existed the
+  // backstop fired silently and "how often does it fire" was unanswerable.
+  const metricsPath = join(process.env.PI_CODING_AGENT_DIR, "braid", "metrics", "context-backstop.jsonl");
+  assert.equal(existsSync(metricsPath), true, "a backstop fire writes a metrics line");
+  const lines = readFileSync(metricsPath, "utf8").trim().split("\n").filter(Boolean);
+  assert.equal(lines.length, 1, "one fire, one line");
+  const recorded = JSON.parse(lines[0]);
+  assert.equal(recorded.event, "backstop-fire");
+  assert.equal(recorded.tokens, 184_000);
+  assert.equal(recorded.contextWindow, 200_000);
+  assert.equal(recorded.ratio, 0.92, "the ratio is derivable from the line, not a separate claim");
 });
 
 // ── 3. The settled drain: a run that reaches no boundary at all ─────────────
