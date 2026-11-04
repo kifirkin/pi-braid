@@ -80,6 +80,28 @@ record; the tag scheme above applies unchanged.
   contract; a new fixture covers both trees, the scoping and the absent-versus-empty
   populations.
 
+## Telegram — 0.1.8 (2026-11-04: a pre-identity lock is judged by its pid, so a dead holder cannot wedge the channel)
+
+- **The legacy arm has three outcomes instead of a permanent refusal.** A lock
+  written before identity existed carries only a pid; the rule read its absent
+  heartbeat as "cannot judge" and refused forever, even when the holder had died.
+  A dead pid now acquires as `stale-legacy` and the takeover rewrites the record in
+  the identity shape, so the next seat never meets a legacy file.
+- **A recycled pid is not the holder.** A live pid whose process started after the
+  record was written acquires as `stale-legacy-recycled`; the comparison is why the
+  channel cannot be wedged twice by the same defect, once when the holder dies and
+  once when the operating system hands its number to someone else.
+- **The refusal that remains names the file and the way out.** `held-legacy` covers
+  a dated live pid and an undatable one, and the message carries the path and the
+  note that a clean disable releases it, because a refusal an operator cannot act on
+  is a support ticket.
+
+## Core — 0.43.24 (2026-11-04: carries the poller lock's legacy arm)
+
+- **No core code changed.** The version moves so the tree's derived development
+  version sorts above `v0.43.23`, and the release that installs the Telegram fix also
+  carries the core packages at one version.
+
 ## Core — 0.43.23 (2026-11-04: 21 core skills declare their phrases where the matcher reads them)
 
 - **The core skill tree follows the contract it documents.** Of 23 skills, 21 moved
