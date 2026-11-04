@@ -96,6 +96,20 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.25 (2026-11-04: the context backstop leaves a countable trace)
+
+- **The 0.90W backstop records that it fired.** The site called the drain and
+  wrote nothing, so "how often does it fire in real sessions" had no instrument
+  and could not be answered at all. Each fire now appends one line to
+  `metrics/context-backstop.jsonl` with the token count, the window, the derived
+  ratio and the session.
+- **The write cannot break a turn.** A counter that throws inside the turn_end
+  pipeline would trade a measurable claim for a torn request, so the append is
+  wrapped and an uncounted fire is the failure mode.
+- **The fixture asserts the trace, not the intent.** The existing backstop case
+  now requires exactly one line per fire and checks the ratio against the
+  recorded tokens; removing the call reddens it.
+
 ## Core — 0.43.24 (2026-11-04: carries the poller lock's legacy arm)
 
 - **No core code changed.** The version moves so the tree's derived development
