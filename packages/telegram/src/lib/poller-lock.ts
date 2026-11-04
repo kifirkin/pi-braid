@@ -40,6 +40,14 @@ export const POLLER_HEARTBEAT_INTERVAL_MS = 10_000;
  */
 export const POLLER_HEARTBEAT_STALE_MS = 30_000;
 
+/**
+ * Slack between the moment a pre-identity holder wrote its lock and the start
+ * time of the process now answering to the same pid. A pid can be recycled, so a
+ * live pid alone cannot prove that the recorded holder is still there; a process
+ * that started well after the record was written is someone else.
+ */
+const LEGACY_PID_REUSE_SLACK_MS = 60_000;
+
 /** Boot identity recorded when neither the kernel id nor sysctl is readable. */
 const BOOT_IDENTITY_FALLBACK = "boot-unknown";
 
@@ -93,7 +101,9 @@ export type PollerLockTakeoverReason =
   | "unreadable-file"
   | "same-pid-refresh"
   | "stale-same-instance"
-  | "stale-across-namespace";
+  | "stale-across-namespace"
+  | "stale-legacy"
+  | "stale-legacy-recycled";
 
 /**
  * Why an acquisition refused.
@@ -109,6 +119,7 @@ export type PollerLockTakeoverReason =
 export type PollerLockRefusalReason =
   | "held-same-instance"
   | "held-across-namespace"
+  | "held-legacy"
   | "stale-unknown";
 
 export type PollerLockReason =
@@ -136,6 +147,9 @@ export type AcquirePollerLockResult =
 export interface AcquirePollerLockOptions {
   pidAlive?: (pid: number) => boolean;
   now?: () => number;
+  /** Start time of a live pid, in epoch ms. Injected so the legacy arm can be
+   *  tested without depending on the machine's process table. */
+  pidStartedAt?: (pid: number) => number | undefined;
 }
 
 /** Read the lock file; absent/corrupt/unreadable reads as "no holder". */
@@ -292,6 +306,12 @@ export function describeLockReason(
       return "the holder shares this instance and is no longer polling (dead pid, or a heartbeat past the staleness window)";
     case "stale-across-namespace":
       return "the holder was recorded by another boot and its heartbeat is past the staleness window";
+    case "stale-legacy":
+      return "the holder was recorded by a build that kept no identity or heartbeat, and its pid is dead, so the channel is free";
+    case "stale-legacy-recycled":
+      return "the holder was recorded by a build that kept no identity or heartbeat, and the live pid now wearing its number started after that record was written, so it is a recycled pid and not the holder";
+    case "held-legacy":
+      return `the holder was recorded by a build that kept no identity or heartbeat, so liveness cannot be read from the record, and its pid is still alive; confirm it is not polling, then remove ${path} (a clean disable releases it)`;
   }
 }
 
@@ -301,6 +321,24 @@ function heartbeatIsCurrent(holder: PollerLockInfo, now: number): boolean {
   // A skewed or future-stamped heartbeat counts as current: the alternative is
   // displacing a holder that may be polling, which is the worse failure.
   return now - (holder.heartbeatAt as number) <= POLLER_HEARTBEAT_STALE_MS;
+}
+
+/**
+ * Start time of a live pid in epoch ms, from `ps`. Undefined when ps cannot say:
+ * an undated live pid is a refusal, never a takeover.
+ */
+function readPidStartedAt(pid: number): number | undefined {
+  try {
+    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (!out) return undefined;
+    const parsed = Date.parse(out);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -319,6 +357,12 @@ function heartbeatIsCurrent(holder: PollerLockInfo, now: number): boolean {
  * 7. another boot or no recorded identity → refuse `held-across-namespace`
  *    while the heartbeat is current, acquire `stale-across-namespace` once it
  *    is not, and refuse `stale-unknown` when no heartbeat can be read at all.
+ * 8. a record written before identity existed (`instanceId` absent, so no
+ *    heartbeat ever): a dead pid is evidence enough, so acquire `stale-legacy`;
+ *    a live pid whose process started later than the record was written is a
+ *    recycled pid, so acquire `stale-legacy-recycled`; anything else refuses
+ *    `held-legacy` and names the file, because a live pid we cannot date is the
+ *    one case where guessing either steals a channel or wedges one.
  */
 export function acquirePollerLock(
   path: string,
@@ -326,6 +370,7 @@ export function acquirePollerLock(
   options: AcquirePollerLockOptions = {},
 ): AcquirePollerLockResult {
   const pidAlive = options.pidAlive ?? isPidAlive;
+  const pidStartedAt = options.pidStartedAt ?? readPidStartedAt;
   const now = options.now ?? Date.now;
   const at = now();
   const instanceId = stamp.instanceId ?? resolveInstanceId();
@@ -367,6 +412,27 @@ export function acquirePollerLock(
     if (!heartbeatIsCurrent(existing, at))
       return acquire("stale-same-instance");
     return { ok: false, reason: "held-same-instance", holder: existing, path };
+  }
+
+  // A record from a build that had no instance identity and no heartbeat. Its
+  // pid is the only field, and it is the field that used to wedge the channel:
+  // the arm below read the absent heartbeat as "cannot tell" and refused
+  // forever, even when the holder had died days earlier.
+  if (existing.instanceId === undefined) {
+    if (existing.pid === stamp.pid) return acquire("same-pid-refresh");
+    if (!pidAlive(existing.pid)) return acquire("stale-legacy");
+    const startedAt = pidStartedAt(existing.pid);
+    const recordedAt = Number.isFinite(existing.startedAt)
+      ? (existing.startedAt as number)
+      : undefined;
+    if (
+      startedAt !== undefined &&
+      recordedAt !== undefined &&
+      startedAt - recordedAt > LEGACY_PID_REUSE_SLACK_MS
+    ) {
+      return acquire("stale-legacy-recycled");
+    }
+    return { ok: false, reason: "held-legacy", holder: existing, path };
   }
 
   if (!Number.isFinite(existing.heartbeatAt)) {

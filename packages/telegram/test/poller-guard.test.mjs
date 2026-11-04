@@ -457,22 +457,28 @@ test("lock acquire: a garbled heartbeat on another boot reads as unknown, not as
   assert.equal(res.reason, "stale-unknown");
 });
 
-test("lock acquire: a record without identity is judged by its heartbeat, never by its pid", () => {
+test("lock acquire: a record without identity is judged by its pid, and a live holder still refuses", () => {
   const path = tmpLockFile("arm-legacy");
   const clock = fixedClock();
-  // An older writer's file: no instanceId, no heartbeatAt.
+  // An older writer's file: no instanceId, no heartbeatAt. Its pid is the only
+  // field, so a live pid is the only thing that can stop a takeover; a dead or
+  // recycled one is taken over by the legacy arm and its fixtures.
   writeLock(path, {
-    pid: IMPOSSIBLE_PID,
+    pid: process.ppid,
     startedAt: CLOCK - 60_000,
     role: "seat",
   });
   const res = acquirePollerLock(
     path,
     { pid: process.pid, instanceId: INSTANCE },
-    { now: clock.now, pidAlive: () => false },
+    {
+      now: clock.now,
+      pidAlive: () => true,
+      pidStartedAt: () => CLOCK - 60_000 - 200,
+    },
   );
   assert.equal(res.ok, false);
-  assert.equal(res.reason, "stale-unknown");
+  assert.equal(res.reason, "held-legacy");
   assert.match(describeLockHolder(res.holder, CLOCK), /no identity/);
 });
 
@@ -950,4 +956,140 @@ test("heartbeat: an unref'd timer leaves the process free to exit while the lock
     false,
     "the exit hook released the lock on the way out",
   );
+});
+
+// ── the legacy arm ────────────────────────────────────────────────────────────
+//
+// A lock written before identity existed carries a pid and nothing else. The
+// rule used to read the missing heartbeat as "cannot judge" and refuse forever,
+// so a process that died left the channel down until a human deleted a file. The
+// arm below judges the pid, which is the only field such a record has, and it
+// refuses only when a live pid could still be the holder.
+
+test("lock acquire: a pre-identity record whose pid is dead is taken over, not refused forever", () => {
+  const path = tmpLockFile("legacy-dead-pid");
+  const clock = fixedClock();
+  // The shape 0.43.21 wrote: pid, startedAt, role, startedBy, and no more.
+  writeLock(path, {
+    pid: IMPOSSIBLE_PID,
+    startedAt: CLOCK - 3_600_000,
+    role: "seat",
+    startedBy: "telegram_poller tool",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => false },
+  );
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "stale-legacy");
+  assert.equal(res.tookOver, true);
+  assert.equal(res.previous.pid, IMPOSSIBLE_PID);
+  const now = readPollerLock(path);
+  assert.equal(now.pid, process.pid);
+  assert.equal(
+    now.instanceId,
+    INSTANCE,
+    "the takeover upgrades the record to the identity shape, so the next seat does not meet a legacy file again",
+  );
+  assert.equal(Number.isFinite(now.heartbeatAt), true);
+});
+
+test("lock acquire: a pre-identity record whose pid was recycled by a later process is taken over", () => {
+  const path = tmpLockFile("legacy-recycled");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: process.ppid,
+    startedAt: CLOCK - 7_200_000,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    {
+      now: clock.now,
+      pidAlive: () => true,
+      pidStartedAt: () => CLOCK - 60_000,
+    },
+  );
+  assert.equal(res.ok, true);
+  assert.equal(res.reason, "stale-legacy-recycled");
+  assert.match(
+    describeLockReason(res.reason, path),
+    /started after that record was written/,
+    "the reason has to say why a live pid did not block the takeover",
+  );
+});
+
+test("lock acquire: a pre-identity record with a dated live holder refuses and names the file", () => {
+  const path = tmpLockFile("legacy-live");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: process.ppid,
+    startedAt: CLOCK - 7_200_000,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    {
+      now: clock.now,
+      pidAlive: () => true,
+      pidStartedAt: () => CLOCK - 7_200_000 - 500,
+    },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "held-legacy");
+  assert.equal(res.path, path);
+  const message = describeLockReason(res.reason, path);
+  assert.match(message, /pid is still alive/);
+  assert.equal(
+    message.includes(path),
+    true,
+    "the operator is told which file to remove",
+  );
+  assert.equal(
+    readPollerLock(path).pid,
+    process.ppid,
+    "a refusal writes nothing",
+  );
+});
+
+test("lock acquire: an undatable live pid on a pre-identity record refuses rather than guess", () => {
+  const path = tmpLockFile("legacy-undated");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: process.ppid,
+    startedAt: CLOCK - 7_200_000,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => true, pidStartedAt: () => undefined },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "held-legacy");
+});
+
+test("lock acquire: control — a cross-boot record that DOES carry identity but no heartbeat still refuses stale-unknown", () => {
+  const path = tmpLockFile("legacy-control-cross-boot");
+  const clock = fixedClock();
+  writeLock(path, {
+    pid: process.ppid,
+    startedAt: CLOCK - 1_000,
+    instanceId: "otherhost:other-boot",
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: INSTANCE },
+    { now: clock.now, pidAlive: () => true, pidStartedAt: () => CLOCK - 1_000 },
+  );
+  assert.equal(
+    res.ok,
+    false,
+    "the legacy arm must not swallow the case it was never about",
+  );
+  assert.equal(res.reason, "stale-unknown");
 });
