@@ -98,7 +98,6 @@ record; the tag scheme above applies unchanged.
 
 ## Core — 0.43.27 (2026-11-05: the ship list stays as it was, and a dropped promise is a failed gate)
 
-
 - **A case nobody listens to is not a passing case.** Half the fixtures here
   predate the `node:test` rule and carry a helper that calls `fn()` and moves on;
   handed an `async` case it drops the promise, prints its green line and exits 0
