@@ -96,15 +96,6 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
-## Core — 0.43.27 (2026-11-05: the worktree script is in the tarball it was announced in)
-
-- **A file in the repo is not a file in the package.** 0.43.26 announced
-  `packages/core/scripts/prepare-worktree.mjs` in its notes, but the package's
-  `files[]` carried only `scripts/fleet/**`, so `npm pack` shipped 1063 files and
-  none of them was the script. The changelog vouched for an artifact the registry
-  did not have. `files[]` now names it, and the release is verified by asking the
-  packed tarball what it contains instead of asking the repository.
-
 ## Core — 0.43.26 (2026-11-05: a new fixture imports node:test, and a worktree resolves what the primary resolves)
 
 - **A rule where there was only habit.** 278 of the 440 test files under
