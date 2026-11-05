@@ -108,6 +108,7 @@ Event handlers receive `(event, ctx: ExtensionContext)`. Tool execute functions 
 - Tools added by extensions are auto-enabled on first session, except where the active-set owner says otherwise: `context-management` applies a curated default profile, so a registered tool is only active if the profile (or the operator's saved `/tools` list) names it
 - Prompt-builder overrides the system prompt entirely (no native loading)
 - Decompose large handlers into `handlers/*.ts` sub-modules
+- **New fixtures import `node:test`.** 278 of the 440 test files under `packages/` carry hand-rolled runners, each re-deciding exit codes, failure reporting and whether to await a case; a census of them could not reliably tell a discarded async case from one handled by `.then(fn)`, which is exactly the shape where a failing case is counted green. An existing hand-rolled runner moves to `node:test` only when another change already opens that file, so this is a rule for new work, not a backlog.
 
 ## Doc Discipline
 

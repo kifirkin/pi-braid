@@ -96,6 +96,17 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.26 (2026-11-05: new fixtures import node:test)
+
+- **A rule where there was only habit.** 278 of the 440 test files under
+  `packages/` carry hand-rolled runners, each re-deciding exit codes, failure
+  reporting and whether to await a case. A census of them could not reliably tell
+  a discarded async case from one handled through `.then(fn)`, which is the shape
+  where a failing case is counted green.
+- **New work only.** An existing hand-rolled runner moves to `node:test` when
+  another change already opens that file, so the convention does not turn into a
+  278-file backlog nobody finishes.
+
 ## Core — 0.43.25 (2026-11-04: the context backstop leaves a countable trace)
 
 - **The 0.90W backstop records that it fired.** The site called the drain and
