@@ -96,7 +96,17 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
-## Core — 0.43.27 (2026-11-05: the ship list stays as it was)
+## Core — 0.43.27 (2026-11-05: the ship list stays as it was, and a dropped promise is a failed gate)
+
+
+- **A case nobody listens to is not a passing case.** Half the fixtures here
+  predate the `node:test` rule and carry a helper that calls `fn()` and moves on;
+  handed an `async` case it drops the promise, prints its green line and exits 0
+  before the case can fail. `packages/core/scripts/check-async-cases.mjs` scans
+  every fixture for that shape and fails on a call site that passes an async
+  case, while accepting a helper that chains or awaits. Measured before wiring:
+  442 fixtures, 51 helpers that drop the promise, 0 async cases handed to one, so
+  the gate closes a shape rather than a current pile of failures.
 
 - **A repository tool is not a package entry point.** 0.43.26's notes name
   `packages/core/scripts/prepare-worktree.mjs`, which lives in the repository. An
