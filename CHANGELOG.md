@@ -96,6 +96,15 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.27 (2026-11-05: the ship list stays as it was)
+
+- **A repository tool is not a package entry point.** 0.43.26's notes name
+  `packages/core/scripts/prepare-worktree.mjs`, which lives in the repository. An
+  attempt to add it to `files[]` was reverted: the fleet pack gate's rule is that
+  the tarball ships no `scripts/` entry from outside `scripts/fleet/**`, and the
+  gate failed on the addition with the extra path named. The note needs no
+  correction; the package needs no new file.
+
 ## Core — 0.43.26 (2026-11-05: a new fixture imports node:test, and a worktree resolves what the primary resolves)
 
 - **A rule where there was only habit.** 278 of the 440 test files under
