@@ -8,20 +8,19 @@
  * worker reads that as "the branch is broken". Three workers did exactly that
  * in one day.
  *
- * Cases:
- * 1. The script links the package-local install and the probe resolves from the
- *    package directory in the worktree.
+ * 1. The script links the package-local install and the dependency resolves from
+ *    the package directory in the worktree.
  * 2. The control: the same ref checked out by plain `git worktree add` does NOT
- *    resolve that dependency, so the script is what makes the difference and not
- *    the environment it ran in.
- * 3. A second run on a prepared worktree keeps it usable and does not double-link
- *    (the link is a symlink, not a copy, and an existing entry is left alone).
+ *    resolve it, so the script is what makes the difference and not the
+ *    environment it ran in.
+ * 3. A second run on a prepared worktree keeps it usable and does not double-link.
  */
 import { strict as assert } from "node:assert";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,36 +55,40 @@ function resolves(cwd, name) {
   return r.status === 0;
 }
 
-const repo = primaryRepo();
+function prepare(repo, path) {
+  return spawnSync(process.execPath, [SCRIPT, "--path", path, "--ref", "HEAD", "--primary", repo], { encoding: "utf-8" });
+}
 
-// Case 1: the script prepares a worktree that resolves the package-local install.
-const prepared = join(mkdtempSync(join(tmpdir(), "prepare-wt-")), "wt");
-const run = spawnSync(process.execPath, [SCRIPT, "--path", prepared, "--ref", "HEAD", "--primary", repo], {
-  encoding: "utf-8",
+test("the script links the package-local install and it resolves there", () => {
+  const repo = primaryRepo();
+  const prepared = join(mkdtempSync(join(tmpdir(), "prepare-wt-")), "wt");
+  const run = prepare(repo, prepared);
+  assert.equal(run.status, 0, `script exits 0: ${run.stdout}${run.stderr}`);
+  const link = join(prepared, "packages", "alpha", "node_modules");
+  assert.ok(existsSync(link), "the package-local node_modules is linked");
+  assert.ok(lstatSync(link).isSymbolicLink(), "the link is a symlink, not a copy");
+  assert.ok(resolves(join(prepared, "packages", "alpha"), "alpha-dep"), "the dependency resolves in the worktree");
+  assert.match(run.stdout, /1 link\(s\) made, 1 probed by resolution/, "the run names its own population");
 });
-assert.equal(run.status, 0, `script exits 0: ${run.stdout}${run.stderr}`);
-const link = join(prepared, "packages", "alpha", "node_modules");
-assert.ok(existsSync(link), "the package-local node_modules is linked");
-assert.ok(lstatSync(link).isSymbolicLink(), "the link is a symlink, not a copy");
-assert.ok(resolves(join(prepared, "packages", "alpha"), "alpha-dep"), "the dependency resolves in the worktree");
-assert.match(run.stdout, /1 link\(s\) made, 1 probed by resolution/, "the run names its own population");
 
-// Case 2: the control. Without the script the same ref does not resolve it.
-const bare = join(mkdtempSync(join(tmpdir(), "prepare-bare-")), "wt");
-git(repo, "worktree", "add", bare, "HEAD");
-assert.equal(
-  resolves(join(bare, "packages", "alpha"), "alpha-dep"),
-  false,
-  "a plain worktree does not resolve the package-local install: the script is what fixes it",
-);
-
-// Case 3: running again on a prepared worktree is safe and adds nothing.
-const again = spawnSync(process.execPath, [SCRIPT, "--path", prepared, "--ref", "HEAD", "--primary", repo], {
-  encoding: "utf-8",
+test("the control: a plain worktree does not resolve it", () => {
+  const repo = primaryRepo();
+  const bare = join(mkdtempSync(join(tmpdir(), "prepare-bare-")), "wt");
+  git(repo, "worktree", "add", bare, "HEAD");
+  assert.equal(
+    resolves(join(bare, "packages", "alpha"), "alpha-dep"),
+    false,
+    "without the script the dependency is missing: the script, not the machine, is what fixes it",
+  );
 });
-assert.equal(again.status, 0, `second run exits 0: ${again.stdout}${again.stderr}`);
-assert.match(again.stdout, /already holds a worktree/, "the second run says what it found instead of re-adding");
-assert.match(again.stdout, /0 link\(s\) made/, "the second run makes no new link");
-assert.ok(resolves(join(prepared, "packages", "alpha"), "alpha-dep"), "and the worktree still resolves");
 
-console.log("ok: prepare-worktree links, proves by resolution, and is idempotent");
+test("a second run finds the worktree, makes no new link, and leaves it usable", () => {
+  const repo = primaryRepo();
+  const prepared = join(mkdtempSync(join(tmpdir(), "prepare-again-")), "wt");
+  assert.equal(prepare(repo, prepared).status, 0, "first run");
+  const again = prepare(repo, prepared);
+  assert.equal(again.status, 0, `second run exits 0: ${again.stdout}${again.stderr}`);
+  assert.match(again.stdout, /already holds a worktree/, "the second run says what it found instead of re-adding");
+  assert.match(again.stdout, /0 link\(s\) made/, "the second run makes no new link");
+  assert.ok(resolves(join(prepared, "packages", "alpha"), "alpha-dep"), "and the worktree still resolves");
+});

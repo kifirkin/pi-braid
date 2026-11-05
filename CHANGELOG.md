@@ -96,7 +96,7 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
-## Core — 0.43.26 (2026-11-05: new fixtures import node:test)
+## Core — 0.43.26 (2026-11-05: a new fixture imports node:test, and a worktree resolves what the primary resolves)
 
 - **A rule where there was only habit.** 278 of the 440 test files under
   `packages/` carry hand-rolled runners, each re-deciding exit codes, failure
@@ -106,6 +106,16 @@ record; the tag scheme above applies unchanged.
 - **New work only.** An existing hand-rolled runner moves to `node:test` when
   another change already opens that file, so the convention does not turn into a
   278-file backlog nobody finishes.
+- **A prepared worktree resolves what the primary resolves.**
+  `packages/core/scripts/prepare-worktree.mjs` links every `node_modules` the primary carries,
+  including the package-local installs under `packages/*/node_modules`, then
+  proves each link by asking node to resolve a real dependency from inside the
+  package directory. A detached worktree carries source only, so a chain that
+  spawns a package-local `tsc` failed with `MODULE_NOT_FOUND` for a reason the
+  change was not, and three workers in one day read that as a broken branch.
+  The fixture's control checks out the same ref with plain `git worktree add` and
+  requires resolution to fail there, so a passing run cannot be the
+  environment's doing.
 
 ## Core — 0.43.25 (2026-11-04: the context backstop leaves a countable trace)
 
