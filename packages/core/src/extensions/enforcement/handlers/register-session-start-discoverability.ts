@@ -53,6 +53,7 @@ import {
 } from "../../../lib/config/braid-paths.js";
 import { projectSlugFromCwd } from "../../memory/scratchpad/persistence.js";
 import { readResumeScratchpadState } from "../resume-state.js";
+import { journalPriorText } from "./open-intents.js";
 
 const log = createLogger("enforcement:session-start-discoverability");
 
@@ -225,22 +226,20 @@ export function registerSessionStartDiscoverability(pi: ExtensionAPI): void {
       // 7. The owner-input journal. The path comes from the constant the
       // writer appends through, never a hand-built shape: two spellings for
       // one file is how the scratchpad pointer armed itself against a file
-      // nothing writes (see step 1).
+      // nothing writes (see step 1). The text is composed in `open-intents`,
+      // which also names the intents whose status says open: a journal holding
+      // a pending install printed the same count sentence as one holding forty
+      // closed outcomes, so the seat could not see that work was waiting.
       try {
         const slug = projectSlugFromCwd(cwd);
         const journalFile = journalFilePath(slug);
         if (existsSync(journalFile)) {
-          const count = readFileSync(journalFile, "utf-8")
-            .split("\n")
-            .filter((line) => line.trim()).length;
+          const journalText = readFileSync(journalFile, "utf-8");
+          const count = journalText.split("\n").filter((line) => line.trim()).length;
           if (count > 0) {
             signals.push({
               type: "journal_prior",
-              text:
-                `The project journal holds ${count} entr${count === 1 ? "y" : "ies"} at ${journalFile} -- ` +
-                `what earlier seats decided and why, readable without their sessions. ` +
-                `Read the open program before acting (digest printer: packages/core/scripts/check-journal.mjs --digest), ` +
-                `so a decision gets superseded, not rediscovered.`,
+              text: journalPriorText({ count, journalFile }, journalText, new Date()),
             });
           }
         }
