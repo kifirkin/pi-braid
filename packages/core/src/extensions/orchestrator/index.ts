@@ -63,6 +63,14 @@ import {
   type WorkerStats,
   type PopulationRead,
 } from "../../lib/orchestrator/index.js";
+// The queue-fact readers come from their module directly: the barrel above is
+// one way into the library, not the only one, and it does not re-export these.
+import {
+  normalizeDependsOn,
+  orderWorkerRows,
+  validateDependencies,
+  type WorkerOrderRow,
+} from "../../lib/orchestrator/workers.js";
 
 const log = createLogger("orchestrator");
 
@@ -454,11 +462,28 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 /** One-line registry listing for a worker entry. */
 function workerLine(entry: WorkerEntry): string {
   const closed = entry.closedAt ? `  closed=${entry.closedAt}` : "";
+  // Printed only when the row carries one: an unranked, wait-free row keeps the
+  // line it had before the queue facts existed.
+  const priority = typeof entry.priority === "number" ? `  priority=${entry.priority}` : "";
+  const dependsOn =
+    Array.isArray(entry.dependsOn) && entry.dependsOn.length > 0
+      ? `  depends-on=${entry.dependsOn.join(", ")}`
+      : "";
   return `  ${entry.workerId}  spec=${entry.spec}  status=${entry.status}  pane=${
     entry.pane ?? "-"
   }  session=${entry.workerSession ?? "-"}  output=${
     entry.outputFile ?? "-"
-  }  branch=${entry.branch ?? "-"}${closed}`;
+  }  branch=${entry.branch ?? "-"}${closed}${priority}${dependsOn}`;
+}
+
+/**
+ * One listing entry: the row line, plus the ids holding it after it, indented
+ * under the row so the marker can never be read as a row of its own.
+ */
+function workerListLine(row: WorkerOrderRow): string {
+  const line = workerLine(row.entry);
+  if (row.blockedBy.length === 0) return line;
+  return `${line}\n    blocked-by: ${row.blockedBy.join(", ")}`;
 }
 
 /**
@@ -488,6 +513,8 @@ function formatCheckVerdict(verdict: WorkerCheckResult): string {
   return [
     `Worker ${verdict.workerId}`,
     `status: ${verdict.status}`,
+    `storedStatus: ${verdict.storedStatus}`,
+    `blockedBy: ${verdict.blockedBy.length > 0 ? verdict.blockedBy.join(", ") : "-"}`,
     `reason: ${verdict.reason}`,
     `outputFile: ${verdict.outputFile ?? "-"} (${age})`,
     `sessionGrowthAgeSec: ${verdict.sessionGrowthAgeSec ?? "-"}`,
@@ -648,6 +675,25 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
         description: "Lifecycle status for update-worker (see the tool description).",
       }),
     ),
+    priority: Type.Optional(
+      // `{ anyOf: [{ type: "number" }, { type: "null" }] }` written as its own
+      // keywords: the builder's named constructors have no null literal, and the
+      // schema this hand-built object emits is plain JSON Schema.
+      Type.Unsafe<number | null>({
+        anyOf: [{ type: "number" }, { type: "null" }],
+        description:
+          "Queue rank: lower runs sooner; null is unranked, which sorts after every ranked row. " +
+          "spawn-worker/register-worker record it at admission; update-worker changes or clears it.",
+      }),
+    ),
+    dependsOn: Type.Optional(
+      Type.Array(Type.String(), {
+        description:
+          "Worker ids this row waits for (spawn-worker/register-worker only: dependencies are fixed at admission). " +
+          "Refused when an id is unknown, is this worker's own id, or would close a loop; a refused admission writes nothing. " +
+          "check-worker reports `blocked`, naming these ids, while any of them is not merged or completed.",
+      }),
+    ),
     phase: Type.Optional(
       Type.String({
         description:
@@ -729,6 +775,8 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       workspace?: string;
       workerSession?: string;
       status?: string;
+      priority?: number | null;
+      dependsOn?: string[];
       phase?: string;
       lastStep?: string;
       requestId?: string;
@@ -756,6 +804,8 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       workspace,
       workerSession,
       status,
+      priority,
+      dependsOn,
       phase,
       lastStep,
       requestId,
@@ -790,8 +840,16 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
         // live row for one worker. A different request, or the same id
         // describing different work, is refused with both ids named.
         const effectiveRequestId = resolveRequestId(workerId, requestId);
-        const existing = readWorkers(projectCwd).workers[workerId];
-        const decision = decideAdmission(existing, effectiveRequestId, { spec, files });
+        const registryAtSpawn = readWorkers(projectCwd);
+        const existing = registryAtSpawn.workers[workerId];
+        // Dependencies are part of what the work is, so a retry carries the same
+        // set; changing them under the same request id is different work.
+        const dependsOnIds = normalizeDependsOn(dependsOn);
+        const decision = decideAdmission(existing, effectiveRequestId, {
+          spec,
+          files,
+          dependsOn: dependsOnIds,
+        });
         if (decision.action === "reuse" && decision.entry) {
           return textResult(reuseReport(decision.entry, effectiveRequestId), {
             entry: decision.entry,
@@ -804,6 +862,13 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
           // turned away. No branch or lock exists yet, so nothing else to undo.
           recordAdmissionRefusal(workerId, effectiveRequestId, projectCwd);
           throw new Error(`spawn-worker: ${decision.reason}.`);
+        }
+
+        // A dependency that cannot be satisfied refuses the spawn before a
+        // branch or a lock exists, so a refused spawn leaves nothing to undo.
+        const dependencyRefusal = validateDependencies(workerId, dependsOnIds, registryAtSpawn);
+        if (dependencyRefusal) {
+          throw new Error(`spawn-worker: ${dependencyRefusal.message}.`);
         }
 
         const conflicts = filesHeldByOthers(files, workerId, repoRoot);
@@ -834,6 +899,8 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
               files,
               branch: branchName,
               outputFile,
+              priority,
+              dependsOn: dependsOnIds,
               requestId: effectiveRequestId,
             },
             projectCwd,
@@ -913,6 +980,8 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
               files,
               branch,
               outputFile,
+              priority,
+              dependsOn,
               pane,
               workerSession,
               requestId,
@@ -945,6 +1014,8 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
             files,
             branch,
             outputFile,
+            priority,
+            dependsOn,
             pane,
             workerSession,
             requestId,
@@ -959,6 +1030,14 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         if (!workerId) {
           throw new Error("update-worker requires workerId");
         }
+        if (dependsOn !== undefined) {
+          throw new Error(
+            "update-worker: dependencies are fixed at admission — dependsOn is admitted by " +
+              "spawn-worker/register-worker only. A worker that gains a dependency after it " +
+              "started is a second unit of work wearing the first one's id; close the entry and " +
+              "admit it again.",
+          );
+        }
 
         const patch: UpdateWorkerPatch = {};
         if (pane !== undefined) patch.pane = pane;
@@ -968,6 +1047,7 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         if (branch !== undefined) patch.branch = branch;
         if (files !== undefined) patch.files = files;
         if (status !== undefined) patch.status = parseWorkerStatus(status);
+        if (priority !== undefined) patch.priority = priority;
         if (phase !== undefined || lastStep !== undefined) {
           if (!phase || !lastStep) {
             throw new Error(
@@ -1031,7 +1111,10 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         const closedCount = all.filter((entry) => entry.closedAt).length;
         const byStatus = WORKER_STATUSES.map((s) => `${s}=${counts.get(s) ?? 0}`).join(" ");
 
-        const lines = shown.map(workerLine).join("\n");
+        // Actionable order over the rows being shown, with satisfaction read
+        // against every row: a closed dependency still counts as delivered.
+        const ordered = orderWorkerRows(shown, registry);
+        const lines = [...ordered.ready, ...ordered.blocked].map(workerListLine).join("\n");
         return textResult(
           `Workers (${repoRoot ?? process.cwd()}):\n${lines}\ncounts: total=${all.length} live=${
             all.length - closedCount

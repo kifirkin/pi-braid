@@ -8,6 +8,12 @@
  * session growth, branch commits, result schema) — never from the worker's
  * own claim alone.
  *
+ * Each row also carries its queue rank and the worker ids it waits for, so the
+ * order workers may run in is read from the registry: `orderWorkerRows`
+ * prints it, and a verdict says `blocked` while a dependency has not been
+ * delivered. Both facts are the registry's own; no caller has to remember
+ * which piece of work lands first.
+ *
  * Registry file location: ~/.pi/agent/braid/projects/<sanitized-cwd>/workers.json
  * (per-CWD, beside locks.json, shared across all agents on the same project).
  *
@@ -106,6 +112,17 @@ export interface WorkerEntry {
   outputFile: string | null;
   branch: string | null;
   files: string[];
+  /**
+   * Queue rank: lower runs sooner. Null is unranked, which sorts after every
+   * ranked row. Filled with null on a row admitted before the field existed.
+   */
+  priority: number | null;
+  /**
+   * Worker ids this row waits for, in declared order. Empty means it waits for
+   * nothing. Fixed at admission: a dependency gained after the work started is
+   * a second unit of work wearing the first one's id.
+   */
+  dependsOn: string[];
   spawnedAt: string;
   lastSeenAt: string | null;
   resultAt: string | null;
@@ -147,6 +164,13 @@ export interface RegisterWorkerInput {
   files?: string[];
   branch?: string;
   outputFile?: string;
+  /** Queue rank: lower runs sooner; null or absent is unranked. */
+  priority?: number | null;
+  /**
+   * Worker ids this row waits for. Refused when an id is unknown, is this
+   * row's own id, or would close a dependency loop.
+   */
+  dependsOn?: string[];
   /**
    * Worker handle, when the caller already has it at admission time. Absent
    * stays null: a handle is never invented, and a pane is a place to look, not
@@ -170,6 +194,10 @@ export interface RegisterWorkerResult {
   reason?: string;
   /** True when a live entry already admitted this request and was reused. */
   reused?: boolean;
+  /** Machine-readable reason when the admission itself was refused. */
+  refusedBy?: DependencyRefusalReason;
+  /** The dependency id the refusal names. */
+  offendingId?: string;
 }
 
 export interface UpdateWorkerPatch {
@@ -180,6 +208,8 @@ export interface UpdateWorkerPatch {
   branch?: string;
   files?: string[];
   status?: WorkerStatus;
+  /** Queue rank to set; null clears it back to unranked. */
+  priority?: number | null;
   /** Resume point to record; stamped with the write time. */
   checkpoint?: WorkerCheckpointInput;
 }
@@ -199,11 +229,21 @@ export interface WorkerCheckOptions {
   now?: number;
   /** Frozen-session threshold in seconds; defaults to 600. */
   stalledAfterSec?: number;
+  /**
+   * The registry the entry belongs to, which is what its dependencies are
+   * resolved against. checkWorker always supplies it; a caller that omits it
+   * leaves dependency satisfaction unread, so no row is reported blocked.
+   */
+  registry?: WorkerRegistry;
 }
 
 export interface WorkerCheckResult {
   workerId: string;
   status: WorkerVerdictStatus;
+  /** The row's own stored status, beside the verdict — never replaced by it. */
+  storedStatus: WorkerStatus;
+  /** Dependency ids nothing has satisfied yet; empty when the row may run. */
+  blockedBy: string[];
   reason: string;
   outputFile: string | null;
   outputExists: boolean;
@@ -233,12 +273,39 @@ export interface WorkerCheckResult {
 }
 
 /**
- * A status the registry reports. `resumable` is derived, never stored: it says
- * the entry is mid-flight with a checkpoint to resume from, which is a
- * statement about evidence rather than a lifecycle state a caller sets. No
- * stored row carries it, so the on-disk status set is unchanged.
+ * Why a dependency edge was refused at admission: the id is not in the registry,
+ * the row names itself, or the edge would close a loop.
  */
-export type WorkerVerdictStatus = WorkerStatus | "resumable";
+export type DependencyRefusalReason = "unknown-dependency" | "self-dependency" | "dependency-cycle";
+
+/** One refused dependency edge, as the admission reports it. */
+export interface DependencyRefusal {
+  reason: DependencyRefusalReason;
+  /** The offending id: the unknown one, the row's own, or where a loop starts. */
+  id: string;
+  /**
+   * The loop from the admitted row back to itself, e.g. `[a, b, a]`; empty
+   * when the refusal names no loop.
+   */
+  path: string[];
+  /** The refusal in one sentence, prefixed with its reason token. */
+  message: string;
+}
+
+/** One listing row: the entry, and the dependency ids still blocking it. */
+export interface WorkerOrderRow {
+  entry: WorkerEntry;
+  blockedBy: string[];
+}
+
+/**
+ * A status the registry reports. `resumable` and `blocked` are derived, never
+ * stored: `resumable` says the entry is mid-flight with a checkpoint to resume
+ * from, `blocked` that a dependency has not been delivered. Both are statements
+ * about evidence rather than lifecycle states a caller sets, so no stored row
+ * carries either and the on-disk status set is unchanged.
+ */
+export type WorkerVerdictStatus = WorkerStatus | "resumable" | "blocked";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -270,10 +337,14 @@ export const WORKER_OUTCOMES: readonly WorkerOutcome[] = [
   "closed",
 ];
 
-/** Statuses check-worker may report: the stored statuses plus `resumable`. */
+/**
+ * Statuses check-worker may report: the stored statuses plus the derived ones,
+ * `resumable` and `blocked`, which no row ever carries on disk.
+ */
 export const WORKER_VERDICT_STATUSES: readonly WorkerVerdictStatus[] = [
   ...WORKER_STATUSES,
   "resumable",
+  "blocked",
 ];
 
 /** Statuses a worker's result schema may self-report. */
@@ -331,7 +402,7 @@ export const WORKER_STATUS_LAYERS: readonly WorkerStatusLayer[] = [
     role: "computed verdict",
     owner: "check-worker",
     values: WORKER_VERDICT_STATUSES,
-    states: "what check-worker derives from evidence, resumable never stored",
+    states: "what check-worker derives from evidence, resumable and blocked never stored",
   },
   {
     role: "result attestation",
@@ -393,6 +464,11 @@ function normalizeEntry(raw: WorkerEntry): WorkerEntry {
     requestId,
     checkpoint: isCheckpoint(raw.checkpoint) ? raw.checkpoint : null,
     admissionRefusals: Array.isArray(raw.admissionRefusals) ? raw.admissionRefusals : [],
+    // A row admitted before the queue facts existed is unranked and waits for
+    // nothing, which is exactly what the absent fields mean.
+    priority:
+      typeof raw.priority === "number" && Number.isFinite(raw.priority) ? raw.priority : null,
+    dependsOn: normalizeDependsOn(raw.dependsOn),
   };
 }
 
@@ -526,7 +602,7 @@ function isSameRequest(entry: WorkerEntry, requestId: string): boolean {
 /** What a request states about the work, against what the entry recorded. */
 function requestDifferences(
   entry: WorkerEntry,
-  request: { spec?: string; files?: string[] },
+  request: { spec?: string; files?: string[]; dependsOn?: readonly string[] },
 ): string[] {
   const differences: string[] = [];
   if (request.spec !== undefined && request.spec !== entry.spec) {
@@ -539,6 +615,17 @@ function requestDifferences(
       recorded.length === requested.length && recorded.every((file, i) => file === requested[i]);
     if (!same) {
       differences.push(`files [${recorded.join(", ")}] vs [${requested.join(", ")}]`);
+    }
+  }
+  // Dependencies are part of what the work is, so a retry that changes them is
+  // a different request, not the same one resubmitted.
+  if (request.dependsOn !== undefined) {
+    const recorded = [...normalizeDependsOn(entry.dependsOn)].sort();
+    const requested = [...normalizeDependsOn(request.dependsOn)].sort();
+    const same =
+      recorded.length === requested.length && recorded.every((id, i) => id === requested[i]);
+    if (!same) {
+      differences.push(`dependsOn [${recorded.join(", ")}] vs [${requested.join(", ")}]`);
     }
   }
   return differences;
@@ -560,7 +647,7 @@ export interface WorkerAdmissionDecision {
 export function decideAdmission(
   existing: WorkerEntry | undefined,
   requestId: string,
-  request: { spec?: string; files?: string[] },
+  request: { spec?: string; files?: string[]; dependsOn?: readonly string[] },
 ): WorkerAdmissionDecision {
   if (!existing || existing.closedAt) return { action: "admit" };
   if (!isSameRequest(existing, requestId)) {
@@ -612,6 +699,181 @@ export function recordAdmissionRefusal(workerId: string, requestId: string, cwd?
   return true;
 }
 
+// ── Queue facts: priority and dependencies ─────────────────────────────────
+// The registry owns the ids, so it owns what a wait means. A dependency is
+// satisfied by `merged` or `completed` and by nothing else: a worker that
+// failed, stalled or was closed without delivering did not produce the thing
+// the next one waits for. Edges are decided at admission, where an unknown id,
+// a self-edge or a loop is refused before anything is written; satisfaction is
+// read at every check, because the answer changes as the rows it names move.
+
+/** Priority values the registry accepts: finite numbers, or null for unranked. */
+export function normalizePriority(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error(`priority must be a finite number or null, got ${JSON.stringify(raw)}`);
+  }
+  return raw;
+}
+
+/**
+ * Dependency ids as the registry stores them: strings, trimmed, non-empty,
+ * first occurrence kept. A malformed or absent value waits for nothing.
+ */
+export function normalizeDependsOn(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const ids: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string") continue;
+    const id = value.trim();
+    if (id.length === 0 || ids.includes(id)) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** Statuses that satisfy a dependency edge; a failed worker delivered nothing. */
+export const WORKER_SATISFYING_STATUSES: readonly WorkerStatus[] = ["merged", "completed"];
+
+/** Look a row up by id, without reading the prototype chain as a registry row. */
+function knownWorker(registry: WorkerRegistry, workerId: string): WorkerEntry | undefined {
+  return Object.prototype.hasOwnProperty.call(registry.workers, workerId)
+    ? registry.workers[workerId]
+    : undefined;
+}
+
+/** True when the row that id names delivered the work a dependent waits for. */
+export function isDependencySatisfied(entry: WorkerEntry | undefined): boolean {
+  return entry !== undefined && WORKER_SATISFYING_STATUSES.includes(entry.status);
+}
+
+/**
+ * The dependency ids of one row that nothing has satisfied yet, in declared
+ * order. An id with no row at all is unsatisfied: admission refuses unknown ids,
+ * so a missing one means the row was hand-edited or removed, and neither is a
+ * delivery.
+ */
+export function unsatisfiedDependencies(entry: WorkerEntry, registry: WorkerRegistry): string[] {
+  return normalizeDependsOn(entry.dependsOn).filter(
+    (id) => !isDependencySatisfied(knownWorker(registry, id)),
+  );
+}
+
+/**
+ * The loop an admission would close, as ids from the new row back to itself,
+ * or null when it closes none. Walks the graph as it would stand after the
+ * write: the admitted row contributes only its declared edges (a rolled-over
+ * row's old ones die with it), every other row its recorded ones.
+ */
+function dependencyCyclePath(
+  workerId: string,
+  dependsOn: readonly string[],
+  registry: WorkerRegistry,
+): string[] | null {
+  const edgesOf = (id: string): string[] =>
+    id === workerId
+      ? [...dependsOn]
+      : normalizeDependsOn(knownWorker(registry, id)?.dependsOn ?? []);
+  const seen = new Set<string>([workerId]);
+  const walk = (from: string, path: string[]): string[] | null => {
+    for (const next of edgesOf(from)) {
+      if (next === workerId) return [...path, workerId];
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const found = walk(next, [...path, next]);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(workerId, [workerId]);
+}
+
+/**
+ * Decide whether `dependsOn` may be recorded for `workerId`, against the graph
+ * the registry holds now. Null means the edges stand. A refused edge writes
+ * nothing: the caller reports the reason and the id, and the row is untouched.
+ *
+ * A row naming itself is refused as a self-dependency before the unknown check,
+ * which would otherwise answer `unknown-dependency` for an id that is by
+ * construction not admitted yet and hide the actual defect.
+ */
+export function validateDependencies(
+  workerId: string,
+  dependsOn: readonly string[],
+  registry: WorkerRegistry,
+): DependencyRefusal | null {
+  const ids = normalizeDependsOn(dependsOn);
+  if (ids.includes(workerId)) {
+    return {
+      reason: "self-dependency",
+      id: workerId,
+      path: [workerId, workerId],
+      message:
+        `self-dependency: worker ${workerId} names itself in dependsOn; a worker ` +
+        `cannot wait for its own result`,
+    };
+  }
+  for (const id of ids) {
+    if (!knownWorker(registry, id)) {
+      return {
+        reason: "unknown-dependency",
+        id,
+        path: [],
+        message:
+          `unknown-dependency: worker ${workerId} depends on ${id}, which is not in the ` +
+          `registry and never was`,
+      };
+    }
+  }
+  const path = dependencyCyclePath(workerId, ids, registry);
+  if (path) {
+    return {
+      reason: "dependency-cycle",
+      id: path[1] ?? workerId,
+      path,
+      message:
+        `dependency-cycle: worker ${workerId}'s dependsOn would close a loop: ` +
+        `${path.join(" -> ")}`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Split listing rows into the order they may be acted on: rows whose
+ * dependencies are all satisfied first, then blocked rows, each group ranked by
+ * priority ascending with unranked rows after every ranked one, ties by
+ * admission time and then id so the order is total.
+ *
+ * Satisfaction is read against the whole registry rather than the rows being
+ * printed: a closed row still satisfies its dependents, so it must be read
+ * before a listing that hides closed rows is filtered.
+ */
+export function orderWorkerRows(
+  entries: readonly WorkerEntry[],
+  registry: WorkerRegistry,
+): { ready: WorkerOrderRow[]; blocked: WorkerOrderRow[] } {
+  const rows: WorkerOrderRow[] = entries.map((entry) => ({
+    entry,
+    blockedBy: unsatisfiedDependencies(entry, registry),
+  }));
+  rows.sort(compareOrderRows);
+  return {
+    ready: rows.filter((row) => row.blockedBy.length === 0),
+    blocked: rows.filter((row) => row.blockedBy.length > 0),
+  };
+}
+
+/** Actionable order inside one group; both priorities null falls through to time. */
+function compareOrderRows(a: WorkerOrderRow, b: WorkerOrderRow): number {
+  const pa = a.entry.priority ?? Number.POSITIVE_INFINITY;
+  const pb = b.entry.priority ?? Number.POSITIVE_INFINITY;
+  if (pa !== pb) return pa - pb;
+  const bySpawn = a.entry.spawnedAt.localeCompare(b.entry.spawnedAt);
+  if (bySpawn !== 0) return bySpawn;
+  return a.entry.workerId.localeCompare(b.entry.workerId);
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 /**
@@ -627,7 +889,13 @@ export function registerWorker(input: RegisterWorkerInput, cwd?: string): Regist
   const registry = readWorkers(key);
   const existing = registry.workers[input.workerId];
   const requestId = resolveRequestId(input.workerId, input.requestId);
-  const decision = decideAdmission(existing, requestId, { spec: input.spec, files: input.files });
+  const priority = normalizePriority(input.priority);
+  const dependsOn = normalizeDependsOn(input.dependsOn);
+  const decision = decideAdmission(existing, requestId, {
+    spec: input.spec,
+    files: input.files,
+    dependsOn,
+  });
   if (decision.action === "reuse") {
     return { ok: true, entry: decision.entry, reused: true };
   }
@@ -639,6 +907,19 @@ export function registerWorker(input: RegisterWorkerInput, cwd?: string): Regist
       writeWorkers(registry, key);
     }
     return { ok: false, reason: decision.reason, entry: decision.entry };
+  }
+
+  // A dependency that cannot be satisfied refuses the admission before any
+  // write: the row, the branch and the locks the caller made for it stand as
+  // they were, and the reason names what is wrong with the edge.
+  const dependencyRefusal = validateDependencies(input.workerId, dependsOn, registry);
+  if (dependencyRefusal) {
+    return {
+      ok: false,
+      reason: dependencyRefusal.message,
+      refusedBy: dependencyRefusal.reason,
+      offendingId: dependencyRefusal.id,
+    };
   }
 
   const nowIso = new Date().toISOString();
@@ -653,6 +934,8 @@ export function registerWorker(input: RegisterWorkerInput, cwd?: string): Regist
     outputFile: input.outputFile ?? null,
     branch: input.branch ?? null,
     files: input.files ?? [],
+    priority,
+    dependsOn,
     spawnedAt: nowIso,
     lastSeenAt: nowIso,
     resultAt: null,
@@ -695,6 +978,7 @@ export function updateWorker(
   if (patch.branch !== undefined) entry.branch = patch.branch;
   if (patch.files !== undefined) entry.files = patch.files;
   if (patch.status !== undefined) entry.status = parseWorkerStatus(patch.status);
+  if (patch.priority !== undefined) entry.priority = normalizePriority(patch.priority);
   if (patch.checkpoint !== undefined) entry.checkpoint = stampCheckpoint(patch.checkpoint);
   entry.lastSeenAt = new Date().toISOString();
 
@@ -1777,6 +2061,19 @@ function normalizeLiveStatus(raw?: string): "working" | "blocked" | "done" | "id
 }
 
 /**
+ * Say what is holding a row, per blocking id: the status of the row it waits
+ * for, or that no row carries the id at all.
+ */
+function describeBlockers(ids: readonly string[], registry: WorkerRegistry | undefined): string {
+  return ids
+    .map((id) => {
+      const dependency = registry ? knownWorker(registry, id) : undefined;
+      return dependency ? `${id} (status ${dependency.status})` : `${id} (no row)`;
+    })
+    .join(", ");
+}
+
+/**
  * Compute the verdict for a worker entry. `completed` requires the output
  * file to exist and the result schema to parse (impl spec also requires at
  * least one commit on the worker branch); a live "done"/"idle" status with
@@ -1807,6 +2104,12 @@ function normalizeLiveStatus(raw?: string): "working" | "blocked" | "done" | "id
  * recorded gate exited 0. None of the three is the no-effect-evidence flag;
  * the flag is a field on the verdict, never a different status, and a row
  * that is not a terminal completion carries null.
+ *
+ * A row whose `dependsOn` holds an id that is not `merged` or `completed`
+ * reads as `blocked`, naming each blocking id with the status it carries; the
+ * row's own stored status travels beside the verdict, so a blocked row and a
+ * ready one are never the same answer. The dependencies are read against the
+ * registry the row belongs to, which checkWorker supplies.
  */
 export function evaluateWorker(
   entry: WorkerEntry,
@@ -1834,6 +2137,9 @@ export function evaluateWorker(
           branchAhead,
         })
       : null;
+  // Dependencies are read off the registry the row belongs to; without it the
+  // answer is not knowable here, so no row is called blocked on a guess.
+  const blockedBy = opts.registry ? unsatisfiedDependencies(entry, opts.registry) : [];
   // The stall window is read once: a session written inside it is liveness a
   // checkpoint must not outrank, and it is the only case where a checkpoint
   // changes the verdict.
@@ -1843,6 +2149,8 @@ export function evaluateWorker(
 
   const base = {
     workerId: entry.workerId,
+    storedStatus: entry.status,
+    blockedBy,
     outputFile: entry.outputFile,
     outputExists,
     outputAgeSec,
@@ -1869,6 +2177,19 @@ export function evaluateWorker(
       ...base,
       status: "closed",
       reason: `closed ${entry.closedAt} with outcome ${entry.status}`,
+    };
+  }
+  // A row waiting on a dependency nothing delivered is not actionable, whatever
+  // it has recorded itself: the verdict says so and names the ids, and the row's
+  // own status is reported beside it rather than overwritten. A closed row is
+  // exempt above — its outcome is already decided, and its dependents read that.
+  if (blockedBy.length > 0) {
+    return {
+      ...base,
+      status: "blocked",
+      reason:
+        `waits on ${describeBlockers(blockedBy, opts.registry)}; ` +
+        `stored status ${entry.status}`,
     };
   }
   if (entry.status === "error") {
@@ -2010,7 +2331,12 @@ export function checkWorker(
   const located = locateWorker(workerId, opts.cwd);
   if (!located) return null;
   const fallbackBranch = opts.fallbackBranch ?? lockBranchFor(workerId, located.key);
-  return evaluateWorker(located.registry.workers[workerId], { ...opts, fallbackBranch });
+  // The located registry is the one this entry's dependencies are read against.
+  return evaluateWorker(located.registry.workers[workerId], {
+    ...opts,
+    fallbackBranch,
+    registry: located.registry,
+  });
 }
 
 // ── Fleet statistics ───────────────────────────────────────────────────────
