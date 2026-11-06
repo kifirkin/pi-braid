@@ -28,13 +28,20 @@
  * substring of the old sentence would pass on a pointer that says nothing about
  * what is waiting.
  *
+ * Those cases write their journal lines by hand, which proves the reader and
+ * nothing about the writer. One case near the end drives the real writer and
+ * reads its line back through the same function the signal calls, so the shape
+ * the writer emits is the shape the pointer parses, and the EXPIRED branch is
+ * reached the only way it can be now: a stamp that was ahead at write time and
+ * has since passed.
+ *
  * Run: node --test test/runtime/journal/test-journal-discoverability.mjs
  */
 
 import { after, test } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -227,12 +234,13 @@ function appendEntry(text) {
 // ── Journals for the open-intent cases ─────────────────────────────────────
 //
 // These fixtures write the lines themselves instead of going through the
-// writer. The writer admits `expires_at` on a constraint only, so an expired
-// intent is a line the schema cannot produce today and the reader must survive
-// anyway: a journal is edited by hand, and the seat that inherits the edit is
-// the one that needs the pointer. The roots are short on purpose -- the path is
-// charged against the pointer's ceiling, and a fixture that spends most of the
-// budget on its own temp directory would pin a number no live seat ever sees.
+// writer. A stamp already past is refused at write time, so an expired intent
+// is a line the writer cannot produce in one go: it gets there by ageing, or by
+// a hand edit, and the reader must survive both -- a journal is edited by hand,
+// and the seat that inherits the edit is the one that needs the pointer. The
+// roots are short on purpose -- the path is charged against the pointer's
+// ceiling, and a fixture that spends most of the budget on its own temp
+// directory would pin a number no live seat ever sees.
 
 const HOUR = 3_600_000;
 const FIXED_NOW = 1_800_000_000_000;
@@ -476,6 +484,52 @@ test("a journal path that spends the ceiling yields a leaner sentence, never a l
   // themselves are pinned exactly in the cheap case below, where the path is
   // the fixture's own.
   assert.match(result.pointer, /open intent/i, result.pointer);
+});
+
+// ── The writer's line, read back by the pointer ────────────────────────────
+//
+// One window, read twice: while the stamp is ahead the pointer prints it, and
+// once the clock passes it the same line reads EXPIRED. Both readings come from
+// `journalPriorText`, the function the session-start handler calls, over the
+// file the writer actually appended to -- so a writer that stopped emitting the
+// field, or a pointer that stopped parsing it, reddens here rather than on a
+// live journal.
+
+test("an intent the writer accepted reads back with its expiry, then as EXPIRED", async () => {
+  const { home, project } = newRoot();
+  const expiresAt = new Date(Date.now() + 2 * HOUR).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const file = await withBraidHome(home, () => {
+    appendThroughWriter(project, projectSlugFromCwd(project), {
+      kind: "intent",
+      subject: "writer-handoff",
+      status: "open",
+      text: "A pending install the writer accepted together with the moment its window closes.",
+      expires_at: expiresAt,
+    });
+    return paths.journalFilePath(projectSlugFromCwd(project));
+  });
+
+  const journal = readFileSync(file, "utf8");
+  const written = JSON.parse(journal.trim());
+  assert.equal(written.expires_at, expiresAt, "the writer must land the field on the line");
+  const facts = { count: 1, journalFile: file };
+  // Offsets measured from the line's own `at`, so the two readings are decided
+  // by the stamps and not by how long the fixture took to run.
+  const sinceWritten = (minutes) => new Date(Date.parse(written.at) + minutes * 60_000);
+
+  const live = journalPriorText(facts, journal, sinceWritten(90));
+  assert.ok(
+    live.includes(`(expires ${expiresAt})`),
+    `the live stamp must be printed: ${live}`,
+  );
+  assert.doesNotMatch(live, /EXPIRED/, live);
+
+  const lapsed = journalPriorText(facts, journal, sinceWritten(180));
+  assert.match(
+    lapsed,
+    new RegExp(`One intent is still open and EXPIRED: "writer-handoff" 3h old \\(expires_at ${expiresAt}\\)`),
+    lapsed,
+  );
 });
 
 // ── The ceiling, pinned ────────────────────────────────────────────────────

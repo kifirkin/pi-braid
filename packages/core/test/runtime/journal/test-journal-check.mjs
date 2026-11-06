@@ -13,7 +13,10 @@
  *
  * The two clean cases matter as much as the failures: a well-formed journal
  * exits 0, and an unverified entry is allowed to carry no evidence. A checker
- * that fails everything guards nothing.
+ * that fails everything guards nothing. The intent's deadline is the third: the
+ * field is admissible on `intent` and `constraint`, and a stamp already past is
+ * not a finding on either, because an existing file's stamp aged where it sits
+ * -- the checker reads a file, not the moment of writing.
  *
  * Run: node test/runtime/journal/test-journal-check.mjs
  */
@@ -140,6 +143,47 @@ test("a constraint without expires_at is FIELDS", () => {
     /constraint without expires_at/,
     "FIELDS-constraint",
   );
+});
+
+test("an intent may carry expires_at", () => {
+  const result = run({ lines: [entry(1, { expires_at: stamp(3) })] });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test("an expiry already past is aged, not a finding, on both kinds that carry one", () => {
+  const aged = "2020-01-01T00:00:00Z";
+  const intent = run({ lines: [entry(1, { expires_at: aged })] });
+  assert.equal(intent.status, 0, `intent: ${intent.stdout}`);
+  const constraint = run({ lines: [entry(1, { kind: "constraint", expires_at: aged })] });
+  assert.equal(constraint.status, 0, `constraint: ${constraint.stdout}`);
+});
+
+test("an intent whose expires_at does not parse is TIME", () => {
+  expectFinding(
+    run({ lines: [entry(1, { expires_at: "next Tuesday" })] }),
+    /TIME seq 1: expires_at .* does not parse/,
+    "TIME-intent-expiry",
+  );
+});
+
+test("the kinds with no window still report expires_at as FIELDS", () => {
+  const expires_at = stamp(9);
+  const cases = [
+    {
+      kind: "decision",
+      label: "decision",
+      over: { kind: "decision", status: undefined, reason: "a decision carries no window to lapse into" },
+    },
+    { kind: "outcome", label: "outcome", over: { kind: "outcome", status: undefined } },
+    { kind: "seat", label: "seat", over: { kind: "seat", status: undefined } },
+  ];
+  for (const { kind, label, over } of cases) {
+    expectFinding(
+      run({ lines: [entry(1, { ...over, expires_at })] }),
+      new RegExp(`expires_at is not a field of ${kind}`),
+      `FIELDS-expiry-${label}`,
+    );
+  }
 });
 
 test("an unknown kind is FIELDS", () => {

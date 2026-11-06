@@ -24,6 +24,11 @@
  *             not marked unverified
  *   ARCHIVE   an archive file's last seq is not below the live file's first
  *
+ * A stamp already past is not a finding. The writer refuses one at write time,
+ * so a past `expires_at` on disk is a line that aged where it sits: the checker
+ * reads a file, not the moment the line was written, and a constraint's window
+ * closing is exactly what the field records.
+ *
  * Instrument B — currency. The newest outcome line's timestamp must not be
  * later than the newest journal entry's: a task closed with no journal entry
  * for it is the failure the journal exists to prevent. It reports STALE.
@@ -74,9 +79,17 @@ const { projectSlugFromCwd } = await loadDist(
 const KINDS = new Set(["intent", "decision", "outcome", "constraint", "seat"]);
 const STATUSES = new Set(["open", "waiting", "blocked", "done", "dropped", "superseded"]);
 const OPEN_STATUSES = new Set(["open", "waiting", "blocked"]);
+/** The kinds that may name when they stop applying: the two that describe a
+ *  window rather than a fact that already happened. */
+const EXPIRY_KINDS = new Set(["intent", "constraint"]);
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const PATH_LIKE = /^[\w.@/-]+\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx|json|jsonl|md|sh|ya?ml|toml|txt|py)$/;
+
+/** One test for both stamps the schema carries: the shape the writer emits and
+ *  a value `Date` can read. */
+const isStamp = (value) =>
+  typeof value === "string" && ISO_UTC.test(value) && !Number.isNaN(Date.parse(value));
 
 // ── Arguments ─────────────────────────────────────────────────────────────
 
@@ -140,7 +153,7 @@ function checkFields({ line, entry }) {
   if (typeof entry.text !== "string" || !entry.text.trim() || /[\r\n]/.test(entry.text)) {
     finding("FIELDS", `${where}: text must be one non-empty line`);
   }
-  if (typeof entry.at !== "string" || !ISO_UTC.test(entry.at) || Number.isNaN(Date.parse(entry.at))) {
+  if (!isStamp(entry.at)) {
     finding("TIME", `seq ${entry.seq}: at ${JSON.stringify(entry.at)} is not an ISO-8601 UTC timestamp`);
   }
   if (!entry.seat || typeof entry.seat !== "object" || Array.isArray(entry.seat)) {
@@ -179,11 +192,14 @@ function checkFields({ line, entry }) {
   if (entry.kind === "constraint") {
     if (entry.expires_at === null || entry.expires_at === undefined) {
       finding("FIELDS", `${where}: constraint without expires_at`);
-    } else if (
-      typeof entry.expires_at !== "string" ||
-      !ISO_UTC.test(entry.expires_at) ||
-      Number.isNaN(Date.parse(entry.expires_at))
-    ) {
+    } else if (!isStamp(entry.expires_at)) {
+      finding("TIME", `seq ${entry.seq}: expires_at ${JSON.stringify(entry.expires_at)} does not parse`);
+    }
+  } else if (EXPIRY_KINDS.has(entry.kind)) {
+    // Optional on an intent: the deadline is the moment the work stops being
+    // worth doing, and every handoff written before the field was admissible
+    // carries none, so its absence is a shape rather than a fault.
+    if (entry.expires_at !== null && entry.expires_at !== undefined && !isStamp(entry.expires_at)) {
       finding("TIME", `seq ${entry.seq}: expires_at ${JSON.stringify(entry.expires_at)} does not parse`);
     }
   } else if (entry.expires_at !== null && entry.expires_at !== undefined) {

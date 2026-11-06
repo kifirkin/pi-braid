@@ -14,6 +14,11 @@
  * output: the two programs are written apart on purpose, so their agreement is
  * a property worth asserting rather than assuming.
  *
+ * The intent deadline has its own section. The session-start pointer prints an
+ * intent's `expires_at` and calls it EXPIRED once it passes, so the field is
+ * one the writer must be able to produce; a stamp already past at write time
+ * names nothing a successor can act on, so that shape is refused.
+ *
  * Run: node test/runtime/journal/test-journal-append.mjs
  */
 
@@ -208,6 +213,83 @@ test("a constraint with a future expires_at is accepted, and the expiry lands in
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).expires_at, expiresAt);
+});
+
+// ── The window an intent may carry ────────────────────────────────────────
+//
+// An install handoff names an artifact and the command that installs it; the
+// moment it stops being worth running is part of that sentence, which is why
+// the pointer reads the field off open intents in the first place.
+
+test("an intent with a future expires_at is accepted, and the expiry lands in the line", () => {
+  const expiresAt = tomorrow();
+  const result = append(
+    intent({
+      subject: "handoff",
+      text: "A pending install that a successor either runs or closes before the deadline it names.",
+      expires_at: expiresAt,
+    }),
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const entry = JSON.parse(result.stdout);
+  assert.equal(entry.expires_at, expiresAt);
+  assert.equal(entry.kind, "intent");
+  assert.equal(entry.status, "open");
+});
+
+test("an intent with no expires_at is still accepted, and the line carries no such field", () => {
+  const result = append(intent({ subject: "undated" }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal("expires_at" in JSON.parse(result.stdout), false, "an absent deadline stays absent");
+});
+
+test("an intent whose expiry has already passed is refused", () => {
+  const result = append(intent({ subject: "late", expires_at: "2020-01-01T00:00:00Z" }));
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /expires_at .* is not in the future/);
+});
+
+test("an intent's expires_at must be ISO-8601 UTC", () => {
+  const result = append(intent({ subject: "shape", expires_at: "next Tuesday" }));
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /is not an ISO-8601 UTC timestamp/);
+});
+
+test("a decision with expires_at is refused", () => {
+  const result = append({
+    kind: "decision",
+    subject: "fixture",
+    text: "A decision has no window to lapse into, so the field is refused rather than dropped.",
+    reason: "A kind that carries no deadline is the whole rule: the writer decides, not the caller.",
+    evidence: ["README.md"],
+    expires_at: tomorrow(),
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /expires_at is not a field of decision/);
+});
+
+test("an outcome with expires_at is refused", () => {
+  const result = append({
+    kind: "outcome",
+    subject: "fixture",
+    text: "An outcome records what happened; nothing about it can still lapse.",
+    evidence: ["README.md"],
+    expires_at: tomorrow(),
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /expires_at is not a field of outcome/);
+});
+
+test("a seat with expires_at is refused", () => {
+  const result = append({
+    kind: "seat",
+    subject: "fixture",
+    text: "A seat entry names who is acting, and acting has no deadline to name.",
+    evidence: ["README.md"],
+    expires_at: tomorrow(),
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /expires_at is not a field of seat/);
 });
 
 // ── Supersession: the earlier line is never rewritten ─────────────────────

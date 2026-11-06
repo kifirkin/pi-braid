@@ -23,7 +23,12 @@
  * Field rules are the design's invariants made mechanical: kind determines
  * fields, so a decision without `reason`, a constraint without `expires_at`,
  * or an empty `evidence` list that is not flagged `unverified` is refused
- * before it is written. What the writer cannot judge — whether the sentence is
+ * before it is written. The window is the one optional field: `intent` and
+ * `constraint` are the two kinds that describe when they stop applying, the
+ * stamp is required on a constraint and optional on an intent, and every other
+ * kind refuses it -- while a stamp already past is refused on both, because a
+ * window that closed before the line was written names nothing a successor can
+ * still act on. What the writer cannot judge — whether the sentence is
  * intelligible to a seat that was not there — stays with the checker's reader
  * and the review.
  *
@@ -81,6 +86,10 @@ const { projectSlugFromCwd } = await loadDist(
 
 const KINDS = new Set(["intent", "decision", "outcome", "constraint", "seat"]);
 const STATUSES = new Set(["open", "waiting", "blocked", "done", "dropped", "superseded"]);
+/** The kinds that can name when they stop applying. Today this is also the pair
+ *  that carries `status`; the sets stay apart so a change to one does not hand
+ *  the other a field it never asked for. */
+const EXPIRY_KINDS = new Set(["intent", "constraint"]);
 const FIELDS = new Set([
   "seq",
   "at",
@@ -168,16 +177,17 @@ function validate(payload, { maxSeq, seqs, supersededBy, now }) {
   }
 
   const expiresAt = payload.expires_at ?? null;
-  if (kind === "constraint") {
-    if (expiresAt === null) refuse("constraint without expires_at");
+  if (!EXPIRY_KINDS.has(kind)) {
+    if (expiresAt !== null) refuse(`expires_at is not a field of ${kind}: kind determines fields`);
+  } else if (expiresAt === null) {
+    if (kind === "constraint") refuse("constraint without expires_at");
+  } else {
     if (typeof expiresAt !== "string" || !ISO_UTC.test(expiresAt)) {
       refuse(`expires_at ${JSON.stringify(expiresAt)} is not an ISO-8601 UTC timestamp`);
     }
     const when = Date.parse(expiresAt);
     if (Number.isNaN(when)) refuse(`expires_at ${JSON.stringify(expiresAt)} does not parse`);
     if (when <= now.getTime()) refuse(`expires_at ${expiresAt} is not in the future`);
-  } else if (expiresAt !== null) {
-    refuse(`expires_at is not a field of ${kind}: kind determines fields`);
   }
 
   const unverified = payload.unverified ?? false;
@@ -221,7 +231,7 @@ function validate(payload, { maxSeq, seqs, supersededBy, now }) {
     supersedes,
     seat: null, // filled by the writer, below
     ...(unverified ? { unverified: true } : {}),
-    ...(kind === "constraint" ? { expires_at: expiresAt } : {}),
+    ...(expiresAt !== null ? { expires_at: expiresAt } : {}),
   };
   return entry;
 }
