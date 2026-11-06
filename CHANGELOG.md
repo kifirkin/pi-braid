@@ -96,6 +96,30 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.29 (2026-11-06: the journal pointer names the intent that is still open)
+
+- **A line count cannot tell a pending install from forty closed outcomes.** The
+  session-start pointer was built from the number of journal lines, so a project
+  holding a handoff printed the same sentence as a project holding a finished
+  week. It now reads the journal, selects the entries whose `kind` is `intent`
+  and whose `status` is `open`, and names up to three of them with their age in
+  hours, `+N more open` beyond that, under a 480-character ceiling: the intent
+  whose `expires_at` has passed is printed as `EXPIRED` with the same age, and
+  the sentence asks for what ending it takes.
+
+- **Nothing open means nothing new, and a broken line is not a crash.** With no
+  open intent the pointer is byte-identical to the sentence the old code
+  produced, which the fixture asserts in full rather than by substring. A line
+  that is not JSON, an entry without `kind`, and an unparseable `expires_at` are
+  skipped, so a hand-edited journal still yields the count.
+
+- **Measured on a journal that already had handoffs waiting.** Against this
+  machine's own project journal the pointer printed three intents 72 hours old,
+  which is the class of thing the old sentence hid. Twelve fixtures cover the
+  named, expired, overflowing, closed-only and malformed cases; the planted
+  revert disables the selection and eight of them redden; the core chain reports
+  343 fixtures passed and placement reports 0 hits with 269 excluded.
+
 ## Core — 0.43.28 (2026-11-06: the queue is read from the registry, not remembered by the seat)
 
 - **A registry that records what a worker does but not where it sits in a queue
