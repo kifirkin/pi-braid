@@ -96,6 +96,26 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.31 (2026-11-06: an intent can name when it stops applying)
+
+- **The writer refused a field its reader already printed.** The session-start
+  pointer parses `expires_at` off an open intent and prints `EXPIRED` once it has
+  passed, while `journal-append` admitted the stamp on `constraint` only, so that
+  branch could fire on a hand-edited line and nowhere else. `intent` now carries
+  it optionally, through the same one-row set that keeps a constraint's window
+  required; every other kind keeps today's refusal, and a stamp at or before
+  write time is refused on both kinds, so a past stamp on disk can only be a line
+  that aged.
+- **The checker holds the same line.** `isStamp` (shape plus `Date.parse`) is one
+  predicate instead of three copies, a past stamp on an intent is not a finding,
+  an unparseable one still is, and the refactor changed no verdict on the live
+  journal.
+- **The signal needed no change and got none.** The discoverability fixture now
+  proves `EXPIRED` from a line the writer produced rather than from a hand-written
+  one. Twenty-five, twenty-six and thirteen journal cases green; the planted
+  revert reddens exactly the intent case and nothing else; placement reports zero
+  hits over 1092 files.
+
 ## Core — 0.43.30 (2026-11-06: the poller lock names the boot the way the kernel does)
 
 - **The boot identity no longer follows the clock.** `readBootIdentity()` read
