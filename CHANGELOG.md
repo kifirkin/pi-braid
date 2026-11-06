@@ -96,6 +96,22 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.32 (2026-11-06: the identity says what makes a sentence noise)
+
+- **Four rules, one of them a test.** The writing block now carries what the reader pays for: a
+  sentence with no fact, name, number or action is noise; never tell the reader why the previous
+  sentence matters; do not frame an ordinary thing as a revelation; when a concrete word and an
+  abstract one both fit, the concrete one is the claim.
+- **The catalogue lives in the skill, not the identity.** `tone-quality` names seven shapes — the
+  importance paragraph, the revelation frame, the empty intensifier, process narration, the dead
+  metaphor, the deleted actor, the clause chain — each with a before and an after drawn from our own
+  text, and a line on what the shape costs the reader. The identity stays English and generic; the
+  Russian patterns belong to the skill that owns them.
+- **An instrument counts them.** `check-voice.mjs` reports per file and per thousand words: hits by
+  pattern id, sentences past thirty words, sentences carrying no digit, name or quotation, the em-dash
+  rate and the mean sentence length. It exits 0 and stays advisory; a later release sets a threshold
+  with numbers rather than adjectives.
+
 ## Core — 0.43.31 (2026-11-06: an intent can name when it stops applying)
 
 - **The writer refused a field its reader already printed.** The session-start
