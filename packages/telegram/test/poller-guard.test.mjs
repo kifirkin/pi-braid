@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import telegramExtension, {
@@ -32,6 +32,7 @@ import {
   isPidAlive,
   POLLER_HEARTBEAT_INTERVAL_MS,
   POLLER_HEARTBEAT_STALE_MS,
+  readBootIdentity,
   readPollerLock,
   releasePollerLock,
   releaseHeldLockAtExit,
@@ -159,6 +160,151 @@ test("resolveSessionRole: unset/seat/other keep the seat default; 'worker' (any 
 test("isPidAlive: own pid alive, impossible pid dead", () => {
   assert.equal(isPidAlive(process.pid), true);
   assert.equal(isPidAlive(99999999), false); // beyond every real pid_max
+});
+
+// ── Boot identity: the kernel's name for the boot, not the clock's ─────────
+//
+// Ownership is decided from `hostname:bootIdentity`, and the kernel offers
+// three names of which only two are set once per boot: /proc boot_id and
+// kern.bootsessionuuid. kern.boottime is the wall clock minus uptime, so a
+// clock step renames the boot under a running process and every same-instance
+// arm becomes unreachable. The probes are injected here, so a fixture can offer
+// a stable boot-session id beside two drifting boottime readings and observe
+// which source the identity took.
+
+const BOOT_SESSION_UUID = "A2F478FA-7864-406D-9A4E-484D555A2166";
+const BOOTTIME_BEFORE =
+  "{ sec = 1793526081, usec = 327947 } Sun Nov  1 12:41:21 2026";
+const BOOTTIME_AFTER =
+  "{ sec = 1793526079, usec = 405286 } Sun Nov  1 12:41:19 2026";
+
+/** Probes shaped like a darwin host: no procfs, sysctl answers both names. */
+function darwinProbes({ bootSessionUuid, boottime }) {
+  return {
+    readProcBootId: () => undefined,
+    readSysctl: (name) => {
+      if (name === "kern.bootsessionuuid") return bootSessionUuid;
+      if (name === "kern.boottime") return boottime;
+      return undefined;
+    },
+  };
+}
+
+/** The identity a process composes, spelled as resolveInstanceId spells it. */
+function instanceIdOf(probes) {
+  return `${hostname()}:${readBootIdentity(probes)}`;
+}
+
+test("boot identity: a clock step does not rename the boot, so two readings resolve to one identity", () => {
+  const before = instanceIdOf(
+    darwinProbes({
+      bootSessionUuid: BOOT_SESSION_UUID,
+      boottime: BOOTTIME_BEFORE,
+    }),
+  );
+  const after = instanceIdOf(
+    darwinProbes({
+      bootSessionUuid: BOOT_SESSION_UUID,
+      boottime: BOOTTIME_AFTER,
+    }),
+  );
+  assert.equal(before, `${hostname()}:${BOOT_SESSION_UUID}`);
+  assert.equal(
+    after,
+    `${hostname()}:${BOOT_SESSION_UUID}`,
+    "the boot keeps the name the kernel gave it, whatever the clock did",
+  );
+  assert.equal(before, after);
+});
+
+test("boot identity: kern.boottime answers only when the boot session id is unreadable, and the identity then follows the clock", () => {
+  const before = darwinProbes({ boottime: BOOTTIME_BEFORE });
+  const after = darwinProbes({ boottime: BOOTTIME_AFTER });
+  assert.equal(readBootIdentity(before), BOOTTIME_BEFORE);
+  assert.equal(readBootIdentity(after), BOOTTIME_AFTER);
+  assert.notEqual(
+    instanceIdOf(before),
+    instanceIdOf(after),
+    "the last-resort source is the documented degradation: it is not stable across a clock step",
+  );
+});
+
+test("boot identity: a mounted procfs boot id outranks sysctl", () => {
+  assert.equal(
+    readBootIdentity({
+      readProcBootId: () => "0f3a6a8e-2f9a-4d5e-9a1c-6b8f0f2b3c4d\n",
+      readSysctl: (name) =>
+        name === "kern.bootsessionuuid" ? BOOT_SESSION_UUID : BOOTTIME_BEFORE,
+    }),
+    "0f3a6a8e-2f9a-4d5e-9a1c-6b8f0f2b3c4d",
+    "where the kernel names its own boot, that name wins and is kept to the last readable character",
+  );
+});
+
+test("boot identity: the recorded fallback when the kernel offers no name at all", () => {
+  assert.equal(
+    readBootIdentity({
+      readProcBootId: () => undefined,
+      readSysctl: () => undefined,
+    }),
+    "boot-unknown",
+  );
+  assert.equal(
+    readBootIdentity({ readProcBootId: () => "  ", readSysctl: () => "" }),
+    "boot-unknown",
+    "an empty read names no boot, so it falls through to the fallback",
+  );
+  assert.equal(
+    readBootIdentity({
+      readProcBootId: () => {
+        throw new Error("no procfs");
+      },
+      readSysctl: () => {
+        throw new Error("no sysctl");
+      },
+    }),
+    "boot-unknown",
+    "a probe that throws read nothing, and is not a reason to fail the acquisition",
+  );
+});
+
+test("lock acquire: a same-boot handover keeps the same-instance arm, so a live holder refuses as held-same-instance", () => {
+  const path = tmpLockFile("identity-handover");
+  const clock = fixedClock();
+  // Two seats on one boot, separated by the clock step that moved boottime. A
+  // pid on one boot is evidence on the other, so the refusal has to be the
+  // same-instance one; the cross-namespace arm says the pid means nothing here.
+  const holderInstance = instanceIdOf(
+    darwinProbes({
+      bootSessionUuid: BOOT_SESSION_UUID,
+      boottime: BOOTTIME_BEFORE,
+    }),
+  );
+  const acquirerInstance = instanceIdOf(
+    darwinProbes({
+      bootSessionUuid: BOOT_SESSION_UUID,
+      boottime: BOOTTIME_AFTER,
+    }),
+  );
+  writeLock(path, {
+    pid: OTHER_PID,
+    startedAt: CLOCK - 4_000,
+    instanceId: holderInstance,
+    heartbeatAt: CLOCK - 500,
+    role: "seat",
+  });
+  const res = acquirePollerLock(
+    path,
+    { pid: process.pid, instanceId: acquirerInstance },
+    { now: clock.now, pidAlive: (pid) => pid === OTHER_PID },
+  );
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, "held-same-instance");
+  assert.equal(res.holder.pid, OTHER_PID);
+  assert.match(
+    describeLockReason(res.reason, path),
+    /a live process on this instance holds it/,
+  );
 });
 
 // ── Acquisition arms: identity and heartbeat, not a bare pid ───────────────

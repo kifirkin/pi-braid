@@ -48,7 +48,7 @@ export const POLLER_HEARTBEAT_STALE_MS = 30_000;
  */
 const LEGACY_PID_REUSE_SLACK_MS = 60_000;
 
-/** Boot identity recorded when neither the kernel id nor sysctl is readable. */
+/** Boot identity recorded when the kernel offers no readable name at all. */
 const BOOT_IDENTITY_FALLBACK = "boot-unknown";
 
 /** Default lock location: beside the other braid-owned telegram state
@@ -178,30 +178,78 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
-/**
- * The kernel's boot identity: `/proc/sys/kernel/random/boot_id` where the proc
- * filesystem is mounted, `sysctl -n kern.boottime` on darwin, and a recorded
- * fallback when neither is readable. A fallback is deliberate rather than a
- * guess: two boots that both fall back and share a hostname look identical,
- * which the heartbeat then has to cover.
- */
-function readBootIdentity(): string {
+/** Injectable kernel probes for the boot identity. Each returns the raw text
+ *  its source offers, or undefined when that source is unreadable here. */
+export interface BootIdentityProbes {
+  /** Contents of `/proc/sys/kernel/random/boot_id`, where procfs is mounted. */
+  readProcBootId?: () => string | undefined;
+  /** `sysctl -n <name>` on this host. */
+  readSysctl?: (name: string) => string | undefined;
+}
+
+/** The Linux kernel's own name for the boot. Absent where procfs is not mounted
+ *  in this namespace. */
+function readProcBootIdFile(): string | undefined {
   try {
-    const proc = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
-    if (proc) return proc;
+    return readFileSync("/proc/sys/kernel/random/boot_id", "utf8");
   } catch {
-    // Not Linux, or /proc not mounted in this namespace.
+    return undefined;
   }
+}
+
+/** One `sysctl -n <name>` read: undefined when the name does not exist on this
+ *  platform or sysctl refuses. */
+function runSysctl(name: string): string | undefined {
   try {
-    const sysctl = execFileSync("sysctl", ["-n", "kern.boottime"], {
+    return execFileSync("sysctl", ["-n", name], {
       encoding: "utf8",
       timeout: 2000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (sysctl) return sysctl;
+    });
   } catch {
-    // Absent on this platform, or sysctl refused.
+    return undefined;
   }
+}
+
+/** A probe's answer names a boot only when it carries text: an empty read falls
+ *  through to the next source. */
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * The kernel's boot identity, in the order the kernel can be trusted to keep it.
+ * `/proc/sys/kernel/random/boot_id` is written once per boot and is free where
+ * procfs exists; `kern.bootsessionuuid` is darwin's name for the same fact.
+ * `kern.boottime` is the wall clock minus uptime, so a clock step moves it and
+ * two processes on one boot then compute different identities: it stays only as
+ * the last resort, a documented degradation rather than the darwin default. The
+ * recorded fallback covers a kernel that offers none of the three; two boots
+ * that both fall back and share a hostname look identical, which the heartbeat
+ * then has to cover.
+ *
+ * Probes are injected so a fixture can answer for two readings of one boot and
+ * observe which source the identity took. The live path passes none and reads
+ * this machine.
+ */
+export function readBootIdentity(probes: BootIdentityProbes = {}): string {
+  const readProc = probes.readProcBootId ?? readProcBootIdFile;
+  const sysctl = probes.readSysctl ?? runSysctl;
+  const probe = (read: () => string | undefined): string | undefined => {
+    try {
+      return nonEmpty(read());
+    } catch {
+      // A probe that throws did not read its source.
+      return undefined;
+    }
+  };
+  const kernelId = probe(readProc);
+  if (kernelId) return kernelId;
+  const sessionUuid = probe(() => sysctl("kern.bootsessionuuid"));
+  if (sessionUuid) return sessionUuid;
+  const bootTime = probe(() => sysctl("kern.boottime"));
+  if (bootTime) return bootTime;
   return BOOT_IDENTITY_FALLBACK;
 }
 
