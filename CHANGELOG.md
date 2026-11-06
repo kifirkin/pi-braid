@@ -96,6 +96,24 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.30 (2026-11-06: the poller lock names the boot the way the kernel does)
+
+- **The boot identity no longer follows the clock.** `readBootIdentity()` read
+  `sysctl -n kern.boottime`, which is the wall clock minus uptime; a two-second
+  clock step renamed the boot under a running process, so a mastership handover
+  between two processes on one boot was refused as `held-across-namespace`. The
+  order is now `/proc/sys/kernel/random/boot_id`, then `kern.bootsessionuuid`
+  (darwin's name for the same fact), then `kern.boottime` only as a documented
+  last resort, then the recorded fallback.
+- **The read is injectable**, so a fixture can hand two differing boottime
+  readings and one stable boot-session id and observe which source the identity
+  took. Five cases pin the stability across a clock step, the boottime
+  degradation, the procfs precedence, the fallback, and the same-instance arm
+  the incident needed: a live holder on this boot now refuses as
+  `held-same-instance` instead of being judged foreign.
+- **The acquisition arms, the reason vocabulary and the heartbeat rule are
+  unchanged**; the change is confined to the function that names the boot.
+
 ## Core — 0.43.29 (2026-11-06: the journal pointer names the intent that is still open)
 
 - **A line count cannot tell a pending install from forty closed outcomes.** The
