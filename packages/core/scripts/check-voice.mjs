@@ -70,7 +70,7 @@ const PATTERNS = [
       /(?<![\p{L}])это\s+важно\s+(?:потому|ведь|для)(?![\p{L}])/iu,
       /\bwhy\s+(?:this|it)\s+matters\b/i,
       /\bit(?:'s| is)\s+important\s+to\s+note\b/i,
-      /^[\s>*_#"'(\[-]*(?:why\s+(?:this|it)\s+matters|the\s+importance|почему\s+это\s+важно)\b/im,
+      /^[\s>*_#"'( [-]*(?:why\s+(?:this|it)\s+matters|the\s+importance|почему\s+это\s+важно)\b/im,
     ],
   },
   {
@@ -93,9 +93,9 @@ const PATTERNS = [
     id: "process-narration",
     cost: "walks through the steps the instrument takes, or the author took, where the result belonged",
     regexes: [
-      /^[\s>*_#"'\[(-]*it\s+(?:reads|walks|prints|emits|counts|writes|returns|compares|parses|scans)\b/im,
-      /^[\s>*_#"'\[(-]*(?:then\s+|first,?\s+|next,?\s+|finally,?\s+)?(?:i|we)\s+(?:then\s+)?(?:ran|run|read|opened|grepped|checked|compared|wrote|edited|reran|re-ran|built|installed|pasted|scanned|counted|measured)\b/im,
-      /^[\s"'«„“\[(-]*(?:я|мы)\s+(?:запустил|запустили|прочитал|прочитали|открыл|открыли|сравнил|сравнили|проверил|проверили)(?![\p{L}])/imu,
+      /^[\s>*_#"'[(-]*it\s+(?:reads|walks|prints|emits|counts|writes|returns|compares|parses|scans)\b/im,
+      /^[\s>*_#"'[(-]*(?:then\s+|first,?\s+|next,?\s+|finally,?\s+)?(?:i|we)\s+(?:then\s+)?(?:ran|run|read|opened|grepped|checked|compared|wrote|edited|reran|re-ran|built|installed|pasted|scanned|counted|measured)\b/im,
+      /^[\s"'«„“[(-]*(?:я|мы)\s+(?:запустил|запустили|прочитал|прочитали|открыл|открыли|сравнил|сравнили|проверил|проверили)(?![\p{L}])/imu,
     ],
   },
   {
@@ -286,7 +286,7 @@ function sentencesOf(text) {
     if (!/^\s/.test(rest)) continue;
     const opening = rest.replace(/^\s+/, "");
     if (!opening) break;
-    if (!/^["'«„”“(\[]?[\p{Lu}\p{N}]/u.test(opening)) continue;
+    if (!/^["'«„”“([]?[\p{Lu}\p{N}]/u.test(opening)) continue;
     const head = text.slice(start, i + 1);
     if (ABBREVIATION.test(head)) continue;
     if (head.trim()) out.push(head.trim());
