@@ -96,6 +96,37 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.28 (2026-11-06: the queue is read from the registry, not remembered by the seat)
+
+- **A registry that records what a worker does but not where it sits in a queue
+  makes the seat the queue.** The entry now carries `priority` (lower runs
+  sooner, unranked last) and `dependsOn`, admission refuses an unknown id, a
+  self-dependency and an edge that would close a loop (the refusal prints the
+  loop), and `update-worker` may move a rank but never a dependency, because a
+  worker that gains a dependency after it started is a second unit of work
+  wearing the first one's id.
+
+- **`blocked` is computed, never stored.** A row waiting on an id that has not
+  delivered reports `blocked` with the blocking ids named, while the stored
+  lifecycle status is reported beside it and never overwritten. Satisfaction is
+  `merged` or `completed` and nothing else: a worker that closed, errored,
+  stalled or was caught false-done did not deliver the thing the next one waits
+  for. A closed row still satisfies its dependents, so the listing reads
+  satisfaction against the whole registry before it filters.
+
+- **The listing is actionable order and the old registry still loads.** Rows
+  with no unsatisfied dependency come first by rank, ties by admission time and
+  id, and blocked rows follow with a `blocked-by:` marker. A registry written by
+  0.43.27 has neither field, normalizes to unranked and wait-free on read, and
+  writes nothing back.
+
+- **Measured before the merge.** 17 fixtures in the new file, red and green
+  around every refusal; the planted revert disables cycle detection and two of
+  them redden; the core chain reports 343 fixtures passed; placement reports 0
+  hits with 269 excluded; and the satisfaction rule was re-derived outside the
+  suite on one registry built by hand, where a dependency in `closed`, `error`,
+  `stalled` or `false-done` blocks its dependent and `merged` releases it.
+
 ## Core — 0.43.27 (2026-11-05: the ship list stays as it was, and a dropped promise is a failed gate)
 
 - **A case nobody listens to is not a passing case.** Half the fixtures here
