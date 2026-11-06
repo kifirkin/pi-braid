@@ -177,6 +177,7 @@ Text to improve?
 | Self-description   | "I am the kind of agent who..."                | Remove. The model is not defined by its output.            |
 | Growth arc         | "Previously I struggled with X, now I do Y"    | Remove. Past failures don't strengthen current procedures. |
 | Narrative framing  | "Let me think about why this matters"          | Cut to the matter itself.                                  |
+
 ---
 
 ## 6. The Failure Catalogue
