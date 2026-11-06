@@ -177,3 +177,52 @@ Text to improve?
 | Self-description   | "I am the kind of agent who..."                | Remove. The model is not defined by its output.            |
 | Growth arc         | "Previously I struggled with X, now I do Y"    | Remove. Past failures don't strengthen current procedures. |
 | Narrative framing  | "Let me think about why this matters"          | Cut to the matter itself.                                  |
+---
+
+## 6. The Failure Catalogue
+
+Seven shapes that make a sentence sound certain while carrying nothing. Each has a name, what it costs the reader, one before taken from this repository's own artifacts, and the after that answers it. When a paragraph fails Dimension 5 and the reason will not name itself, find its shape here and apply the pair.
+
+The Russian spellings are the names these shapes are said in; the failure is the same in both languages. `packages/core/scripts/check-voice.mjs` in the repository counts them per 1000 words. It is a repository tool and does not ship in the package.
+
+1. **The importance paragraph** («Почему это важно», "why this matters", "the importance of").
+   Cost: the label tells the reader what to feel before the fact arrives, so the fact has to work twice, once as information and once as evidence for the label.
+   before: **Why it matters**: the catalog is the artifact a reader trusts to know what a seat can do; today it is complete in the direction that matters (no declared tool is missing) and incomplete in the other (19 live tools are undocumented there).
+   after: The catalog is missing 19 live tools and declares none that does not exist. That is a documentation gap, not a wiring defect.
+   source: a review of the tool catalog, the row it opens with.
+
+2. **The revelation frame** («это не просто X, это Y»).
+   Cost: the setup spends a clause on the version of the story that did not happen, so the reader pays for a drumroll and the fact arrives late.
+   before: the injected message is not merely polished late, it never enters the session.
+   after: The injected message never enters the session: the handler chain stops before anything is queued, so the polisher has nothing to polish.
+   source: a review of the input polisher, the root-cause section.
+
+3. **The empty intensifier** («абсолютно», «принципиально», «во многом изменились»).
+   Cost: the degree word stands where a magnitude belongs, so the reader learns the direction and not the size.
+   before: with synthesized contract-driven packages, subagents win significantly.
+   after: with synthesized contract-driven packages, subagents win on every model in the paper's comparison; the margins are in its figures, which I did not extract.
+   source: a research report on subagent context isolation, its claim row.
+
+4. **Process narration of the tool** ("it reads X and emits Y", "first I ran the check, then I read the table").
+   Cost: the steps take the stage and the guarantee the reader came for ends up in a parenthesis or missing.
+   before: It reads telemetry that already exists - no new runtime code required - and emits a per-skill usage table.
+   after: No new runtime code is needed: the table is per skill, computed from telemetry already on disk.
+   source: `packages/core/skills/skill-usage/SKILL.md`.
+
+5. **The metaphor that explains nothing** ("the engine of", "the backbone of", "at the heart of").
+   Cost: the picture is carried instead of the mechanism, so the reader remembers the image and still cannot say how the thing works.
+   before: Schopenhauer's Incongruity: The Engine of Wit
+   after: Schopenhauer's Incongruity: Why a Mismatch Lands
+   source: `packages/skills/skills/_shared/engagement-fundamentals.md`, its Schopenhauer heading.
+
+6. **The clause chain past thirty words**.
+   Cost: the reader holds the subject across two clauses and a parenthesis, and by the end cannot say which thing changed.
+   before: The token that disappears from the release path is the owner's NPM_TOKEN environment variable; it lives outside the repo, so the repo change is only the removal of its last consumer (the manual npm publish step in the two docs).
+   after: The token that leaves the release path is NPM_TOKEN, an environment variable outside the repo. Inside the repo the change is the removal of its last consumer: the manual npm publish step in the two docs.
+   source: a report on moving publication to OIDC, its findings section.
+
+7. **The sentence whose actor was deleted** («было принято решение»).
+   Cost: nobody can be asked who decided, on what evidence, or when, so the claim arrives as weather instead of as a decision.
+   before: The new fixture pins the contract, and it was made to fail before it was trusted.
+   after: The new fixture pins the contract. The pre-fix run reddens its two pool assertions and prints the timings that explain the failure: 2,278ms for the pair against 2,188ms of summed file duration.
+   source: `CHANGELOG.md`, the pool entry.
