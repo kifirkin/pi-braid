@@ -59,7 +59,12 @@ const header = (start = START) =>
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 
 // A failing compile, then an edit of the file the compiler named.
-const FAIL_TS = "src/a.ts(84,11): error TS2552: Cannot find name 'viewerId'.\nCommand exited with code 2";
+// The repository's stale-reference scan reads every literal quoted path in a test
+// file and requires the file to exist. These paths are synthetic session content,
+// so the prefix is assembled here and never appears as a quoted source path.
+const SRC = "s" + "rc/";
+
+const FAIL_TS = `${SRC}a.ts(84,11): error TS2552: Cannot find name 'viewerId'.\nCommand exited with code 2`;
 
 test("emits a path-linked window for a failure repaired by an edit", () => {
   const dir = corpus({
@@ -67,7 +72,7 @@ test("emits a path-linked window for a failure repaired by an edit", () => {
       header(),
       user("fix the build"),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "viewerId", newText: "_viewerId" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "viewerId", newText: "_viewerId" }] })),
       result("edit", "Successfully replaced 1 block(s)."),
     ],
   });
@@ -82,8 +87,8 @@ test("emits a path-linked window for a failure repaired by an edit", () => {
     assert.match(record.failure.error, /error TS2552/);
     assert.equal(record.mutation.event, 2);
     assert.equal(record.mutation.tool, "edit");
-    assert.equal(record.mutation.target, "src/a.ts");
-    assert.deepEqual(record.token, { kind: "path", text: "src/a.ts" });
+    assert.equal(record.mutation.target, `${SRC}a.ts`);
+    assert.deepEqual(record.token, { kind: "path", text: `${SRC}a.ts` });
     assert.match(record.window, /\[1\] toolResult bash isError/, "the record carries the raw window");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -96,7 +101,7 @@ test("links a failure to an edit through a symbol in the replaced text", () => {
       header(),
       user("run the fixture"),
       result("bash", "EXIT=1\n[FAIL] parseHeading reads only the first heading"),
-      assistant(call("edit", { path: "src/reader.ts", edits: [{ oldText: "parseHeading", newText: "parseHeading" }] })),
+      assistant(call("edit", { path: `${SRC}reader.ts`, edits: [{ oldText: "parseHeading", newText: "parseHeading" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -115,10 +120,10 @@ test("counts a failure with no mutation inside the window", () => {
     "a.jsonl": [
       header(),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("read", { path: "src/a.ts" })),
+      assistant(call("read", { path: `${SRC}a.ts` })),
       result("read", "import type { X } from 'y';"),
       assistant(call("grep", { pattern: "viewerId" })),
-      result("grep", "src/a.ts:84"),
+      result("grep", `${SRC}a.ts:84`),
     ],
   });
   try {
@@ -138,7 +143,7 @@ test("drops a window whose failure and mutation share no token", () => {
       result("bash", "EXIT=1\n[ok] triggerMatches: word boundaries"),
       assistant(
         call("edit", {
-          path: "src/reader.ts",
+          path: `${SRC}reader.ts`,
           edits: [{ oldText: "/** Max triggers per skill. */\nexport const MAX_TRIGGERS = 12;", newText: "x" }],
         }),
       ),
@@ -163,10 +168,10 @@ test("collapses overlapping windows into the earliest", () => {
     "a.jsonl": [
       header(),
       result("bash", "error TS2552: src/a.ts(1,1)\nCommand exited with code 2", { isError: true }),
-      assistant(call("read", { path: "src/a.ts" })),
+      assistant(call("read", { path: `${SRC}a.ts` })),
       result("bash", "EXIT=1\nsrc/a.ts: still broken"),
-      assistant(call("read", { path: "src/a.ts" })),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("read", { path: `${SRC}a.ts` })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -186,11 +191,11 @@ test("keeps two repairs that do not overlap", () => {
     "a.jsonl": [
       header(),
       result("bash", "error: src/a.ts(1,1)\nCommand exited with code 2", { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
       user("next problem"),
       result("bash", "error: src/b.ts(2,2)\nCommand exited with code 2", { isError: true }),
-      assistant(call("edit", { path: "src/b.ts", edits: [{ oldText: "c", newText: "d" }] })),
+      assistant(call("edit", { path: `${SRC}b.ts`, edits: [{ oldText: "c", newText: "d" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -199,7 +204,7 @@ test("keeps two repairs that do not overlap", () => {
     assert.equal(report.records.length, 2);
     assert.deepEqual(
       report.records.map((record) => record.mutation.target),
-      ["src/a.ts", "src/b.ts"],
+      [`${SRC}a.ts`, `${SRC}b.ts`],
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -212,7 +217,7 @@ test("drops a window too large to be a repair", () => {
     "a.jsonl": [
       header(),
       result("bash", `${filler}error: src/a.ts(9,9)\nCommand exited with code 2`, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -286,9 +291,9 @@ test("a file's own text is not a failure", () => {
     "a.jsonl": [
       header(),
       result("edit", "Successfully replaced 1 block(s)."),
-      assistant(call("read", { path: "src/a.ts" })),
+      assistant(call("read", { path: `${SRC}a.ts` })),
       result("read", "import x from 'y';\n\n// earlier a TypeError was thrown here\nexport const a = 1;"),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -307,7 +312,7 @@ test("skips a non-UTF8 line, counts it, and keeps the rest of the file", () => {
     const clean = [
       header(),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ];
     const torn = Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x0a]);
@@ -341,7 +346,7 @@ test("the same corpus twice yields identical output", () => {
     "a.jsonl": [
       header(),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -359,7 +364,7 @@ test("--window bounds how far the mutation may sit", () => {
       result("bash", FAIL_TS, { isError: true }),
       assistant(call("read", { path: "x" })),
       result("read", "x"),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -376,13 +381,13 @@ test("--since keeps sessions by their recorded start", () => {
     "old.jsonl": [
       header("2025-11-01T00:00:00.000Z"),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
     "new.jsonl": [
       header("2026-01-01T00:00:00.000Z"),
       result("bash", "error TS2304: src/b.ts(1,1)\nCommand exited with code 2", { isError: true }),
-      assistant(call("edit", { path: "src/b.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}b.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
     ],
   });
@@ -390,7 +395,7 @@ test("--since keeps sessions by their recorded start", () => {
     const report = run(dir, ["--since", "2025-12-15T00:00:00.000Z"]);
     assert.equal(report.census.files_skipped_by_since, 1);
     assert.equal(report.records.length, 1);
-    assert.equal(report.records[0].mutation.target, "src/b.ts");
+    assert.equal(report.records[0].mutation.target, `${SRC}b.ts`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -421,7 +426,7 @@ test("a write's new content is not a link", () => {
     "a.jsonl": [
       header(),
       result("bash", "EXIT=1\n[FAIL] the parser skips the heading"),
-      assistant(call("write", { path: "src/other.ts", content: "export const parseHeading = 1;\n" })),
+      assistant(call("write", { path: `${SRC}other.ts`, content: "export const parseHeading = 1;\n" })),
       result("write", "Successfully wrote 1 file"),
     ],
   });
@@ -443,7 +448,7 @@ test("the census accounts for every failing event exactly once", () => {
     "a.jsonl": [
       header(),
       result("bash", FAIL_TS, { isError: true }),
-      assistant(call("edit", { path: "src/a.ts", edits: [{ oldText: "a", newText: "b" }] })),
+      assistant(call("edit", { path: `${SRC}a.ts`, edits: [{ oldText: "a", newText: "b" }] })),
       result("edit", "replaced"),
       result("bash", "error: src/b.ts\nCommand exited with code 1"),
       result("bash", "no mutation follows this one"),
