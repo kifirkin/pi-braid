@@ -61,6 +61,7 @@
 import { globSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { TextDecoder } from "node:util";
 
 /** Events after a failure in which its mutation may sit. */
 const DEFAULT_WINDOW = 8;
