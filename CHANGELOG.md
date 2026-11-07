@@ -96,6 +96,17 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.34 (2026-11-07: a receipt that names a session file must name one that exists)
+
+- **A close receipt is meant to be re-runnable, and a hand-typed path is not.** Three closes in one
+  day recorded a session path that had never existed; the string looked exactly like the real thing and
+  nothing but a reader noticed. The close-gate reader gains predicate (e): a row that names a `.jsonl`
+  file which is not on disk is refused with the path, in shadow mode as a logged line and in enforce
+  mode before any write. Outputs a step produces are not references and are not judged, so a command
+  that creates a file is untouched.
+- **The recorded instance joins the pinned table**, with its repaired form naming the path through the
+  variable the operator actually has.
+
 ## Core — 0.43.33 (2026-11-07: a refusal that names the cell moves the model, not the key)
 
 - **The serving cell's capacity is a fact about the model, not about a credential.** Two refusals —
