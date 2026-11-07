@@ -41,9 +41,17 @@ runtime provides pi-ai at runtime - it's not bundled here.
   renaming breaks users silently. The generic key-ring plumbing
   is provider-agnostic; tests may register synthetic routes via
   `registerRoute`. The ordered route table (`braid.providers.routes`) is the
-  single source of rotation order: on a ring death the engine in
-  ring-lifecycle.ts walks it and engages the first route that is not the dead
-  one, has a usable key, and can serve the dead turn's model id. With no
+  single source of rotation order, and the walk is consulted per failure
+  CLASS, never per ring health: a `key` death exhausts the active key and then
+  engages the first route that is not the dead one, has a usable key, and can
+  serve the dead turn's model id, while a `shape` (request rejected), `waf`
+  (edge block) or `capacity` (serving cell full) death reaches the same walk
+  with the ring untouched. `capacity` is tested before `key`, so no status or
+  quota idiom riding on the cell's sentence can turn it into a credential
+  death; it engages the SAME logical model id through the candidate route's
+  `models` map. Recorded deaths: `request-shape` per (route, model id, status)
+  for the probe window, and `model-capacity` per model id for its own short
+  bound (`MODEL_CAPACITY_FRESHNESS_MS`, minutes - a full cell recovers). With no
   `routes` key the default pair (`agent-zero`, `venice-direct`) applies.
 - **One key source per route.** Every route in the table resolves its key from its own ring. A route this
   package builds itself (`agent-zero`, `venice-direct`) does so by construction; a route served by pi-ai's own
