@@ -96,6 +96,22 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.35 (2026-11-08: a merge report that leads with its own verdict)
+
+- **Two paths merged nothing and told a reader two different stories.** The refusal family opened with
+  `NOT merged:` while the already-contained path opened by naming the worker and buried "Nothing merged"
+  mid-sentence, under a `(deleted)` line and a diff summary that follows every outcome. A seat read that
+  block as a completion and had merged nothing. Every outcome now opens with one of three tokens —
+  `MERGED:`, `NOTHING merged:`, `NOT merged:` — across all eighteen return sites, so the first line says
+  which of the three happened.
+- **A no-op names where the work actually is.** When the named branch's tip is the base itself, the report
+  reads every other `worker/<id>/*` branch and names any that carries a commit the base does not hold,
+  with its tip and the command that merges it. That is the shape a split branch leaves behind: the
+  registry row keeps the branch the tool created, the work landed on one the seat made by hand.
+- **Three outcomes, three tokens, one vocabulary**, held by the verify-and-merge verdict fixture: the
+  split-branch no-op, the refusal, and a fast-forward twelve commits ahead that must still report
+  `MERGED:` first.
+
 ## Core — 0.43.34 (2026-11-07: a receipt that names a session file must name one that exists)
 
 - **A close receipt is meant to be re-runnable, and a hand-typed path is not.** Three closes in one
