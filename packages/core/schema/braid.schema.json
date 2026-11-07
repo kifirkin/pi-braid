@@ -433,13 +433,13 @@
             "fallback": {
               "description": "Legacy fallback provider/model on a ring death; inert when routes are set.",
               "type": "object",
-              "x-source": "packages/providers/ring-lifecycle.ts:559"
+              "x-source": "packages/providers/ring-lifecycle.ts:578"
             },
             "lastResort": {
               "default": {},
               "description": "Legacy source→leg provider map for dead rings; inert when routes are set.",
               "type": "object",
-              "x-source": "packages/providers/ring-lifecycle.ts:561"
+              "x-source": "packages/providers/ring-lifecycle.ts:580"
             },
             "outage": {
               "properties": {
@@ -492,12 +492,12 @@
               "default": 900000,
               "description": "How long a recorded route death or probe verdict stays in force; 0 or a negative value is the explicit off switch.",
               "type": "number",
-              "x-source": "packages/providers/ring-lifecycle.ts:555"
+              "x-source": "packages/providers/ring-lifecycle.ts:574"
             },
             "routes": {
               "description": "Ordered provider route table; the only registration-order source when set.",
               "type": "array",
-              "x-source": "packages/providers/ring-lifecycle.ts:554"
+              "x-source": "packages/providers/ring-lifecycle.ts:573"
             }
           },
           "type": "object"
