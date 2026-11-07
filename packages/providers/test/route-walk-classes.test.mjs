@@ -44,6 +44,16 @@
  *      route (the incident: a turn on opencode-go's own dotted id, with the agent-zero
  *      gateway the one healthy route able to serve it). The failing route's
  *      request-shape death is recorded even when the plan finds no candidate.
+ *   9. Capacity refusal (capacity class). A cell-capacity answer
+ *      ("prefill_cap_refused ... the cell is at capacity") is a fact about the
+ *      model id, not about a key: no ring counter and no key-ring state file
+ *      moves, the walk engages a sibling route serving the SAME logical model
+ *      through that route's `models` map, and the refusing route records a
+ *      `model-capacity` death. That death passes a route over for the same
+ *      model id only, for its own short bound, and the no-candidate path names
+ *      the fact (the id, the bound, the untouched ring) instead of a credential.
+ *      The 403-wrapped form is in the same fixture: a status the key predicate
+ *      claims must not outrank the sentence.
  *
  * Harness (the pattern rotation-engine.test.mjs establishes): the REAL modules
  * (ring-lifecycle, key-ring, log, route-state) are compiled with the package's
@@ -885,6 +895,351 @@ async function run() {
           readRouteStateDisk()?.routes?.["oc-inert"]?.deathModelId === dotted &&
           readRouteStateDisk()?.routes?.["oc-inert"]?.deathStatus === 400,
         JSON.stringify(readRouteStateDisk()?.routes?.["oc-inert"]),
+      );
+    }
+
+    // ── Capacity refusal: the model id moves, every key counter stays put ──
+    // The morning's two failures, replayed. The cell answers its own refusal
+    // ("prefill_cap_refused … the cell is at capacity") for the model id the
+    // turn is on; the sibling route serves the SAME logical model under its own
+    // spelling, reached through its `models` map. Nothing about a key is at
+    // fault, so both rings are held to the counters and the state files they
+    // started with, on every path below, and the numbers are printed.
+    {
+      const logical = "deepseek-v4-1-flash";
+      const siblingId = "deepseek-v4.1-flash";
+      // The section owns its clock: an earlier case leaves `nowMs` advanced, and
+      // the bound check below reads a death recorded in this section.
+      nowMs = NOW;
+      const CAP_REFUSAL =
+        "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)";
+      // The status in front of the sentence is the gateway's, not the fact's:
+      // the same refusal arrives 429 on one edge and 403 on another.
+      const capacityEvent = (provider, model, status) =>
+        deathEvent(provider, model, `${status}: ${CAP_REFUSAL}`);
+
+      process.env.CAP_AZ_KEY = "cap-az-key-0";
+      process.env.CAP_OG_KEY = "cap-og-key-0";
+      rl.registerRoute({
+        providerId: "agent-zero",
+        keys: "CAP_AZ_KEY",
+        modelIds: [logical],
+        models: { [siblingId]: logical },
+        ring: keyRing.createKeyRing({
+          prefix: "CAP_AZ_KEY",
+          stateFile: "agent-zero",
+          healthInRotationInfo: true,
+        }),
+      });
+      rl.registerRoute({
+        providerId: "opencode-go",
+        keys: "CAP_OG_KEY",
+        modelIds: [],
+        models: { [logical]: siblingId },
+        ring: keyRing.createKeyRing({
+          prefix: "CAP_OG_KEY",
+          stateFile: "opencode-go",
+          healthInRotationInfo: true,
+        }),
+      });
+
+      const ledger = (ids) =>
+        ids
+          .map((id) => {
+            const h = rl.getKeyRingStatusForTest(id);
+            return `${id} ${h.usable}/${h.total}`;
+          })
+          .join(" | ");
+      const ringFiles = (ids) =>
+        JSON.stringify(
+          Object.fromEntries(
+            ids.map((id) => [id, readIfExists(keyRingStatePath(id))]),
+          ),
+        );
+      const replay = ["agent-zero", "opencode-go"];
+      const ledgerBefore = ledger(replay);
+      const filesBefore = ringFiles(replay);
+      console.log(`  ledger before: ${ledgerBefore}`);
+
+      check(
+        "capacity: the cell's refusal classifies capacity, with and without a status prefix",
+        rl.classifyFailure(CAP_REFUSAL).class === "capacity" &&
+          rl.classifyFailure(`429: ${CAP_REFUSAL}`).class === "capacity",
+        JSON.stringify([
+          rl.classifyFailure(CAP_REFUSAL),
+          rl.classifyFailure(`429: ${CAP_REFUSAL}`),
+        ]),
+      );
+
+      // Incident 1: the gateway route refuses the model id for capacity.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(replay);
+        const returned = await rl.handleMessageEnd(
+          capacityEvent("agent-zero", logical, 429),
+          hooksFor(engine, fb),
+        );
+        console.log(`  ledger after capacity on agent-zero: ${ledger(replay)}`);
+        check(
+          "capacity: the walk engages the sibling as the same logical model, through its models map",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "opencode-go" &&
+            fb.calls.setModel[0].model === siblingId,
+          JSON.stringify(fb.calls.setModel),
+        );
+        check(
+          "capacity: the turn is handed the capacity marker and no key-exhaustion claim",
+          typeof returned?.message?.errorMessage === "string" &&
+            returned.message.errorMessage.includes(
+              "the serving cell is at capacity",
+            ) &&
+            returned.message.errorMessage.includes("no key exhausted") &&
+            !returned.message.errorMessage.includes(
+              "exhausted the active key",
+            ) &&
+            !returned.message.errorMessage.includes("key ring is exhausted"),
+          JSON.stringify(returned?.message?.errorMessage),
+        );
+        check(
+          "capacity: neither ring's usable count moves",
+          ledger(replay) === ledgerBefore,
+          `${ledger(replay)} vs ${ledgerBefore}`,
+        );
+        check(
+          "capacity: no key-ring state file is written for either route",
+          ringFiles(replay) === filesBefore,
+          JSON.stringify({ before: filesBefore, after: ringFiles(replay) }),
+        );
+        const record = readRouteStateDisk()?.routes?.["agent-zero"];
+        check(
+          "capacity: the refusing route records a model-capacity death naming the model id",
+          record?.deathClass === "model-capacity" &&
+            record?.deathModelId === logical &&
+            record?.deathStatus === 429 &&
+            (record?.deathKeyHash ?? null) === null,
+          JSON.stringify(record),
+        );
+      }
+
+      // Incident 2: the sibling route refuses the same way, behind a 403. The
+      // reading under test is the one that burned a key this morning: a status
+      // the key predicate claims must not outrank the capacity sentence.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["opencode-go", "agent-zero"]);
+        const returned = await rl.handleMessageEnd(
+          capacityEvent("opencode-go", siblingId, 403),
+          hooksFor(engine, fb),
+        );
+        console.log(
+          `  ledger after capacity on opencode-go: ${ledger(replay)}`,
+        );
+        check(
+          "capacity: a 403-wrapped refusal still rotates the model, never the key",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "agent-zero" &&
+            fb.calls.setModel[0].model === logical &&
+            typeof returned?.message?.errorMessage === "string" &&
+            returned.message.errorMessage.includes(
+              "the serving cell is at capacity",
+            ),
+          JSON.stringify({
+            calls: fb.calls.setModel,
+            returned: returned?.message?.errorMessage,
+          }),
+        );
+        check(
+          "capacity: the 403 wrapper leaves both rings and both state files untouched",
+          ledger(replay) === ledgerBefore && ringFiles(replay) === filesBefore,
+          JSON.stringify({
+            ledger: ledger(replay),
+            before: ledgerBefore,
+            files: ringFiles(replay),
+          }),
+        );
+        check(
+          "capacity: the 403 wrapper records the death with the status it carried",
+          readRouteStateDisk()?.routes?.["opencode-go"]?.deathClass ===
+            "model-capacity" &&
+            readRouteStateDisk()?.routes?.["opencode-go"]?.deathStatus === 403,
+          JSON.stringify(readRouteStateDisk()?.routes?.["opencode-go"]),
+        );
+      }
+
+      // The recorded death is per model id and short. Four routes, one shared
+      // id and a second id, so each reading below is the predicate's alone.
+      const sharedId = "cap/shared";
+      const secondId = "cap/second";
+      const canaries = ["cap-cell", "cap-neighbour", "cap-spare"];
+      for (const [providerId, modelIds] of [
+        ["cap-cell", [sharedId, secondId]],
+        ["cap-neighbour", [sharedId]],
+        ["cap-spare", [sharedId]],
+        ["cap-other", [secondId]],
+      ]) {
+        const prefix = `CAP_${providerId.replace(/-/g, "_").toUpperCase()}_KEY`;
+        process.env[prefix] = `${providerId}-key-0`;
+        rl.registerRoute({
+          providerId,
+          keys: prefix,
+          modelIds,
+          ring: keyRing.createKeyRing({
+            prefix,
+            stateFile: providerId,
+            healthInRotationInfo: true,
+          }),
+        });
+      }
+
+      // A first refusal on `cap-cell` records its model death and walks on.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["cap-cell", "cap-neighbour", "cap-spare"]);
+        await rl.handleMessageEnd(
+          capacityEvent("cap-cell", sharedId, 429),
+          hooksFor(engine, fb),
+        );
+        check(
+          "capacity record: the first refusal records the model death and walks on",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "cap-neighbour" &&
+            readRouteStateDisk()?.routes?.["cap-cell"]?.deathClass ===
+              "model-capacity",
+          JSON.stringify({
+            calls: fb.calls.setModel,
+            record: readRouteStateDisk()?.routes?.["cap-cell"],
+          }),
+        );
+      }
+
+      // A fresh death for the SAME id is passed over; the walk moves on.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["cap-neighbour", "cap-cell", "cap-spare"]);
+        const before = ledger(canaries);
+        await rl.handleMessageEnd(
+          capacityEvent("cap-neighbour", sharedId, 429),
+          hooksFor(engine, fb),
+        );
+        console.log(`  ledger (skip path): ${ledger(canaries)}`);
+        check(
+          "capacity skip: a fresh model-capacity death for this id is passed over",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "cap-spare",
+          JSON.stringify(fb.calls.setModel),
+        );
+        check(
+          "capacity skip: the pass-over names the route, the model id and the bound",
+          logLines.some(
+            (l) =>
+              l.message.includes("passed over for " + sharedId) &&
+              l.message.includes("cell was at capacity"),
+          ),
+          JSON.stringify(
+            logLines.filter((l) => l.message.includes("passed over for")),
+          ),
+        );
+        check(
+          "capacity skip: the passed-over route's key counters do not move",
+          ledger(canaries) === before,
+          `${ledger(canaries)} vs ${before}`,
+        );
+      }
+
+      // A death naming ANOTHER model id never skips the route for this one.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["cap-other", "cap-cell"]);
+        await rl.handleMessageEnd(
+          capacityEvent("cap-other", secondId, 429),
+          hooksFor(engine, fb),
+        );
+        check(
+          "capacity skip: a death for another model id leaves the route eligible",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "cap-cell" &&
+            fb.calls.setModel[0].model === secondId,
+          JSON.stringify(fb.calls.setModel),
+        );
+      }
+
+      // Past the bound the cell is asked again: the death is minutes, not hours.
+      {
+        nowMs = NOW + rl.MODEL_CAPACITY_FRESHNESS_MS;
+        const fb = engageDeps();
+        const engine = engineFor(["cap-neighbour", "cap-cell"]);
+        await rl.handleMessageEnd(
+          capacityEvent("cap-neighbour", sharedId, 429),
+          hooksFor(engine, fb),
+        );
+        check(
+          `capacity skip: past the ${rl.MODEL_CAPACITY_FRESHNESS_MS}ms bound the route is eligible again`,
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "cap-cell",
+          JSON.stringify(fb.calls.setModel),
+        );
+        nowMs = NOW;
+      }
+
+      // No route serves the id: the diagnostic names the truth, and the death
+      // is recorded so the next turn reads it instead of re-asking the cell.
+      {
+        process.env.CAP_ALONE_KEY = "cap-alone-key-0";
+        rl.registerRoute({
+          providerId: "cap-alone",
+          keys: "CAP_ALONE_KEY",
+          modelIds: ["cap/alone"],
+          ring: keyRing.createKeyRing({
+            prefix: "CAP_ALONE_KEY",
+            stateFile: "cap-alone",
+            healthInRotationInfo: true,
+          }),
+        });
+        const fb = engageDeps();
+        const engine = engineFor(["cap-alone", "cap-cell"]);
+        const before = ledger(["cap-alone", "cap-cell"]);
+        const returned = await rl.handleMessageEnd(
+          capacityEvent("cap-alone", "cap/alone", 429),
+          hooksFor(engine, fb),
+        );
+        console.log(
+          `  ledger (no candidate): ${ledger(["cap-alone", "cap-cell"])}`,
+        );
+        check(
+          "capacity: with no route serving the id, nothing is engaged and no marker is appended",
+          fb.calls.setModel.length === 0 && returned === undefined,
+          JSON.stringify({ returned, calls: fb.calls.setModel }),
+        );
+        check(
+          "capacity: the diagnostic names the id, the bound and the untouched key ring",
+          fb.calls.notify.length === 1 &&
+            fb.calls.notify[0].includes("cap/alone") &&
+            fb.calls.notify[0].includes("the serving cell is at capacity") &&
+            fb.calls.notify[0].includes("the next 3 minutes") &&
+            fb.calls.notify[0].includes("no key exhausted") &&
+            !/credential|api.?key|quota/i.test(fb.calls.notify[0]),
+          JSON.stringify(fb.calls.notify),
+        );
+        check(
+          "capacity: the inert path records the model death and spends no key",
+          readRouteStateDisk()?.routes?.["cap-alone"]?.deathClass ===
+            "model-capacity" &&
+            readRouteStateDisk()?.routes?.["cap-alone"]?.deathModelId ===
+              "cap/alone" &&
+            readRouteStateDisk()?.routes?.["cap-alone"]?.deathStatus === 429 &&
+            ledger(["cap-alone", "cap-cell"]) === before,
+          JSON.stringify({
+            record: readRouteStateDisk()?.routes?.["cap-alone"],
+            ledger: ledger(["cap-alone", "cap-cell"]),
+            before,
+          }),
+        );
+      }
+
+      check(
+        "capacity: the replay pair's rings read the same at the end as before the first refusal",
+        ledger(replay) === ledgerBefore && ringFiles(replay) === filesBefore,
+        JSON.stringify({ ledger: ledger(replay), before: ledgerBefore }),
       );
     }
   } finally {

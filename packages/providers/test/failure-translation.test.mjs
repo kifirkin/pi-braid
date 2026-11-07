@@ -310,6 +310,62 @@ const ROWS = [
     why: "documented precedence: payload is tested before key, so a size error carrying 403 stays payload",
   },
   {
+    text: "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)",
+    class: "capacity",
+    status: null,
+    category: "unknown",
+    why: "capacity: the cell's own refusal as the agent log stored it; no status in the text",
+  },
+  {
+    text: '429: {"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)"}',
+    class: "capacity",
+    status: 429,
+    category: "rate_limit",
+    why: "capacity: the same refusal behind the gateway's 429 prefix, which the 429 carve-out must not swallow",
+  },
+  {
+    text: "the cell is at capacity",
+    class: "capacity",
+    status: null,
+    category: "unknown",
+    why: "capacity: the sentence without the refusal code",
+  },
+  {
+    text: "at capacity",
+    class: "capacity",
+    status: null,
+    category: "unknown",
+    why: "capacity: the bare idiom",
+  },
+  {
+    text: "prefill_cap",
+    class: "capacity",
+    status: null,
+    category: "unknown",
+    why: "capacity: the refusal code alone",
+  },
+  {
+    text: "403 prefill_cap_refused: the cell is at capacity",
+    class: "capacity",
+    status: 403,
+    category: "unknown",
+    why: "documented precedence: capacity is tested before key, so a 403-wrapped capacity refusal spends no key",
+  },
+  {
+    text: "402 the cell is at capacity",
+    class: "capacity",
+    status: 402,
+    category: "balance",
+    why: "documented precedence: capacity is tested before the quota idioms, so a 402 wrapper moves the model, not the key",
+  },
+  {
+    text: "429 rate limit exceeded; retry shortly (after 5 s)",
+    class: "none",
+    status: 429,
+    category: "rate_limit",
+    why: "near miss: the cell's retry wording on a plain throttle stays out of the capacity class",
+  },
+  {
     text: "429 Too Many Requests",
     class: "none",
     status: 429,
@@ -472,6 +528,43 @@ test("translation module agrees with both live classifiers on every row", () => 
         category: coreVerdict.category,
       },
       `translation for ${JSON.stringify(row.text)} (${row.why})`,
+    );
+  }
+});
+
+test("a capacity refusal is never key-rotation, whatever status rides with it", () => {
+  const capacityTexts = [
+    "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)",
+    '429: {"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)"}',
+    "the cell is at capacity",
+    "at capacity",
+    "prefill_cap",
+    "403 prefill_cap_refused: the cell is at capacity",
+    "402 the cell is at capacity",
+  ];
+  for (const text of capacityTexts) {
+    assert.equal(
+      ringLifecycle.isKeyRotationError(text.toLowerCase()),
+      false,
+      `isKeyRotationError must be false for ${JSON.stringify(text)}`,
+    );
+    assert.equal(
+      mod.translateFailure(text).class,
+      "capacity",
+      `translateFailure must name the capacity class for ${JSON.stringify(text)}`,
+    );
+  }
+  // The contrast the guard exists for: the same statuses on a credential fact
+  // still rotate the key, so the guard is not a blanket 4xx exemption.
+  for (const text of [
+    "403 Forbidden",
+    '403: {"message":"User has no quota left"}',
+    "402 Payment Required",
+  ]) {
+    assert.equal(
+      ringLifecycle.isKeyRotationError(text.toLowerCase()),
+      true,
+      `isKeyRotationError must stay true for ${JSON.stringify(text)}`,
     );
   }
 });

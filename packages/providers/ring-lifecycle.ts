@@ -80,6 +80,25 @@ export function shapeRetryMarker(status: number | null): string {
 }
 
 /**
+ * Capacity-refusal retry marker. Same pi-core retry-flip phrase as the markers
+ * above, and the same claim discipline: the cell serving the model id is full,
+ * so the SAME logical model moves to another route. No key is named because
+ * none was at fault, and the status is interpolated only when the refusal
+ * carried one (the same sentence arrives with no status at all from some
+ * gateways).
+ */
+export const CAPACITY_RETRY_MARKER =
+  " — [pi-braid-providers] Provider returned error; the serving cell is at capacity";
+
+export function capacityRetryMarker(status: number | null): string {
+  return (
+    `${CAPACITY_RETRY_MARKER}${status === null ? "" : ` (HTTP ${status})`}, ` +
+    "no key exhausted — rotated to another route serving the same model, " +
+    "retrying the turn there."
+  );
+}
+
+/**
  * Fatal account-level failures pi-ai will not retry
  * (dist/utils/retry.js NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN). pi-ai joins
  * its entries with "|" and tests case-insensitively. The literal entries below
@@ -1175,6 +1194,16 @@ const shapeSkipLogs = new Map<
 >();
 
 /**
+ * The capacity-skip channel, throttled per route for the same reason: a walk
+ * that passes the same route over on every turn of a long request would
+ * otherwise repeat the line each time.
+ */
+const capacitySkipLogs = new Map<
+  string,
+  ReturnType<typeof createThrottledLogger>
+>();
+
+/**
  * Whether a recorded death says this route refused the SAME request: a shape
  * death for the same model id and the same HTTP status, younger than the bound.
  * Every other reading — another class, another request, no record, a stale
@@ -1221,16 +1250,62 @@ function reportShapeSkip(
   );
 }
 
+/**
+ * Whether a recorded death says this route could not serve the SAME model id for
+ * capacity, inside the class's own (short) bound. A death of another class,
+ * another model id, no record at all, or one past the bound leaves the route as
+ * eligible as before. No status component: the same refusal arrives 429, 403 or
+ * 503 depending on the edge, so requiring a status match would let a route be
+ * asked again the moment the gateway changed its spelling.
+ */
+function isFreshCapacityDeath(
+  death: RouteDeathVerdict | undefined,
+  at: number,
+  freshnessMs: number,
+  modelId: string,
+): death is RouteDeathVerdict {
+  if (freshnessMs <= 0) return false; // the same explicit off switch
+  if (!death || death.class !== MODEL_CAPACITY_DEATH_CLASS) return false;
+  if (death.modelId !== modelId) return false;
+  return at - death.at < freshnessMs;
+}
+
+/**
+ * Report one capacity-death skip through the same throttled channel as the
+ * other skips: names the route, the model id the cell refused and the bound it
+ * is held to, and repeats inside the window are silent.
+ */
+function reportCapacitySkip(
+  routeId: string,
+  death: RouteDeathVerdict,
+  at: number,
+  freshnessMs: number,
+): void {
+  let log = capacitySkipLogs.get(routeId);
+  if (!log) {
+    log = createThrottledLogger();
+    capacitySkipLogs.set(routeId, log);
+  }
+  log.occurrence(
+    "info",
+    "providers/provider-rotation",
+    `[pi-braid-providers] ${routeId} passed over for ${death.modelId ?? "this model"}: ` +
+      `its cell was at capacity ${at - death.at}ms ago and that verdict is still ` +
+      `fresh (bound ${freshnessMs}ms). A death for another model id, one older ` +
+      `than the bound, and a route with no record stay eligible.`,
+  );
+}
+
 export interface RotationEngine {
   /**
    * One-shot engage decision for a route death. Walks `order` and engages the
    * first route that is not the dead route, is not the route that opened the
    * open episode, has a usable key, can serve modelId, is not currently measured
-   * unable by a fresh probe verdict, and has not recently rejected the same
-   * request. Returns the retry marker to append (engage succeeded), or null
-   * (inert: nothing to serve, no route available for this failure class, an
-   * ineligible death while an episode is open, or every candidate failed).
-   * Async when setModel is async.
+   * unable by a fresh probe verdict, has not recently rejected the same request,
+   * and has not recently refused that model id for capacity. Returns the retry
+   * marker to append (engage succeeded), or null (inert: nothing to serve, no
+   * route available for this failure class, an ineligible death while an
+   * episode is open, or every candidate failed). Async when setModel is async.
    */
   maybeEngage(
     providerId: string,
@@ -1285,6 +1360,8 @@ interface RotationPlan {
   probeSkipped: string[];
   /** Routes passed over because they rejected this same request recently. */
   shapeSkipped: string[];
+  /** Routes passed over because they refused this model id for capacity. */
+  capacitySkipped: string[];
   /** Candidates that were attempted and whose engage returned false. */
   failed: string[];
   /** The candidate the engage selected (set by apply, read by onEngaged). */
@@ -1294,7 +1371,8 @@ interface RotationPlan {
 /**
  * One recorded route death, handed to the walk as DATA (the composition layer
  * reads the store; this module never touches a file). `class` is the caller's
- * name for the death; only `SHAPE_DEATH_CLASS` records are consulted.
+ * name for the death; only `SHAPE_DEATH_CLASS` and
+ * `MODEL_CAPACITY_DEATH_CLASS` records are consulted.
  */
 export interface RouteDeathVerdict {
   class: string;
@@ -1353,10 +1431,21 @@ export function createRotationEngine(deps: {
   routeDeaths?: () => ReadonlyMap<string, RouteDeathVerdict>;
   /** The route-death store's writer; absent ⇒ nothing is recorded. */
   recordRouteDeath?: (providerId: string, death: WalkDeathRecord) => void;
+  /**
+   * How long a `model-capacity` death keeps a route out of the walk for that
+   * model id; defaults to `MODEL_CAPACITY_FRESHNESS_MS`. Separate from
+   * `probeFreshnessMs` on purpose: a full cell recovers in minutes, so it is
+   * held to minutes.
+   */
+  modelCapacityFreshnessMs?: number;
 }): RotationEngine {
   const order = deps.order;
   const now = deps.now ?? Date.now;
   const probeFreshnessMs = deps.probeFreshnessMs ?? DEFAULT_PROBE_FRESHNESS_MS;
+  const modelCapacityFreshnessMs =
+    deps.modelCapacityFreshnessMs ?? MODEL_CAPACITY_FRESHNESS_MS;
+  /** The bound as the diagnostics state it. */
+  const capacityMinutes = `${Math.max(1, Math.round(modelCapacityFreshnessMs / 60_000))}`;
 
   let lastProbeAt = 0;
 
@@ -1379,6 +1468,7 @@ export function createRotationEngine(deps: {
     const skipped: string[] = [];
     const probeSkipped: string[] = [];
     const shapeSkipped: string[] = [];
+    const capacitySkipped: string[] = [];
     // One verdict snapshot per engage, one clock reading: the whole walk judges
     // every candidate against the same instant.
     const at = now();
@@ -1417,6 +1507,29 @@ export function createRotationEngine(deps: {
         skipped.push(routeId); // cannot serve this model id
         continue;
       }
+      // The route is otherwise eligible; skip it only when its cell refused
+      // THIS model id recently. Scoped to the id on purpose: the same route may
+      // still serve another model id from its map, and a death past the (short)
+      // capacity bound says the cell has had time to recover.
+      const capacityDeath = deaths?.get(routeId);
+      if (
+        signal.class === "capacity" &&
+        isFreshCapacityDeath(
+          capacityDeath,
+          at,
+          modelCapacityFreshnessMs,
+          modelId,
+        )
+      ) {
+        capacitySkipped.push(routeId);
+        reportCapacitySkip(
+          routeId,
+          capacityDeath,
+          at,
+          modelCapacityFreshnessMs,
+        );
+        continue;
+      }
       // The route is otherwise eligible; skip it only when it recently refused
       // this same request. Recorded so the no-route diagnostic still fires
       // when this leaves nothing to engage.
@@ -1447,7 +1560,8 @@ export function createRotationEngine(deps: {
       candidates.length === 0 &&
       skipped.length === 0 &&
       probeSkipped.length === 0 &&
-      shapeSkipped.length === 0
+      shapeSkipped.length === 0 &&
+      capacitySkipped.length === 0
     )
       return null;
     return {
@@ -1457,6 +1571,7 @@ export function createRotationEngine(deps: {
       skipped,
       probeSkipped,
       shapeSkipped,
+      capacitySkipped,
       failed: [],
     };
   };
@@ -1510,6 +1625,19 @@ export function createRotationEngine(deps: {
         );
         return shapeRetryMarker(signal.status);
       }
+      if (signal.class === "capacity") {
+        // The cell, not the credential: the same logical model id moves, and
+        // the key ring is named as untouched so a later reader does not read
+        // this notice as a quota event.
+        engage.notify(
+          `[pi-braid-providers] ${plan.from} refused ${plan.modelId}: the serving cell is at capacity ` +
+            `(no key exhausted) — rotated to ${target.routeId} serving ${plan.modelId}${mapped}. ` +
+            `The failed turn is retrying there; ${plan.from}'s key ring is untouched, and ` +
+            `${plan.from} is passed over for ${plan.modelId} for ${capacityMinutes} minute(s) ` +
+            `after a refusal.`,
+        );
+        return capacityRetryMarker(signal.status);
+      }
       // The classifier saw only the error text, never the reason behind it: a
       // spent subscription allowance and a dead key both arrive here, so the
       // notice states the fact the ring reports (this route has no usable key),
@@ -1533,6 +1661,9 @@ export function createRotationEngine(deps: {
         plan.shapeSkipped.length > 0
           ? `rejected this request (fresh): ${plan.shapeSkipped.join(", ")}`
           : "",
+        plan.capacitySkipped.length > 0
+          ? `cell at capacity for this model (fresh): ${plan.capacitySkipped.join(", ")}`
+          : "",
         plan.failed.length > 0
           ? `engage failed: ${plan.failed.join(", ")}`
           : "",
@@ -1554,6 +1685,21 @@ export function createRotationEngine(deps: {
             `no key exhausted) and no configured route could serve ${plan.modelId}` +
             `${detail ? ` (${detail})` : ""}. The request itself may be at fault — the turn keeps ` +
             `its real error.`,
+        );
+        return;
+      }
+      if (signal.class === "capacity") {
+        // The truth, in the order an operator needs it: what happened (a full
+        // cell), what it means (this model id, for this long), and that the
+        // credential is not the thing to change. No route could take the id,
+        // so the recorded model death is what a later turn reads.
+        const at = signal.status === null ? "" : ` (HTTP ${signal.status})`;
+        engage.notify(
+          `[pi-braid-providers] ${plan.from} refused ${plan.modelId}: the serving cell is at capacity` +
+            `${at}, no key exhausted, and no configured route serves that model id` +
+            `${detail ? ` (${detail})` : ""}. The cell refused this model for the next ` +
+            `${capacityMinutes} minutes and the key ring is untouched — move ${plan.modelId} to a ` +
+            `route that serves it, or wait out the cell.`,
         );
         return;
       }
@@ -1583,6 +1729,18 @@ export function createRotationEngine(deps: {
       if (signal.class === "shape" && modelId) {
         deps.recordRouteDeath?.(providerId, {
           class: SHAPE_DEATH_CLASS,
+          at: now(),
+          modelId,
+          status: signal.status,
+        });
+      }
+      // A capacity death is the same kind of fact — this route cannot serve
+      // that model id right now — remembered before the walk decides so a later
+      // turn does not ask the same full cell again inside the short bound. No
+      // key is touched anywhere on this path: nothing is exhausted.
+      if (signal.class === "capacity" && modelId) {
+        deps.recordRouteDeath?.(providerId, {
+          class: MODEL_CAPACITY_DEATH_CLASS,
           at: now(),
           modelId,
           status: signal.status,
@@ -2121,10 +2279,11 @@ export interface MessageEndHooks {
   rotation?: {
     /**
      * Called for a death the walk is consulted for: any key-rotation error
-     * whose ring reports zero usable keys, and any shape-class (HTTP 4xx)
-     * rejection, which does not touch the ring at all. providerId is the route
-     * that died; modelId is the dead turn's own model id, so the engine can
-     * re-serve the SAME id over another route.
+     * whose ring reports zero usable keys, any shape-class (HTTP 4xx) rejection,
+     * and any capacity-class refusal (a full serving cell) — the last two do not
+     * touch the ring at all. providerId is the route that died; modelId is the
+     * dead turn's own model id, so the engine can re-serve the SAME id over
+     * another route.
      */
     onRingExhausted(
       providerId: string,
@@ -2292,6 +2451,17 @@ export function handleMessageEnd(
     return consultWalk(hooks.rotation);
   }
 
+  // Capacity refusal: the cell serving this model id is full. Nothing about the
+  // key ring is written — the same predicate backs reportKeyRingFailure, so the
+  // direct-call path leaves the key healthy too — and the walk moves the SAME
+  // logical model id onto another route's model surface, or stops and names the
+  // recorded model death. Skipped entirely without an engine: byte-identical to
+  // a build without the feature.
+  if (failure.class === "capacity") {
+    if (!hooks?.rotation) return;
+    return consultWalk(hooks.rotation);
+  }
+
   // Key class only from here on. Same predicate the direct-call feed-back path
   // uses (reportKeyRingFailure) — one classification governs both paths;
   // payload (context-window) and unrecognized failures keep their own paths.
@@ -2375,11 +2545,37 @@ export function handleMessageEnd(
  * a quota denial: neither a fresh key nor a backoff helps, only rotating the
  * route — see isSpentAllowanceError for the allowance vocabulary.
  */
+/**
+ * Serving-capacity idioms: the cell cannot take this request for this model id
+ * right now. Every string here is one a live route answered with
+ * (`prefill_cap_refused` / "the cell is at capacity"), plus the bare idiom the
+ * outage vocabulary already reads as an availability statement.
+ *
+ * Lowercases its own input, unlike the predicates beside it: this one is
+ * reached from both the class test and the key predicate, and a caller that
+ * forgets the lowercase contract would silently lose the class.
+ */
+const CAPACITY_PATTERNS = [
+  /prefill_cap/,
+  /cell is at capacity/,
+  /\bat capacity\b/,
+];
+
+export function isCapacityRefusal(errText: string): boolean {
+  if (!errText) return false;
+  const text = errText.toLowerCase();
+  return CAPACITY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function isKeyRotationError(errText: string): boolean {
   // WAF / infra-block pages are NEVER key-rotation — they carry a stray
   // 403/402 status on an HTML edge page and must not exhaust a healthy key.
   // Check first so the `includes("403")` guard below can't fire on an edge page.
   if (isWafBlockError(errText)) return false;
+  // A capacity refusal is a statement about the serving cell. No key rotation
+  // changes how full it is, so whatever status (`403`, `402`) or quota idiom
+  // rides along with the sentence, the key is innocent.
+  if (isCapacityRefusal(errText)) return false;
   const isQuota =
     errText.includes("402") ||
     /no quota|quota left|insufficient.{0,24}(credit|balance)|billing|out of budget|quota|balance/.test(
@@ -2440,6 +2636,12 @@ function isSpentAllowanceError(errText: string): boolean {
  *   - `waf`: an edge/WAF block page. The key is not at fault and the block is
  *     a fact about the (route, request) pair, so the class exists to let the
  *     walk speak about it without ever claiming a credential problem.
+ *   - `capacity`: the serving cell refused this model id for lack of capacity
+ *     ("prefill_cap_refused", "the cell is at capacity"). Neither a credential
+ *     fact nor a fact about the request's size: the key ring is untouched, and
+ *     the recovery is to serve the SAME logical model id through another
+ *     route's model surface. Tested before `key`, so no status or quota idiom
+ *     riding on the sentence can turn it into a credential death.
  *   - `shape`: an HTTP 4xx that is neither of the above and not a WAF page —
  *     the route refused THIS request. A rate-limit `429` is deliberately NOT
  *     shape: the callers' own cooldown bounds it, and moving the request
@@ -2447,9 +2649,15 @@ function isSpentAllowanceError(errText: string): boolean {
  *   - `none`: everything else (5xx/transient, unrecognized text).
  *
  * Evaluation order is the order of the tests below and matches
- * handleMessageEnd: WAF, then payload, then key, then shape.
+ * handleMessageEnd: WAF, then payload, then capacity, then key, then shape.
  */
-export type FailureClass = "key" | "payload" | "shape" | "waf" | "none";
+export type FailureClass =
+  | "key"
+  | "payload"
+  | "capacity"
+  | "shape"
+  | "waf"
+  | "none";
 
 export interface FailureClassification {
   class: FailureClass;
@@ -2464,6 +2672,30 @@ export interface FailureClassification {
  * its freshness window are about.
  */
 export const SHAPE_DEATH_CLASS = "request-shape";
+
+/**
+ * Death-class name the walk records when a route refused a model id for lack of
+ * serving capacity. Scoped to the model id by construction: the fact is about
+ * the id (this cell cannot take it now), not about the route's credential, and
+ * the record carries no key hash.
+ */
+export const MODEL_CAPACITY_DEATH_CLASS = "model-capacity";
+
+/**
+ * How long a recorded model-capacity death keeps a route out of the walk for
+ * that one model id.
+ *
+ * Measured from the cell's own refusal: every `prefill_cap_refused` answer
+ * states the delay it wants ("retry shortly (after N s)"). Across the answers
+ * this seat's routes have recorded, N ran 2 s to 59 s in 235 observations, with
+ * 30 s the mode and 59 s the largest (5 s and 14 s the next most common). Three
+ * minutes is just over three times the largest delay the cell ever asked for and
+ * six times the modal one, and short enough that a cell which has recovered is
+ * tried again within a turn boundary's worth of work. Every fresh refusal
+ * re-records the death, so a cell that stays full keeps its own entry alive;
+ * only a cell that has been quiet for the whole bound is asked again.
+ */
+export const MODEL_CAPACITY_FRESHNESS_MS = 180_000;
 
 const CONTEXT_WINDOW_PATTERNS = [
   /413/,
@@ -2504,6 +2736,12 @@ export function classifyFailure(errText: unknown): FailureClassification {
   if (CONTEXT_WINDOW_PATTERNS.some((pattern) => pattern.test(text))) {
     return { class: "payload", status };
   }
+  // Capacity is tested BEFORE key for the reason payload is: the sentence can
+  // arrive behind a status the key predicate claims (a gateway answers it 429,
+  // 403 or 503 depending on the edge in front of it) or beside a quota idiom.
+  // Exhausting a healthy key over a full cell burns the credential on a turn
+  // the next route would refuse identically; the model id is what moves.
+  if (isCapacityRefusal(text)) return { class: "capacity", status };
   if (isKeyRotationError(text)) return { class: "key", status };
   if (status === 429) return { class: "none", status };
   if (status !== null && status < 500) return { class: "shape", status };
