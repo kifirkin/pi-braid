@@ -1076,7 +1076,7 @@ function assertGateEvidence(
 // cmd, `sh -n` parses only and `command -v` only looks a token up.
 
 /** Predicate letters, in the order the four are evaluated. */
-export type GateRowPredicate = "a" | "b" | "c" | "d";
+export type GateRowPredicate = "a" | "b" | "c" | "d" | "e";
 
 export interface GateRowViolation {
   predicate: GateRowPredicate;
@@ -1260,6 +1260,31 @@ export function findGateRowViolation(
   }
   if (outcome === "completed" && exit !== 0) {
     return { predicate: "d", detail: `exit ${exit} recorded under a completed outcome` };
+  }
+  // (e) A row that names a session file is a receipt for a command someone can
+  // re-run. A path that does not exist cannot be re-run at all, and a hand-typed
+  // near-copy of a real name reads exactly like the real thing: three closes in
+  // one day recorded a session path that had never existed, and nothing but the
+  // reader noticed. Only `.jsonl` references are read, because that is what a
+  // recorded check names; outputs a step writes are not references and are not
+  // judged.
+  const missing = missingSessionPathIn(cmd);
+  if (missing !== null) {
+    return {
+      predicate: "e",
+      detail: `refers to a session file that does not exist: ${missing}`,
+    };
+  }
+  return null;
+}
+
+/** Absolute-ish `.jsonl` references in a row that are not on disk. */
+function missingSessionPathIn(cmd: string): string | null {
+  for (const raw of cmd.split(/\s+/u)) {
+    const token = raw.replace(/^["']|["',;)]+$/gu, "");
+    if (!token.endsWith(".jsonl")) continue;
+    if (!token.includes("/")) continue;
+    if (!existsSync(token)) return token;
   }
   return null;
 }

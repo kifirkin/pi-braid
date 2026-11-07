@@ -51,6 +51,13 @@
       "honest": "cd /tmp/wt-w427 && PI_TEST_TIMEOUT_MS=90000 npm run ci:check",
       "role": "decorated-close",
       "note": "the integration close's decorated row"
+    },
+    {
+      "id": "session-path-typo",
+      "recorded": "node scripts/check-result.mjs /tmp/sessions/--fixture--/2026-01-01T00-00-00-000Z_placeholder.jsonl --repo /tmp/wt",
+      "predicate": "e",
+      "honest": "node scripts/check-result.mjs \"$SESSION\" --repo /tmp/wt",
+      "note": "a hand-typed session path that had never existed, recorded three times in one day; the repaired form names the path through the variable the operator actually has"
     }
   ]
 }
