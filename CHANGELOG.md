@@ -96,6 +96,22 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.33 (2026-11-07: a refusal that names the cell moves the model, not the key)
+
+- **The serving cell's capacity is a fact about the model, not about a credential.** Two refusals —
+  `prefill_cap_refused`, `the cell is at capacity` — were unclassified; the ring read the status beside
+  them and spent a key, then rotated onto a second route that refused the same turn identically, burning
+  that quota too. `classifyFailure` now answers `capacity` before the key test, `isKeyRotationError`
+  refuses the vocabulary, and the route the turn lands on is chosen by model id through the route
+  table's own translation.
+- **A per-model death, and it is short.** When no other route serves the id the walk records a
+  `model-capacity` death scoped to that id with its own freshness bound, so the diagnostic names the cell
+  and the minutes instead of asking an operator to fix a credential.
+- **The structural harvest ships beside it.** `mechanism-harvest.mjs` reads pi's session JSONL and emits
+  repair-shaped windows — a failing tool result, then a mutation naming the same file or token — with a
+  census that adds up (7,933 windows over the corpus, 417 of them file-backed). It is repo-only and never
+  published. Its known blind edge is pinned by a fixture rather than rounded off.
+
 ## Core — 0.43.32 (2026-11-06: the identity says what makes a sentence noise)
 
 - **Four rules, one of them a test.** The writing block now carries what the reader pays for: a
