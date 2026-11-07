@@ -176,6 +176,38 @@ function censusAt(revision: string, repoRoot: string | undefined): number | null
 }
 
 /**
+ * The branches matching `worker/<id>/*` that carry a commit the base does not
+ * hold, excluding the branch just verified. Read when that branch's tip is the
+ * base itself: that is the shape a split branch makes — the registry row keeps
+ * the branch creation made, the work landed on a second one — and the report
+ * has to name where the work is, not only where it is not.
+ */
+function unmergedWorkerBranches(
+  workerId: string,
+  namedBranch: string,
+  base: string,
+  repoRoot: string,
+): Array<{ name: string; tip: string }> {
+  // The id sits inside a ref glob; anything git could read as a pattern would
+  // widen the census past this worker's own branches.
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(workerId)) return [];
+  const out = git(repoRoot, [
+    "for-each-ref",
+    "--format=%(refname:short) %(objectname)",
+    `refs/heads/worker/${workerId}/*`,
+  ]);
+  if (!out) return [];
+  const found: Array<{ name: string; tip: string }> = [];
+  for (const line of out.split("\n")) {
+    const [name, tip] = line.trim().split(/\s+/);
+    if (!name || !tip || name === namedBranch) continue;
+    if (isAncestor(tip, base, repoRoot)) continue;
+    found.push({ name, tip });
+  }
+  return found;
+}
+
+/**
  * The gate rows the merge path reads its population record from. A row that
  * was already closed carries its recorded gates, and those win; the normal
  * flow merges before close-worker, so the fallback is the worker's result
@@ -224,29 +256,25 @@ function verifyAndMergeBase(
 
   if (!repoRoot || !gitAvailable(repoRoot)) {
     return nothingMerged(
-      `Cannot verify ${workerBranch}: no git repository resolved (pass cwd). No merge performed.`,
+      `NOT merged: no git repository resolved (pass cwd), so ${workerBranch} cannot be verified. No merge performed.`,
     );
   }
   if (!isSafeRef(base) || !isSafeRef(workerBranch)) {
     return nothingMerged(
-      `Refusing to merge: unsafe ref name (base="${base}", branch="${workerBranch}").`,
+      `NOT merged: unsafe ref name (base="${base}", branch="${workerBranch}"); refusing to read it.`,
     );
   }
   if (!branchExists(workerBranch, repoRoot)) {
-    return nothingMerged(
-      `Cannot verify ${workerBranch}: branch does not exist. No merge performed.`,
-    );
+    return nothingMerged(`NOT merged: branch ${workerBranch} does not exist. No merge performed.`);
   }
 
   const baseBefore = revParse(base, repoRoot);
   if (!baseBefore) {
-    return nothingMerged(`Cannot merge into "${base}": base branch not found. No merge performed.`);
+    return nothingMerged(`NOT merged: base branch "${base}" not found. No merge performed.`);
   }
   const tip = revParse(workerBranch, repoRoot);
   if (!tip) {
-    return nothingMerged(
-      `Cannot verify ${workerBranch}: branch has no commit. No merge performed.`,
-    );
+    return nothingMerged(`NOT merged: branch ${workerBranch} has no commit. No merge performed.`);
   }
 
   const short = (sha: string) => sha.slice(0, 12);
@@ -260,9 +288,10 @@ function verifyAndMergeBase(
 
   const finish = (
     lead: string,
-    deletedLead: string,
+    keptReason: string,
     mergeSha: string | null,
     extraWorktreeNote = "",
+    deletedNote = "deleted",
   ): MergeOutcome => {
     // Where the caller's tree sits is part of the merge result, not a detail:
     // this tool never switches the shared worktree's branch, so after a merge
@@ -286,7 +315,7 @@ function verifyAndMergeBase(
     const audit = mergeAuditNote(workerId, mergeSha, repoRoot);
     return {
       report: `${lead}${audit}${populationNote}\nBranch: ${workerBranch} (${
-        deleted ? "deleted" : onWorkerBranch ? "kept: this worktree is on it" : deletedLead
+        deleted ? deletedNote : onWorkerBranch ? "kept: this worktree is on it" : keptReason
       })${worktreeNote}${settleBlock}\nDiff summary:\n${diff.slice(0, 2000)}\n${scan}`,
       mergeSha,
       worktreeBranch: head,
@@ -294,13 +323,37 @@ function verifyAndMergeBase(
   };
 
   // The base already holds the worker's work: nothing to merge, and saying
-  // "merged" here would be a false success.
+  // "merged" here would be a false success. When the named branch's tip is the
+  // base itself the branch carries nothing of its own, so the report also
+  // names any other branch for this worker that does hold work the base lacks:
+  // a seat that created its own branch leaves exactly that shape behind, and
+  // "already contained" alone reads as a completion for work that is not in.
   if (isAncestor(tip, base, repoRoot)) {
-    return finish(
-      `Worker ${workerId} already contained in ${base}: ${short(tip)} is an ancestor of ${base} (${short(baseBefore)}). Nothing merged.`,
-      "kept: still checked out",
-      null,
-    );
+    const elsewhere =
+      tip === baseBefore ? unmergedWorkerBranches(workerId, workerBranch, base, repoRoot) : [];
+    const elsewhereNote =
+      elsewhere.length === 0
+        ? ""
+        : "\n" +
+          elsewhere
+            .map(
+              (b) =>
+                `Branch ${b.name} for worker ${workerId} carries work not in ${base}: tip ${short(
+                  b.tip,
+                )}. Merge it: orchestrate action=verify-and-merge workerId=${workerId} branch=${b.name}`,
+            )
+            .join("\n");
+    const lead =
+      tip === baseBefore
+        ? `NOTHING merged: worker ${workerId}'s branch ${workerBranch} is already contained in ${base} at ${short(
+            baseBefore,
+          )} itself; the branch carries no work of its own. No merge was performed.${elsewhereNote}`
+        : `NOTHING merged: worker ${workerId}'s branch ${workerBranch} at ${short(
+            tip,
+          )} is already contained in ${base} (${short(
+            baseBefore,
+          )}); no work to merge. No merge was performed.${elsewhereNote}`;
+    return finish(lead, "kept: still checked out", null, "", "deleted; no merge was performed");
   }
 
   // A recorded population below the census at its own revision is the claim
@@ -399,7 +452,9 @@ function verifyAndMergeBase(
   }
 
   return finish(
-    `Worker ${workerId} merged into ${base} at ${short(baseAfter)} (was ${short(baseBefore)}).`,
+    `MERGED: worker ${workerId}'s branch ${workerBranch} merged into ${base} at ${short(
+      baseAfter,
+    )} (was ${short(baseBefore)}).`,
     "kept: branch is checked out in a worktree",
     baseAfter,
     settleNote,
@@ -1208,8 +1263,8 @@ Register the worker (orchestrate action=register-worker) for a structured verdic
 
         if (!workerBranch) {
           return textResult(
-            `Worker ${workerId} has no branch to verify: no branch argument, no branch on its ` +
-              `registry entry, and no lock rows. Nothing to verify.`,
+            `NOTHING merged: worker ${workerId} has no branch to verify: no branch argument, no ` +
+              `branch on its registry entry, and no lock rows.`,
           );
         }
 
