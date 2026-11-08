@@ -224,7 +224,7 @@ This doesn't mean the target has to like it. A good Socratic roast is uncomforta
 
 ### The "Does it add anything?" test
 
-Ask: **does this joke leave the room smarter than it found it?** If the joke only works by tearing something down, it's not creating value - it's just consuming it. Find a way to add something. A new framing. A useful question. A connection the room didn't see.
+Ask: **does this joke leave the room smarter than it found it?** If the joke only works by tearing something down, it destroys value and adds none. Find a way to add something. A new framing. A useful question. A connection the room didn't see.
 
 ### Legal and reputational guardrails
 

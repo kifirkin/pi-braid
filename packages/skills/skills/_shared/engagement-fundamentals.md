@@ -9,11 +9,11 @@ This file contains the philosophical grounding and compositional principles shar
 
 ---
 
-## Schopenhauer's Incongruity: The Engine of Wit
+## Schopenhauer's Incongruity: Why a Mismatch Lands
 
 > Laughter comes from things that don't fit together.
 
-You set up a **concept** (a screen door keeps out intruders). You reveal the **reality** (a submarine needs to keep water out, not intruders). The mismatch creates a jolt - and the brain spends energy resolving it. That energy is the engagement.
+You set up a **concept** (a screen door keeps out intruders). You reveal the **reality** (a submarine needs to keep water out, not intruders). The mismatch creates a jolt, and the brain spends energy resolving it.
 
 Two kinds of incongruity:
 

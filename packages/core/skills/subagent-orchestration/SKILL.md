@@ -231,7 +231,7 @@ When a worker signals completion, review critically before closing the pane.
 
 - **APPROVED** - `herdr action=send pane=<worker-pane> text="[agent:orchestrator→worker] APPROVED. Close your pane."` Then close the worker pane and capture knowledge to memory.
 - **REVISION** - `herdr action=send pane=<worker-pane> text="[agent:orchestrator→worker] REVISION: <specific feedback>."` Set a timer to check back.
-- **REJECTED** - If fundamentally wrong: send rejection and close the pane manually.
+- **REJECTED** - If the output fails the task: send rejection and close the pane manually.
 
 ### Failure modes
 
@@ -415,11 +415,10 @@ node scripts/workers.mjs --json         # machine-readable
 node scripts/workers.mjs --stale 30     # age at which 'working' is flagged (default 15m)
 ```
 
-One row per worker: session age, event count, commits ahead, dirty count, deliverable size. It reads
-four independent sources because no single one is trustworthy - the registry is only the _claim_;
-session mtime proves motion, git proves commits and dirty state, the filesystem proves the
-deliverable exists. The registry reports `working` long after a pane has died, and `admitted` for a
-worker that has been running for an hour.
+One row per worker: session age, event count, commits ahead, dirty count, deliverable size. Four sources
+back the row, none trustworthy alone: the registry is only the _claim_, session mtime proves motion,
+git proves commits and dirty state, the filesystem proves the deliverable exists. The registry reports
+`working` long after a pane has died, and `admitted` for a worker that has been running for an hour.
 
 The flags name the failure modes worth acting on:
 

@@ -31,7 +31,7 @@ function basename(p: string): string {
  *
  * Shape:
  *   Read the project docs in full before editing the areas they cover: the
- *   AGENTS.md / CLAUDE.md files below are this project's authoritative contract —
+ *   AGENTS.md / CLAUDE.md files below are this project's authoritative contract;
  *   cross-check references against source.
  *
  *   - AGENTS.md at /abs/path/AGENTS.md
@@ -49,7 +49,7 @@ export async function projectDocsSection(
   }
 
   const lines: string[] = [
-    "Read the project docs in full before editing the areas they cover: the AGENTS.md / CLAUDE.md files below are this project's authoritative contract — cross-check references against source.",
+    "Read the project docs in full before editing the areas they cover: the AGENTS.md / CLAUDE.md files below are this project's authoritative contract; cross-check references against source.",
     "",
   ];
 

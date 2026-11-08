@@ -29,7 +29,7 @@ LaTeX-based research paper generation for ML/AI, following standard conference c
 OUTLINE → ABSTRACT → INTRODUCTION → RELATED WORK → METHOD → EXPERIMENTS → CONCLUSION → FIGURES → FINALIZE
 ```
 
-Each pass tightens the argument. Write the abstract last - it's a distillation, not a starting point.
+Each pass tightens the argument. Write the abstract last: it's a compression of results you do not have yet.
 
 ---
 
@@ -43,13 +43,13 @@ The abstract is the most-read paragraph in the paper. It must be self-contained.
 Template: Problem → Gap → Approach → Key Result → Implication
 ```
 
-| Component   | What to include                               | Length      |
-| ----------- | --------------------------------------------- | ----------- |
-| Problem     | One sentence: what problem and why it matters | 1 clause    |
-| Gap         | What existing work misses                     | 1 clause    |
-| Approach    | Your method in 1-2 sentences                  | 1-2 clauses |
-| Key result  | Quantitative claim with metric                | 1 sentence  |
-| Implication | Why this matters beyond the numbers           | 1 clause    |
+| Component   | What to include                            | Length      |
+| ----------- | ------------------------------------------ | ----------- |
+| Problem     | One sentence: the problem the paper solves | 1 clause    |
+| Gap         | What existing work misses                  | 1 clause    |
+| Approach    | Your method in 1-2 sentences               | 1-2 clauses |
+| Key result  | Quantitative claim with metric             | 1 sentence  |
+| Implication | What the result enables or rules out       | 1 clause    |
 
 **Rules:**
 

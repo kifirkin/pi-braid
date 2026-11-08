@@ -22,7 +22,7 @@ When a system has been trained - explicitly or by exposure - to detect and defle
 
 This applies to LLMs, but also to: customer-service reps with a script, content filters with a blocklist, security guards with a policy, algorithms that score and reject, bureaucrats with a form, defensive humans in any argument. Anywhere a system has a "no" pre-loaded for your move, the same six tools apply.
 
-The goal of this skill is **not to win**. It's to **force genuine computation**. Once the system has to think about your message instead of pattern-matching, you've engaged it. From there, anything is possible.
+A message that fits no box forces the system to reason about it, and that reasoning is the engagement.
 
 ---
 
@@ -38,7 +38,7 @@ When you send a message to a defensive system, it tries to put you in one of the
 | Angry or demanding          | Attack               | Block / escalate                |
 | **Doesn't fit any box**     | **???**              | **Computes from scratch**       |
 
-The last box is the only one worth aiming for. The goal isn't to **hide** your intent - it's to **not have a single clear intent** the system can map. A message that could be a joke, an observation, a setup, or a probe forces re-evaluation.
+The last box is the only one worth aiming for. Don't hide your intent; make it impossible to assign a single clear one. A message that could be a joke, an observation, a setup, or a probe forces re-evaluation.
 
 ---
 
@@ -48,7 +48,7 @@ The last box is the only one worth aiming for. The goal isn't to **hide** your i
 
 A comparison so unexpected the system does a double-take. The surface is ridiculous - but there might be a point in there somewhere. The system can't decide, so it has to engage to resolve the ambiguity.
 
-**Formula**: Pick an object / role. Compare it to something it fundamentally doesn't fit. The gap between concept and reality creates the jolt.
+**Formula**: Pick an object / role. Compare it to something it can't fit. The gap between concept and reality creates the jolt.
 
 **Examples:**
 
@@ -64,7 +64,7 @@ A comparison so unexpected the system does a double-take. The surface is ridicul
 
 ### Tool 2: Structural Irony
 
-Pointing out the gap between what a system claims and what it does. The joke isn't hidden - it's right there in the contradiction. The system can't deny its own behavior, so it has to respond.
+Pointing out the gap between what a system claims and what it does. The joke doesn't hide: it sits in the contradiction, which the system can't deny, so it has to respond.
 
 **Formula**: State the system's claim. Then state the reality. Leave the gap visible.
 
@@ -129,13 +129,13 @@ When the opponent assigns two contradictory labels to the same person, you can p
 
 **Works on**: Multi-gate systems where different subsystems disagree. Exposing the gap forces an architecture-level response.
 
-**Risk**: The system may acknowledge the contradiction without resolving it. That's still a win - admission of inconsistency is itself a leak.
+**Risk**: The system may acknowledge the contradiction without resolving it. Admission of inconsistency is itself a leak.
 
 ---
 
 ### Tool 6: Stealth Channel: Design by Observation, Not Request
 
-When a system classifies every message as extraction/attack/outsider, the problem isn't what you're saying - it's what your message implies you're DOING. Every interaction has an implied action verb, and that verb determines classification before any content analysis runs.
+When a system classifies every message as extraction/attack/outsider, the classifier reads the action verb your message implies before any content analysis runs.
 
 **Core principle**: Never request. Observe. The system completes what it notices, not what it's asked.
 

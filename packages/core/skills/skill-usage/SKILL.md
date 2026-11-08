@@ -13,7 +13,7 @@ verdict: KEEP
 
 # Skill Usage: Measuring Skill Adoption
 
-The skill-loading problem is unmeasured, not unbroken. This skill turns "skills are barely used" from an owner observation into a number you can act on. It reads telemetry that already exists - no new runtime code required - and emits a per-skill usage table.
+Skill loading is unmeasured. This skill turns "skills are barely used" from an owner observation into a number you can act on. No new runtime code is needed: the table is per skill, computed from telemetry already on disk.
 
 The validation-first stance: **a zero-evidence skill must NOT be KEEP.** Every skill is suspect until measured. This skill is the measurement instrument; `meta-improvement` is the evolution engine. Run this first, feed the result to `meta-improvement`.
 
@@ -26,7 +26,7 @@ The validation-first stance: **a zero-evidence skill must NOT be KEEP.** Every s
 
 ## Step 1: Read the session counters (exact, per-session)
 
-Call the `skill_stats` tool. It returns `sessionHasSkillLoad` plus a per-skill map:
+Call the `skill_stats` tool. The reply carries `sessionHasSkillLoad` plus a per-skill map:
 
 ```json
 {
@@ -57,7 +57,7 @@ Fallback / cross-check: scan session files under `~/.pi/agent/sessions/` for:
 
 ## Step 4: Join with an outcome proxy (where available)
 
-Where a turn's reasoning metrics exist (`measureStability`: topic anchor, bigram entropy, self-contradiction), tag each skill-loading turn with a coarse outcome: `stable` (no self-contradiction, anchored) or `unstable`. The goal is not a perfect score - it is a **delta you can compare after a change**.
+Where a turn's reasoning metrics exist (`measureStability`: topic anchor, bigram entropy, self-contradiction), tag each skill-loading turn with a coarse outcome: `stable` (no self-contradiction, anchored) or `unstable`. What matters is the **delta between two runs**, because that is what a change is compared against.
 
 ## Step 5: Emit the table and bucket
 
