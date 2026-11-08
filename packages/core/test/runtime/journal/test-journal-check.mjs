@@ -328,5 +328,19 @@ test("the digest stops reading a superseded intention as open", () => {
   assert.doesNotMatch(result.stdout, /#1 intent\/open beta:/);
 });
 
+test("the digest prints a live window and drops one that closed before the reading", () => {
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const past = new Date(Date.now() - 3_600_000).toISOString();
+  const lines = [
+    entry(1, { subject: "live", expires_at: future }),
+    entry(2, { subject: "closed", expires_at: past }),
+  ];
+  const result = run({ lines, digest: true });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /#1 intent\/open live: /);
+  assert.match(result.stdout, new RegExp(`\\(expires ${future.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`));
+  assert.doesNotMatch(result.stdout, /closed:/);
+});
+
 console.log(`\n Results: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

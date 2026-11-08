@@ -96,6 +96,16 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.36 (2026-11-08: the digest reads the window it prints)
+
+- **Two readers of one file disagreed about the same intention.** The checker treats a past
+  `expires_at` as a line that aged where it sits, while `--digest` still listed that intention as open
+  work — the one surface a successor reads first. The digest now drops an intention whose window closed
+  before the reading and prints the stamp on one whose window is still live, because when it closes is
+  part of what the next seat has to act on.
+- **The window stays the owner's**: nothing here writes a stamp or changes a status; it reads the one
+  the writer already recorded.
+
 ## Core — 0.43.35 (2026-11-08: a merge report that leads with its own verdict)
 
 - **Two paths merged nothing and told a reader two different stories.** The refusal family opened with

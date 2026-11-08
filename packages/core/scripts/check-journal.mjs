@@ -385,7 +385,16 @@ if (digest) {
     const status = derivedStatus(list);
     if (!status || !OPEN_STATUSES.has(status)) continue;
     const carrier = list.filter((candidate) => typeof candidate.status === "string").at(-1);
-    process.stdout.write(`#${carrier.seq} ${carrier.kind}/${status} ${subject}: ${carrier.text}\n`);
+    // An intention whose window closed before this reading is not open work: the
+    // checker already reads a past stamp as a line that aged where it sits, and a
+    // digest that still called it open would be a second opinion about the same
+    // file. A live window is printed with the intention, because when it closes is
+    // part of what a successor has to act on.
+    if (isStamp(carrier.expires_at) && Date.parse(carrier.expires_at) <= Date.now()) continue;
+    const window = isStamp(carrier.expires_at) ? ` (expires ${carrier.expires_at})` : "";
+    process.stdout.write(
+      `#${carrier.seq} ${carrier.kind}/${status} ${subject}: ${carrier.text}${window}\n`,
+    );
     const decision = list.filter((candidate) => candidate.kind === "decision").at(-1);
     if (decision) {
       process.stdout.write(`  decision #${decision.seq}: ${decision.text} (because: ${decision.reason})\n`);
