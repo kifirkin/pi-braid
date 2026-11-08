@@ -96,6 +96,26 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.37 (2026-11-08: the shapes were rare, and the instrument policed the wrong text)
+
+- **Measured over the shipped corpus, the seven sentence shapes fired in 8 of 61 files.** 21 hits in
+  41,575 words — and 11 of those were the catalogue quoting the shapes it forbids, so the file that defines
+  the failure was the file that scored worst. The prose that makes the complaint is not built out of those
+  seven shapes; it is built out of long sentences, asides and em-dashes, which the instrument counts
+  separately and which nothing has yet acted on.
+- **The instrument read comments, not prompts.** Over `packages/*/src/**/*.ts` the voice check scores the
+  comments beside a prompt; the strings the agent actually reads were outside its reach until they were
+  extracted, and over extracted strings its empty-sentence counter collapses into fragments. A gate placed
+  on that path would have policed documentation and passed the prompt.
+- **`check-voice.mjs` stays advisory, and the reason is a number.** After the rewrite the only files with a
+  hit are the three that must not change — the catalogue, the identity, and a skill whose before/after
+  example is deliberate. A threshold low enough to catch a regression fires on honest prose; a threshold
+  above the catalogue catches nothing. The band between those two numbers is empty.
+- **Eight files rewritten anyway**, each removing the shape it carries rather than paraphrasing it:
+  `skill-usage`'s process narration, `paper-writer`'s importance paragraph, `subagent-orchestration`,
+  `adversarial-engagement`, `socratic-irony`, the shared engagement fundamentals, and two prompt-builder
+  sections.
+
 ## Core — 0.43.36 (2026-11-08: the digest reads the window it prints)
 
 - **Two readers of one file disagreed about the same intention.** The checker treats a past
