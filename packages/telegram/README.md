@@ -53,12 +53,13 @@ Every `BRAID_TG_*` name has a `TELEGRAM_*` alias; the prefixed name wins when bo
 
 `braid.telegram.*` keys in `~/.pi/agent/settings.json`:
 
-| Key                             | Default  | Effect                                                     |
-| ------------------------------- | -------- | ---------------------------------------------------------- |
-| `braid.telegram.sendMaxChars`   | `4096`   | Cap for plain `telegram_send` text; re-read per send       |
-| `braid.telegram.notifyMaxChars` | `1200`   | Cap for the turn-complete update; re-read per notification |
-| `braid.telegram.tts`            | edge-tts | Voice source, rate and voices; read at extension load      |
-| `braid.telegram.pauseStateFile` | unset    | Where the pause control keeps its state; read at load      |
+| Key                              | Default  | Effect                                                                                                                                          |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `braid.telegram.sendMaxChars`    | `4096`   | Cap for plain `telegram_send` text; re-read per send                                                                                            |
+| `braid.telegram.notifyMaxChars`  | `1200`   | Cap for the turn-complete update; re-read per notification                                                                                      |
+| `braid.telegram.pollerAutoStart` | off      | Working directories that start the inbound poller by themselves: `true` everywhere, an absolute-cwd array those only, exact match; read at load |
+| `braid.telegram.tts`             | edge-tts | Voice source, rate and voices; read at extension load                                                                                           |
+| `braid.telegram.pauseStateFile`  | unset    | Where the pause control keeps its state; read at load                                                                                           |
 
 ## Limits
 
