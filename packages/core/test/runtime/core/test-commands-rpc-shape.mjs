@@ -1,5 +1,5 @@
 /**
- * Every command wave one touched answers RPC mode with text, not silence.
+ * Every command that renders a component in the TUI answers RPC mode with text.
  *
  * WHY THIS TEST EXISTS:
  *   Three of these commands opened a terminal component (or were assumed to
