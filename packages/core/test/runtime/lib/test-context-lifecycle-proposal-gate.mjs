@@ -408,15 +408,15 @@ await test("8. persisted proposals still carry envelope + exactly one end-marker
   assert.equal(e.customType, "context-lifecycle:proposal", "proposal custom type unchanged");
   assert.equal(e.type, "custom_message", "persisted as a custom_message entry");
   assert.equal(e.persistent, true, "proposal stays persisted");
+  assert.equal(typeof e.content, "string", "the proposal is stored as text, so an export renders it");
   assert.match(
-    e.content[0].text,
-    /^\[braid-whisper - context-lifecycle @ [^\]]+\]\nContext Suggestion: /,
-    "envelope family == body family + T3 generation clock (proposal-envelope guard)",
+    e.content,
+    /^\[braid-whisper - context-lifecycle @ [0-9]{2}:[0-9]{2} [A-Z]{3}\]\n/,
+    "the stored text opens with the context-lifecycle envelope",
   );
-  const last = e.content[e.content.length - 1];
-  assert.equal(last.text, "[braid-whisper-end]", "proposal closes with the end-marker");
-  const markers = e.content.filter((c) => c.type === "text" && c.text === "[braid-whisper-end]");
-  assert.equal(markers.length, 1, "exactly one end-marker per proposal");
+  assert.ok(e.content.trimEnd().endsWith("[braid-whisper-end]"), "proposal closes with the end-marker");
+  const markers = e.content.split("[braid-whisper-end]").length - 1;
+  assert.equal(markers, 1, "exactly one end-marker per proposal");
 });
 
 console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
