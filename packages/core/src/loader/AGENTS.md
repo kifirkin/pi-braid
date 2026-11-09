@@ -13,9 +13,9 @@ that it contains the **loader** (and the related subagent API), not
 ## Files
 
 | File        | Purpose                                                                                                                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `loader.ts` | Resolves `BRAID_MODULES` / `braid.modules` (pi global, pi project, braid's store) / runtime overrides into an enabled set, topologically sorts by dependency, and invokes each factory. |
-| `api.ts`    | Registers `/modules-enable`, `/modules-disable`, `/modules-toggle`, `/modules-list`, `/modules-status`, `/modules-reset` commands for the subagent API.                                 |
+| `api.ts`    | Registers `/modules` (verbs: `on`, `off`, `toggle`, `reset`, `all on                                                                                                                    | off`, `list`) for the subagent API, plus the six former command names as forwarding aliases. |
 
 ## Layer position
 

@@ -76,8 +76,8 @@ per-source caps are enforced in `injection-tracker.ts`.
 - **Default-on**: the manifest entry carries no `disabledByDefault`, so the
   scheduler loads like every other default extension. Turn it off per
   extension (`braid.modules["heartbeat-scheduler"]: false`, or
-  `/modules-disable heartbeat-scheduler`) or by its module group
-  (`/modules-disable heartbeat`, which also covers `analytics`); the
+  `/modules off heartbeat-scheduler`) or by its module group
+  (`/modules off heartbeat`, which also covers `analytics`); the
   in-process toggle changes the current session's set without a restart.
 - **First-tick timing**: the first heartbeat fires 5 turns after
   session_start, not on session_start itself. This avoids racing

@@ -207,7 +207,7 @@ Extensions are registered in the flat manifest at [`src/extensions/manifest.ts`]
 
 Config resolution order (highest priority first):
 
-1. Runtime subagent API (`/modules-toggle`, `/modules-enable`, `/modules-disable`)
+1. Runtime subagent API (`/modules on`, `/modules off`, `/modules toggle`). The six former names (`/modules-enable`, `/modules-disable`, `/modules-toggle`, `/modules-list`, `/modules-status`, `/modules-reset`) forward to it for one release.
 2. `~/.pi/agent/settings.json` → `braid.modules`
 3. `BRAID_MODULES` env var
 4. Defaults (all non-opt-in extensions enabled)

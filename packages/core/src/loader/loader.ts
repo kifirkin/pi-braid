@@ -3,8 +3,8 @@
  *
  * Config layers (applied high -> low; runtime and settings override the
  * layers below per-id, the env var is a complete spec over the defaults):
- *   1. Runtime overrides - /modules-toggle, /modules-enable, /modules-disable
- *      (in-session; the toggle commands also persist them into `braid.modules`)
+ *   1. Runtime overrides - /modules on|off|toggle|all|reset (in-session; the
+ *      toggle verbs also persist them into `braid.modules`)
  *   2. `braid.modules` settings - two sources, later wins per id: pi's
  *      agent-directory settings file (`<agent dir>/settings.json`) and braid's
  *      own module-overrides store, which is where toggles persist
@@ -483,28 +483,31 @@ function resolveIds(ref: string): string[] | null {
   return null;
 }
 
-/** Enable an extension (or module group). Persists to settings.json. */
-export function enableModule(name: string, _ctx?: ExtensionContext): boolean {
-  const ids = resolveIds(name);
+/**
+ * Enable or disable an extension (or module group), persisting the choice.
+ * Returns false when the reference is unknown, or when the request would
+ * disable an always-on extension: always-on entries are loaded regardless of
+ * config, so a `false` for one would be a stored lie.
+ */
+export function setModuleEnabled(ref: string, on: boolean): boolean {
+  const ids = resolveIds(ref);
   if (!ids) return false;
+  const mutable = ids.filter((id) => !getEntry(id)?.alwaysOn);
+  if (mutable.length === 0) return on;
   const state = getLoaderState();
-  const nonAlwaysOn = ids.filter((id) => !getEntry(id)?.alwaysOn);
-  if (nonAlwaysOn.length === 0) return true;
-  for (const id of nonAlwaysOn) state.runtimeConfig.set(id, true);
+  for (const id of mutable) state.runtimeConfig.set(id, on);
   saveModuleOverridesToFile(state.runtimeConfig);
   return true;
 }
 
-/** Disable an extension (or module group). Persists to settings.json. */
+/** Enable an extension (or module group). Persists to braid's override store. */
+export function enableModule(name: string, _ctx?: ExtensionContext): boolean {
+  return setModuleEnabled(name, true);
+}
+
+/** Disable an extension (or module group). Persists to braid's override store. */
 export function disableModule(name: string, _ctx?: ExtensionContext): boolean {
-  const ids = resolveIds(name);
-  if (!ids) return false;
-  const nonAlwaysOn = ids.filter((id) => !getEntry(id)?.alwaysOn);
-  if (nonAlwaysOn.length === 0) return false;
-  const state = getLoaderState();
-  for (const id of nonAlwaysOn) state.runtimeConfig.set(id, false);
-  saveModuleOverridesToFile(state.runtimeConfig);
-  return true;
+  return setModuleEnabled(name, false);
 }
 
 /** Toggle an extension (or module group). Returns the new state or null. */
@@ -524,15 +527,69 @@ export function toggleModule(name: string, _ctx?: ExtensionContext): boolean | n
   return next;
 }
 
+/**
+ * The layer that decides each extension's enabled state. Later layers win,
+ * matching resolveFromSources: manifest default, env spec, agent settings,
+ * braid's store, runtime override.
+ */
+export type ModuleOrigin =
+  | "manifest"
+  | "environment"
+  | "agent settings"
+  | "module toggles"
+  | "runtime override";
+
+/** The settings layer that names each extension, when one does. */
+function settingsOrigins(): Map<string, ModuleOrigin> {
+  const origins = new Map<string, ModuleOrigin>();
+  const storePath = getModuleStorePath();
+  const layers: [ModuleOrigin, Record<string, unknown>][] = [
+    ["agent settings", readSettingsFile(GLOBAL_SETTINGS)],
+    ["module toggles", storePath ? readSettingsFile(storePath) : {}],
+  ];
+  for (const [origin, doc] of layers) {
+    const modules = (doc[BRAID_KEY] as BraidSettings)?.modules ?? {};
+    for (const ref of Object.keys(modules)) {
+      for (const id of expandRef(ref)) origins.set(id, origin);
+    }
+  }
+  return origins;
+}
+
+/** Where every extension's effective state comes from, one entry each. */
+function resolveOrigins(): Map<string, ModuleOrigin> {
+  const origins = new Map<string, ModuleOrigin>();
+  for (const entry of MANIFEST) origins.set(entry.id, "manifest");
+
+  const env = process.env.BRAID_MODULES;
+  if (env && env.trim()) {
+    for (const part of env
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
+      const ref = part.startsWith("+") || part.startsWith("-") ? part.slice(1) : part;
+      for (const id of expandRef(ref)) origins.set(id, "environment");
+    }
+  }
+
+  for (const [id, origin] of settingsOrigins()) origins.set(id, origin);
+  for (const id of getLoaderState().runtimeConfig.keys()) origins.set(id, "runtime override");
+  return origins;
+}
+
 /** Get the current state of all extensions with loading status. */
 export function getModuleStates(
   _ctx?: ExtensionContext,
-): Record<string, { enabled: boolean; loaded: boolean; source: string; desc: string }> {
+): Record<
+  string,
+  { enabled: boolean; loaded: boolean; source: string; desc: string; origin: ModuleOrigin }
+> {
   const state = getLoaderState();
   const { enabled, source } = resolveEnabledExtensions();
+  const origins = resolveOrigins();
   const result: Record<
     string,
-    { enabled: boolean; loaded: boolean; source: string; desc: string }
+    { enabled: boolean; loaded: boolean; source: string; desc: string; origin: ModuleOrigin }
   > = {};
   for (const entry of MANIFEST) {
     // One resolution path: the resolver already applies runtime overrides,
@@ -544,6 +601,7 @@ export function getModuleStates(
       loaded: state.loaded.includes(entry.id),
       source,
       desc: entry.desc,
+      origin: origins.get(entry.id) ?? "manifest",
     };
   }
   return result;
@@ -595,6 +653,11 @@ function topologicalSort(extIds: string[]): string[] {
 }
 
 /** Get all valid config reference names for API completion/docs. */
-export function getAllRefNames(): string[] {
+export function getModuleRefs(): string[] {
   return allConfigRefs();
+}
+
+/** @deprecated Use getModuleRefs. Kept as an alias for existing callers. */
+export function getAllRefNames(): string[] {
+  return getModuleRefs();
 }

@@ -292,7 +292,7 @@ braid reads configuration from the standard pi locations, with a dedicated `brai
 ~/.pi/agent/braid/projects/<project>/module-overrides.json   # braid-owned module toggles
 ```
 
-The user-global file always exists; the project one is optional and belongs to pi (braid neither creates it nor writes it, and does not read its `braid.modules` block: pi applies that file only for a trusted project, and braid cannot ask pi that while extensions load). `braid.modules` is read from two sources, later source wins per key: the user-global file and braid's own `module-overrides.json` store, which is where `/modules-toggle` and friends persist. Every other `braid.*` reader reads the user-global file only. Copy-ready examples live in the repo's [`examples/`](../../../examples) directory.
+The user-global file always exists; the project one is optional and belongs to pi (braid neither creates it nor writes it, and does not read its `braid.modules` block: pi applies that file only for a trusted project, and braid cannot ask pi that while extensions load). `braid.modules` is read from two sources, later source wins per key: the user-global file and braid's own `module-overrides.json` store, which is where the `/modules` toggle verbs persist. Every other `braid.*` reader reads the user-global file only. Copy-ready examples live in the repo's [`examples/`](../../../examples) directory.
 
 ### Schema
 
@@ -378,10 +378,25 @@ First match wins - a match is the profile `cwd` itself or any directory under it
 
 braid's loader follows a four-tier precedence (high → low):
 
-1. **Runtime API** - `/modules-toggle`, `/modules-enable`, `/modules-disable` (in-session)
-2. **Settings** - `braid.modules`, later source wins per id: `~/.pi/agent/settings.json`, then braid's own `~/.pi/agent/braid/projects/<project>/module-overrides.json`, where the toggle commands persist. A project-scoped `<cwd>/.pi/settings.json` stays pi's file: pi applies it only for a project it trusts, and braid cannot ask pi that while extensions load, so braid does not read it.
+1. **Runtime API** - `/modules` verbs `on`, `off`, `toggle`, `reset`, `all on|off` (in-session)
+2. **Settings** - `braid.modules`, later source wins per id: `~/.pi/agent/settings.json`, then braid's own `~/.pi/agent/braid/projects/<project>/module-overrides.json`, where the toggle verbs persist. A project-scoped `<cwd>/.pi/settings.json` stays pi's file: pi applies it only for a project it trusts, and braid cannot ask pi that while extensions load, so braid does not read it.
 3. **Env var** - `BRAID_MODULES=...`
 4. **Defaults** - all extensions whose manifest does not have `disabledByDefault: true`
+
+### In-session commands
+
+`/modules` takes a verb as its first argument; with no argument it opens a list of every extension in the TUI and prints the same rows as text in RPC mode.
+
+| Command                   | Effect                                                               |
+| ------------------------- | -------------------------------------------------------------------- |
+| `/modules on <ref>`       | Enable an extension id or module group                               |
+| `/modules off <ref>`      | Disable an extension id or module group                              |
+| `/modules toggle <ref>`   | Flip the effective state                                             |
+| `/modules all on` / `off` | Apply to every extension in the manifest                             |
+| `/modules list`           | Print every extension, its description and where its state came from |
+| `/modules reset`          | Clear in-process overrides (persisted `braid.modules` stays)         |
+
+The six former names (`/modules-enable`, `/modules-disable`, `/modules-toggle`, `/modules-reset`, `/modules-list`, `/modules-status`) forward to the equivalent verb for one release.
 
 ### `BRAID_MODULES` syntax
 
@@ -496,7 +511,7 @@ ls node_modules/@earendil-works/ 2>/dev/null
 
 ### Disabling and restarts
 
-The in-session `/modules-disable` persists the choice to braid's own `braid.modules` store (`~/.pi/agent/braid/projects/<project>/module-overrides.json`); the change takes effect at the next session start (already-loaded extensions keep running). A persisted `false` entry removes a default-enabled extension at boot, so the choice survives restarts. The equivalent env-var route is `export BRAID_MODULES="-<id>"` (module values are real JSON booleans - `false`, not `0` or `"off"`).
+The in-session `/modules off <ref>` persists the choice to braid's own `braid.modules` store (`~/.pi/agent/braid/projects/<project>/module-overrides.json`); the change takes effect at the next session start (already-loaded extensions keep running). A persisted `false` entry removes a default-enabled extension at boot, so the choice survives restarts. The equivalent env-var route is `export BRAID_MODULES="-<id>"` (module values are real JSON booleans - `false`, not `0` or `"off"`).
 
 ---
 

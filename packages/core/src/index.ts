@@ -16,9 +16,10 @@
  *   Reference targets: extension IDs ("enforcement") or module groups ("heartbeat").
  *
  * Subagent API:
- *   Researcher subagents can call `/modules-enable`, `/modules-disable`,
- *   `/modules-toggle`, `/modules-list`, `/modules-status`, `/modules-reset`
- *   to control extension loading during benchmark experiments.
+ *   Researcher subagents can call `/modules` (verbs: on, off, toggle, reset,
+ *   all on|off, list) to control extension loading during benchmark experiments.
+ *   The six former names (modules-enable, modules-disable, modules-toggle,
+ *   modules-reset, modules-list, modules-status) forward to it for one release.
  */
 
 import { readFileSync } from "node:fs";
