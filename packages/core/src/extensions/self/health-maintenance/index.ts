@@ -1,6 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 import {
   getConfig,
@@ -249,6 +250,7 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
   // than "none" will corrupt the TUI rendering.
   pi.registerCommand("logs", {
     description: "Show/clear the in-memory log buffer (TUI-safe default: no console writes)",
+    getArgumentCompletions: completeLogs,
     handler: async (args: string | undefined, ctx) => {
       const trimmed = (args ?? "").trim();
       const parts = trimmed.split(/\s+/);
@@ -298,6 +300,33 @@ export default function healthMaintenanceExtension(pi: ExtensionAPI) {
 }
 
 // Action Handlers
+
+const LOG_LEVELS = ["none", "error", "warn", "info", "debug"];
+
+/** Complete /logs: its two verbs, then the level values after `level`. */
+function completeLogs(prefix: string): AutocompleteItem[] | null {
+  const text = prefix ?? "";
+  const space = text.indexOf(" ");
+  if (space === -1) {
+    const typed = text.toLowerCase();
+    const verbs: AutocompleteItem[] = [
+      { value: "clear", label: "clear", description: "Clear the in-memory buffer" },
+      { value: "level", label: "level", description: "Set the console log level" },
+    ];
+    const matches = verbs.filter((item) => item.value.startsWith(typed));
+    return matches.length > 0 ? matches : null;
+  }
+  const verb = text.slice(0, space).toLowerCase();
+  if (verb !== "level") return null;
+  const typed = text.slice(space + 1).toLowerCase();
+  const matches = LOG_LEVELS.filter((level) => level.startsWith(typed)).map((level) => ({
+    value: `level ${level}`,
+    label: level,
+    description: level === "none" ? "TUI-safe (no console writes)" : "Writes to the console",
+  }));
+  return matches.length > 0 ? matches : null;
+}
+
 async function executeHealthMaintenanceAction(
   params: any,
   _pi: ExtensionAPI,

@@ -3,7 +3,8 @@
  *
  * Three concerns:
  * 1. Model selection: /utility-model (the merged role) opens the
- *    ModelSelectorComponent UI. Model resolution is handled by
+ *    ModelSelectorComponent UI in the TUI and prints the current setting as
+ *    text elsewhere. Model resolution is handled by
  *    src/lib/ai/model-resolver.ts (used by vision/metacognition tools
  *    directly).
  * 2. Session manager patches: context_navigate and context_compress tools
@@ -28,7 +29,8 @@ import type {
   ExtensionCommandContext,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { ModelSelectorComponent, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { ModelSelectorComponent } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { Model, Api } from "@earendil-works/pi-ai";
 import { resolveUtilityModel, normaliseRoleSetting } from "../../../lib/ai/model-resolver.js";
 import {
@@ -42,6 +44,32 @@ import { readSettingsFile, updateSettings } from "../../../lib/config/per-tool-s
 import { createLogger } from "../../../lib/core/logger.js";
 
 const log = createLogger("polyfill");
+
+/**
+ * The last context a run or a command handed the extension. Argument
+ * completion receives only the typed prefix - no ctx - so the model list it
+ * offers comes from here. Captured on session start and before each run, the
+ * points where the registry is bound.
+ */
+let completionCtx: ExtensionContext | undefined;
+
+/** Complete /utility-model's argument: the clear verb and the available
+ *  catalogue as provider/model patterns. Only models the registry reports as
+ *  available are named, so a completion cannot suggest a model the resolver
+ *  would then refuse. */
+function completeUtilityModel(prefix: string): AutocompleteItem[] | null {
+  const typed = (prefix ?? "").toLowerCase();
+  const items: AutocompleteItem[] = [];
+  if ("clear".startsWith(typed)) {
+    items.push({ value: "clear", label: "clear", description: "Use the session model" });
+  }
+  for (const model of completionCtx?.modelRegistry.getAvailable() ?? []) {
+    const value = `${model.provider}/${model.id}`;
+    if (!value.toLowerCase().startsWith(typed)) continue;
+    items.push({ value, label: value, description: "Set the utility model" });
+  }
+  return items.length > 0 ? items : null;
+}
 
 /** Custom settings keys managed by the model commands */
 import {
@@ -143,8 +171,9 @@ async function setRoleSettingFromArgs(
  * vision analysis falls back to, so there is no separate vision command.
  */
 async function runUtilityModelCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
+  completionCtx = ctx;
   if (!args || args.trim() === "") {
-    if (ctx.hasUI) {
+    if (ctx.mode === "tui" && ctx.hasUI) {
       await openModelSelectorUI(ctx, UTILITY_MODEL_KEY, "Utility", resolveUtilityModel);
     } else {
       const model = resolveUtilityModel(ctx);
@@ -238,6 +267,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
   // here makes display and enforcement agree before the first run, not only
   // at the next agent turn. No-op when the setting is unset.
   pi.on(SESSION_START, (_event, ctx) => {
+    completionCtx = ctx;
     applyConfiguredContextWindow(ctx);
     // Pair the window with the reserve it implies: pi-core decides WHEN to
     // compact from its own `compaction.reserveTokens` (a fixed token count),
@@ -260,6 +290,7 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 
   // Patch session manager methods on before_agent_start (fires for --no-session mode)
   pi.on("before_agent_start", async (_event, ctx) => {
+    completionCtx = ctx;
     patchSessionManagerMethods(pi, ctx);
 
     // Re-apply the configured window per run so a mid-session model switch
@@ -291,9 +322,10 @@ export default function polyfillExtension(pi: ExtensionAPI) {
       "Set or show the utility model for classification tasks. " +
       "Accepts one model or an ordered list (comma-separated), tried in order " +
       "until the provider layer reports a route usable. " +
-      "No args = show current setting. Smaller/faster models preferred. " +
-      "Examples: /utility-model provider/model-id, /utility-model a/b,c/d, " +
-      "/utility-model clear",
+      "No args shows the current setting (the TUI opens the selector). " +
+      "Smaller/faster models preferred. Examples: /utility-model provider/model-id, " +
+      "/utility-model a/b,c/d, /utility-model clear",
+    getArgumentCompletions: completeUtilityModel,
     handler: (args, ctx) => runUtilityModelCommand(args, ctx),
   });
 }
@@ -335,13 +367,12 @@ function resolveModelPattern(
 /**
  * Open ModelSelectorComponent via ctx.ui.custom() for model selection.
  *
- * Approach:
- * - Use SettingsManager.inMemory() for ModelSelectorComponent (its
- *   setDefaultModelAndProvider is a no-op for disk persistence - that's fine
- *   since we call pi.setModel() afterwards which goes through AgentSession
- *   and persists via the real settings manager).
- * - Capture the selected model in the onSelect callback.
- * - After ctx.ui.custom() resolves, call pi.setModel() and setModelSetting().
+ * The component reads and writes models through the ModelRuntime and the
+ * scoped list it is handed; persistence is this extension's job, so the
+ * selected pattern is written to the role setting after the dialog resolves.
+ * The selection callback stores the model before the dialog closes, which is
+ * the only state the handler keeps from it: choosing a role model must not
+ * change the session's default model.
  */
 async function openModelSelectorUI(
   ctx: ExtensionCommandContext,
@@ -351,17 +382,9 @@ async function openModelSelectorUI(
 ): Promise<void> {
   const modelRegistry = ctx.modelRegistry;
 
-  // ModelSelectorComponent writes through an in-memory SettingsManager:
-  // setDefaultModelAndProvider() sets fields in memory but never persists,
-  // so pi.setModel() below does the real persistence.
-  const settingsManager = SettingsManager.inMemory();
-
-  // ModelSelectorComponent's 4th parameter is the ModelRuntime. The extension
-  // context exposes only the ModelRegistry facade, which holds the runtime as
-  // a private field (`runtime`); read it directly. The retired
-  // getAvailableSnapshot probe tested the registry for a method that exists
-  // only on ModelRuntime, so it was false by construction on every supported
-  // build.
+  // The extension context exposes only the ModelRegistry facade, which holds
+  // the runtime as a private field (`runtime`); the selector's 1.5.0
+  // signature takes that runtime directly.
   const modelRuntime = (modelRegistry as unknown as { runtime?: ModelRuntime }).runtime;
 
   // Priority: selected model first, then same provider, then others
@@ -392,40 +415,18 @@ async function openModelSelectorUI(
     };
     const onCancel = () => done(undefined as unknown);
 
-    // 0.80.8: (tui, currentModel, settingsManager, modelRuntime, scopedModels,
-    // onSelect, onCancel) — ctor.length 7. 0.84.4: (tui, currentModel,
-    // modelRuntime, scopedModels, onSelect, onCancel, initialSearchInput?,
-    // onSelectAsDefault?, defaultModel?) — SettingsManager dropped; the
-    // compiled ctor declares 9 plain params (no defaults) → length 9. NB:
-    // function.length counts params BEFORE the first default — the d.ts's
-    // "optional" suffixes don't exist in compiled JS. So length !== 7 = new. The installed
-    // devDependency types may lag the running pi dist (0.82.1 d.ts vs 0.84.4
-    // runtime), so the new-signature branch is typed loosely on purpose.
-    const isNewSelector = ModelSelectorComponent.length !== 7;
-    // structural component — pi renders it via ctx.ui.custom. Return type is
-    // `object` (not {}): the new-signature branch is typed loosely on purpose.
-    const SelectorCtor = ModelSelectorComponent as unknown as new (...args: unknown[]) => object;
-    const selector = isNewSelector
-      ? new (SelectorCtor as any)(
-          tui,
-          currentRoleModel,
-          modelRuntime,
-          scopedModels,
-          onSelect,
-          onCancel,
-        )
-      : // 0.85.1 devDep types carry only the new signature (3rd param
-        // ModelRuntime), so the legacy branch can no longer type against
-        // them — same deliberate loose typing as the new branch above.
-        new (SelectorCtor as any)(
-          tui,
-          currentRoleModel,
-          settingsManager,
-          modelRuntime,
-          scopedModels,
-          onSelect,
-          onCancel,
-        );
+    // Installed 1.5.0 signature: (tui, currentModel, modelRuntime,
+    // scopedModels, onSelect, onCancel, initialSearchInput?,
+    // onSelectAsDefault?, defaultModel?). The runtime is read off the registry
+    // above; the types ship with the package, so no arity probe is needed.
+    const selector = new ModelSelectorComponent(
+      tui,
+      currentRoleModel,
+      modelRuntime as ModelRuntime,
+      scopedModels,
+      onSelect,
+      onCancel,
+    );
 
     return selector;
   });

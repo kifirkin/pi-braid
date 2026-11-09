@@ -92,6 +92,7 @@ function dialogCtx(notifications) {
   let component = null;
   let finish = null;
   const ctx = {
+    mode: "tui",
     ui: {
       notify: (msg, type) => notifications.push({ msg, type }),
       custom: (factory) => {

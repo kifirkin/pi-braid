@@ -168,6 +168,23 @@ export default function assistantExtension(pi: ExtensionAPI) {
           values: ["enabled", "disabled"],
         }));
 
+      // A custom component renders only in the TUI. Every other mode gets the
+      // same rows as text, so an RPC caller reads the set instead of a dialog
+      // that never appears.
+      const items = buildItems();
+      if (ctx.mode !== "tui") {
+        const enabled = items.filter(
+          (item) => item.currentValue === "enabled",
+        ).length;
+        const lines = [
+          `Tools (${enabled} enabled, ${items.length - enabled} disabled):`,
+        ];
+        for (const item of items)
+          lines.push(`  ${item.currentValue.padEnd(8)} ${item.id}`);
+        ctx.ui.notify(lines.join("\n"), "info");
+        return;
+      }
+
       await ctx.ui.custom((tui, theme, _kb, done) => {
         const container = new Container();
 
@@ -182,7 +199,7 @@ export default function assistantExtension(pi: ExtensionAPI) {
         );
 
         const settingsList = new SettingsList(
-          buildItems(),
+          items,
           Math.min(toolList.length + 2, 15),
           getSettingsListTheme(),
           (id, newValue) => {

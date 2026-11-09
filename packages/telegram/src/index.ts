@@ -1705,6 +1705,29 @@ export default async function telegramExtension(
   pi.registerCommand("telegram", {
     description:
       "Telegram channel control: /telegram enable | /telegram send <text>",
+    getArgumentCompletions: (prefix: string) => {
+      const typed = (prefix ?? "").toLowerCase();
+      const verbs = [
+        {
+          value: "enable",
+          label: "enable",
+          description: "Start the background poller",
+        },
+        {
+          value: "disable",
+          label: "disable",
+          description: "Stop the background poller",
+        },
+        { value: "send", label: "send", description: "Send text to the owner" },
+        {
+          value: "status",
+          label: "status",
+          description: "Show channel and poller state",
+        },
+      ];
+      const matches = verbs.filter((verb) => verb.value.startsWith(typed));
+      return matches.length > 0 ? matches : null;
+    },
     handler: async (args: string, ctx: any) => {
       const trimmed = args.trim();
 
