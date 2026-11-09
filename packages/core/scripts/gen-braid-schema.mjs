@@ -92,6 +92,7 @@ const CONST_SOURCES = {
   DEFAULT_OUTAGE_CONFIG: "packages/providers/outage-watch.ts",
   DEFAULT_SEND_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
   DEFAULT_NOTIFY_MAX_CHARS: "packages/telegram/src/lib/telegram-settings.ts",
+  DEFAULT_POLLER_AUTO_START: "packages/telegram/src/lib/telegram-settings.ts",
   DEFAULT_TTS_RATE: "packages/telegram/src/lib/tts.ts",
   DEFAULT_VOICE_TTS: "packages/telegram/src/lib/tts.ts",
   DEFAULTS: "packages/contrib/network-monitor/settings.ts",
@@ -305,6 +306,18 @@ const MECHANICAL_ROWS = [
       evidence: "notifyMaxChars: sanitizeCap(",
     },
     mech: { const: "DEFAULT_NOTIFY_MAX_CHARS", prop: null },
+  },
+  {
+    path: "braid.telegram.pollerAutoStart",
+    type: ["boolean", "array"],
+    description:
+      "Working directories that start the inbound poller by themselves: true everywhere, an array of absolute cwds those only, anything else nowhere; matching is exact.",
+    read: {
+      file: "packages/telegram/src/lib/telegram-settings.ts",
+      line: 122,
+      evidence: "parsed?.braid?.telegram?.pollerAutoStart",
+    },
+    mech: { const: "DEFAULT_POLLER_AUTO_START", prop: null },
   },
   ...networkMonitorRows(),
   ...outageRows(),

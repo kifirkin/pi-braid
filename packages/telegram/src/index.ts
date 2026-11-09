@@ -1868,7 +1868,9 @@ export default async function telegramExtension(
       stt,
       onOwnerMessage: deliverOwnerMessage,
       onCallbackQuery: handleCallbackQuery,
-      startedBy: env(ENV_POLL_ENABLED) ? `${ENV_POLL_ENABLED}=1` : "settings:pollerAutoStart",
+      startedBy: env(ENV_POLL_ENABLED)
+        ? `${ENV_POLL_ENABLED}=1`
+        : "settings:pollerAutoStart",
       onStart: () => void placeControlKeyboardOnce(),
       pidAlive: deps?.pidAlive,
     });

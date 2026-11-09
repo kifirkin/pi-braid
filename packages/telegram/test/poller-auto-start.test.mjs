@@ -18,9 +18,8 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const { readPollerAutoStart, pollerAutoStartFor } = await import(
-  "../dist/lib/telegram-settings.js"
-);
+const { readPollerAutoStart, pollerAutoStartFor } =
+  await import("../dist/lib/telegram-settings.js");
 
 let passed = 0;
 let failed = 0;
@@ -60,7 +59,11 @@ test("an array starts it only in the named directory, compared exactly", () => {
   const listed = "/opt/seat/work";
   const path = settings({ pollerAutoStart: [listed] });
   assert.equal(pollerAutoStartFor(listed, path), true);
-  assert.equal(pollerAutoStartFor(listed + "/", path), true, "a trailing slash is the same directory");
+  assert.equal(
+    pollerAutoStartFor(listed + "/", path),
+    true,
+    "a trailing slash is the same directory",
+  );
   assert.equal(pollerAutoStartFor("/private/tmp/wt-worker", path), false);
 });
 
@@ -75,7 +78,9 @@ test("a worktree beneath a listed directory does NOT inherit the channel", () =>
 });
 
 test("a relative or empty entry is dropped, never matched loosely", () => {
-  const path = settings({ pollerAutoStart: ["", "orchestrator", "/opt/seat/work"] });
+  const path = settings({
+    pollerAutoStart: ["", "orchestrator", "/opt/seat/work"],
+  });
   assert.deepEqual(readPollerAutoStart(path), ["/opt/seat/work"]);
   assert.equal(pollerAutoStartFor("/orchestrator", path), false);
 });
@@ -83,7 +88,11 @@ test("a relative or empty entry is dropped, never matched loosely", () => {
 test("a malformed value is off, not a crash", () => {
   for (const value of [{}, "yes", 1, null]) {
     const path = settings({ pollerAutoStart: value });
-    assert.equal(readPollerAutoStart(path), false, `pollerAutoStart: ${JSON.stringify(value)}`);
+    assert.equal(
+      readPollerAutoStart(path),
+      false,
+      `pollerAutoStart: ${JSON.stringify(value)}`,
+    );
   }
   const broken = join(TMP, "broken.json");
   writeFileSync(broken, "{not json", "utf8");

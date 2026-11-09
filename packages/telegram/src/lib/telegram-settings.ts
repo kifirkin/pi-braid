@@ -14,7 +14,9 @@
  *    anything else means nowhere: the env var and the tools stay the way in.
  *    Matching is EXACT, never a prefix: a seat at
  *    ~/.pi/agent/braid/orchestrator opts in without every worker worktree
- *    under /private/tmp inheriting the channel with it.
+ *    under /private/tmp inheriting the channel with it. A session started by
+ *    hand in a listed directory therefore has a channel with no environment
+ *    variable at all.
  *
  * Degradation: a missing file, unreadable JSON, or an invalid entry (not a
  * finite number ≥ 1) falls back to the default — a bad setting never breaks a
@@ -34,6 +36,9 @@ export const DEFAULT_SEND_MAX_CHARS = 4096;
 
 /** Fallback notify cap: full readable update, not a tweet-length squeeze. */
 export const DEFAULT_NOTIFY_MAX_CHARS = 1200;
+
+/** Fallback auto-start: no directory reaches the poller until settings names it. */
+export const DEFAULT_POLLER_AUTO_START = false;
 
 interface RawBraidSettings {
   braid?: {
@@ -112,11 +117,11 @@ export function readPollerAutoStart(
       ) as RawBraidSettings;
     }
   } catch {
-    return false;
+    return DEFAULT_POLLER_AUTO_START;
   }
   const raw = parsed?.braid?.telegram?.pollerAutoStart;
   if (raw === true) return true;
-  if (!Array.isArray(raw)) return false;
+  if (!Array.isArray(raw)) return DEFAULT_POLLER_AUTO_START;
   const cwds = raw
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => normalizeCwd(entry))
