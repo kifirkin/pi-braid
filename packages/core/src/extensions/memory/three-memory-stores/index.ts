@@ -57,7 +57,14 @@ import type { MemoryStoresState, Episode } from "./types.js";
 // Sub-module imports
 import { retrieveByRUMS, sanitizeEpisode } from "./episodes.js";
 import { addHeuristicRule, getPrioritizedHeuristics, BUILTIN_HEURISTICS } from "./heuristics.js";
-import { recordToolCall, getToolReliability } from "./tool-reliability.js";
+import { recordToolCall } from "./tool-reliability.js";
+import {
+  allowFamilyHint,
+  createFamilyHintGate,
+  formatSuggestion,
+  noteTurn,
+  suggestAlternative,
+} from "../../../lib/tools/tool-families.js";
 import {
   whisperRecall,
   AUTO_RECALL_ENABLED,
@@ -246,47 +253,39 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
           );
         }
 
+        // bash is never the tool to abandon: it runs anything, so a swipe
+        // against it is not advice a reader can act on.
         if (toolName !== "bash") {
-          const currentReliability = getToolReliability(state, toolName, taskType);
-          if (currentReliability < 0.4 && state.toolStats.size > 3) {
-            let bestAlt: string | null = null;
-            let bestRel = 0;
-            for (const [key, stat] of state.toolStats) {
-              const [t, tt] = key.split(":");
-              if (t !== toolName && tt === taskType && stat.successes / stat.attempts > bestRel) {
-                bestRel = stat.successes / stat.attempts;
-                bestAlt = t;
-              }
-            }
-            if (bestAlt && bestRel > currentReliability + 0.2) {
-              sendTrackedMessage(
-                pi,
-                {
-                  // This body is TOOL-RELIABILITY ANALYTICS
-                  // (a stats-driven recommendation), not memory recall. It was
-                  // labeled customType "memory", which misattributed it to the
-                  // memory family. True family is analytics; the envelope
-                  // derives from the source below, so both now say analytics.
-                  customType: "analytics",
-                  display: true,
-                  content: [
-                    {
-                      type: "text",
-                      text: `${bestAlt} has better reliability (${(bestRel * 100).toFixed(0)}%) for "${taskType}" than ${toolName} (${(currentReliability * 100).toFixed(0)}%)`,
-                    },
-                  ],
-                },
-                // triggerTurn: true - significant reliability gap (>0.2)
-                // means the current tool is consistently failing for this
-                // task type. Wakes the agent so it can switch tools.
-                { deliverAs: "steer", triggerTurn: true },
-                // type "heartbeat" (not "other") keeps the _braidInjected /
-                // _braidSource decoration; heartbeat is the analytics-alert
-                // type (see heartbeat/analytics). Source root "analytics" so
-                // envelope family == body family ().
-                { type: "heartbeat", source: "analytics/reliability" },
-              );
-            }
+          // `taskType` groups the statistics; only a declared substitute may be
+          // named (lib/tools/tool-families.ts). The suggestion carries its own
+          // sample, so the body prints the counts the claim rests on and thin
+          // data cannot reach a reader.
+          const suggestion = suggestAlternative({
+            stats: state.toolStats.values(),
+            tool: toolName,
+            taskType,
+          });
+          const hintGate = getExtensionState(ctx, "tool-family-hints", createFamilyHintGate);
+          if (suggestion && allowFamilyHint(hintGate, suggestion.family)) {
+            sendTrackedMessage(
+              pi,
+              {
+                // This body is TOOL-RELIABILITY ANALYTICS
+                // (a stats-driven recommendation), not memory recall. True
+                // family is analytics; the envelope derives from the source
+                // below, so both say analytics.
+                customType: "analytics",
+                display: true,
+                content: [{ type: "text", text: formatSuggestion(suggestion) }],
+              },
+              // An advisory hint rides the next turn; it does not create one.
+              { delivery: "park", deliverAs: "steer" },
+              // type "heartbeat" (not "other") keeps the _braidInjected /
+              // _braidSource decoration; heartbeat is the analytics-alert
+              // type (see heartbeat/analytics). Source root "analytics" so
+              // envelope family == body family.
+              { type: "heartbeat", source: "analytics/reliability" },
+            );
           }
         }
       }
@@ -299,6 +298,9 @@ export default function threeMemoryStoresExtension(pi: ExtensionAPI) {
   pi.on(TURN_END, async (_event: unknown, ctx: ExtensionContext) => {
     try {
       const state = getState(ctx);
+      // The family-rate-limit clock runs on completed turns, so it advances
+      // before this handler's own early returns can skip it.
+      noteTurn(getExtensionState(ctx, "tool-family-hints", createFamilyHintGate));
       if (!AUTO_RECALL_ENABLED || state.currentSessionTools.length < 3) return;
 
       const now = Date.now();
