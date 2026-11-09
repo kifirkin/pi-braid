@@ -103,7 +103,7 @@ record; the tag scheme above applies unchanged.
   non-string custom message, so an exported HTML showed `[{"type":"text",…},{"type":"text","text":"[braid-whisper-end]"}]`
   where the reader expected a suggestion. The channel now stores text, envelope first and marker last, which
   is also exactly what the agent reads on resume.
- (2026-11-09: a landing page is a set of mechanisms and a set of refusals)
+  (2026-11-09: a landing page is a set of mechanisms and a set of refusals)
 
 - **`landing-page` joins the pack.** The family-tree landing was rebuilt against a professional reference
   and the knowledge that made it safe existed only in that wave's report: the rail-and-panel switcher whose
