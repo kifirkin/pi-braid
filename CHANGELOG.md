@@ -96,6 +96,19 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.39 (2026-11-09: one command per object, and a menu bar for the services)
+
+- **`/modules` replaces six commands.** A registry that offered `modules-list`, `-enable`, `-disable`,
+  `-toggle`, `-reset` and `-status` offered six names for one object; it now offers one command with verbs
+  (`on`, `off`, `toggle`, `reset`, `all on|off`, `list`), a `SettingsList` in the TUI and the same rows as
+  text in RPC mode. The six old names forward for one release, so a script that calls them keeps working.
+- **Four commands stop answering RPC mode with silence.** `tools` and `utility-model` printed into a void
+  when no component could render; both now notify the same information, and the TUI path is unchanged.
+  `utility-model`, `logs`, `telegram` and the modules command gained argument completion, and the
+  constructor-arity probe is replaced by the 1.5.0 selector signature it was probing for.
+- **Three tests that did not exist**: the exact registered set, the two modes reaching one writer, and each
+  command's RPC shape. A planted revert per half reddens them.
+
 ## Skills — 0.2.6 / Core 0.43.38
 
 - **The whisper in an exported session was JSON, not prose.** A context-lifecycle proposal was stored as a
