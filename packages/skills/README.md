@@ -2,11 +2,11 @@
 
 <!-- status: current -->
 
-Ten skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
+Eleven skills for the [pi](https://github.com/earendil-works/pi) coding agent: research papers, brand
 systems, visual work, writing that has to land, and a tunnel that has to come back. Install once,
 usually per project, and the agent opens a skill when the task matches it.
 
-Skills are instructions, not tools. Installing this pack teaches the agent ten procedures; it
+Skills are instructions, not tools. Installing this pack teaches the agent eleven procedures; it
 changes what the agent knows how to do, not what it can do.
 
 ## Install
