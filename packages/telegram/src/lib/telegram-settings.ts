@@ -9,6 +9,12 @@
  *    `rich: true` (split-to-fit) or an explicit strategy.
  *  - `notifyMaxChars` — craft target + guard for turn-end notifications.
  *    Default 1200: a full readable update, not a 280-char fragment.
+ *  - `pollerAutoStart` — which working directories start the inbound poller by
+ *    themselves. `true` means everywhere, an array means those cwds only, and
+ *    anything else means nowhere: the env var and the tools stay the way in.
+ *    Matching is EXACT, never a prefix: a seat at
+ *    ~/.pi/agent/braid/orchestrator opts in without every worker worktree
+ *    under /private/tmp inheriting the channel with it.
  *
  * Degradation: a missing file, unreadable JSON, or an invalid entry (not a
  * finite number ≥ 1) falls back to the default — a bad setting never breaks a
@@ -34,6 +40,7 @@ interface RawBraidSettings {
     telegram?: {
       sendMaxChars?: unknown;
       notifyMaxChars?: unknown;
+      pollerAutoStart?: unknown;
     };
   };
 }
@@ -42,6 +49,9 @@ export interface TelegramCaps {
   sendMaxChars: number;
   notifyMaxChars: number;
 }
+
+/** Which directories start the poller on their own: everywhere, a list, or nowhere. */
+export type PollerAutoStart = boolean | string[];
 
 /** A cap must be a positive finite number; anything else → the default. */
 function sanitizeCap(raw: unknown, fallback: number): number {
@@ -75,6 +85,59 @@ export function readTelegramCaps(
       DEFAULT_NOTIFY_MAX_CHARS,
     ),
   };
+}
+
+/** Normalize a path for the cwd comparison: no trailing slash, no symlink tail. */
+function normalizeCwd(path: string): string {
+  let out = path.trim();
+  while (out.length > 1 && out.endsWith("/")) out = out.slice(0, -1);
+  return out;
+}
+
+/**
+ * Read `braid.telegram.pollerAutoStart`: `true` (everywhere), an array of
+ * absolute cwds (those only), or `false` when absent or malformed. A relative
+ * entry, an empty string, or any other type is dropped rather than guessed at,
+ * because a mistyped cwd would otherwise start the poller somewhere nobody
+ * asked for.
+ */
+export function readPollerAutoStart(
+  settingsPath: string = SETTINGS_PATH,
+): PollerAutoStart {
+  let parsed: RawBraidSettings | undefined;
+  try {
+    if (existsSync(settingsPath)) {
+      parsed = JSON.parse(
+        readFileSync(settingsPath, "utf8"),
+      ) as RawBraidSettings;
+    }
+  } catch {
+    return false;
+  }
+  const raw = parsed?.braid?.telegram?.pollerAutoStart;
+  if (raw === true) return true;
+  if (!Array.isArray(raw)) return false;
+  const cwds = raw
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => normalizeCwd(entry))
+    .filter((entry) => entry.startsWith("/"));
+  return cwds;
+}
+
+/**
+ * Does this working directory start the poller by itself? Exact match only.
+ * A subdirectory of a listed cwd does NOT inherit it: the seat opts in for the
+ * directory it runs in, and a worker in a worktree beneath it must not.
+ */
+export function pollerAutoStartFor(
+  cwd: string,
+  settingsPath: string = SETTINGS_PATH,
+): boolean {
+  const setting = readPollerAutoStart(settingsPath);
+  if (setting === true) return true;
+  if (setting === false) return false;
+  const here = normalizeCwd(cwd);
+  return setting.includes(here);
 }
 
 /** Default cap for `telegram_send` plain text (`braid.telegram.sendMaxChars`). */

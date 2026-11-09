@@ -94,6 +94,7 @@ import {
   type SttConfig,
 } from "./lib/transcribe.js";
 import { resolveSttKeyCandidates } from "./lib/stt-keys.js";
+import { pollerAutoStartFor } from "./lib/telegram-settings.js";
 import { normalizeAudioBytes } from "./lib/audio-normalize.js";
 import { populateVoiceTts } from "./lib/tts.js";
 import { runTelegramSend } from "./lib/tool-logic.js";
@@ -1841,7 +1842,13 @@ export default async function telegramExtension(
   // it is unset AND BRAID_TG_POLL_ENABLED is set. BRAID_TG_POLL_ENABLED opts
   // in explicitly.
   const pollDisabled = Boolean(env(ENV_POLL_DISABLED));
-  const pollEnabled = Boolean(env(ENV_POLL_ENABLED));
+  // Two ways in: the env var, or a settings entry naming this working directory
+  // (`braid.telegram.pollerAutoStart`, read through the same uncached reader the
+  // caps use, so an edit applies without a restart). The settings path is the
+  // one that survives a hand-started session after a reboot, which is the case
+  // that left the owner with no channel at all.
+  const pollByCwd = pollerAutoStartFor(process.cwd());
+  const pollEnabled = Boolean(env(ENV_POLL_ENABLED)) || pollByCwd;
 
   if (pollDisabled) {
     log(
@@ -1861,20 +1868,20 @@ export default async function telegramExtension(
       stt,
       onOwnerMessage: deliverOwnerMessage,
       onCallbackQuery: handleCallbackQuery,
-      startedBy: `${ENV_POLL_ENABLED}=1`,
+      startedBy: env(ENV_POLL_ENABLED) ? `${ENV_POLL_ENABLED}=1` : "settings:pollerAutoStart",
       onStart: () => void placeControlKeyboardOnce(),
       pidAlive: deps?.pidAlive,
     });
     if (!outcome.started && outcome.reason !== "already-running") {
       log(
         outcome.reason === "lock-held" ? "warn" : "info",
-        `telegram poller not auto-started (${ENV_POLL_ENABLED}=1): ${describePollerStartRefusal(outcome)}`,
+        `telegram poller not auto-started (${env(ENV_POLL_ENABLED) ? `${ENV_POLL_ENABLED}=1` : "settings:pollerAutoStart"}): ${describePollerStartRefusal(outcome)}`,
       );
     }
   } else {
     log(
       "info",
-      `telegram background poller default-off (set ${ENV_POLL_ENABLED}=1 to auto-start, or use /telegram enable or the telegram_poller tool)`,
+      `telegram background poller default-off (set ${ENV_POLL_ENABLED}=1, name this cwd in braid.telegram.pollerAutoStart, or use /telegram enable or the telegram_poller tool)`,
     );
   }
 
