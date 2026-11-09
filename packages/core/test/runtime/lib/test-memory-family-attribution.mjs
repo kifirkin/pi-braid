@@ -225,11 +225,15 @@ await test("3. reliability whisper body is analytics (customType + envelope)", a
     !/braid-whisper - memory/.test(env) && !/braid-whisper - three-memory-stores/.test(env),
     "reliability envelope must not say memory or three-memory-stores (body is analytics)",
   );
-  assert.match(env, /better reliability/, "delivered body must be the reliability recommendation");
+  assert.match(
+    env,
+    /read succeeded 5 of 5 on "file_edit" where edit succeeded 0 of 6/,
+    "delivered body must be the reliability recommendation, carrying both counts",
+  );
   assert.equal(
     captured.options.triggerTurn,
-    true,
-    "reliability recommendation must still wake the agent (unchanged behavior)",
+    false,
+    "the reliability hint parks for the next turn; it does not start one",
   );
   const last = captured.params.content[captured.params.content.length - 1];
   assert.equal(last.text, "[braid-whisper-end]", "reliability whisper closes with end-marker");
