@@ -47,7 +47,7 @@ function settings(value) {
 test("no setting means no directory starts the poller", () => {
   const path = join(TMP, "missing.json");
   assert.equal(readPollerAutoStart(path), false);
-  assert.equal(pollerAutoStartFor("/Users/kifir/.pi/agent/braid/orchestrator", path), false);
+  assert.equal(pollerAutoStartFor("/opt/seat/work", path), false);
 });
 
 test("true starts it everywhere", () => {
@@ -57,7 +57,7 @@ test("true starts it everywhere", () => {
 });
 
 test("an array starts it only in the named directory, compared exactly", () => {
-  const listed = "/Users/kifir/.pi/agent/braid/orchestrator";
+  const listed = "/opt/seat/work";
   const path = settings({ pollerAutoStart: [listed] });
   assert.equal(pollerAutoStartFor(listed, path), true);
   assert.equal(pollerAutoStartFor(listed + "/", path), true, "a trailing slash is the same directory");
@@ -65,7 +65,7 @@ test("an array starts it only in the named directory, compared exactly", () => {
 });
 
 test("a worktree beneath a listed directory does NOT inherit the channel", () => {
-  const listed = "/Users/kifir/.pi/agent/braid/orchestrator";
+  const listed = "/opt/seat/work";
   const path = settings({ pollerAutoStart: [listed] });
   assert.equal(
     pollerAutoStartFor(listed + "/briefs", path),
@@ -75,8 +75,8 @@ test("a worktree beneath a listed directory does NOT inherit the channel", () =>
 });
 
 test("a relative or empty entry is dropped, never matched loosely", () => {
-  const path = settings({ pollerAutoStart: ["", "orchestrator", "/Users/kifir/.pi/agent/braid/orchestrator"] });
-  assert.deepEqual(readPollerAutoStart(path), ["/Users/kifir/.pi/agent/braid/orchestrator"]);
+  const path = settings({ pollerAutoStart: ["", "orchestrator", "/opt/seat/work"] });
+  assert.deepEqual(readPollerAutoStart(path), ["/opt/seat/work"]);
   assert.equal(pollerAutoStartFor("/orchestrator", path), false);
 });
 
