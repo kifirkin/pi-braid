@@ -573,7 +573,17 @@ async function queueProposal(
       // measured deliveries). The source must be the TRUE family, so the
       // envelope says context-lifecycle.
       applyWhisperEnvelope(proposalContent, "context-lifecycle/proposal");
-      sm?.appendCustomMessageEntry?.(PROPOSAL_CUSTOM_TYPE, proposalContent, true, proposal);
+      // A custom message rendered into an exported session prints its content
+      // as JSON when the content is an array of parts (pi-core's export template
+      // falls back to JSON.stringify for a non-string). The proposal is text, so
+      // it is stored as text: one string, envelope first and marker last, which
+      // is also what the agent reads on resume.
+      sm?.appendCustomMessageEntry?.(
+        PROPOSAL_CUSTOM_TYPE,
+        proposalContent.map((part) => part.text).join("\n"),
+        true,
+        proposal,
+      );
       // Record the suggestion class so a repeat re-fire is suppressed while
       // this one is still actionable (gate + dedupe rely on this map).
       state(ctx).proposalKeys.set(

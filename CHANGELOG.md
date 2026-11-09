@@ -96,6 +96,26 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Skills — 0.2.6 / Core 0.43.38
+
+- **The whisper in an exported session was JSON, not prose.** A context-lifecycle proposal was stored as a
+  content array of two text parts, and pi-core's export template falls back to `JSON.stringify` for a
+  non-string custom message, so an exported HTML showed `[{"type":"text",…},{"type":"text","text":"[braid-whisper-end]"}]`
+  where the reader expected a suggestion. The channel now stores text, envelope first and marker last, which
+  is also exactly what the agent reads on resume.
+ (2026-11-09: a landing page is a set of mechanisms and a set of refusals)
+
+- **`landing-page` joins the pack.** The family-tree landing was rebuilt against a professional reference
+  and the knowledge that made it safe existed only in that wave's report: the rail-and-panel switcher whose
+  no-script form is jump links, the timeline drawn as a line with stops, price tiers on shared rows, the
+  header action that survives 320px, and the rule that a form with no endpoint is a lie.
+- **The refusals are the load-bearing half.** A page whose promise is that every fact has a source cannot
+  open with a testimonial from a client nobody served, an invented number, or a contact nobody answers. The
+  skill states that before it states any technique.
+- **It names the gate that text checks cannot replace**: a headless browser at 320, 375, 768 and 1280 asking
+  whether the document is wider than its viewport, and whether any element's box crosses an edge from
+  outside every clipping ancestor.
+
 ## Core — 0.43.37 (2026-11-08: the shapes were rare, and the instrument policed the wrong text)
 
 - **Measured over the shipped corpus, the seven sentence shapes fired in 8 of 61 files.** 21 hits in

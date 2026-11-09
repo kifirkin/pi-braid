@@ -458,7 +458,7 @@ const proposalPi = {
 };
 
 await atest(
-  "channel 2/proposal: persisted proposal gets prefix + end-marker via appendCustomMessageEntry",
+  "channel 2/proposal: persisted proposal is text, envelope first and marker last",
   async () => {
     const { _getState } =
       await import("../../../dist/extensions/memory/context-lifecycle/state.js");
@@ -501,27 +501,29 @@ await atest(
       );
       assert.equal(captured.persistent, true, "proposal entries are persisted");
       assert.ok(captured.meta && captured.meta.id, "proposal meta must pass through unchanged");
+      // A custom message stored as an array of parts is printed by an exported
+      // session as JSON, so this channel stores text: the export renders it as
+      // the whisper it is, and the envelope and the marker still ride along.
       assert.equal(
-        captured.content.length,
-        2,
-        "exactly envelope-first + end-marker-last (no hand-built single element)",
+        typeof captured.content,
+        "string",
+        "the proposal is stored as text, so an export renders it as a whisper",
       );
       assert.match(
-        captured.content[0].text,
+        captured.content,
         /^\[braid-whisper - context-lifecycle @ 17:05 MSK\]\nContext Suggestion: /,
-        "first text element must carry the [braid-whisper - context-lifecycle] prefix + body",
+        "the stored text must carry the [braid-whisper - context-lifecycle] prefix + body",
       );
       assert.ok(
-        !/braid-whisper - memory/.test(captured.content[0].text),
+        !/braid-whisper - memory/.test(captured.content),
         "proposal body must NOT be wrapped in the memory envelope",
       );
-      const last = captured.content[captured.content.length - 1];
-      assert.equal(last.type, "text", "last element must be text");
-      assert.equal(last.text, "[braid-whisper-end]", "proposal must close with the end-marker");
-      const markers = captured.content.filter(
-        (c) => c.type === "text" && c.text === "[braid-whisper-end]",
+      assert.ok(
+        captured.content.endsWith("[braid-whisper-end]"),
+        "proposal must close with the end-marker",
       );
-      assert.equal(markers.length, 1, "exactly one end-marker per proposal");
+      const markers = captured.content.split("[braid-whisper-end]").length - 1;
+      assert.equal(markers, 1, "exactly one end-marker per proposal");
     }
   },
 );
