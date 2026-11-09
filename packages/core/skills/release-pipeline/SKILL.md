@@ -202,6 +202,17 @@ After release:
 - Commit stable package versions before remote npm publication. Local snapshots
   use the derived iteration version instead.
 - Use `npm version` for semver bumps in the target workspace.
+- The bump is chosen by what a consumer can notice, not by how many patches
+  have accumulated:
+
+  | Bump | Trigger |
+  |------|---------|
+  | patch | nothing a caller can observe: a fix, an internal refactor, docs, a test |
+  | minor | a caller must observe it: a new tool, command or flag; a new setting key; a changed default; a new required field in a contract; a deprecation |
+  | major | a break that needs a migration step: a renamed setting, a removed field, a changed wire or on-disk format |
+
+  A long patch line is not a reason to cut a minor on its own; it is a prompt to
+  ask whether one of the changes above already happened and was mislabelled.
 - A bare core release tag (`v<core version>`) runs the publish workflow. Publish
   a sibling package by dispatching from `main` with `only=<workspace directory>`
   (`core|skills|providers|telegram|contrib`, not the npm package name).
