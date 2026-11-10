@@ -96,6 +96,25 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.42 (2026-11-10: ten commands, one per object)
+
+- **The six `/modules-*` names are gone.** They forwarded to `/modules` for three releases (0.43.39 to
+  0.43.41) and are now deleted, so one object answers to one name. `/modules` keeps its verbs (`on`, `off`,
+  `toggle`, `reset`, `all on|off`, `list`) and its text form in RPC mode; its header now says that a contrib
+  extension is toggled through `braid.contrib` in settings, because this list reads the core manifest only.
+- **`/browser` replaces `browser-start`, `browser-connect`, `browser-disconnect` and `browser-tabs`.** No
+  argument opens one manager: the endpoint, the connection and the active tab as facts, then an action list
+  for connect, start, start with a profile, disconnect and the tabs. A headless caller gets the same facts as
+  text and never a component. With `braid.contrib.browserAdvanced` off the tab rows are absent by
+  configuration, and the manager says that and names the setting instead of leaving the reader to guess.
+- **`/analytics` replaces `analytics`, `analytics:all` and `analytics:ab`.** No argument asks the scope (this
+  session, all sessions, A-B) and prints the same block as before; `session`, `all` and `ab` are the verbs a
+  script uses. Headless prints the session scope and names the two other verbs.
+- **`/tools status` replaces `tool-status`**, printing exactly the line the old command printed; the
+  no-argument `/tools` list is unchanged.
+- **The registered set is 22 names → 10**, and the four objects the inventory found carrying more than one
+  command (modules 7, browser 4, analytics 3, tools 2) carry one each.
+
 ## Core — 0.43.39 (2026-11-09: one command per object, and a menu bar for the services)
 
 - **`/modules` replaces six commands.** A registry that offered `modules-list`, `-enable`, `-disable`,
