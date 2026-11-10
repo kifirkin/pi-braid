@@ -80,6 +80,16 @@ record; the tag scheme above applies unchanged.
   contract; a new fixture covers both trees, the scoping and the absent-versus-empty
   populations.
 
+## Core — 0.43.45 (2026-11-11: a re-read is a covered range, not a repeated path)
+
+The re-read whisper keyed `recentlyReadFiles` on the path, so a second slice of one document in a turn
+was reported as already in context: over the session corpus, 238 of the checkable flags were different
+ranges of the same file and 6 were the same range again. The record is now a bounded set of line
+windows per path, and a read is waste only when the range it asks for is fully covered by what is
+already in context since the last edit, write or command. A slice past the read tool's default window
+is not covered by a read that returned only the first 2000 lines, and the per-path bound drops the
+oldest window, which can hide a repeat but can never invent one.
+
 ## Core — 0.43.44 (2026-11-10: the version that carries the telegram release)
 
 No core change. The `pi-braid-telegram` bump to 0.1.9 rides on a core version so the release line
