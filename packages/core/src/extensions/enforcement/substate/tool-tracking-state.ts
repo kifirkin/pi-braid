@@ -14,6 +14,25 @@ import type { ToolChainState, ToolSequencePattern } from "../types.js";
  */
 export const PROGRESS_TOOLS = new Set<string>(["edit", "write", "bash"]);
 
+/**
+ * One read's worth of context: the line window a single `read` call asked the
+ * tool to bring in.
+ *
+ * The window is what the re-read check compares, because a long file is read
+ * in slices: a second read of the same path repeats work only when every line
+ * it asks for is already in context. `at` is the tool-call position of the
+ * read that recorded the window, so a progress tool after it can mark the
+ * window as stale rather than waste.
+ */
+export interface ReadRange {
+  /** First line the read asked for (the read tool's `offset`, or none). */
+  start: number;
+  /** One past the last line the read asked for. */
+  end: number;
+  /** `totalToolCalls` position of the read that recorded this window. */
+  at: number;
+}
+
 export interface CalibrationPair {
   predicted: number;
   actual: number;
@@ -40,7 +59,10 @@ export interface ToolTrackingState {
   turnsSinceExplore: number;
   exploreBeforeActNudged: boolean;
   toolDiversityNudged: boolean;
-  recentlyReadFiles: Map<string, number>;
+  /** Per path, the line windows read since the last progress tool, merged and
+   *  ascending by start. Bounded by `READ_RANGES_PER_PATH` in
+   *  handlers/tool-tracker.ts, the module that fills it. */
+  recentlyReadFiles: Map<string, ReadRange[]>;
   /** Paths re-read this turn while a prior read was still current (no
    *  edit/write/bash since). Filled by recordToolInput; validateTurn consumes
    *  the list and clears it. */
@@ -92,7 +114,7 @@ export function createToolTrackingState(): ToolTrackingState {
     turnsSinceExplore: 0,
     exploreBeforeActNudged: false,
     toolDiversityNudged: false,
-    recentlyReadFiles: new Map<string, number>(),
+    recentlyReadFiles: new Map<string, ReadRange[]>(),
     turnReReadWastePaths: [],
     lastProgressToolCall: 0,
 

@@ -2,8 +2,12 @@
  * Re-read waste detection - a file read again with no edit/write/bash in
  * between must be reported, and progress between the two reads must clear it.
  *
- * The state under test is the path map the tool-call handler fills; these
- * cases drive the same handlers production does (recordToolCall then
+ * The unit is the range a read asks for, not the path: reading one long file
+ * in slices is the ordinary way to read it, so a second read of the same path
+ * is waste only when every line it asks for is already in context.
+ *
+ * The state under test is the per-path window map the tool-call handler fills;
+ * these cases drive the same handlers production does (recordToolCall then
  * recordToolInput) so the assertion covers the wiring, not a helper alone.
  *
  * Run: node test/runtime/enforcement/test-reread-waste.mjs
@@ -61,6 +65,15 @@ function issueToolCall(ctx, toolName, input) {
 
 const read = (ctx, path) => issueToolCall(ctx, "read", { path });
 
+/** A read naming both bounds, the way one long file is read in slices. */
+const readSlice = (ctx, path, offset, limit) =>
+  issueToolCall(ctx, "read", { path, offset, limit });
+
+/** Whether the turn's issues name `path`, whatever else they say. */
+function named(issues, path) {
+  return issues.some((i) => i.includes(path));
+}
+
 test("re-read with no intervening progress is reported", () => {
   const ctx = {};
   read(ctx, "/tmp/reread-a.ts");
@@ -98,6 +111,91 @@ test("first-time reads are never reported as waste", () => {
   assert.ok(
     !result.issues.some((i) => i.includes("/tmp/reread-f.ts") || i.includes("/tmp/reread-g.ts")),
     `two distinct first reads must not be flagged; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("two disjoint slices of one file are not a re-read", () => {
+  const ctx = {};
+  readSlice(ctx, "/tmp/slices-a.md", 1, 100);
+  readSlice(ctx, "/tmp/slices-a.md", 200, 100);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    !named(result.issues, "/tmp/slices-a.md"),
+    `the second slice was never in context; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("the same range twice is a re-read", () => {
+  const ctx = {};
+  readSlice(ctx, "/tmp/slices-b.md", 200, 100);
+  readSlice(ctx, "/tmp/slices-b.md", 200, 100);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    named(result.issues, "/tmp/slices-b.md"),
+    `the same slice twice is the waste the message names; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("a whole-file read covers a slice inside it", () => {
+  const ctx = {};
+  read(ctx, "/tmp/slices-c.md");
+  readSlice(ctx, "/tmp/slices-c.md", 250, 50);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    named(result.issues, "/tmp/slices-c.md"),
+    `the slice lies inside the full read; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("a wider read that adds lines is not a re-read", () => {
+  const ctx = {};
+  readSlice(ctx, "/tmp/slices-d.md", 1, 100);
+  readSlice(ctx, "/tmp/slices-d.md", 1, 300);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    !named(result.issues, "/tmp/slices-d.md"),
+    `the wider read brings 200 lines that are not in context; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("a read that starts before a recorded slice and runs past it is not a re-read", () => {
+  const ctx = {};
+  readSlice(ctx, "/tmp/slices-e.md", 500, 100);
+  readSlice(ctx, "/tmp/slices-e.md", 400, 300);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    !named(result.issues, "/tmp/slices-e.md"),
+    `the wider window is not covered by the slice it contains; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("a command between sliced reads clears the recorded windows", () => {
+  const ctx = {};
+  readSlice(ctx, "/tmp/slices-f.md", 200, 100);
+  issueToolCall(ctx, "bash", { command: "wc -l /tmp/slices-f.md" });
+  readSlice(ctx, "/tmp/slices-f.md", 200, 100);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    !named(result.issues, "/tmp/slices-f.md"),
+    `a command between the reads makes the first window stale, not waste; issues: ${JSON.stringify(result.issues)}`,
+  );
+});
+
+test("a slice past the read tool's default window is not covered", () => {
+  const ctx = {};
+  read(ctx, "/tmp/slices-g.md");
+  readSlice(ctx, "/tmp/slices-g.md", 2500, 50);
+
+  const result = validateTurn(undefined, turnState(["read", "read"]), ctx);
+  assert.ok(
+    !named(result.issues, "/tmp/slices-g.md"),
+    `the slice starts past the lines the full read returned; issues: ${JSON.stringify(result.issues)}`,
   );
 });
 
