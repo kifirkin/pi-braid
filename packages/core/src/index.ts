@@ -18,8 +18,6 @@
  * Subagent API:
  *   Researcher subagents can call `/modules` (verbs: on, off, toggle, reset,
  *   all on|off, list) to control extension loading during benchmark experiments.
- *   The six former names (modules-enable, modules-disable, modules-toggle,
- *   modules-reset, modules-list, modules-status) forward to it for one release.
  */
 
 import { readFileSync } from "node:fs";

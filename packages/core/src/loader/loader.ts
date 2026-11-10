@@ -656,8 +656,3 @@ function topologicalSort(extIds: string[]): string[] {
 export function getModuleRefs(): string[] {
   return allConfigRefs();
 }
-
-/** @deprecated Use getModuleRefs. Kept as an alias for existing callers. */
-export function getAllRefNames(): string[] {
-  return getModuleRefs();
-}

@@ -17,11 +17,8 @@
  * alone; argument completion and `list` are the places that enumerate what is
  * accepted.
  *
- * The six command names this file used to register remain as forwarding
- * aliases for one release: modules-enable, modules-disable, modules-toggle,
- * modules-reset, modules-list, modules-status. Each maps its whole argument
- * onto the equivalent argv, so a script written against the old names keeps
- * working until it is pointed at `/modules`.
+ * The list covers the core manifest only: a contrib extension is toggled
+ * through its `braid.contrib.<name>` key in settings, not from this command.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -66,6 +63,10 @@ const VERBS: Record<string, string> = {
 const USAGE =
   "Usage: /modules [on|off|toggle|reset|all|list] <ref>\n" +
   "A ref is an extension id or a module group name. Tab completes both.";
+
+/** Why a contrib extension is absent from this list, stated where it shows. */
+const CONTRIB_NOTE =
+  "Contrib extensions are toggled through braid.contrib in settings, not from this list.";
 
 export default async function modulesApiExtension(pi: ExtensionAPI): Promise<void> {
   const run = async (argv: string[], ctx: ExtensionCommandContext): Promise<void> => {
@@ -168,35 +169,7 @@ export default async function modulesApiExtension(pi: ExtensionAPI): Promise<voi
     handler: (args, ctx) => run(splitArgs(args), ctx),
   });
 
-  pi.registerCommand("modules-enable", {
-    description: "Alias of /modules on <ref>. Retained for one release.",
-    getArgumentCompletions: completeRefs("on"),
-    handler: (args, ctx) => run([...forwarded("on", args)], ctx),
-  });
-  pi.registerCommand("modules-disable", {
-    description: "Alias of /modules off <ref>. Retained for one release.",
-    getArgumentCompletions: completeRefs("off"),
-    handler: (args, ctx) => run([...forwarded("off", args)], ctx),
-  });
-  pi.registerCommand("modules-toggle", {
-    description: "Alias of /modules toggle <ref>. Retained for one release.",
-    getArgumentCompletions: completeRefs("toggle"),
-    handler: (args, ctx) => run([...forwarded("toggle", args)], ctx),
-  });
-  pi.registerCommand("modules-reset", {
-    description: "Alias of /modules reset. Retained for one release.",
-    handler: async (_args, ctx) => run(["reset"], ctx),
-  });
-  pi.registerCommand("modules-list", {
-    description: "Alias of /modules list. Retained for one release.",
-    handler: async (_args, ctx) => run(["list"], ctx),
-  });
-  pi.registerCommand("modules-status", {
-    description: "Alias of /modules list. Retained for one release.",
-    handler: async (_args, ctx) => run(["list"], ctx),
-  });
-
-  log.info("Module API registered: /modules (+ six forwarding aliases)");
+  log.info("Module API registered: /modules");
 }
 
 // ── Argument parsing ────────────────────────────────────────────────────────
@@ -212,11 +185,6 @@ function splitArgs(args: string | undefined): string[] {
     argv.push(match[1] ?? match[2] ?? match[3]);
   }
   return argv;
-}
-
-/** The argv an old name forwards: its whole argument is the ref. */
-function forwarded(verb: string, args: string | undefined): string[] {
-  return [verb, (args ?? "").trim()];
 }
 
 /** Why a reference was refused, naming the rule instead of listing refs. */
@@ -255,16 +223,6 @@ function completeModules(prefix: string): AutocompleteItem[] | null {
   return null;
 }
 
-/** Completion for an old name: the whole argument text is the reference. */
-function completeRefs(verb: string) {
-  return (prefix: string): AutocompleteItem[] | null => {
-    const typed = (prefix ?? "").toLowerCase();
-    return getModuleRefs()
-      .filter((ref) => ref.startsWith(typed))
-      .map((ref) => ({ value: ref, label: ref, description: `Forwarded to /modules ${verb}` }));
-  };
-}
-
 function completeValues(prefix: string, values: string[]): AutocompleteItem[] {
   const typed = (prefix ?? "").toLowerCase();
   return values
@@ -296,7 +254,7 @@ function describe(desc: string, origin: ModuleOrigin, enabled: boolean, loaded: 
 /** The rows as text, for RPC mode and the `list` verb. */
 function renderRows(): string {
   const { rows, source } = moduleRows();
-  const lines = [`Extensions (${rows.length}, config: ${source}):`];
+  const lines = [`Extensions (${rows.length}, config: ${source}):`, CONTRIB_NOTE];
   const width = Math.min(28, Math.max(...rows.map((row) => row.id.length)));
   for (const row of rows) {
     lines.push(`  ${row.value.padEnd(3)} ${row.id.padEnd(width)}  ${row.description}`);
@@ -319,7 +277,7 @@ async function openModuleList(ctx: ExtensionCommandContext): Promise<void> {
     container.addChild(
       new (class {
         render(_width: number) {
-          return [theme.fg("accent", theme.bold("Extensions"))];
+          return [theme.fg("accent", theme.bold("Extensions")), theme.fg("muted", CONTRIB_NOTE)];
         }
         invalidate() {}
       })(),

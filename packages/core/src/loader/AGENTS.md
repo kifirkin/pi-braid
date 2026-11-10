@@ -12,10 +12,10 @@ that it contains the **loader** (and the related subagent API), not
 
 ## Files
 
-| File        | Purpose                                                                                                                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `loader.ts` | Resolves `BRAID_MODULES` / `braid.modules` (pi global, pi project, braid's store) / runtime overrides into an enabled set, topologically sorts by dependency, and invokes each factory. |
-| `api.ts`    | Registers `/modules` (verbs: `on`, `off`, `toggle`, `reset`, `all on                                                                                                                    | off`, `list`) for the subagent API, plus the six former command names as forwarding aliases. |
+| File        | Purpose                                                                                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loader.ts` | Resolves `BRAID_MODULES` / `braid.modules` (pi global, pi project, braid's store) / runtime overrides into an enabled set, topologically sorts by dependency, and invokes each factory.                  |
+| `api.ts`    | Registers `/modules` (verbs: `on`, `off`, `toggle`, `reset`, `all on` / `off`, `list`) for the subagent API, and states that a contrib extension is toggled through `braid.contrib`, not from this list. |
 
 ## Layer position
 

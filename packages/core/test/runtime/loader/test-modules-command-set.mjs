@@ -1,26 +1,28 @@
 /**
- * The module surface is one `modules` command and its six forwarding aliases.
+ * The module surface is one `modules` command.
  *
  * WHY THIS TEST EXISTS:
- *   Six command names were folded into one command with verbs, and the old
- *   names stay registered for one release so scripts keep working. The set is
- *   what a user sees in the palette and what a subagent types, so it is
- *   asserted exactly: a missing alias breaks a script, and an extra command
- *   nobody intended is a surface drift the exact-set assertion catches. The
- *   retired names are not in this set, so a re-add of one has to change this
- *   test on purpose.
+ *   Six command names were folded into one command with a verb dispatch and
+ *   kept registered as forwarding aliases for one release. The aliases are now
+ *   gone, and the palette is where a user reads the surface: an alias still
+ *   registered is a second name for one object, while a missing `modules`
+ *   command leaves the resolver unreachable from a prompt. The exact set is
+ *   asserted so either direction fails by name.
  *
  * WHAT IS PINNED HERE:
- *   1. The exact sorted set: `modules` plus the six former names.
- *   2. Each alias is present on its own, so a failure names the command that
- *      went missing.
- *   3. Every entry carries a handler.
+ *   1. The exact sorted set: `modules` alone.
+ *   2. Every retired name is absent on its own, so a re-add has to change this
+ *      test on purpose.
+ *   3. The entry carries a handler.
+ *   4. The rendered header says a contrib extension is toggled through
+ *      `braid.contrib` in settings, so the list cannot omit that fact silently.
  *
  * HOME and BRAID_HOME point at temp dirs before the dist modules load: the
  * loader resolves its settings sources at module load, and the command must
  * not read or write the real agent tree from a test.
  */
 
+import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,18 +38,14 @@ process.env.BRAID_HOME = mkdtempSync(join(tmpdir(), "modules-command-set-braid-"
 
 const { default: modulesApiExtension } = await import(join(ROOT, "dist", "loader", "api.js"));
 
-let passed = 0;
-let failed = 0;
-async function test(name, fn) {
-  try {
-    await fn();
-    console.log(`  [v] ${name}`);
-    passed++;
-  } catch (e) {
-    console.log(`  [x] ${name}: ${e.message}`);
-    failed++;
-  }
-}
+const RETIRED = [
+  "modules-disable",
+  "modules-enable",
+  "modules-list",
+  "modules-reset",
+  "modules-status",
+  "modules-toggle",
+];
 
 /** Load the extension the way pi does, capturing the commands it registers. */
 async function loadExtension() {
@@ -62,45 +60,53 @@ async function loadExtension() {
   return commands;
 }
 
-console.log("=== modules command set ===\n");
+/** A command context that records notifications instead of rendering. */
+function rpcContext() {
+  const notices = [];
+  return {
+    ctx: {
+      mode: "rpc",
+      hasUI: true,
+      ui: {
+        notify(message, type) {
+          notices.push({ message, type });
+        },
+      },
+    },
+    notices,
+  };
+}
 
-await test("the registered command set is modules plus the six forwarding aliases", async () => {
+test("the registered command set is modules alone", async () => {
   const names = [...(await loadExtension()).keys()].sort();
-  assert.deepEqual(
-    names,
-    [
-      "modules",
-      "modules-disable",
-      "modules-enable",
-      "modules-list",
-      "modules-reset",
-      "modules-status",
-      "modules-toggle",
-    ],
-    "the module surface must be one command plus the six former names",
-  );
+  assert.deepEqual(names, ["modules"], "the module surface must be one command");
 });
 
-await test("every forwarding alias is registered on its own", async () => {
+test("no retired name is registered", async () => {
   const commands = await loadExtension();
-  for (const name of [
-    "modules-enable",
-    "modules-disable",
-    "modules-toggle",
-    "modules-reset",
-    "modules-list",
-    "modules-status",
-  ]) {
-    assert.equal(commands.has(name), true, `${name} must stay registered for one release`);
+  for (const name of RETIRED) {
+    assert.equal(
+      commands.has(name),
+      false,
+      `${name} is retired; a second name for one object must not come back`,
+    );
   }
 });
 
-await test("every registered entry carries a handler", async () => {
+test("the registered entry carries a handler", async () => {
   for (const [name, definition] of await loadExtension()) {
     assert.equal(typeof definition.handler, "function", `${name} must have a handler`);
   }
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
-console.log("=== modules command set tests passed ===");
+test("the rendered header names braid.contrib as the home of contrib toggles", async () => {
+  const { ctx, notices } = rpcContext();
+  await loadExtension().then((commands) => commands.get("modules").handler("list", ctx));
+
+  assert.equal(notices.length, 1, "list prints exactly one block");
+  assert.match(
+    notices[0].message,
+    /Contrib extensions are toggled through braid\.contrib in settings, not from this list\./,
+    "the header must not leave a contrib extension looking forgotten",
+  );
+});

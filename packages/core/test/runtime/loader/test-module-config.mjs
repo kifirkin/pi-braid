@@ -15,7 +15,7 @@
  *     refuses to overwrite an unreadable store
  *   - an unreadable settings file warns once per process instead of
  *     silently reverting every braid setting
- *   - /modules-reset clears the runtime layer without destroying persisted
+ *   - /modules reset clears the runtime layer without destroying persisted
  *     settings
  *   - containment: a module write lands in the braid tree (BRAID_HOME) and
  *     the project directory gains nothing - no `.pi/`, no file, ever

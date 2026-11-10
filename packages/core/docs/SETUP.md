@@ -397,7 +397,7 @@ braid's loader follows a four-tier precedence (high → low):
 | `/modules list`           | Print every extension, its description and where its state came from |
 | `/modules reset`          | Clear in-process overrides (persisted `braid.modules` stays)         |
 
-The six former names (`/modules-enable`, `/modules-disable`, `/modules-toggle`, `/modules-reset`, `/modules-list`, `/modules-status`) forward to the equivalent verb for one release.
+The list covers the core manifest only. A contrib extension has no entry here: it is toggled through its `braid.contrib.<name>` key in `~/.pi/agent/settings.json`.
 
 ### `BRAID_MODULES` syntax
 
