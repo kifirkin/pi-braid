@@ -30,8 +30,8 @@ and emits alerts on degradation/anomaly.
 
 _(None - both `get_session_metrics` and `get_tool_reliability` removed in <!-- doc-ref-exempt: removed tool named as history -->
 2026-06 tool-inventory audit. They were passive observability with no
-internal consumers. Background tracking and the `analytics:all` slash
-command remain.)_
+internal consumers. Background tracking and the `/analytics all` scope
+remain.)_
 
 ## Event-bus contract
 

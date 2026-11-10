@@ -27,7 +27,7 @@ const ALWAYS_ACTIVE = ["tool_search"];
  * Assistant Extension - Tool management.
  *
  * /tools: interactive tool enable/disable
- * /tool-status: show current configuration
+ * /tools status: show current configuration
  *
  * Persistence: the cross-extension tool list now lives in
  * `~/.pi/agent/settings.json` under `braid.contrib._global.enabled: [...]`
@@ -154,9 +154,42 @@ export default function assistantExtension(pi: ExtensionAPI) {
   );
   pi.on("session_tree", async (_event, ctx) => restoreToolState(ctx));
 
+  /** The one-line state report: the scripted form of what the list shows. */
+  const reportStatus = (ctx: ExtensionContext): void => {
+    toolList = pi.getAllTools();
+    const enabled = Array.from(toolEnabled);
+    const disabled = toolList
+      .map((t) => t.name)
+      .filter((n) => !enabled.includes(n));
+    ctx.ui.notify(
+      enabled.length +
+        " enabled, " +
+        disabled.length +
+        " disabled (version " +
+        configVersion +
+        ")",
+      "info",
+    );
+  };
+
   pi.registerCommand("tools", {
-    description: "Enable/disable tools with fuzzy search",
-    handler: async (_args, ctx) => {
+    description:
+      "Enable/disable tools with fuzzy search. Usage: /tools [status]",
+    handler: async (args, ctx) => {
+      // No argument is the interactive list; a verb is the scripted form.
+      const verb = (args ?? "").trim().toLowerCase();
+      if (verb === "status") {
+        reportStatus(ctx);
+        return;
+      }
+      if (verb !== "") {
+        ctx.ui.notify(
+          `Unknown verb "${verb}". Usage: /tools [status]`,
+          "warning",
+        );
+        return;
+      }
+
       toolList = pi.getAllTools();
 
       // Build settings items for each tool (SettingsList handles its own search)
@@ -234,26 +267,6 @@ export default function assistantExtension(pi: ExtensionAPI) {
           },
         };
       });
-    },
-  });
-
-  pi.registerCommand("tool-status", {
-    description: "Show current tool configuration",
-    handler: async (_args, ctx) => {
-      toolList = pi.getAllTools();
-      const enabled = Array.from(toolEnabled);
-      const disabled = toolList
-        .map((t) => t.name)
-        .filter((n) => !enabled.includes(n));
-      ctx.ui.notify(
-        enabled.length +
-          " enabled, " +
-          disabled.length +
-          " disabled (version " +
-          configVersion +
-          ")",
-        "info",
-      );
     },
   });
 }

@@ -161,7 +161,7 @@
               "default": false,
               "description": "Opt in to the heavy browser tools (off by default).",
               "type": "boolean",
-              "x-source": "packages/contrib/browser/index.ts:83"
+              "x-source": "packages/contrib/browser/index.ts:91"
             },
             "networkMonitor": {
               "default": true,

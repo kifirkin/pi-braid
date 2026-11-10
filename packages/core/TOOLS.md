@@ -35,7 +35,7 @@ fails until the other catches up.
 ## Enablement reference
 
 Braid extension loading is resolved by `src/loader/loader.ts` (`resolveEnabledExtensions`, loader.ts:327)
-with priority: runtime overrides (`/modules-*`) → `braid.modules` from two sources, the later
+with priority: runtime overrides (`/modules on|off`) → `braid.modules` from two sources, the later
 winning per id (`~/.pi/agent/settings.json`, then braid's own module-overrides store where those
 toggles persist) → `BRAID_MODULES` env var → manifest defaults (`src/extensions/manifest.ts`). Always-on extensions (`alwaysOn: true`)
 can never be disabled; opt-in extensions (`disabledByDefault: true`) only load when explicitly enabled.
@@ -87,20 +87,15 @@ enablement (see appendix).
 Extension commands the tool catalog does not cover: slash commands registered by
 the core and contrib extensions and named in no other document. A command with
 a home beside its extension is not repeated here - `/watchdog-status` lives in
-the watchdog `AGENTS.md`, the `/modules-*` family in `SETUP.md`.
+the watchdog `AGENTS.md`, `/modules` in `SETUP.md`.
 
-| Command               | Registered by                   | What it does                                                                                                                                                                    |
-| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/analytics`          | analytics (heartbeat module)    | Show tool analytics for the current session.                                                                                                                                    |
-| `/analytics:all`      | analytics (heartbeat module)    | Show tool analytics across all historical sessions.                                                                                                                             |
-| `/analytics:ab`       | analytics (heartbeat module)    | Show A/B experiment results across variants.                                                                                                                                    |
-| `/context-stats`      | context-manager (memory module) | Show context pruning statistics.                                                                                                                                                |
-| `/rate-cancel`        | rate-limiter (contrib)          | Cancel the rate limiter wait and reset its state.                                                                                                                               |
-| `/tool-status`        | tool-config (contrib)           | Show current tool configuration.                                                                                                                                                |
-| `/browser-start`      | browser (contrib)               | Spawn Chrome with remote debugging; `--profile` syncs cookies and logins.                                                                                                       |
-| `/browser-connect`    | browser (contrib)               | Connect to Chrome at :9222 (auto-starts if not running).                                                                                                                        |
-| `/browser-disconnect` | browser (contrib)               | Disconnect from the browser session.                                                                                                                                            |
-| `/utility-model`      | polyfill (core)                 | Set or show the utility model for classification tasks; accepts one model or an ordered list (comma-separated), tried in order until the provider layer reports a route usable. |
+| Command          | Registered by                   | What it does                                                                                                                                                                    |
+| ---------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/analytics`     | analytics (heartbeat module)    | Show tool analytics. No argument asks the scope in the TUI; `session`, `all` and `ab` are the verbs.                                                                            |
+| `/browser`       | browser (contrib)               | One manager for Chrome: `connect`, `start [--profile]`, `disconnect`, `tabs`. No argument shows the endpoint, the connection state, the active tab and the actions.             |
+| `/context-stats` | context-manager (memory module) | Show context pruning statistics.                                                                                                                                                |
+| `/rate-cancel`   | rate-limiter (contrib)          | Cancel the rate limiter wait and reset its state.                                                                                                                               |
+| `/utility-model` | polyfill (core)                 | Set or show the utility model for classification tasks; accepts one model or an ordered list (comma-separated), tried in order until the provider layer reports a route usable. |
 
 ## Appendix: standalone packages surfaced into the braid prompt
 

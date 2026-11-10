@@ -10,17 +10,25 @@
  * - browser_content: Extract readable page content as markdown
  *
  * Commands:
- * - /browser-connect: Connect to existing Chrome at :9222 (auto-starts if absent)
- * - /browser-disconnect: Disconnect session
- * - /browser-start: Spawn Chrome with remote debugging (--profile for cookie sync)
+ * - /browser: one manager. No argument opens it; verbs are connect, start
+ *   [--profile], disconnect and tabs.
  */
 
 import type {
   AgentToolResult,
   ExtensionAPI,
+  ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { truncateHead } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import {
+  getSelectListTheme,
+  truncateHead,
+} from "@earendil-works/pi-coding-agent";
+import {
+  Container,
+  SelectList,
+  Text,
+  type SelectItem,
+} from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { createLogger } from "../logger.js";
 import { readToggleVerdict } from "../module-toggle.js";
@@ -340,7 +348,7 @@ async function ensureTab(
         throw new Error(
           "Chrome not reachable. Start it with:\n" +
             "  /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222\n" +
-            "Or use /browser-start --profile to launch with your cookies.",
+            "Or use /browser start --profile to launch with your cookies.",
         );
       }
     }
@@ -1122,84 +1130,311 @@ function registerCoreTools(pi: ExtensionAPI): void {
   });
 }
 
-function registerCoreCommands(pi: ExtensionAPI): void {
-  pi.registerCommand("browser-start", {
-    description:
-      "Spawn Chrome with remote debugging. Use --profile to sync your cookies and logins.",
-    handler: async (args, ctx) => {
-      const useProfile = args.includes("--profile");
+// The manager: one command for every browser intent.
+
+/** The sentence the manager shows when the tab list is switched off. */
+const TABS_OFF =
+  "The tab list is off: set braid.contrib.browserAdvanced to true in " +
+  "~/.pi/agent/settings.json and restart.";
+
+const USAGE =
+  "Usage: /browser [connect|start [--profile]|disconnect|tabs]\n" +
+  "No argument opens the manager (text in RPC mode).";
+
+/** The first debug port Chrome answers on, or null when none does. */
+async function reachablePort(): Promise<number | null> {
+  for (const port of DEBUG_PORTS) {
+    if (await isBrowserAvailable(port)) return port;
+  }
+  return null;
+}
+
+/** Endpoint, connection state and active tab, then the tab-list note when off. */
+async function browserFacts(settings: BrowserSettings): Promise<string[]> {
+  const open = getAllTabs();
+  let state: string;
+  if (open.length > 0) {
+    state = `connected, ${open.length} tab(s)`;
+  } else {
+    const port = await reachablePort();
+    state =
+      port === null
+        ? "not connected"
+        : `Chrome reachable on :${port}, no tab registered`;
+  }
+  const active = getActiveTab();
+  const endpoint =
+    `http://127.0.0.1:${DEBUG_PORTS[0]}` +
+    (DEBUG_PORTS.length > 1
+      ? ` (or :${DEBUG_PORTS.slice(1).join(", :")})`
+      : "");
+  const facts = [
+    `endpoint  ${endpoint}`,
+    `state     ${state}`,
+    `active    ${active ? active.url || "(blank tab)" : "(none)"}`,
+  ];
+  if (!settings.advanced) facts.push(TABS_OFF);
+  return facts;
+}
+
+/** The four intents, plus one row per open tab when the tab list is enabled. */
+function browserRows(settings: BrowserSettings): SelectItem[] {
+  const rows: SelectItem[] = [
+    {
+      value: "connect",
+      label: "connect",
+      description: "Connect to Chrome, starting it if it is not running",
+    },
+    {
+      value: "start",
+      label: "start",
+      description: "Spawn Chrome with remote debugging",
+    },
+    {
+      value: "start --profile",
+      label: "start --profile",
+      description: "Spawn Chrome with your cookies and logins",
+    },
+    {
+      value: "disconnect",
+      label: "disconnect",
+      description: "Close every tab braid holds and drop the connection",
+    },
+  ];
+  if (settings.advanced) {
+    for (const tab of getAllTabs()) {
+      rows.push({
+        value: `tab:${tab.id}`,
+        label: `tab:${tab.title || tab.url || tab.id}`,
+        description: `${tab.url}${tab.active ? " (active)" : ""} · ${tab.id}`,
+      });
+    }
+  }
+  return rows;
+}
+
+async function startBrowser(
+  ctx: ExtensionCommandContext,
+  useProfile: boolean,
+): Promise<void> {
+  try {
+    const running = await reachablePort();
+    if (running !== null) {
+      ctx.ui.notify(`Chrome already running on :${running}`, "info");
+      return;
+    }
+    ctx.ui.notify("Starting Chrome…", "info");
+    const port = await spawnChrome({ useProfile });
+    await waitForChrome(port);
+    for (const tab of getAllTabs()) {
       try {
-        if (await isBrowserAvailable()) {
-          ctx.ui.notify("Chrome already running on :9222", "info");
-          return;
-        }
-        ctx.ui.notify("Starting Chrome…", "info");
-        const port = await spawnChrome({ useProfile });
-        await waitForChrome(port);
-        for (const tab of getAllTabs()) {
-          try {
-            tab.client.disconnect();
-          } catch {
-            // Best-effort cleanup — sockets may already be closed.
+        tab.client.disconnect();
+      } catch {
+        // Best-effort cleanup — sockets may already be closed.
+      }
+    }
+    tabs.clear();
+    ctx.ui.notify(
+      `Chrome started on :${port}` + (useProfile ? " (with your profile)" : ""),
+      "info",
+    );
+  } catch (err) {
+    ctx.ui.notify(
+      `Start failed: ${(err as Error).message.split("\n")[0]}`,
+      "error",
+    );
+  }
+}
+
+async function connectBrowser(ctx: ExtensionCommandContext): Promise<void> {
+  try {
+    const tab = await ensureTab();
+    ctx.ui.notify(`Connected: ${tab.url || "(unknown)"}`, "info");
+    if (ctx.hasUI) {
+      ctx.ui.setStatus(
+        "browser",
+        ctx.ui.theme.fg("success", `Browser: ${tab.url || "(unknown)"}`),
+      );
+    }
+  } catch (err) {
+    ctx.ui.notify(
+      `Connect failed: ${(err as Error).message.split("\n")[0]}`,
+      "error",
+    );
+  }
+}
+
+async function disconnectBrowser(ctx: ExtensionCommandContext): Promise<void> {
+  for (const tab of getAllTabs()) {
+    try {
+      tab.client.disconnect();
+    } catch {
+      // Best-effort cleanup — sockets may already be closed.
+    }
+  }
+  tabs.clear();
+  for (const cleanup of sessionCleanups) {
+    try {
+      cleanup();
+    } catch {
+      // One failing cleanup must not skip the rest.
+    }
+  }
+  sessionCleanups.length = 0;
+  ctx.ui.notify("Browser disconnected", "info");
+}
+
+async function listBrowserTabs(
+  ctx: ExtensionCommandContext,
+  settings: BrowserSettings,
+): Promise<void> {
+  if (!settings.advanced) {
+    ctx.ui.notify(TABS_OFF, "info");
+    return;
+  }
+  try {
+    await ensureTab();
+    const allTabs = getAllTabs();
+    if (allTabs.length === 0) {
+      ctx.ui.notify("No tabs open", "info");
+      return;
+    }
+    const lines = allTabs.map(
+      (t, i) =>
+        `${t.active ? "●" : "○"} [${i + 1}] ${t.title || t.url} (${t.id})`,
+    );
+    ctx.ui.notify(lines.join("\n"), "info");
+  } catch (err) {
+    ctx.ui.notify(
+      `Tab list failed: ${(err as Error).message.split("\n")[0]}`,
+      "error",
+    );
+  }
+}
+
+async function runBrowserAction(
+  intent: string,
+  ctx: ExtensionCommandContext,
+  settings: BrowserSettings,
+): Promise<void> {
+  switch (intent) {
+    case "connect":
+      return connectBrowser(ctx);
+    case "start":
+      return startBrowser(ctx, false);
+    case "start --profile":
+      return startBrowser(ctx, true);
+    case "disconnect":
+      return disconnectBrowser(ctx);
+    case "tabs":
+      return listBrowserTabs(ctx, settings);
+  }
+  if (intent.startsWith("tab:")) {
+    const id = intent.slice("tab:".length);
+    const tab = switchToTab(id);
+    if (!tab) {
+      ctx.ui.notify(`Tab not found: ${id}`, "error");
+      return;
+    }
+    ctx.ui.notify(`Switched to ${tab.url || tab.id}`, "info");
+    return;
+  }
+  ctx.ui.notify(`Unknown browser action "${intent}".\n${USAGE}`, "warning");
+}
+
+async function browserManager(
+  ctx: ExtensionCommandContext,
+  settings: BrowserSettings,
+): Promise<void> {
+  const facts = await browserFacts(settings);
+  if (ctx.mode !== "tui") {
+    ctx.ui.notify([...facts, "", USAGE].join("\n"), "info");
+    return;
+  }
+
+  const rows = browserRows(settings);
+  const chosen = await ctx.ui.custom<string | undefined>(
+    (tui, theme, _kb, done) => {
+      const container = new Container();
+      container.addChild(
+        new (class {
+          render(_width: number) {
+            return [
+              theme.fg("accent", theme.bold("Browser")),
+              ...facts.map((line) => theme.fg("muted", `  ${line}`)),
+              "",
+            ];
           }
-        }
-        tabs.clear();
-        ctx.ui.notify(
-          "Chrome started on :9222" +
-            (useProfile ? " (with your profile)" : ""),
-          "info",
-        );
-      } catch (err) {
-        ctx.ui.notify(
-          `Start failed: ${(err as Error).message.split("\n")[0]}`,
-          "error",
-        );
-      }
-    },
-  });
+          invalidate() {}
+        })(),
+      );
 
-  pi.registerCommand("browser-connect", {
-    description: "Connect to Chrome at :9222 (auto-starts if not running).",
-    handler: async (_args, ctx) => {
-      try {
-        const tab = await ensureTab();
-        ctx.ui.notify(`Connected: ${tab.url || "(unknown)"}`, "info");
-        if (ctx.hasUI) {
-          ctx.ui.setStatus(
-            "browser",
-            ctx.ui.theme.fg("success", `Browser: ${tab.url || "(unknown)"}`),
-          );
-        }
-      } catch (err) {
-        ctx.ui.notify(
-          `Connect failed: ${(err as Error).message.split("\n")[0]}`,
-          "error",
-        );
-      }
-    },
-  });
+      const list = new SelectList(
+        rows,
+        Math.min(rows.length + 2, 14),
+        getSelectListTheme(),
+      );
+      list.onSelect = (item) => done(item.value);
+      list.onCancel = () => done(undefined);
+      container.addChild(list);
 
-  pi.registerCommand("browser-disconnect", {
-    description: "Disconnect from the browser session.",
-    handler: async (_args, ctx) => {
-      for (const tab of getAllTabs()) {
-        try {
-          tab.client.disconnect();
-        } catch {
-          // Best-effort cleanup — sockets may already be closed.
-        }
-      }
-      tabs.clear();
-      for (const cleanup of sessionCleanups) {
-        try {
-          cleanup();
-        } catch {
-          // One failing cleanup must not skip the rest.
-        }
-      }
-      sessionCleanups.length = 0;
-      ctx.ui.notify("Browser disconnected", "info");
+      return {
+        render(width: number) {
+          return container.render(width);
+        },
+        invalidate() {
+          container.invalidate();
+        },
+        handleInput(data: string) {
+          list.handleInput(data);
+          tui.requestRender();
+        },
+        handleMouse(event: Parameters<SelectList["handleMouse"]>[0]) {
+          const result = list.handleMouse?.(event);
+          tui.requestRender();
+          return result;
+        },
+      };
     },
+  );
+
+  if (chosen === undefined) return;
+  await runBrowserAction(chosen, ctx, settings);
+}
+
+async function runBrowser(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+  settings: BrowserSettings,
+): Promise<void> {
+  const argv = (args ?? "").trim().split(/\s+/).filter(Boolean);
+  const verb = (argv[0] ?? "").toLowerCase();
+
+  switch (verb) {
+    case "":
+      return browserManager(ctx, settings);
+    case "connect":
+      return connectBrowser(ctx);
+    case "start":
+      return startBrowser(ctx, argv.slice(1).includes("--profile"));
+    case "disconnect":
+      return disconnectBrowser(ctx);
+    case "tabs":
+      return listBrowserTabs(ctx, settings);
+    default:
+      ctx.ui.notify(`Unknown browser action "${verb}".\n${USAGE}`, "warning");
+  }
+}
+
+function registerBrowserCommand(
+  pi: ExtensionAPI,
+  settings: BrowserSettings,
+): void {
+  pi.registerCommand("browser", {
+    description:
+      "One browser manager: connect, start Chrome, disconnect, list or switch tabs. " +
+      "Usage: /browser [connect|start [--profile]|disconnect|tabs]",
+    handler: async (args, ctx) => runBrowser(args, ctx, settings),
   });
 }
 
@@ -1405,32 +1640,6 @@ function registerAdvancedTools(pi: ExtensionAPI): void {
   });
 }
 
-function registerAdvancedCommands(pi: ExtensionAPI): void {
-  pi.registerCommand("browser-tabs", {
-    description: "List all browser tabs. Usage: /browser-tabs",
-    handler: async (_args, ctx) => {
-      try {
-        await ensureTab();
-        const allTabs = getAllTabs();
-        if (allTabs.length === 0) {
-          ctx.ui.notify("No tabs open", "info");
-          return;
-        }
-        const lines = allTabs.map(
-          (t, i) =>
-            `${t.active ? "●" : "○"} [${i + 1}] ${t.title || t.url} (${t.id})`,
-        );
-        ctx.ui.notify(lines.join("\n"), "info");
-      } catch (err) {
-        ctx.ui.notify(
-          `Tab list failed: ${(err as Error).message.split("\n")[0]}`,
-          "error",
-        );
-      }
-    },
-  });
-}
-
 // Extension entry
 export default function browserExtension(pi: ExtensionAPI) {
   const toggle = readToggleVerdict(["browser"]);
@@ -1463,14 +1672,13 @@ export default function browserExtension(pi: ExtensionAPI) {
     sessionCleanups.length = 0;
   });
 
-  // Core: always loaded (4 tools + 3 commands)
+  // Core: always loaded (4 tools + the manager command)
   registerCoreTools(pi);
-  registerCoreCommands(pi);
+  registerBrowserCommand(pi, settings);
 
   if (settings.advanced) {
-    // Advanced: 7 tools + 1 command
+    // Advanced: 7 tools; the manager carries their tab rows.
     registerAdvancedTools(pi);
-    registerAdvancedCommands(pi);
     log.info("Browser extension registered (core + advanced).");
   } else {
     log.info(

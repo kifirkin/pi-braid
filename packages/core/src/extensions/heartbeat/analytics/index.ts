@@ -17,7 +17,7 @@ import {
 } from "../../../lib/state/session-start-queue.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { metricsDir, metricsFilePath } from "../../../lib/config/braid-paths.js";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { safeSessionManagerTyped } from "../../../lib/state/extension-state.js";
 import { emitSignal } from "../../../lib/reasoning/belief-policy-engine.js";
 import { eventBus } from "../../../lib/events/event-bus.js";
@@ -52,6 +52,40 @@ import {
 } from "../../../lib/core/event-names.js";
 
 const log = createLogger("analytics");
+
+/** The three reports one command prints, keyed by the verb a script types. */
+const ANALYTICS_SCOPES: Record<
+  string,
+  { label: string; render: (ctx: ExtensionCommandContext) => string }
+> = {
+  session: {
+    label: "This session",
+    render: (ctx) => formatCurrentSession(getAnalyticsStateInternal(ctx)),
+  },
+  all: { label: "All sessions", render: () => formatAllSessions() },
+  ab: { label: "A/B variants", render: () => formatABResults() },
+};
+
+/** Print one scope through the formatter that scope already owned. */
+function showAnalyticsScope(scope: string, ctx: ExtensionCommandContext): void {
+  ctx.ui.notify(ANALYTICS_SCOPES[scope].render(ctx), "info");
+}
+
+/** No argument: ask the scope in the TUI; headless prints the default scope. */
+async function pickAnalyticsScope(ctx: ExtensionCommandContext): Promise<void> {
+  if (ctx.mode !== "tui") {
+    ctx.ui.notify(
+      `${ANALYTICS_SCOPES.session.render(ctx)}\n\nOther scopes: /analytics all, /analytics ab`,
+      "info",
+    );
+    return;
+  }
+  const labels = Object.values(ANALYTICS_SCOPES).map((scope) => scope.label);
+  const chosen = await ctx.ui.select("Analytics scope", labels);
+  if (chosen === undefined) return;
+  const scope = Object.keys(ANALYTICS_SCOPES).find((key) => ANALYTICS_SCOPES[key].label === chosen);
+  if (scope) showAnalyticsScope(scope, ctx);
+}
 
 export default function analyticsExtension(pi: ExtensionAPI) {
   registerSessionStartHandler(pi, SessionPhase.MemoryState, async (_event, ctx) => {
@@ -344,30 +378,27 @@ export default function analyticsExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("analytics", {
-    description: "Show tool analytics for the current session",
-    handler: async (_args, ctx) => {
-      ctx.ui.notify(formatCurrentSession(getAnalyticsStateInternal(ctx)), "info");
-    },
-  });
-  pi.registerCommand("analytics:all", {
-    description: "Show tool analytics across all historical sessions",
-    handler: async (_args, _ctx) => {
-      _ctx.ui.notify(formatAllSessions(), "info");
-    },
-  });
-  // The A/B variant is set through the tool below, not a slash command, so
-  // the agent can set its own variant without a human-typed command.
-  pi.registerCommand("analytics:ab", {
-    description: "Show A/B experiment results across variants",
-    handler: async (_args, ctx) => {
-      ctx.ui.notify(formatABResults(), "info");
+    description:
+      "Show tool analytics. No argument asks the scope in the TUI. " +
+      "Usage: /analytics [session|all|ab]",
+    handler: async (args, ctx) => {
+      const scope = (args ?? "").trim().toLowerCase();
+      if (scope === "") {
+        await pickAnalyticsScope(ctx);
+        return;
+      }
+      if (!(scope in ANALYTICS_SCOPES)) {
+        ctx.ui.notify(`Unknown scope "${scope}". Usage: /analytics [session|all|ab]`, "warning");
+        return;
+      }
+      showAnalyticsScope(scope, ctx);
     },
   });
 
   // No agent-callable observability tools here (session metrics / tool
   // reliability): the agent rarely needs self-observability and no internal
   // caller used them. Background tracking (toolMetrics, sessionStartTime)
-  // still runs and feeds event-bus alerts and the analytics:all command; the
+  // still runs and feeds event-bus alerts and the analytics scopes; the
   // A/B variant is set programmatically via
   // getAnalyticsStateInternal(ctx).abVariant.
 }
