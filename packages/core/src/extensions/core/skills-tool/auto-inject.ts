@@ -54,21 +54,30 @@
  *      most likely to match.
  *      `sendTrackedMessage` reports whether the message was accepted; a
  *      suppressed suggestion is neither sent nor counted.
- *   5. Content delivery: the whisper carries a BOUNDED
- *      excerpt of the matching skill's SKILL.md body (frontmatter stripped,
- *      ≤ MAX_EXCERPT_CHARS) plus an explicit read pointer to the full file —
- *      so skill content actually reaches the agent's view at the moment a
- *      domain matches, not just a truncated description. Best-effort: an
- *      unreadable file falls back to the description.
- *   6. No reply ritual: the whisper points at the SKILL.md read and stops
- *      there — a read is the conversion signal, and the solicited one-line
- *      reply is honored 2% of the time (channel noise, not information).
- *   7. Adoption counter: per-skill `suggested`/`loaded` counters,
- *      incremented on delivery and on load, surfaced by the `skill_stats`
- *      tool. `suggested` counts DELIVERED suggestions: the counter increments
- *      only after `sendTrackedMessage` reports the whisper was accepted, so
- *      the number measures the suggestion channel rather than the intent to
- *      use it. A load has two evidence grades — a verbal claim (the LOADED
+ *   5. Content delivery, two tiers: the best-ranked match arrives WHOLE —
+ *      its SKILL.md body (frontmatter stripped) as the whisper's first-class
+ *      payload, up to FULL_BODY_MAX_CHARS, the file named and the remainder
+ *      pointed at when the body exceeds the cap. Every lower rank stays on
+ *      the pointer tier: a bounded excerpt (≤ MAX_EXCERPT_CHARS) plus an
+ *      explicit read pointer. One body per whisper and one per skill per
+ *      session — a skill whose body already landed is a pointer when it
+ *      matches again. Best-effort: an unreadable file stays on the pointer
+ *      tier, because a body that never arrived is not delivered.
+ *   6. No reply ritual: the whisper names the SKILL.md path and stops there —
+ *      a read is the conversion signal where a read is still needed, and the
+ *      solicited one-line reply is honored 2% of the time (channel noise, not
+ *      information).
+ *   7. Adoption counter: per-skill `suggested`/`loaded`/`fullBody` counters,
+ *      incremented on delivery, on load, and on a first-class body delivery
+ *      respectively, surfaced by the `skill_stats` tool. `fullBody` counts
+ *      deliveries the whisper carried whole (or capped) rather than as an
+ *      excerpt, so the effect of the body tier is separable from the count
+ *      of pointers; both move for the same message, so their difference is
+ *      the pointer-only share. `suggested` counts DELIVERED suggestions: the
+ *      counter increments only after `sendTrackedMessage` reports the whisper
+ *      was accepted, so the number measures the suggestion channel rather
+ *      than the intent to use it. A load has two evidence grades — a verbal
+ *      claim (the LOADED
  *      probe reply, an honor-system grade the whisper does not solicit; the
  *      counter stays monotone for the store's series) and a detected actual
  *      load (SKILL.md read seen by the tool_result read-detector; failed
@@ -184,11 +193,32 @@ export const LOADED_COOLDOWN_TURNS = 30;
 const MIN_KEYWORD_LENGTH = 4;
 
 /**
- * Max characters of SKILL.md body content carried in a suggestion whisper,
- * per skill. Bounded so the steer stays a whisper (~2 skills × 300 chars +
- * boilerplate). The whisper always points at the full file for the rest.
+ * Max characters of SKILL.md body content carried in a POINTER row, per
+ * skill: the excerpt every match below the top rank gets, and the fallback
+ * for a top match whose file cannot be read (~2 rows × 300 chars +
+ * boilerplate). Unchanged by the body tier below; the row always points at
+ * the full file for the rest.
  */
 export const MAX_EXCERPT_CHARS = 300;
+
+/**
+ * Max characters of a SKILL.md body delivered first-class: the whole text of
+ * the whisper's best match, frontmatter stripped.
+ *
+ * The number is measured against the shipped pack, not picked. The 34 skill
+ * bodies run 385 to 29,997 characters, median 6,614, and 23 of them fit
+ * inside 12,000 whole; the ones past it are reference documents whose
+ * remainder is one read away and now named at the cut. Under the divisor the
+ * rest of the surface prices a read with (CHARS_PER_TOKEN = 4, also pi-core's
+ * estimateTokens), a body at the cap is 3,000 estTokens.
+ *
+ * That is the payload of one delivery: a body, plus at most MAX_EXCERPT_CHARS
+ * per other row, at most MAX_INJECTED rows. The read it stands in for costs
+ * the same body characters plus a tool call and a round trip, so a body
+ * delivered whole is never dearer than the conversion it removes; a body past
+ * the cap costs the cap and says where the rest is.
+ */
+export const FULL_BODY_MAX_CHARS = 12_000;
 
 /**
  * Minimum score for a skill whose match never touches its NAME (description
@@ -315,6 +345,12 @@ interface AutoInjectState {
   /** What the session did with each skill body it met (see ObligationState). */
   obligations: ObligationState;
   /**
+   * Skills whose body the whisper already delivered first-class this session.
+   * The same answer obligations.legs gives for the read leg: a body that
+   * landed is in context, so the next match is a pointer.
+   */
+  fullBodies: Set<string>;
+  /**
    * The resolved `braid.skills.inform` policy, read once per session. A
    * settings edit takes effect in the next session, the same way the session
    * profile does, so a tool_result never reads and parses settings.json.
@@ -373,6 +409,7 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     drift: initialDrift(),
     applicability: initialApplicability(),
     obligations: initialObligations(),
+    fullBodies: new Set<string>(),
   }));
 }
 
@@ -870,17 +907,27 @@ export function stripSkillFrontmatter(content: string): string {
 }
 
 /**
+ * Whole body when it fits, else a cut at a word boundary with the truncation
+ * mark. Pure.
+ *
+ * One rule for both tiers: a pointer row's 300-character excerpt and a
+ * first-class body at FULL_BODY_MAX_CHARS cut the same way, so a body ending
+ * mid-word reads as a cut in either, and the cut lands at whitespace whenever
+ * the text carries any in the last stretch before the cap.
+ */
+export function cutSkillBody(body: string, maxChars: number): string {
+  if (body.length <= maxChars) return body;
+  const cut = body.slice(0, maxChars);
+  const boundary = cut.lastIndexOf(" ");
+  return (boundary > maxChars * 0.6 ? cut.slice(0, boundary) : cut).trimEnd() + "…";
+}
+
+/**
  * Bounded excerpt of a skill body: strip frontmatter, trim, cap at maxChars,
  * mark truncation. Pure.
  */
 export function extractSkillExcerpt(content: string, maxChars: number = MAX_EXCERPT_CHARS): string {
-  const body = stripSkillFrontmatter(content).trim();
-  if (body.length <= maxChars) return body;
-  const cut = body.slice(0, maxChars);
-  // Cut at a word boundary when possible; always collapse trailing whitespace.
-  const boundary = cut.lastIndexOf(" ");
-  const slice = (boundary > maxChars * 0.6 ? cut.slice(0, boundary) : cut).trimEnd();
-  return slice + "…";
+  return cutSkillBody(stripSkillFrontmatter(content).trim(), maxChars);
 }
 
 /**
@@ -896,35 +943,145 @@ export function readSkillExcerpt(filePath: string, maxChars: number = MAX_EXCERP
   }
 }
 
+/** A SKILL.md body as the whisper carries it, and whether the cap cut it. */
+export interface SkillBody {
+  text: string;
+  truncated: boolean;
+}
+
+/**
+ * Read a SKILL.md into a deliverable body at the body-tier cap.
+ * Returns undefined on any error (missing file, unreadable) AND on an empty
+ * body: the caller stays on the pointer tier, because a body that never
+ * arrived must not be counted as delivered.
+ */
+export function readSkillBody(
+  filePath: string,
+  maxChars: number = FULL_BODY_MAX_CHARS,
+): SkillBody | undefined {
+  try {
+    const body = stripSkillFrontmatter(readFileSync(filePath, "utf-8")).trim();
+    if (!body) return undefined;
+    return { text: cutSkillBody(body, maxChars), truncated: body.length > maxChars };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Collapse whitespace/newlines to single spaces for a one-line whisper bullet. */
 function toOneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** The whisper's opening line when every row is a pointer. */
+const WHISPER_HEADER =
+  "[SKILL SUGGESTION] These skills match your current task; their content is excerpted below:";
+
+/** The closing catalog pointer every message carries. */
+const WHISPER_TRAILER =
+  "(Use `list_skills` to see all available skills; read a SKILL.md file for full context.)";
+
+/**
+ * One pointer row: a bounded body excerpt (or the description when the file
+ * is unreadable), collapsed to one line, followed by the read pointer.
+ */
+function pointerRow(skill: CachedSkill): string {
+  const excerpt = readSkillExcerpt(skill.filePath) || skill.description;
+  // Strip the truncation mark (if any) — the read pointer follows immediately.
+  const lead = toOneLine(excerpt)
+    .slice(0, MAX_EXCERPT_CHARS)
+    .replace(/\.\.\.$/, "")
+    .replace(/…$/, "");
+  return `- ${skill.name}: ${lead} — read \`${skill.filePath}\` for the full skill.`;
+}
+
+/** The body a whisper carried first-class, and whether the cap cut it. */
+export interface DeliveredBody {
+  name: string;
+  truncated: boolean;
+}
+
+export interface WhisperContent {
+  /** The message text. */
+  text: string;
+  /** The body carried first-class; absent when the message carried pointers only. */
+  body?: DeliveredBody;
+}
+
+/**
+ * Format the steer whisper for a recommendation, in two tiers.
+ *
+ * `fullBodySkill` names the one skill whose SKILL.md body the message carries
+ * first-class. The caller decides it from the session's already-delivered set
+ * (see pickFullBodySkill), so a re-match, an unreadable file or a skill this
+ * session already received leaves the message on the pointer tier.
+ *
+ * A body inside the cap is delivered whole and the message says so, which is
+ * what makes the read call unnecessary for that skill; a body past it is cut
+ * once at a word boundary, the file is named, and the message says the rest
+ * is there. Every other row keeps the pointer tier: MAX_EXCERPT_CHARS of
+ * body, one line, plus the path.
+ *
+ * The returned `body` is the fact the counter and the once-per-session record
+ * are written from, and it is present only when a body actually landed.
+ */
+export function formatWhisperContent(
+  skills: CachedSkill[],
+  fullBodySkill?: string,
+): WhisperContent {
+  const lead = fullBodySkill ? skills.find((s) => s.name === fullBodySkill) : undefined;
+  const body = lead ? readSkillBody(lead.filePath) : undefined;
+  if (!lead || !body) {
+    return { text: `${WHISPER_HEADER}\n${skills.map(pointerRow).join("\n")}\n${WHISPER_TRAILER}` };
+  }
+  const rows = skills.filter((s) => s.name !== lead.name).map(pointerRow);
+  const parts = [
+    body.truncated
+      ? `[SKILL SUGGESTION] ${lead.name} is the best match for this task; its text is included below up to ${FULL_BODY_MAX_CHARS} characters.`
+      : `[SKILL SUGGESTION] ${lead.name} is the best match for this task; its full text is included below, so no read call is needed for it.`,
+    "",
+    body.truncated
+      ? `## ${lead.name} (first ${FULL_BODY_MAX_CHARS} characters, \`${lead.filePath}\`)`
+      : `## ${lead.name} (full text, \`${lead.filePath}\`)`,
+    body.text,
+  ];
+  if (body.truncated) {
+    parts.push(
+      "",
+      `The rest of ${lead.name} is in \`${lead.filePath}\`; read it for the remainder.`,
+    );
+  }
+  if (rows.length) parts.push("", rows.join("\n"));
+  parts.push("", WHISPER_TRAILER);
+  return { text: parts.join("\n"), body: { name: lead.name, truncated: body.truncated } };
+}
+
 /**
  * Format the steer whisper content for a set of recommended skills.
  *
- * Each bullet carries a BOUNDED excerpt of the SKILL.md body (frontmatter
- * stripped, ≤ MAX_EXCERPT_CHARS, collapsed to one line) plus an explicit
- * read pointer to the full file — the agent sees real skill content at the
- * moment of domain match, not just a truncated description. Unreadable
- * files fall back to the description (also bounded, one line).
+ * `skills` arrives ranked (best first). The text is the pointer tier for
+ * every row; pass `fullBodySkill` to deliver one body first-class — see
+ * formatWhisperContent, which this delegates to.
  */
-export function formatWhisper(skills: CachedSkill[]): string {
-  const lines = skills.map((s) => {
-    const excerpt = readSkillExcerpt(s.filePath) || s.description;
-    // Strip the truncation mark (if any) — the read pointer follows immediately.
-    const lead = toOneLine(excerpt)
-      .slice(0, MAX_EXCERPT_CHARS)
-      .replace(/\.\.\.$/, "")
-      .replace(/…$/, "");
-    return `- ${s.name}: ${lead} — read \`${s.filePath}\` for the full skill.`;
-  });
-  return (
-    `[SKILL SUGGESTION] These skills match your current task; their content is excerpted below:\n` +
-    lines.join("\n") +
-    `\n(Use \`list_skills\` to see all available skills; read a SKILL.md file for full context.)`
-  );
+export function formatWhisper(skills: CachedSkill[], fullBodySkill?: string): string {
+  return formatWhisperContent(skills, fullBodySkill).text;
+}
+
+/**
+ * Which skill the whisper may carry first-class: the best-ranked match, and
+ * only while this session has not delivered that skill's body already.
+ *
+ * The rule fixes the payload at one body per message and one per skill per
+ * session. A re-match is a pointer because the body is in context; a lower
+ * rank is never expanded because the rank is what the body tier is for. Pure.
+ */
+export function pickFullBodySkill(
+  ranked: readonly CachedSkill[],
+  delivered: ReadonlySet<string>,
+): string | undefined {
+  const top = ranked[0];
+  if (!top) return undefined;
+  return delivered.has(top.name) ? undefined : top.name;
 }
 
 // Adoption counters
@@ -939,6 +1096,8 @@ export interface SkillStats {
   claimed: number;
   /** Loads detected by the read tool (SKILL.md read via tool_result). */
   actual: number;
+  /** Whispers that carried this skill's body first-class (whole or capped). */
+  fullBody: number;
 }
 
 const STATS_KEY = "skills-usage-stats";
@@ -957,7 +1116,7 @@ export function getSkillStats(ctx: ExtensionContext): Record<string, SkillStats>
 export function recordSkillSuggestion(ctx: ExtensionContext, names: string[]): void {
   const stats = getStats(ctx);
   for (const name of names) {
-    const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0 });
+    const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
     s.suggested++;
     recordDurable(name, "suggested");
   }
@@ -972,7 +1131,7 @@ export function recordSkillSuggestion(ctx: ExtensionContext, names: string[]): v
 export function recordSkillLoad(ctx: ExtensionContext, name: string): void {
   if (!name) return;
   const stats = getStats(ctx);
-  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0 });
+  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
   s.loaded++;
   s.actual++;
   recordDurable(name, "actual");
@@ -988,10 +1147,28 @@ export function recordSkillLoad(ctx: ExtensionContext, name: string): void {
 export function recordSkillClaim(ctx: ExtensionContext, name: string): void {
   if (!name) return;
   const stats = getStats(ctx);
-  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0 });
+  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
   s.loaded++;
   s.claimed++;
   recordDurable(name, "claim");
+}
+
+/**
+ * Record a FIRST-CLASS BODY delivery: the whisper carried this skill's body as
+ * its payload rather than a bounded excerpt.
+ *
+ * `suggested` moved for the same message, so the pair reads "of the
+ * suggestions delivered, how many arrived whole" without a second channel to
+ * instrument later. Only a body that actually landed in a delivered message is
+ * recorded: a suppressed whisper moves neither counter, and an unreadable file
+ * leaves the message on the pointer tier.
+ */
+export function recordSkillFullDelivery(ctx: ExtensionContext, name: string): void {
+  if (!name) return;
+  const stats = getStats(ctx);
+  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
+  s.fullBody++;
+  recordDurable(name, "fullBody");
 }
 
 // Durable adoption counters (cross-session)
@@ -1024,6 +1201,8 @@ export interface DurableSkillStats {
   claimed: number;
   /** All-time count of detected loads (SKILL.md read via the read tool). */
   actual: number;
+  /** All-time count of first-class body deliveries (see recordSkillFullDelivery). */
+  fullBody: number;
   /** ISO timestamp of the most recent recorded event. */
   lastAt: string;
   /** Which counting regime `suggested` mixes (see SuggestedEpoch). */
@@ -1046,11 +1225,15 @@ function normalizeDurableEntry(raw: unknown): DurableSkillStats | undefined {
     typeof r.actual === "number" && Number.isFinite(r.actual)
       ? r.actual
       : Math.max(0, loaded - claimed);
+  // Rows written before the body tier carry no fullBody: the count starts at
+  // zero for them, the same way a legacy row's claimed starts at zero.
+  const fullBody = typeof r.fullBody === "number" && Number.isFinite(r.fullBody) ? r.fullBody : 0;
   return {
     suggested,
     loaded,
     claimed,
     actual,
+    fullBody,
     lastAt: typeof r.lastAt === "string" ? r.lastAt : "",
     // Rows without an epoch predate the split: their `suggested` may mix
     // pre-delivery-regime increments with delivered ones.
@@ -1117,7 +1300,7 @@ function reportDurableFailure(action: string, err: unknown): void {
 }
 
 /** Record one durable event and flush to disk (best-effort). */
-function recordDurable(name: string, kind: "suggested" | "claim" | "actual"): void {
+function recordDurable(name: string, kind: "suggested" | "claim" | "actual" | "fullBody"): void {
   try {
     const store = getDurableStore();
     const entry = (store[name] ??= {
@@ -1125,11 +1308,14 @@ function recordDurable(name: string, kind: "suggested" | "claim" | "actual"): vo
       loaded: 0,
       claimed: 0,
       actual: 0,
+      fullBody: 0,
       lastAt: "",
       epoch: "delivered",
     });
     if (kind === "suggested") {
       entry.suggested++;
+    } else if (kind === "fullBody") {
+      entry.fullBody++;
     } else {
       entry.loaded++;
       if (kind === "claim") entry.claimed++;
@@ -1527,6 +1713,9 @@ function stepInform(
     if (!skill.families?.length || !skill.families.includes(family)) continue;
     const held = state.obligations.legs.get(skill.name);
     if (held?.read) continue; // the body is in context; the obligation is met
+    // The body arrived first-class in this session's whisper: the line's
+    // premise (a body whose file was never opened) is false, so it stays shut.
+    if (state.fullBodies.has(skill.name)) continue;
     if (held?.informed) continue; // one line per session per skill
     const delivered = sendTrackedMessage(
       pi,
@@ -1768,7 +1957,14 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       }
 
       const skillsToInject = toInject.map((s) => s.skill);
-      const text = formatWhisper(skillsToInject);
+      // The body tier is the best match's, and only while this session has not
+      // already received that body: the decision is the session's, the render
+      // is the formatter's.
+      const content = formatWhisperContent(
+        skillsToInject,
+        pickFullBodySkill(skillsToInject, state.fullBodies),
+      );
+      const text = content.text;
 
       // Delivery first, bookkeeping second: a suggestion that a suppression
       // path drops must neither consume its cooldown slot nor move a counter.
@@ -1783,6 +1979,7 @@ export function registerAutoInject(pi: ExtensionAPI): void {
             [BRAID_INJECTED]: true,
             [BRAID_SOURCE]: "skills-auto-inject",
             skills: skillsToInject.map((s) => s.name),
+            ...(content.body ? { fullBody: content.body.name } : {}),
           },
         },
         { delivery: "park", deliverAs: "steer" },
@@ -1830,6 +2027,14 @@ export function registerAutoInject(pi: ExtensionAPI): void {
         ctx,
         skillsToInject.map((s) => s.name),
       );
+      // The body tier is counted BESIDE the suggestion, not instead of it, and
+      // only now that the message is in the stream: the pair is what makes the
+      // effect measurable from the store. The session set is written with it,
+      // so the next match of the same skill is a pointer.
+      if (content.body) {
+        state.fullBodies.add(content.body.name);
+        recordSkillFullDelivery(ctx, content.body.name);
+      }
     } catch (err) {
       log.debug(`[skills-auto-inject] Error in before_agent_start: ${err}`);
     }

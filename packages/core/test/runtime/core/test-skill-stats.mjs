@@ -59,6 +59,7 @@ const {
   recordSkillSuggestion,
   recordSkillLoad,
   recordSkillClaim,
+  recordSkillFullDelivery,
   getSkillStats,
   getDurableSkillStats,
   registerAutoInject,
@@ -172,10 +173,11 @@ await test("skill_stats all-time section surfaces the durable file content", asy
       loaded: 4,
       claimed: 0,
       actual: 4,
+      fullBody: 0,
       lastAt: "2026-09-05T01:02:03.000Z",
       epoch: "mixed",
     },
-    "tool must surface the durable store normalized (legacy row → actual = loaded, epoch = mixed)",
+    "tool must surface the durable store normalized (legacy row → actual = loaded, fullBody = 0, epoch = mixed)",
   );
   assert.deepEqual(
     parsed.allTimeTotals,
@@ -223,6 +225,27 @@ await test("a probe claim records claimed+loaded without touching actual", async
   assert.equal(getDurableSkillStats()["claim-only"].claimed, 1, "durable claim");
   assert.equal(getDurableSkillStats()["claim-only"].loaded, 1, "durable loaded sums");
   assert.equal(getDurableSkillStats()["claim-only"].actual, 0, "no detected read");
+});
+
+await test("a full-body delivery is counted beside the suggestion, not instead of it", async () => {
+  const ctx = fakeCtx();
+  recordSkillSuggestion(ctx, ["body-skill"]);
+  recordSkillFullDelivery(ctx, "body-skill");
+  const s = getSkillStats(ctx)["body-skill"];
+  assert.equal(s.suggested, 1, "the message was a suggestion");
+  assert.equal(s.fullBody, 1, "and its body arrived first-class");
+  assert.equal(s.loaded, 0, "a delivery is not a load");
+  const d = getDurableSkillStats()["body-skill"];
+  assert.equal(d.suggested, 1, "durable suggested");
+  assert.equal(d.fullBody, 1, "durable fullBody");
+  assert.equal(d.loaded, 0, "the body tier is separable from the load counter");
+  // An empty name writes nothing: the row would belong to no skill.
+  recordSkillFullDelivery(ctx, "");
+  assert.deepEqual(
+    Object.keys(getSkillStats(ctx)).sort(),
+    ["body-skill"],
+    "an empty name adds no row",
+  );
 });
 
 await test("claims and reads sum into loaded in the durable store", async () => {
@@ -329,6 +352,7 @@ await test("per-entry garbage is dropped, valid entries kept, no throw", async (
     loaded: 1,
     claimed: 0,
     actual: 1,
+    fullBody: 0,
     lastAt: "2026-09-05T00:00:00.000Z",
     epoch: "mixed",
   });
@@ -341,6 +365,7 @@ await test("per-entry garbage is dropped, valid entries kept, no throw", async (
     loaded: 0,
     claimed: 0,
     actual: 0,
+    fullBody: 0,
     lastAt: "",
     epoch: "mixed",
   });
@@ -364,6 +389,7 @@ await test("legacy rows load without migration errors: actual defaults to loaded
     loaded: 9,
     claimed: 0,
     actual: 9,
+    fullBody: 0,
     lastAt: "2026-09-01T00:00:00.000Z",
     epoch: "mixed",
   });
