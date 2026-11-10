@@ -96,6 +96,24 @@ record; the tag scheme above applies unchanged.
   note that a clean disable releases it, because a refusal an operator cannot act on
   is a support ticket.
 
+## Core — 0.43.43 (2026-11-10: the matched skill arrives whole, once)
+
+The auto-inject whisper used to carry a 300-character excerpt of the best-matching skill and a
+pointer to the file, so a session that never followed the pointer had three hundred characters of a
+skill that is often twenty kilobytes. The best match now arrives whole: its body is delivered in the
+whisper up to `FULL_BODY_MAX_CHARS` (12,000 characters, about 3,000 tokens at the pack's divisor),
+frontmatter stripped, cut once at a word boundary when the body runs past the cap, with a line that
+names the file and the remainder. Ranks two and three stay bounded at `MAX_EXCERPT_CHARS`, so the
+whisper cannot grow with the number of matches, and a skill delivered in full once is not delivered
+again in the same session.
+
+Measured, not estimated: the payload at the cap is 11,880 characters and 2,970 estimated tokens over
+the pointer row it replaces. The delivery is counted beside `suggested` in the session counters and
+in `skills-usage.json`, so the effect is readable from the counters rather than felt.
+
+The identity paragraph in `loading-guidance.ts` is unchanged: it remains the fallback for a skill no
+trigger matched.
+
 ## Core — 0.43.42 (2026-11-10: ten commands, one per object)
 
 - **The six `/modules-*` names are gone.** They forwarded to `/modules` for three releases (0.43.39 to
