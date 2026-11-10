@@ -80,6 +80,23 @@ record; the tag scheme above applies unchanged.
   contract; a new fixture covers both trees, the scoping and the absent-versus-empty
   populations.
 
+## Core — 0.43.44 (2026-11-10: the version that carries the telegram release)
+
+No core change. The `pi-braid-telegram` bump to 0.1.9 rides on a core version so the release line
+stays ordered; the fix itself is described in the Telegram section below.
+
+## Telegram — 0.1.9 (2026-11-10: the lock names the boot by the kernel's id, not the clock)
+
+`kern.boottime` is the wall clock minus uptime, so a clock step moves it and two processes on one
+boot compute different instance identities. A handover then reads the lock as held across
+namespaces and the channel cannot be taken: measured twice, the second time after a restart moved
+the boot time by two seconds. The lock now prefers `/proc/sys/kernel/random/boot_id`, then
+`kern.bootsessionuuid` on darwin, and keeps `kern.boottime` only as the documented last resort.
+
+The fix was written and has been carried inside core since 0.43.30, but the standalone extension
+the agent loads is this package, and it had not been published since 0.1.8: the running poller's
+lock still carried a boottime identity. This release is the fix reaching the process that uses it.
+
 ## Telegram — 0.1.8 (2026-11-04: a pre-identity lock is judged by its pid, so a dead holder cannot wedge the channel)
 
 - **The legacy arm has three outcomes instead of a permanent refusal.** A lock
