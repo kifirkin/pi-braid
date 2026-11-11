@@ -96,6 +96,17 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Providers — a port is not an HTTP status, and a timeout is not a refusal (2026-11-11)
+
+`classifyFailure` read the first three-digit run in an error text as an HTTP status, so a connect
+timeout whose text carried `host:443` arrived as a shape rejection with "HTTP 443" and the walk
+rotated the route away from a provider that had not refused anything. Driven through the sources: the
+literal transport error now classifies `transport`, `status 403 from 10.0.0.1:443` still classifies
+`key` with status 403, a bare `ECONNRESET at 203.0.113.7:443` classifies `transport`, and `HTTP 400`
+still classifies `shape`. A status is accepted only where the text frames it as one, and a transport
+failure means no key exhausted, no rotation and no marker claiming a refusal: the route's health is
+the connectivity watchdog's business, not the rotation walk's.
+
 ## Core — 0.43.45 (2026-11-11: a re-read is a covered range, not a repeated path)
 
 The re-read whisper keyed `recentlyReadFiles` on the path, so a second slice of one document in a turn
