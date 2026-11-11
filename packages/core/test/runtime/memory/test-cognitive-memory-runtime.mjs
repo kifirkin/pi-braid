@@ -22,8 +22,16 @@ import assert from "node:assert/strict";
 
 const { CognitiveMemory } = await import("../../../dist/lib/memory/index.js");
 
+/**
+ * A fixed-width unique suffix. The width is part of the fixture: the store
+ * rejects content shorter than 20 characters, and the tightest content here is
+ * `delete_me_` plus this suffix, so a draw shorter than ten characters (0.7% of
+ * them: `Math.random().toString(36)` drops trailing zeros) makes the store
+ * refuse the write and turns this file into a flake. Padding keeps the tightest
+ * content two characters above the floor instead of level with it.
+ */
 function uid() {
-  return Math.random().toString(36).slice(2, 12);
+  return Math.random().toString(36).slice(2, 12).padEnd(12, "0");
 }
 
 describe("CognitiveMemory", () => {

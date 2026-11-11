@@ -96,6 +96,17 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Core — a fixture identifier that a draw could shorten below the store's floor (2026-11-11)
+
+The cognitive-memory fixture built its unique content from `Math.random().toString(36).slice(2, 12)`,
+which returns fewer than ten characters whenever the draw's base-36 expansion ends in a run of zeroes:
+0.72% of 200,000 draws, measured, and `delete_me_` plus a nine-character suffix is nineteen characters,
+one below the store's twenty-character floor. The store then refused the write and the suite reported
+a duplicate-content failure in a test about deletion. The publisher's gate run hit that draw. The
+suffix is now padded to a fixed width, so the tightest content sits two characters above the floor,
+and the planted one-character draw that reproduces the old failure is recorded in the release notes
+rather than left to chance.
+
 ## Providers — a port is not an HTTP status, and a timeout is not a refusal (2026-11-11)
 
 `classifyFailure` read the first three-digit run in an error text as an HTTP status, so a connect
