@@ -65,6 +65,9 @@ Every `BRAID_TG_*` name has a `TELEGRAM_*` alias; the prefixed name wins when bo
 
 - Only whitelisted chats are read, and only owner messages can become a turn.
 - The poller is off by default and only one runs per process.
+- A lock write the filesystem refuses is reported, never fatal: the acquisition answers "not taken"
+  and the running heartbeat records the failure and retries on its schedule. While the write is
+  refused, this holder's heartbeat ages into the takeover window.
 - Voice replies need a TTS source. `source: "none"` refuses the send rather than silently sending
   text.
 - Transcription needs a key. Without one a voice note is still delivered, as the downloaded file,

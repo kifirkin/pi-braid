@@ -11,10 +11,18 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { hostname, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import telegramExtension, {
   ENV_CHAT_ID,
@@ -1239,3 +1247,233 @@ test("lock acquire: control — a cross-boot record that DOES carry identity but
   );
   assert.equal(res.reason, "stale-unknown");
 });
+
+// ── Durability: a lock write that cannot land is news, not a fatal error ──────
+//
+// The shape this guards: the volume fills, `writeFileSync` throws inside the
+// heartbeat's interval callback, the throw reaches Node's
+// uncaught-exception handler and the process ends — the seat loses its turn,
+// its channel and its poller over a timestamp, and the condition is transient.
+// The claim is about process death, so the fixture is a process.
+//
+// A write can be refused in two places, and the fixtures below deny both so
+// they hold whichever mechanism the write uses: the record itself (which a
+// truncating write opens) and its directory (which a replacing write stages
+// in).
+
+/** A fresh directory under this file's temp sandbox. */
+function tmpDir(prefix) {
+  const dir = join(
+    tmpdir(),
+    `tg-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Root writes through a read-only directory, so the refusal cannot be staged. */
+const ROOT_WRITES_ANYWHERE =
+  typeof process.getuid === "function" && process.getuid() === 0
+    ? "running as root: a read-only directory still accepts writes"
+    : false;
+
+/**
+ * The child's script: acquire, deny both halves of the write, let at least two
+ * beats fail, then repair and report. It prints one JSON line per phase, so the
+ * parent asserts what the process saw and whether it lived to say it.
+ */
+function beatFixtureScript(moduleUrl, dir, path) {
+  return `
+import { chmodSync, readFileSync } from "node:fs";
+import { acquirePollerLock, startPollerHeartbeat } from ${JSON.stringify(moduleUrl)};
+
+const dir = ${JSON.stringify(dir)};
+const path = ${JSON.stringify(path)};
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const acquired = acquirePollerLock(path, { pid: process.pid });
+if (!acquired.ok) {
+  console.error("acquire refused: " + acquired.reason);
+  process.exit(3);
+}
+const before = readFileSync(path, "utf8");
+chmodSync(path, 0o400);
+chmodSync(dir, 0o500);
+const beat = startPollerHeartbeat(path, { intervalMs: 20 });
+await pause(90);
+console.log(JSON.stringify({
+  phase: "blocked",
+  lastError: beat.lastError ? beat.lastError.code : null,
+  recordIntact: readFileSync(path, "utf8") === before,
+}));
+chmodSync(dir, 0o700);
+chmodSync(path, 0o600);
+await pause(120);
+const after = JSON.parse(readFileSync(path, "utf8"));
+console.log(JSON.stringify({
+  phase: "repaired",
+  lastError: beat.lastError ? beat.lastError.code : null,
+  heartbeatAdvanced: after.heartbeatAt > JSON.parse(before).heartbeatAt,
+}));
+beat.stop();
+`;
+}
+
+test(
+  "heartbeat: a write that cannot land is recorded and survived, and a repair clears it",
+  { skip: ROOT_WRITES_ANYWHERE },
+  async () => {
+    const dir = tmpDir("beat-durability");
+    const path = join(dir, "telegram-poller.lock");
+    const moduleUrl = new URL("../dist/lib/poller-lock.js", import.meta.url)
+      .href;
+    const child = spawn(
+      process.execPath,
+      ["--input-type=module", "-e", beatFixtureScript(moduleUrl, dir, path)],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const out = [];
+    const err = [];
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
+    child.stdout.on("data", (chunk) => out.push(chunk));
+    child.stderr.on("data", (chunk) => err.push(chunk));
+    const status = await new Promise((settle) =>
+      child.on("close", (code) => settle(code)),
+    );
+    const stdout = out.join("");
+    const stderr = err.join("");
+
+    assert.equal(
+      status,
+      0,
+      `the failed beat ended the process (exit ${status}): ${stderr}`,
+    );
+    assert.doesNotMatch(
+      stderr,
+      /uncaught|Error:/i,
+      "nothing reached the uncaught-exception handler",
+    );
+    const [blocked, repaired] = stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.equal(blocked.phase, "blocked");
+    assert.equal(
+      blocked.lastError,
+      "EACCES",
+      "the beat records what the filesystem refused",
+    );
+    assert.equal(
+      blocked.recordIntact,
+      true,
+      "a failed beat leaves the previous record as it was, never truncated",
+    );
+    assert.equal(repaired.phase, "repaired");
+    assert.equal(
+      repaired.lastError,
+      null,
+      "a later beat that lands clears the recorded failure",
+    );
+    assert.equal(repaired.heartbeatAdvanced, true);
+    assert.equal(
+      existsSync(path),
+      false,
+      "the exit hook released the lock after the repair",
+    );
+    rmSync(dir, { recursive: true, force: true });
+  },
+);
+
+test(
+  "lock acquire: a write that cannot land refuses the acquisition and leaves the record whole",
+  { skip: ROOT_WRITES_ANYWHERE },
+  () => {
+    const path = tmpLockFile("acquire-unwritable");
+    const dir = dirname(path);
+    const clock = fixedClock();
+    // A pre-identity record with a dead pid: the arm that decides to take over.
+    writeLock(path, {
+      pid: IMPOSSIBLE_PID,
+      startedAt: CLOCK - 3_600_000,
+      role: "seat",
+    });
+    const before = readFileSync(path, "utf8");
+    chmodSync(dir, 0o500);
+    try {
+      const res = acquirePollerLock(
+        path,
+        { pid: process.pid, instanceId: INSTANCE },
+        { now: clock.now, pidAlive: () => false },
+      );
+      assert.equal(res.ok, false);
+      assert.equal(res.reason, "write-failed");
+      assert.equal(res.failure.code, "EACCES");
+      assert.ok(
+        res.failure.message.includes(path),
+        `the failure names the file: ${res.failure.message}`,
+      );
+      assert.equal(
+        readFileSync(path, "utf8"),
+        before,
+        "the record is replaced whole or left as it was",
+      );
+      assert.deepEqual(
+        readdirSync(dir),
+        [basename(path)],
+        "a failed write stages nothing behind",
+      );
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+    // The same call against a directory that accepts writes takes the lock.
+    const after = acquirePollerLock(
+      path,
+      { pid: process.pid, instanceId: INSTANCE },
+      { now: clock.now, pidAlive: () => false },
+    );
+    assert.equal(after.ok, true);
+    assert.equal(after.reason, "stale-legacy");
+    assert.equal(readPollerLock(path).pid, process.pid);
+    assert.deepEqual(
+      readdirSync(dir),
+      [basename(path)],
+      "a write that lands leaves no staging file behind",
+    );
+  },
+);
+
+test(
+  "heartbeat: a failed beat keeps its schedule and a later success clears the record",
+  { skip: ROOT_WRITES_ANYWHERE },
+  async () => {
+    const path = tmpLockFile("beat-failure");
+    const dir = dirname(path);
+    const clock = fixedClock();
+    acquirePollerLock(path, { pid: process.pid }, { now: clock.now });
+    const beat = startPollerHeartbeat(path, { intervalMs: 15, now: clock.now });
+    chmodSync(path, 0o400);
+    chmodSync(dir, 0o500);
+    try {
+      await waitFor(() => beat.lastError !== undefined, 2000);
+      assert.equal(beat.lastError.code, "EACCES");
+      assert.equal(
+        readPollerLock(path).heartbeatAt,
+        CLOCK,
+        "a failed beat writes nothing, so the record keeps its last stamp",
+      );
+    } finally {
+      chmodSync(dir, 0o700);
+      chmodSync(path, 0o600);
+    }
+    clock.set(CLOCK + 40_000);
+    await waitFor(
+      () =>
+        beat.lastError === undefined &&
+        readPollerLock(path)?.heartbeatAt === CLOCK + 40_000,
+      2000,
+    );
+    assert.equal(beat.beat(), true, "the repaired path still beats on demand");
+    beat.stop();
+  },
+);

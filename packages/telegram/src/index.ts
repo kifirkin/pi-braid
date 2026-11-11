@@ -138,6 +138,7 @@ import {
   type PollerLockInfo,
   type PollerLockRefusalReason,
   type PollerLockTakeoverReason,
+  type PollerLockWriteFailure,
 } from "./lib/poller-lock.js";
 import { isWorkerRole, resolveSessionRole } from "./lib/session-role.js";
 import {
@@ -485,9 +486,10 @@ let pollerWanted = false;
  * singleton), `role-forbidden` (worker session — the seat owns the poller),
  * `lock-held` (another process owns the machine-wide lock; `holder` names it,
  * `refusalReason` says which kind of holder it is, and `path` is the file an
- * operator inspects), or `lock-path-underivable` (no absolute braid root, so
- * the ownership lock has no home). Callers render the reason for their own
- * surface.
+ * operator inspects), `lock-write-failed` (the lock file could not be written,
+ * so no acquisition happened; `failure` carries the errno and the file), or
+ * `lock-path-underivable` (no absolute braid root, so the ownership lock has no
+ * home). Callers render the reason for their own surface.
  */
 type PollerStartRefusal =
   | { started: false; reason: "already-running" }
@@ -498,6 +500,12 @@ type PollerStartRefusal =
       holder: PollerLockInfo;
       refusalReason: PollerLockRefusalReason;
       path: string;
+    }
+  | {
+      started: false;
+      reason: "lock-write-failed";
+      path: string;
+      failure: PollerLockWriteFailure;
     }
   | { started: false; reason: "lock-path-underivable" };
 type PollerStartOutcome =
@@ -512,6 +520,9 @@ type PollerStartOutcome =
 function describePollerStartRefusal(outcome: PollerStartRefusal): string {
   if (outcome.reason === "lock-held") {
     return `ownership lock held by ${describeLockHolder(outcome.holder)}: ${describeLockReason(outcome.refusalReason, outcome.path)}`;
+  }
+  if (outcome.reason === "lock-write-failed") {
+    return `${outcome.failure.message} — the ownership lock was not taken, so this process does not poll`;
   }
   if (outcome.reason === "role-forbidden") {
     return "worker role — the orchestrator seat owns the Telegram poller";
@@ -599,6 +610,20 @@ function startSingletonPoller(opts: {
     { pidAlive: opts.pidAlive },
   );
   if (!acquired.ok) {
+    // A write that never landed is not a verdict about a holder: the channel may
+    // be free and still unreachable, so the reason names the file and the errno.
+    if (acquired.reason === "write-failed") {
+      log(
+        "warn",
+        `telegram poller not started: ${acquired.failure.message} — the ownership lock was not taken, so this process does not poll`,
+      );
+      return {
+        started: false,
+        reason: "lock-write-failed",
+        path: acquired.path,
+        failure: acquired.failure,
+      };
+    }
     log(
       "warn",
       `telegram poller not started: ${describeLockHolder(acquired.holder)} holds the ownership lock — ${describeLockReason(acquired.reason, acquired.path)}`,

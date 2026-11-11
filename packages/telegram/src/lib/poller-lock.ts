@@ -15,6 +15,12 @@
  * that process last proved it was running; the pid is read as evidence only on
  * the boot that wrote it. A recycled pid on one host is the same class, and the
  * same rule covers it.
+ *
+ * A write to the file can also fail: the volume fills, the tree goes read-only,
+ * a permission changes under it. None of that is a verdict about the channel.
+ * The acquire path answers "the lock was not taken", a beat records the failure
+ * and keeps its schedule, and a write that cannot land leaves the previous
+ * record on disk: the file is replaced whole or left as it was.
  */
 
 import { execFileSync } from "node:child_process";
@@ -22,6 +28,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -140,7 +147,31 @@ export type AcquirePollerLockResult =
       holder: PollerLockInfo;
       /** The file the caller should name in a refusal message. */
       path: string;
+    }
+  | {
+      /**
+       * The record could not be written, so nothing was acquired. Not a
+       * verdict about a holder: whoever held the channel may still hold it, and
+       * the file on disk still says who. The caller is not the owner.
+       */
+      ok: false;
+      reason: "write-failed";
+      path: string;
+      failure: PollerLockWriteFailure;
     };
+
+/**
+ * A lock record write that did not land. Returned, never thrown: the three
+ * callers of the write are a start path, an interval callback and an exit hook,
+ * and a throw in any of them ends the process. A filesystem that refused a
+ * timestamp is news about the channel, not a reason to end the seat.
+ */
+export interface PollerLockWriteFailure {
+  /** The errno code the filesystem reported (`ENOSPC`, `EACCES`, `EROFS`, …). */
+  code: string | undefined;
+  /** One sentence for an operator: which file, and what the filesystem said. */
+  message: string;
+}
 
 /** Injectable reads for the acquisition rule (tests supply a fake clock and
  *  process table; the live path uses the machine's). */
@@ -265,9 +296,51 @@ export function resolveInstanceId(): string {
   return cachedInstanceId;
 }
 
-function writeLock(path: string, info: PollerLockInfo): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(info));
+/** What a refused write reports: the errno when the filesystem gave one, and a
+ *  sentence that names the file. */
+function describeWriteFailure(
+  path: string,
+  error: unknown,
+): PollerLockWriteFailure {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  const detail = error instanceof Error ? error.message : String(error);
+  return {
+    code: typeof code === "string" ? code : undefined,
+    message: `could not write ${path}: ${detail}`,
+  };
+}
+
+/**
+ * Write the record whole or not at all: a staging file beside the target is
+ * renamed over it, so a reader sees either the previous record or the new one.
+ * A direct `writeFileSync` on the target truncates before it writes, which is
+ * how a failed beat could erase the record that says who holds the channel.
+ *
+ * The failure is returned rather than thrown for the same reason it is
+ * recorded: the callers are a timer, a start path and an exit hook, and none of
+ * them may end the process over a file it could not write.
+ */
+function writeLock(
+  path: string,
+  info: PollerLockInfo,
+): PollerLockWriteFailure | undefined {
+  const staging = `${path}.${process.pid}.tmp`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(staging, JSON.stringify(info));
+    renameSync(staging, path);
+    return undefined;
+  } catch (error) {
+    // A staging file that was created but not renamed is this process's to
+    // remove; one that never existed fails this too. The record on disk is
+    // untouched whether this succeeds or not.
+    try {
+      unlinkSync(staging);
+    } catch {
+      // Nothing staged to remove, or the same condition that refused the write.
+    }
+    return describeWriteFailure(path, error);
+  }
 }
 
 // Best-effort release at process exit: the exit hook removes the lock this
@@ -411,6 +484,9 @@ function readPidStartedAt(pid: number): number | undefined {
  *    recycled pid, so acquire `stale-legacy-recycled`; anything else refuses
  *    `held-legacy` and names the file, because a live pid we cannot date is the
  *    one case where guessing either steals a channel or wedges one.
+ *
+ * A takeover the rule allows still has to reach the disk: when the write fails,
+ * the answer is `write-failed` and this process is not the owner.
  */
 export function acquirePollerLock(
   path: string,
@@ -424,15 +500,24 @@ export function acquirePollerLock(
   const instanceId = stamp.instanceId ?? resolveInstanceId();
   const existing = readPollerLock(path);
 
-  const acquire = (reason: PollerLockTakeoverReason) => {
-    writeLock(path, {
+  const acquire = (
+    reason: PollerLockTakeoverReason,
+  ): AcquirePollerLockResult => {
+    const record: PollerLockInfo = {
       pid: stamp.pid,
       startedAt: stamp.startedAt ?? at,
       instanceId,
       heartbeatAt: at,
       ...(stamp.role === undefined ? {} : { role: stamp.role }),
       ...(stamp.startedBy === undefined ? {} : { startedBy: stamp.startedBy }),
-    });
+    };
+    const failure = writeLock(path, record);
+    // The file on disk still names the previous holder (or no holder at all):
+    // this process did not acquire the channel, so it claims no exit hook and
+    // reports the write rather than dying on it.
+    if (failure !== undefined) {
+      return { ok: false, reason: "write-failed", path, failure };
+    }
     heldLockPath = path;
     installExitRelease();
     return {
@@ -499,26 +584,50 @@ export function acquirePollerLock(
 
 /**
  * Refresh `heartbeatAt` for a lock this process holds. False when the file is
- * gone or names another holder: a beat never rewrites a successor's record.
+ * gone, names another holder, or could not be written: a beat never rewrites a
+ * successor's record, and a write that cannot land reports instead of throwing.
+ * `onWriteFailure` says which of the two false answers this was.
  */
 export function refreshPollerHeartbeat(
   path: string,
-  options: { now?: () => number; pid?: number; instanceId?: string } = {},
+  options: {
+    now?: () => number;
+    pid?: number;
+    instanceId?: string;
+    /** Called with the reason when the beat reached the filesystem and the
+     *  filesystem refused it. Never called for a beat that the ownership rule
+     *  dropped before any write was attempted. */
+    onWriteFailure?: (failure: PollerLockWriteFailure) => void;
+  } = {},
 ): boolean {
   const holder = readPollerLock(path);
   if (!holder) return false;
   const pid = options.pid ?? process.pid;
   const instanceId = options.instanceId ?? resolveInstanceId();
   if (holder.pid !== pid || holder.instanceId !== instanceId) return false;
-  writeLock(path, { ...holder, heartbeatAt: (options.now ?? Date.now)() });
+  const failure = writeLock(path, {
+    ...holder,
+    heartbeatAt: (options.now ?? Date.now)(),
+  });
+  if (failure !== undefined) {
+    options.onWriteFailure?.(failure);
+    return false;
+  }
   return true;
 }
 
 /** One running heartbeat: at most one per process, on one lock file. */
 export interface PollerHeartbeat {
   readonly path: string;
-  /** Refresh now; false once the lock is no longer ours. */
+  /** Refresh now; false when no new stamp reached the file (the lock is no
+   *  longer ours, or the write failed — `lastError` says which). */
   beat(): boolean;
+  /**
+   * Why the last beat wrote nothing, or undefined once a beat lands. A failed
+   * beat is information about the channel: the beat keeps its schedule, and a
+   * later beat that writes clears this.
+   */
+  readonly lastError: PollerLockWriteFailure | undefined;
   /** Stop refreshing. Idempotent. */
   stop(): void;
 }
@@ -531,14 +640,27 @@ let activeHeartbeat:
  * Refresh the lock's heartbeat on an interval. Replaces any heartbeat already
  * running in this process: one lock, one beat. The timer is unref'd: it serves
  * the lock, never the event loop, so it cannot keep a process alive after the
- * poller it belongs to is gone.
+ * poller it belongs to is gone. The beat body cannot throw: its one fallible
+ * operation is the write, and that reports into `lastError`.
  */
 export function startPollerHeartbeat(
   path: string,
   options: { intervalMs?: number; now?: () => number } = {},
 ): PollerHeartbeat {
   stopPollerHeartbeat();
-  const beat = () => refreshPollerHeartbeat(path, { now: options.now });
+  let lastError: PollerLockWriteFailure | undefined;
+  const beat = (): boolean => {
+    let failed: PollerLockWriteFailure | undefined;
+    const written = refreshPollerHeartbeat(path, {
+      now: options.now,
+      onWriteFailure: (failure) => {
+        failed = failure;
+      },
+    });
+    if (failed !== undefined) lastError = failed;
+    else if (written) lastError = undefined;
+    return written;
+  };
   const timer = setInterval(
     beat,
     options.intervalMs ?? POLLER_HEARTBEAT_INTERVAL_MS,
@@ -549,6 +671,9 @@ export function startPollerHeartbeat(
   return {
     path,
     beat,
+    get lastError() {
+      return lastError;
+    },
     stop: () => {
       if (activeHeartbeat === entry) activeHeartbeat = undefined;
       clearInterval(timer);
