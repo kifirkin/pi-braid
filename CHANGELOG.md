@@ -96,6 +96,19 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Contrib — a design audit that measures a rendered page (2026-11-12)
+
+The measurement everything in the design program is judged by, as a tool: `design_audit` renders a page at
+declared widths and reports, per width, the dominant colours with their coverage, the contrast ratio of
+every text-bearing element against its effective background with the failing pairs named by selector path,
+the distinct font sizes, weights, line-heights, spacings, radii and shadows in use with whether the project's
+`DESIGN.md` holds each value, tap targets under 44 px, and elements that overflow their container. The
+measurement is a pure function over a DOM snapshot, so the gate runs on recorded fixtures instead of a live
+browser: a page with seven planted defects reports exactly those seven, a page with none reports zero, and
+two runs over the same snapshot are byte-identical. On the dating app's built page it found four sub-44 px
+targets, one off-grid spacing used eight times, and four icon wrappers overflowing their boxes, and it
+reports one skipped element rather than guessing: a heading painted by a gradient clipped to its glyphs.
+
 ## Release — three fixes that never left the monorepo (2026-11-12)
 
 The publisher skips a workspace whose version is already on the registry, and three fixes landed in
