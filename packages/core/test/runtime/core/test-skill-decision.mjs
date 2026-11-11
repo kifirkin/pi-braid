@@ -134,8 +134,12 @@ test("scoreSkill: +3 exact name token", () => {
   assert.equal(scoreSkill(research, ["research"]), 3);
 });
 
-test("scoreSkill: +2 name substring (compound names)", () => {
-  assert.equal(scoreSkill(softwareEngineer, ["engine"]), 2);
+test("scoreSkill: a name prefix is ranked, never qualifying on its own", () => {
+  // "engine" starts "engineer", and that is precisely the shape the bar refuses:
+  // an ordinary word that happens to start a longer one. The prefix adds points
+  // to a match another signal carries (see the relevance fixture); alone it is
+  // no match, so the score is zero rather than two.
+  assert.equal(scoreSkill(softwareEngineer, ["engine"]), 0);
 });
 
 test("scoreSkill: single description keyword stays below the qualification bar", () => {
