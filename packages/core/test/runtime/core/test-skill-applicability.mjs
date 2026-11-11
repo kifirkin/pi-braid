@@ -493,24 +493,25 @@ await test("a read of a skill whose condition never held adds no verdict row", a
 
 await test("the verdict does not move the suggestion: delivery and record are independent", async () => {
   const dir = mkdtempSync(join(tmpdir(), "applicability-independent-"));
-  mkdirSync(join(dir, "two-skill"), { recursive: true });
-  const file = join(dir, "two-skill", "SKILL.md");
-  writeFileSync(file, "---\nname: two-skill\n---\n\nbody instructions", "utf-8");
+  mkdirSync(join(dir, "sample-skill"), { recursive: true });
+  const file = join(dir, "sample-skill", "SKILL.md");
+  writeFileSync(file, "---\nname: sample-skill\n---\n\nbody instructions", "utf-8");
   const pi = fakePi();
   registerAutoInject(pi);
   updateSkillCache([
-    { name: "two-skill", filePath: file, description: "two skill", baseDir: dir, triggers: [], triggerSources: {} },
+    { name: "sample-skill", filePath: file, description: "sample exercises", baseDir: dir, triggers: [], triggerSources: {} },
   ]);
   const ctx = { sessionManager: { getSessionId: () => "sess-independent" }, cwd: "/tmp" };
 
-  // A prompt the SCORER matches (name token) whose file declares no phrase: the
-  // whisper fires, the verdict does not. One decision, one record.
-  await pi.handlers.before_agent_start({ prompt: "please follow the two-skill guide" }, ctx);
+  // A prompt the SCORER matches (a name token that is the skill's differentia,
+  // not the class noun) whose file declares no phrase: the whisper fires, the
+  // verdict does not. One decision, one record.
+  await pi.handlers.before_agent_start({ prompt: "please follow the sample-skill guide" }, ctx);
   const suggestion = pi.sent.find((m) => m.params.customType === "skills-suggestion");
   assert.ok(suggestion, "the suggestion path is unchanged");
-  assert.deepEqual(suggestion.params.details.skills, ["two-skill"]);
+  assert.deepEqual(suggestion.params.details.skills, ["sample-skill"]);
   assert.deepEqual(verdictRows("sess-independent"), [], "no phrase, no verdict");
-  assert.deepEqual(censusOf("sess-independent")[0].undeclared, ["two-skill"]);
+  assert.deepEqual(censusOf("sess-independent")[0].undeclared, ["sample-skill"]);
   rmSync(dir, { recursive: true, force: true });
 });
 

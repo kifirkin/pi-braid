@@ -9,10 +9,14 @@
  * Design:
  *   1. Relevance detection: keyword match of skill name/description plus
  *      curated trigger phrases against the user's current prompt.
- *      Qualification bar: a skill whose match never touches its NAME (name
- *      token or trigger phrase) must reach a score of at least
- *      MIN_NON_NAME_SCORE — a lone description/path keyword hit is too weak
- *      a signal: it fires broad skills on almost any prompt.
+ *      Qualification bar: a skill whose match never touches the IDENTITY part
+ *      of its name (a differentia token, the start of one, a one-word name, or
+ *      a curated trigger phrase) must reach MIN_NON_NAME_SIGNALS distinct
+ *      signals — a lone description/path keyword hit is too weak a signal: it
+ *      fires broad skills on almost any prompt. The final token of a compound
+ *      name is the class the skill belongs to ("improvement" for any
+ *      name ending -improvement), the word a prompt about that class carries,
+ *      so it is ranked and never counted as evidence.
  *      Keywords are stemmed with one suffix rule (trailing s/es) so plural
  *      prompts hit singular name tokens ("skills" → "skill").
  *      Corpus-common words are gated out of the weak legs AND out of the
@@ -21,7 +25,7 @@
  *      description/path hits from it score nothing. A name hit is word-shaped
  *      by construction — a whole name token, or the start of one — so a word
  *      buried inside a coined token ("line" in placement-disc**line**) is not
- *      a name hit at all. A whole-name-token hit and a trigger hit are never
+ *      a name hit at all. A differentia token and a trigger hit are never
  *      gated: the skill's own identity vocabulary is what a prompt naming it
  *      looks like, and a curated phrase is the author's signal.
  *   1b. Ranking: equal scores compare by more distinct matched signals, then
@@ -221,10 +225,17 @@ export const MAX_EXCERPT_CHARS = 300;
 export const FULL_BODY_MAX_CHARS = 12_000;
 
 /**
- * Minimum score for a skill whose match never touches its NAME (description
- * and/or filePath keyword hits only). Name matches qualify at any score.
+ * Minimum number of distinct matched signals for a skill whose match never
+ * touches the identity part of its NAME (a differentia token, the start of
+ * one, a one-word name, or a trigger phrase). Identity and trigger matches
+ * qualify at any count.
+ *
+ * The unit is signals, not points: one word in both the description and the
+ * catalog path scores twice but is one piece of evidence, and a class-noun hit
+ * scores three without being evidence at all. Two distinct words are the
+ * weakest match that says anything about a skill's subject.
  */
-export const MIN_NON_NAME_SCORE = 2;
+export const MIN_NON_NAME_SIGNALS = 2;
 
 /**
  * A keyword present in this many skill documents or more is corpus-common: it
@@ -560,20 +571,28 @@ const REASON_STRENGTH: Record<RelevanceReason, number> = {
 };
 
 /**
- * How a keyword occurs in a skill name: as a whole token, as the start of a
- * longer token, or not at all.
+ * Where a keyword occurs in a skill name: which token it names, and whether it
+ * is that whole token or only its start. Null when it occurs nowhere.
  *
- * The third answer is the fix: the name leg used to award points to any
- * substring anywhere in the name, so a corpus-common word ("line", df 7 of 22)
- * scored +2 for placement-disc**line** and release-pi**peline** and carried the
- * name-hit exemption from the qualification bar with it. A word buried inside
- * a coined token names the author's coinage, not the prompt's subject; a word
- * that starts a token still reads as the author's own vocabulary ("engine" in
- * software-engineer).
+ * The spellings matter because they carry different authority. The third
+ * answer — no occurrence — is the earlier fix: the name leg used to award
+ * points to any substring anywhere in the name, so a corpus-common word ("line",
+ * df 7 of 22) scored +2 for two coined names that ended -line and -pipeline and
+ * carried the name-hit exemption from the qualification bar with it. A word
+ * buried inside a coined token names the author's coinage, not the prompt's
+ * subject; a word that starts a token still reads as the author's own
+ * vocabulary ("engine" starting "engineer").
  */
-function nameOccurrence(tokens: string[], kw: string): "token" | "prefix" | null {
-  if (tokens.includes(kw)) return "token";
-  for (const token of tokens) if (token.length > kw.length && token.startsWith(kw)) return "prefix";
+function nameOccurrence(
+  tokens: string[],
+  kw: string,
+): { index: number; form: "token" | "prefix" } | null {
+  const exact = tokens.indexOf(kw);
+  if (exact >= 0) return { index: exact, form: "token" };
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.length > kw.length && token.startsWith(kw)) return { index, form: "prefix" };
+  }
   return null;
 }
 
@@ -593,6 +612,16 @@ const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0, reason: null
  * A trigger hit counts as a name hit: the phrase is the skill author's own
  * relevance signal, so it qualifies the skill the same way a name match does.
  *
+ * A whole-token match on the FINAL token of a compound name is the class noun:
+ * the word the name shares with everything else of its kind ("improvement" for
+ * a name ending -improvement, "quality" for one ending -quality). It scores —
+ * identity vocabulary is ranked — but it qualifies nothing: a prompt about the
+ * class carries that word anyway, so it cannot be evidence about this skill,
+ * neither on its own nor as the second signal. The tokens before it are the
+ * differentia the author chose to separate this skill from everything else of
+ * that class; a match on one of them (or the whole name of a one-word skill)
+ * qualifies.
+ *
  * `keywordDf` is the corpus document frequency of the prompt's keywords (see
  * corpusKeywordFrequency). A keyword at COMMON_KEYWORD_DF or above scores
  * nothing on the weak legs, and nothing on the name leg's token-prefix rule:
@@ -601,11 +630,11 @@ const NO_MATCH: SkillMatch = { score: 0, signals: 0, evidenceDf: 0, reason: null
  * every keyword at full weight (the pre-rarity behavior, which the unit
  * fixtures pin).
  *
- * Qualification bar: a skill whose match never touches its NAME (description
- * and/or filePath hits only) must reach a total score of at least
- * MIN_NON_NAME_SCORE — one description keyword is too weak a signal and
- * lets generic skills fire on almost any prompt. Name and trigger matches
- * always qualify.
+ * Qualification bar: a skill whose match never touches the identity part of
+ * its name (see the class-noun rule below) must carry at least
+ * MIN_NON_NAME_SIGNALS distinct signals — one description keyword is too weak
+ * a signal and lets generic skills fire on almost any prompt. Identity and
+ * trigger matches always qualify.
  *
  * `promptText` enables trigger matching; omit it where the raw prompt is not
  * available and only keyword scoring should run.
@@ -620,6 +649,7 @@ export function matchSkill(
 ): SkillMatch {
   let score = 0;
   let signals = 0;
+  let qualifying = 0;
   let evidenceDf = 0;
   let nameHit = false;
   let reason: RelevanceReason | null = null;
@@ -628,6 +658,8 @@ export function matchSkill(
   };
   const name = skill.name.toLowerCase();
   const nameTokens = name.split(/[^a-z0-9]+/).filter(Boolean);
+  // The class the name belongs to: the final token of a compound name.
+  const classToken = nameTokens.length > 1 ? nameTokens.length - 1 : -1;
   const desc = skill.description.toLowerCase();
   const path = skill.filePath.toLowerCase().split(/[\\/]/).filter(Boolean).slice(-2).join("/");
   const dfOf = (kw: string) => keywordDf?.get(kw) ?? 0;
@@ -646,23 +678,31 @@ export function matchSkill(
   for (const kw of keywords) {
     const df = dfOf(kw);
     const occurrence = nameOccurrence(nameTokens, kw);
-    // Exact token match in name: the skill's own identity vocabulary, never gated.
-    if (occurrence === "token") {
+    // The class noun: the whole final token of a compound name. A word that
+    // only starts that token ("engine" in "engineer") is already gated by
+    // corpus frequency, so it keeps the weight of the author's own vocabulary;
+    // the whole class token is what every skill of the class shares.
+    const classNoun = occurrence?.form === "token" && occurrence.index === classToken;
+    if (occurrence?.form === "token") {
       score += 3;
       signals++;
-      nameHit = true;
       evidenceDf += df;
       noteReason("name");
+      if (!classNoun) {
+        nameHit = true;
+        qualifying++;
+      }
       continue;
     }
-    // Token-prefix match in name ("engine" in "software-engineer"): name
+    // Token-prefix match in name ("engine" starting "engineer"): name
     // evidence, but only while the word is distinctive enough to mean it.
-    if (occurrence === "prefix" && df < COMMON_KEYWORD_DF) {
+    if (occurrence?.form === "prefix" && df < COMMON_KEYWORD_DF) {
       score += 2;
       signals++;
-      nameHit = true;
       evidenceDf += df;
       noteReason("name");
+      nameHit = true;
+      qualifying++;
       continue;
     }
     // Corpus-common keyword: the weak legs score nothing for it, so a prompt
@@ -679,15 +719,17 @@ export function matchSkill(
       weakHit = true;
     }
     // One signal per distinct keyword: a word present in both the description
-    // and the path is one piece of evidence, not two.
+    // and the path is one piece of evidence, not two. The score counts both
+    // fields; the qualification bar counts the word once.
     if (weakHit) {
       signals++;
+      qualifying++;
       evidenceDf += df;
       noteReason("description");
     }
   }
 
-  if (!nameHit && score < MIN_NON_NAME_SCORE) return NO_MATCH;
+  if (!nameHit && qualifying < MIN_NON_NAME_SIGNALS) return NO_MATCH;
   return { score, signals, evidenceDf, reason };
 }
 
@@ -773,8 +815,8 @@ export function selectSuggestions(
  * (`thin-margin`) instead of presenting the order as a decision. The number is
  * deliberate, not measured: one description keyword (+1) is exactly the
  * distance the scorer says is too weak to qualify a skill on its own
- * (MIN_NON_NAME_SCORE), so a lead that one extra weak hit could erase is not a
- * lead.
+ * (MIN_NON_NAME_SIGNALS), so a lead that one extra weak hit could erase is not
+ * a lead.
  */
 export const RANK_MARGIN_THRESHOLD = 2;
 

@@ -59,7 +59,7 @@ const {
   corpusKeywordFrequency,
   skillCorpusDocument,
   COMMON_KEYWORD_DF,
-  MIN_NON_NAME_SCORE,
+  MIN_NON_NAME_SIGNALS,
 } = await import(join(DIST, "auto-inject.js"));
 const { readSkillTriggers, triggerMatches } = await import(join(DIST, "skill-triggers.js"));
 let passed = 0;
@@ -212,6 +212,65 @@ test("a generic word that only starts a name token is gated too", () => {
   const rare = corpusKeywordFrequency(["benchmark"], skills);
   assert.ok((rare.get("benchmark") ?? 0) < COMMON_KEYWORD_DF, "the probe word must be rare");
   assert.equal(matchSkill(rareSkill, ["benchmark"], "", rare).score, 2, "a rare prefix qualifies");
+});
+
+test("a compound name's class noun ranks the skill but does not qualify it", () => {
+  // The final token of a compound name is the class the skill belongs to
+  // ("quality" in tone-quality, "improvement" in cv-improvement), so it is the
+  // word any prompt about that class carries. It still scores — identity
+  // vocabulary is ranked — but it is not evidence about THIS skill: the
+  // differentia ("tone") is.
+  const quality = mkSkill("tone-quality", "Read this skill before writing any text.");
+  assert.equal(matchSkill(quality, ["quality"], "").score, 0, "the class noun alone must not qualify");
+  assert.equal(matchSkill(quality, ["tone"], "").score, 3, "the differentia still qualifies alone");
+  assert.equal(matchSkill(quality, ["tone", "quality"], "").score, 6, "both tokens keep their points");
+});
+
+test("the class noun does not stand as the second signal either", () => {
+  // The defect: "improvement" (class noun) plus one incidental description
+  // word reached the two-signal bar, so a prompt about search quality could buy
+  // slot 1 for a skill about CVs. The class noun contributes no qualification
+  // evidence, so one description word stays one word.
+  const improvement = mkSkill("cv-improvement", "every bullet opens the same way");
+  assert.equal(matchSkill(improvement, ["improvement", "open"], "").score, 0, "class noun + one weak word");
+  const twoWeak = mkSkill("cv-improvement", "every bullet opens the same way");
+  assert.equal(
+    matchSkill(twoWeak, ["improvement", "open", "bullet"], "").score,
+    5,
+    "class noun still ranks once two weak words carry the bar",
+  );
+});
+
+test("a word in two fields is one signal, and the bar counts signals", () => {
+  // The double count still scores twice (the weak legs are two fields), but the
+  // bar is two distinct signals, so one shared word cannot clear it however
+  // many fields carry it — "search" in research's description and in
+  // research/skill.md was doing exactly that.
+  const target = mkSkill("zzz-probe", "notes detail", "/catalog/zzz-probe/notes.md");
+  assert.equal(matchSkill(target, ["notes"], "").score, 0, "one word in two fields is one signal");
+  assert.equal(
+    matchSkill(target, ["notes", "detail"], "").score,
+    3,
+    "two distinct words clear the bar, and the shared word still scores twice",
+  );
+});
+
+test("a coined token of a compound name still qualifies alone", () => {
+  // The class-noun rule must not cost the case the name leg exists for: a word
+  // the author coined ("braid" in braid-reference, "subagent" in
+  // subagent-orchestration) is the differentia, so it names the skill the
+  // prompt carries it for.
+  const prompt = "braid";
+  const keywords = extractKeywords(prompt);
+  const df = corpusKeywordFrequency(keywords, skills);
+  const braid = byName.get("braid-reference");
+  assert.equal(braid.name.split("-").at(-1), "reference", "the probe must hit the differentia");
+  assert.ok(matchSkill(braid, keywords, prompt, df).score >= 3, "a coined token must carry the skill");
+  const subagent = byName.get("subagent-orchestration");
+  assert.ok(
+    matchSkill(subagent, ["subagent"], "subagent", df).score >= 3,
+    "a shared coined token still qualifies each skill it names",
+  );
 });
 
 test("no admission in the sample prompt's turn rests on common words alone", () => {
@@ -460,6 +519,19 @@ const CASES = [
       "Read your brief in full and follow it: build the wiring probe harness (runner + probes/ + results/) and produce the baseline run. The harness must be idempotent and each probe must state its failure mode.",
     expected: ["agent-testing", "probe-evaluation"],
   },
+  {
+    // The reported injection. A prompt about search quality reached a skill
+    // whose name ends in the class noun "improvement": "improvements" stems to
+    // a whole token of cv-improvement and meta-improvement, and the name leg
+    // exempted it from both the rarity gate and the two-signal bar. No core
+    // skill applies to this prompt, and the pair below (`class noun` tests)
+    // pins the mechanism for cv-improvement, which ships in the sibling pack
+    // rather than in this catalog.
+    label: "search-quality-request",
+    prompt:
+      "hey! could you use web google search results as effectively as serper does through api key. and if not what your own improvements could open ways to that feature",
+    expected: [],
+  },
 ];
 
 /** Run one prompt through the real pipeline: extract → score → select top 2. */
@@ -518,10 +590,11 @@ test("recall@2 holds at or above the measured floor", () => {
   // deliberately, with the labelled set re-read. The floor is a HIT COUNT, not
   // a percentage: 13 of 24 expected skills is 54.17%, and pinning the rounded
   // percentage made a correct measurement fail its own floor by 0.03. The
-  // floor moved here from 13/23 (56.5%) when the continuation near-twin above
-  // gained its expected skill: the same 13 hits over a larger set, and the
-  // matcher still picks nothing for that prompt. A drop below 13 hits is a
-  // matcher regression; the 23 -> 24 denominator is a labelling correction.
+  // floor moved here from 14/24 when the class-noun rule landed: "audit" is
+  // the class noun of misdirection-audit, so `doc-identifier-audit` no longer
+  // reaches it on "audit" plus one description word — the same shape as the
+  // reported defect, which is why no rule that keeps that pair can also keep
+  // the reported prompt empty. A drop below 13 hits is a matcher regression.
   assert.ok(expectedHit >= 13, `recall@2 ${expectedHit}/${expectedTotal} holds ${expectedHit} of the 13 hits`);
 });
 
@@ -593,7 +666,7 @@ test("the prose case stays a miss: the limit is the skill's own text", () => {
   const df = corpusKeywordFrequency(keywords, skills);
   const prose = matchSkill(byName.get("tone-quality"), keywords, c.prompt, df);
   const code = matchSkill(byName.get("software-engineer"), keywords, c.prompt, df);
-  assert.ok(prose.score < MIN_NON_NAME_SCORE, `tone-quality now scores ${prose.score}`);
+  assert.ok(prose.signals < MIN_NON_NAME_SIGNALS, `tone-quality now matches ${prose.signals} signals`);
   assert.ok(code.score > prose.score, "the job title outranks the prose skill, as before");
 });
 
@@ -604,6 +677,83 @@ test("a named trigger phrase reaches its skill, whatever the prompt's case", () 
 
 test("the verify-worker prompt reaches the verification skill", () => {
   assert.ok(outcome("verify-worker").includes("subagent-verification"));
+});
+
+// ── 3c. the reported defect ────────────────────────────────────────────────
+
+/**
+ * cv-improvement ships in the sibling pack (`packages/skills`), not in this
+ * catalog, so the labelled set cannot carry it. The class-noun defect was
+ * reported against it, which makes it the one case that has to be measured
+ * against its real frontmatter rather than a stand-in: read the shipped file.
+ */
+const cvSkill = (() => {
+  const filePath = join(CORE, "..", "skills", "skills", "cv-improvement", "SKILL.md");
+  const text = readFileSync(filePath, "utf8");
+  const front = frontmatterOf(text);
+  const description = field(front, "description") ?? "";
+  return {
+    name: field(front, "name") ?? "cv-improvement",
+    filePath,
+    description,
+    baseDir: dirname(filePath),
+    triggers: readSkillTriggers(filePath, description),
+  };
+})();
+const cvCatalog = [...skills, cvSkill];
+
+function matchAgainst(catalog, skill, prompt) {
+  const keywords = extractKeywords(prompt);
+  return { keywords, match: matchSkill(skill, keywords, prompt, corpusKeywordFrequency(keywords, catalog)) };
+}
+
+const DEFECT_PROMPT = CASES.find((c) => c.label === "search-quality-request").prompt;
+
+test("the reported prompt admits no skill", () => {
+  const { admitted, picks } = rank(DEFECT_PROMPT);
+  assert.equal(admitted, 0, `admitted ${picks.join(", ")}`);
+  assert.deepEqual(picks, []);
+});
+
+test("cv-improvement is not reached by its class noun plus one incidental word", () => {
+  // The defect in its original form: "improvements" is a whole token of the
+  // name, and cv-improvement's description carries "open" ("every bullet opens
+  // the same way") — two signals by the old bar. The class noun is the word the
+  // prompt would use anyway, so it is ranked, never counted toward the bar.
+  const { match } = matchAgainst(cvCatalog, cvSkill, DEFECT_PROMPT);
+  assert.equal(match.score, 0, `cv-improvement still scores ${match.score}`);
+  const { match: meta } = matchAgainst(cvCatalog, byName.get("meta-improvement"), DEFECT_PROMPT);
+  assert.equal(meta.score, 0, `meta-improvement still scores ${meta.score}`);
+});
+
+test("a prompt that is about a CV still reaches cv-improvement", () => {
+  // The rule must not cost the reach the name leg exists for. Two roads in: a
+  // curated trigger, and the description weak legs on their own.
+  const trigger = "improve my cv please, the resume reads as machine-written";
+  assert.ok(matchAgainst(cvCatalog, cvSkill, trigger).match.score > 0, "trigger road");
+  const descriptive = "my cv has bullets that all open the same way and the page budget is broken";
+  const { match } = matchAgainst(cvCatalog, cvSkill, descriptive);
+  assert.ok(match.score >= MIN_NON_NAME_SIGNALS, `description road scored ${match.score}`);
+  assert.equal(match.reason, "description", "the description road must not rest on the name");
+});
+
+const QUOTED_CLASS_NOUNS = [
+  // One per core skill a class-noun-only match used to qualify.
+  ["meta-improvement", "improvement"],
+  ["code-search", "search"],
+  ["research", "search"],
+];
+
+test("a class noun never carries a core skill on its own", () => {
+  for (const [name, word] of QUOTED_CLASS_NOUNS) {
+    const skill = byName.get(name);
+    const df = corpusKeywordFrequency([word], skills);
+    assert.equal(
+      matchSkill(skill, [word], word, df).score,
+      0,
+      `${name} is still admitted by "${word}" alone`,
+    );
+  }
 });
 
 test("most no-skill prompts spend no slot", () => {

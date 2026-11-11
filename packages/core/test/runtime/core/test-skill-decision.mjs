@@ -7,8 +7,10 @@
  *      trailing-s/es stemming ("skills" → "skill" matches singular name
  *      tokens; stemmed noise like "task" from "tasks" stays out).
  *   2. scoreSkill — +3 name exact, +2 name substring, +2 trigger phrase,
- *      +1 desc/path; a match that never touches the name or a trigger
- *      qualifies only at MIN_NON_NAME_SCORE (2).
+ *      +1 desc/path; a match that never touches the identity part of the name
+ *      or a trigger qualifies only at MIN_NON_NAME_SIGNALS (2), and the whole
+ *      final token of a compound name (the class noun) is ranked but never
+ *      counted as evidence.
  *   3. selectSuggestions — mock prompt + mock cache flowing through
  *      extract → score → cooldown (global floor + per-skill loaded
  *      extension) → slot budget over active slots → relevance eviction
@@ -41,7 +43,7 @@ const {
   COOLDOWN_TURNS,
   LOADED_COOLDOWN_TURNS,
   MAX_EXCERPT_CHARS,
-  MIN_NON_NAME_SCORE,
+  MIN_NON_NAME_SIGNALS,
   getSkillStats,
   recordSkillSuggestion,
   recordSkillLoad,
@@ -167,8 +169,8 @@ test("pins constants (MAX_INJECTED=2, COOLDOWN_TURNS=10 floor, loaded extension)
   assert.equal(LOADED_COOLDOWN_TURNS, 30);
 });
 
-test("pins the non-name qualification bar (MIN_NON_NAME_SCORE=2)", () => {
-  assert.equal(MIN_NON_NAME_SCORE, 2);
+test("pins the non-name qualification bar (MIN_NON_NAME_SIGNALS=2)", () => {
+  assert.equal(MIN_NON_NAME_SIGNALS, 2);
 });
 
 test("selects top-N by score with deterministic name tie-break", () => {
@@ -321,18 +323,35 @@ test("empty scored → no injection", () => {
 
 test("mock prompt + mock cache: full decision path picks the top-2", () => {
   const cache = [research, softwareEngineer, toneQuality, meme];
-  const prompt = "run a research pass and then improve the code quality";
+  const prompt = "research the tone";
   const keywords = extractKeywords(prompt);
   const scored = cache
     .map((s) => ({ skill: s, score: scoreSkill(s, keywords) }))
     .filter((s) => s.score > 0);
   const out = selectSuggestions(scored, [], 1);
-  // research (+3 exact name), tone-quality (+3 exact name "quality"),
-  // then software-engineer (+1 desc "improving") — top-2 wins.
+  // research (+3 exact name) and tone-quality (+3 differentia "tone") tie on
+  // score; the name tie-break puts research first.
   assert.deepEqual(
     out.map((s) => s.skill.name),
     ["research", "tone-quality"],
   );
+});
+
+test("a compound name's class noun buys neither a slot nor a qualification", () => {
+  // tone-quality's class noun is "quality": a prompt about code quality carries
+  // the word the class shares, not the skill's differentia. It scores, so the
+  // catalog read still ranks the skill, but it never qualifies it.
+  const prompt = "run a quality pass over the code";
+  assert.equal(scoreSkill(toneQuality, extractKeywords(prompt)), 0);
+  const out = selectSuggestions(
+    [toneQuality, softwareEngineer, meme].map((s) => ({
+      skill: s,
+      score: scoreSkill(s, extractKeywords(prompt)),
+    })).filter((s) => s.score > 0),
+    [],
+    1,
+  );
+  assert.deepEqual(out, []);
 });
 
 // ── scoring retune: name matches dominate, generic hits de-fire ─────────────

@@ -94,7 +94,11 @@ function longWordBody(count = 2_000) {
 }
 
 const BIG_BODY = eightThousandCharBody("BIGSKILL");
-const BIG = writeSkill("big-match", BIG_BODY, "Big body skill");
+// The description carries two words the (a2) prompt also carries: the skill's
+// name ends in its class noun ("match"), which is ranked but never counted as
+// evidence, so the fixture clears the bar the way any real skill would — two
+// distinct description words.
+const BIG = writeSkill("big-match", BIG_BODY, "Matching rules for panes in a big body");
 
 const LONG_BODY = longWordBody();
 const LONG = writeSkill("long-match", LONG_BODY, "Long body skill");
