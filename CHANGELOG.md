@@ -96,6 +96,19 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Telegram — a heartbeat that could not write did not just fail, it ended the process (2026-11-11)
+
+`startPollerHeartbeat` refreshed the poller lock from a `setInterval` callback that called
+`writeLock`, which called `writeFileSync` with no handler. On a full disk that write raised `ENOSPC`
+inside the timer, reached the uncaught-exception handler, and the agent exited: one timestamp that
+could not be written cost the seat its channel, its poller and an in-flight turn. The lock is now
+written to a staging file and renamed, so a failed beat cannot truncate the record that names the
+holder; a write failure is returned instead of thrown and recorded on the heartbeat handle, which keeps
+its schedule and clears the record on the next successful beat. Proven in a child process: the module
+before this change exits 1 with `Timeout.beat` and an uncaught `EACCES`, the module after it survives
+two denied beats, reports the code, keeps the record byte-identical, and advances the heartbeat once the
+directory is writable again.
+
 ## Core — a fixture identifier that a draw could shorten below the store's floor (2026-11-11)
 
 The cognitive-memory fixture built its unique content from `Math.random().toString(36).slice(2, 12)`,
