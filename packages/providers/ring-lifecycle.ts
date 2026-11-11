@@ -33,6 +33,12 @@ import { join } from "node:path";
 import { createKeyRing } from "./key-ring";
 import { providerLog, createThrottledLogger } from "./log";
 import { readRouteState } from "./route-state";
+// The transport predicate lives with the connectivity watchdog, which imports
+// this module's WAF and key predicates in turn. The two modules therefore read
+// each other's declarations, and neither one calls the other while loading. One
+// definition of "this failure is transport" is what keeps the walk and the
+// breaker from disagreeing about the same text.
+import { classifyConnectivityFailure } from "./outage-watch";
 
 // Retry reclassification for self-healing
 // pi-core classifies provider quota/auth/403 errors as NON-retryable (fail-fast)
@@ -1464,6 +1470,12 @@ export function createRotationEngine(deps: {
     episode: EngageEpisode | null,
   ): RotationPlan | null => {
     if (!providerId || !modelId) return null; // nothing to serve / look up
+    // A transport failure reaches the walk only as a repeated failure, and it
+    // is not a route decision: the route never answered, so no plan is built,
+    // nothing rotates and no notice (engaged or inert) claims the route refused
+    // the request. Silence is the answer here; the connectivity watchdog owns
+    // the route pause and pi-core owns the turn retry.
+    if (signal.class === "transport") return null;
     const candidates: RotationCandidate[] = [];
     const skipped: string[] = [];
     const probeSkipped: string[] = [];
@@ -2462,6 +2474,13 @@ export function handleMessageEnd(
     return consultWalk(hooks.rotation);
   }
 
+  // Transport: the route never answered, so neither the ring nor the walk has
+  // anything to decide. The turn keeps its real error, no marker claims a
+  // refusal, and pi-core's turn retry plus the connectivity watchdog own the
+  // failure. Stated here rather than left to the `key` guard below so a later
+  // edit to that guard cannot absorb this class.
+  if (failure.class === "transport") return;
+
   // Key class only from here on. Same predicate the direct-call feed-back path
   // uses (reportKeyRingFailure) — one classification governs both paths;
   // payload (context-window) and unrecognized failures keep their own paths.
@@ -2642,19 +2661,30 @@ function isSpentAllowanceError(errText: string): boolean {
  *     the recovery is to serve the SAME logical model id through another
  *     route's model surface. Tested before `key`, so no status or quota idiom
  *     riding on the sentence can turn it into a credential death.
- *   - `shape`: an HTTP 4xx that is neither of the above and not a WAF page —
+ *   - `transport`: the route never answered. The connectivity predicate in
+ *     outage-watch.ts owns this class (timeouts, socket and DNS idioms, an
+ *     HTTP 5xx from any hop), and it is consulted, not copied. No key is at
+ *     fault, no other route is asked to serve the turn, and the turn is handed
+ *     no marker: pi-core's own turn retry and the connectivity watchdog own
+ *     this failure. Tested after `capacity` on purpose, because the transport
+ *     vocabulary reads "at capacity" as availability and would otherwise
+ *     swallow a capacity refusal.
+ *   - `shape`: an HTTP 4xx that is neither of the above and not a WAF page:
  *     the route refused THIS request. A rate-limit `429` is deliberately NOT
  *     shape: the callers' own cooldown bounds it, and moving the request
  *     elsewhere would spend the walk's budget on a transient.
- *   - `none`: everything else (5xx/transient, unrecognized text).
+ *   - `none`: everything else (unrecognized text, and the plain `429` the
+ *     callers' cooldowns bound).
  *
  * Evaluation order is the order of the tests below and matches
- * handleMessageEnd: WAF, then payload, then capacity, then key, then shape.
+ * handleMessageEnd: WAF, then payload, then capacity, then transport, then
+ * key, then the `429` carve-out, then shape.
  */
 export type FailureClass =
   | "key"
   | "payload"
   | "capacity"
+  | "transport"
   | "shape"
   | "waf"
   | "none";
@@ -2706,13 +2736,54 @@ const CONTEXT_WINDOW_PATTERNS = [
 ];
 
 /**
- * The first HTTP status the text names, or null. Bounded to 4xx/5xx three-digit
- * runs so a model id or a token count cannot be read as a status; the walk
- * needs the status CLASS, not a parsed response.
+ * How a text frames an HTTP status. Each pattern's digits are its last
+ * element, so a match's digit position is `length - group.length`.
+ *
+ *   - the opening token of the text ("400 Bad Request", "429: {...}");
+ *   - the opening token of a bracketed clause, an HTML tag boundary
+ *     included, which is how an edge page carries its status
+ *     ("<body>403 ...");
+ *   - named as a status: "HTTP 429", "HTTP/1.1 502", "status 403",
+ *     "StatusCode: 400", "code 400", "response 503" (at most eight filler
+ *     characters between the marker and the digits).
+ *
+ * The frames are the ones the producers actually print: pi-ai's
+ * `formatProviderError` renders `"<prefix> (<status>): <body>"` or
+ * `"<status>: <body>"`, core's `llm-error` prefixes `"<status> <message>"`,
+ * and the vendor SDKs append `"... status code 400"` or `"StatusCode: 400"`.
+ *
+ * A run that no frame introduces is not a status. `host:443`, `//host:443`,
+ * the octet of a dotted address and the fraction of a decimal are the shapes
+ * a transport failure names where a status would sit, and the old unbounded
+ * `\b(4\d{2}|5\d{2})\b` read the port as the status: a connect timeout was
+ * classified as a request the route had refused, and the walk rotated on it.
+ */
+const STATUS_FRAMES: readonly RegExp[] = [
+  /^\s*(4\d{2}|5\d{2})(?![\d.])/,
+  /[([{<>]\s*(4\d{2}|5\d{2})(?![\d.])/,
+  /\bhttp(?:\/\d(?:\.\d)?)?\s*[:=]?\s*(4\d{2}|5\d{2})(?![\d.])/,
+  /\b(?:status[_ ]?code|status|code|response)\b[^\d\n]{0,8}?(4\d{2}|5\d{2})(?![\d.])/,
+];
+
+/**
+ * The HTTP status the text presents as one, or null. Bounded to 4xx/5xx
+ * three-digit runs, so a model id or a token count cannot be read as a status,
+ * and bounded to the framings above, so a port or an address cannot either.
+ * The earliest framing wins: a status the text already gave is not outranked by
+ * a port printed later. The walk needs the status CLASS, not a parsed response,
+ * so an unframed run answers null rather than guessing.
  */
 function httpStatusOf(errText: string): number | null {
-  const match = /\b(4\d{2}|5\d{2})\b/.exec(errText);
-  return match ? Number(match[1]) : null;
+  let framed: { at: number; status: number } | null = null;
+  for (const frame of STATUS_FRAMES) {
+    const match = frame.exec(errText);
+    if (!match) continue;
+    const at = match.index + (match[0].length - match[1].length);
+    if (framed === null || at < framed.at) {
+      framed = { at, status: Number(match[1]) };
+    }
+  }
+  return framed === null ? null : framed.status;
 }
 
 export function classifyFailure(errText: unknown): FailureClassification {
@@ -2742,6 +2813,15 @@ export function classifyFailure(errText: unknown): FailureClassification {
   // Exhausting a healthy key over a full cell burns the credential on a turn
   // the next route would refuse identically; the model id is what moves.
   if (isCapacityRefusal(text)) return { class: "capacity", status };
+  // Transport is tested AFTER payload and capacity, both of which own their
+  // recovery, and BEFORE key and shape, whose verdicts a host:port would
+  // otherwise forge: the connectivity predicate is the single definition of
+  // "the route never answered" (timeouts, socket and DNS idioms, an HTTP 5xx
+  // from any hop). A transport failure is not a route decision, so it is a
+  // class of its own: no key is exhausted, the walk rotates nothing and the
+  // turn is handed no marker. The clause that makes the order load-bearing is
+  // "at capacity", which the connectivity vocabulary reads as availability.
+  if (classifyConnectivityFailure(text)) return { class: "transport", status };
   if (isKeyRotationError(text)) return { class: "key", status };
   if (status === 429) return { class: "none", status };
   if (status !== null && status < 500) return { class: "shape", status };

@@ -54,6 +54,16 @@
  *      the fact (the id, the bound, the untouched ring) instead of a credential.
  *      The 403-wrapped form is in the same fixture: a status the key predicate
  *      claims must not outrank the sentence.
+ *  10. Transport class (the route never answered). A connect timeout that
+ *      reports the route's own host and port (`... attempted address:
+ *      <host>:443, timeout: ...`) names no HTTP status, so it must not reach
+ *      the walk as a request the route refused: the class is `transport`, the
+ *      status is null, no key is exhausted, no plan is built, no notice claims
+ *      a refusal and the turn is handed no marker. A status the text frames
+ *      (`status 503`, `HTTP 400`, a leading `400 Bad Request`) is still read,
+ *      the capacity and payload classes keep their precedence, and the four
+ *      key-ness rows stay key-ness. The control beside it is a shape refusal
+ *      on the same two routes, which still rotates and still records its death.
  *
  * Harness (the pattern rotation-engine.test.mjs establishes): the REAL modules
  * (ring-lifecycle, key-ring, log, route-state) are compiled with the package's
@@ -1241,6 +1251,278 @@ async function run() {
         ledger(replay) === ledgerBefore && ringFiles(replay) === filesBefore,
         JSON.stringify({ ledger: ledger(replay), before: ledgerBefore }),
       );
+    }
+
+    // ── Transport: the route did not answer ────────────────────────────────
+    // The live failure: a connect timeout to the route's own host. The text
+    // carries a host and a port where a status would sit and names no HTTP
+    // status at all, so nothing in it says the route refused the request. The
+    // old status parser read the port (`:443`) as the status, the walk read
+    // HTTP 443 as a 4xx refusal, and the turn was rotated onto another route
+    // with a marker that claimed `HTTP 443`. The class is its own now: no key
+    // is exhausted, no plan is built, no notice claims a refusal, and the turn
+    // keeps its real error, which is what lets pi-core re-send the request.
+    {
+      const CONNECT_TIMEOUT =
+        "Connect Timeout Error (attempted address: llm.agent-zero.ai:443, timeout: 10000ms)";
+      const TX_MODEL = "tx/shared";
+
+      // The classifier, row by row: class AND status, because the defect was a
+      // status that was never there.
+      const transportRows = [
+        [
+          "connect timeout reporting a port",
+          CONNECT_TIMEOUT,
+          "transport",
+          null,
+        ],
+        [
+          "other side closed",
+          "Connection error: other side closed (UND_ERR_SOCKET)",
+          "transport",
+          null,
+        ],
+        ["fetch idiom", "fetch failed", "transport", null],
+        [
+          "dns idiom",
+          "getaddrinfo ENOTFOUND api.example.com",
+          "transport",
+          null,
+        ],
+        [
+          "reset reporting a dotted address and a port",
+          "read ECONNRESET at 203.0.113.7:443",
+          "transport",
+          null,
+        ],
+        [
+          "a transport text that names a framed status keeps it",
+          "Connection refused after status 503 from 10.0.0.1:443",
+          "transport",
+          503,
+        ],
+        [
+          "a text naming only a port carries no status",
+          "upstream connect failed on port 443",
+          "transport",
+          null,
+        ],
+      ];
+      for (const [label, text, cls, status] of transportRows) {
+        const got = rl.classifyFailure(text);
+        check(
+          `transport: ${label}`,
+          got.class === cls && got.status === status,
+          JSON.stringify({ got, want: { class: cls, status } }),
+        );
+      }
+
+      // Controls: the four rows that are key-ness stay key-ness, and a status
+      // framed by the text is still read. A new class that swallowed any of
+      // these would trade this defect for a worse one.
+      const controls = [
+        [
+          "plain throttle 429 stays none",
+          "HTTP 429 Too Many Requests",
+          "none",
+          429,
+        ],
+        [
+          "spent allowance stays key",
+          "429 Go usage limit exceeded",
+          "key",
+          429,
+        ],
+        ["quota 402 stays key", "402 no quota", "key", 402],
+        ["auth text stays key", "invalid api key", "key", null],
+        ["leading status token stays shape", "400 Bad Request", "shape", 400],
+        ["not-found status stays shape", "404 Not Found", "shape", 404],
+        [
+          "a real status beside a port classifies by the status",
+          "status 400 from 10.0.0.1:443",
+          "shape",
+          400,
+        ],
+        [
+          "a port does not blind a status the key predicate claims",
+          "status 403 from 10.0.0.1:443",
+          "key",
+          403,
+        ],
+        [
+          "the parenthesised clause pi-ai prints stays a status",
+          "Azure OpenAI API error (400): bad request body",
+          "shape",
+          400,
+        ],
+        [
+          "the vendor SDK's status-code suffix stays a status",
+          "Request failed with status code 400",
+          "shape",
+          400,
+        ],
+        [
+          "the vendor SDK's StatusCode field stays a status",
+          "https response error StatusCode: 502, api error",
+          "transport",
+          502,
+        ],
+        [
+          "the bare status the SDKs print first stays a status",
+          "400 status code (no body)",
+          "shape",
+          400,
+        ],
+        [
+          "a three-digit run inside a longer number is not a status",
+          "1429",
+          "none",
+          null,
+        ],
+      ];
+      for (const [label, text, cls, status] of controls) {
+        const got = rl.classifyFailure(text);
+        check(
+          `transport control: ${label}`,
+          got.class === cls && got.status === status,
+          JSON.stringify({ got, want: { class: cls, status } }),
+        );
+      }
+
+      // Precedence: the two classes that own their recovery are not swallowed
+      // by the transport vocabulary (`at capacity` reads as availability, and
+      // a payload idiom carries no transport word, so the order is what keeps
+      // both intact).
+      check(
+        "transport: a capacity refusal stays capacity, not transport",
+        rl.classifyFailure(
+          "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)",
+        ).class === "capacity" &&
+          rl.classifyFailure("the cell is at capacity").class === "capacity",
+        JSON.stringify(
+          rl.classifyFailure(
+            "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)",
+          ),
+        ),
+      );
+      check(
+        "transport: an oversized payload stays payload, not transport",
+        rl.classifyFailure("429 context_length_exceeded: payload too large")
+          .class === "payload",
+        JSON.stringify(
+          rl.classifyFailure("429 context_length_exceeded: payload too large"),
+        ),
+      );
+
+      for (const [providerId, prefix] of [
+        ["tx-a", "TX_A_KEY"],
+        ["tx-b", "TX_B_KEY"],
+      ]) {
+        process.env[prefix] = `${providerId}-key-0`;
+        rl.registerRoute({
+          providerId,
+          keys: prefix,
+          modelIds: [TX_MODEL],
+          ring: keyRing.createKeyRing({
+            prefix,
+            stateFile: providerId,
+            healthInRotationInfo: true,
+          }),
+        });
+      }
+      const txRings = () =>
+        JSON.stringify([
+          rl.getKeyRingStatusForTest("tx-a"),
+          rl.getKeyRingStatusForTest("tx-b"),
+        ]);
+      const txRingFiles = () =>
+        JSON.stringify([
+          readIfExists(keyRingStatePath("tx-a")),
+          readIfExists(keyRingStatePath("tx-b")),
+        ]);
+      const txRingsBefore = txRings();
+      const txFilesBefore = txRingFiles();
+
+      // The engine's own guard: the walk consults the class, not the ring.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["tx-a", "tx-b"]);
+        const marker = engine.maybeEngage(
+          "tx-a",
+          CONNECT_TIMEOUT,
+          TX_MODEL,
+          fb.deps,
+        );
+        check(
+          "transport: the walk builds no plan for a transport death",
+          marker === null &&
+            fb.calls.setModel.length === 0 &&
+            fb.calls.notify.length === 0,
+          JSON.stringify({ marker, calls: fb.calls }),
+        );
+      }
+
+      // The handler path: the turn keeps its real error, nothing moves.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["tx-a", "tx-b"]);
+        const returned = await rl.handleMessageEnd(
+          deathEvent("tx-a", TX_MODEL, CONNECT_TIMEOUT),
+          hooksFor(engine, fb),
+        );
+        check(
+          "transport: the turn is handed no marker (no refusal is claimed)",
+          returned === undefined,
+          JSON.stringify(returned?.message?.errorMessage),
+        );
+        check(
+          "transport: nothing rotates and nothing is notified",
+          fb.calls.setModel.length === 0 && fb.calls.notify.length === 0,
+          JSON.stringify(fb.calls),
+        );
+        check(
+          "transport: neither ring moves and no key-ring state file is written",
+          txRings() === txRingsBefore && txRingFiles() === txFilesBefore,
+          JSON.stringify({ ring: txRings(), before: txRingsBefore }),
+        );
+        check(
+          "transport: the route records no request-shape death",
+          readRouteStateDisk()?.routes?.["tx-a"] === undefined,
+          JSON.stringify(readRouteStateDisk()?.routes?.["tx-a"]),
+        );
+        check(
+          "transport: no episode is opened (there is no fail-back target)",
+          engine.isEngaged() === false,
+          String(engine.isEngaged()),
+        );
+      }
+
+      // The control that prices the previous case: same routes, same engine
+      // wiring, a refusal instead of a silence, and the walk moves the turn.
+      // Without it a null marker could as easily be a broken harness.
+      {
+        const fb = engageDeps();
+        const engine = engineFor(["tx-a", "tx-b"]);
+        const returned = await rl.handleMessageEnd(
+          shapeEvent("tx-a", TX_MODEL, 400),
+          hooksFor(engine, fb),
+        );
+        check(
+          "transport control: a shape refusal on the same pair still rotates",
+          fb.calls.setModel.length === 1 &&
+            fb.calls.setModel[0].provider === "tx-b" &&
+            fb.calls.setModel[0].model === TX_MODEL &&
+            typeof returned?.message?.errorMessage === "string" &&
+            returned.message.errorMessage.includes("HTTP 400"),
+          JSON.stringify({ calls: fb.calls.setModel, returned }),
+        );
+        check(
+          "transport control: the shape rotation still records its death",
+          readRouteStateDisk()?.routes?.["tx-a"]?.deathClass ===
+            "request-shape",
+          JSON.stringify(readRouteStateDisk()?.routes?.["tx-a"]),
+        );
+      }
     }
   } finally {
     logApi?.setProvidersLogSink?.(undefined);
