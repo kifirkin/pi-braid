@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-telegram",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Talk to your pi coding agent from Telegram: send text or voice, get the answer back, and tap a button to decide.",
   "type": "module",
   "files": [

@@ -96,6 +96,25 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Release — three fixes that never left the monorepo (2026-11-12)
+
+The publisher skips a workspace whose version is already on the registry, and three fixes landed in
+workspaces whose versions did not move. Green CI, a published core tarball, and nothing shipping is the
+result: the transport class in the provider's failure classifier, the poller heartbeat's non-fatal write,
+and the contrib git tool were all on `main` and in no tarball anyone installs.
+
+Steady versions do not mean steady content. The guard is now visible as a defect of the release process
+rather than of any one change: before this entry, `pi-braid-providers` 1.0.6, `pi-braid-telegram` 0.1.9
+and `pi-braid-contrib` 0.1.4 were each their published version and each carried a change the published
+tarball did not have. All three move here, with the fixes they already hold:
+
+- `pi-braid-providers` 1.0.7: a port is not an HTTP status, and a connect timeout or a reset classifies
+  as transport instead of a shape refusal, so the route walk stops rotating away from a provider that
+  refused nothing.
+- `pi-braid-telegram` 0.1.10: a poller-lock write that cannot land is reported on the heartbeat handle
+  instead of throwing out of a timer and ending the process.
+- `pi-braid-contrib` 0.1.5: the git tool, argv-only and read-only by default.
+
 ## Core — a prefix is ranked, never qualifying on its own (2026-11-11)
 
 The same defect as the class noun, one leg over: `improve` starts `improvement`, so the token-prefix leg
