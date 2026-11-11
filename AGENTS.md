@@ -14,7 +14,7 @@ This root file is an index only: it points at the contracts, it does not restate
 
 - AGENTS.md (repo-wide Developer Guide: workspace map, extension loading, build/test, doc discipline, tool inventory) at `packages/core/AGENTS.md`
 - AGENTS.md (core `src/` top-level architecture: extensions/lib/loader/types split) at `packages/core/src/AGENTS.md`
-- AGENTS.md (contrib: standalone pi-braid-contrib extensions, 12 modules) at `packages/contrib/AGENTS.md`
+- AGENTS.md (contrib: standalone pi-braid-contrib extensions, 13 modules) at `packages/contrib/AGENTS.md`
 - AGENTS.md (providers: LLM provider registration, Venice model list) at `packages/providers/AGENTS.md`
 - AGENTS.md (skills: content-only skill pack for pi) at `packages/skills/AGENTS.md`
 - Design docs and audits (core `docs/`: ROADMAP, SETUP, HISTORY, architecture proposals) at `packages/core/docs/`

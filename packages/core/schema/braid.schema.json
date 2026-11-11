@@ -323,7 +323,7 @@
             }
           },
           "type": "object",
-          "x-source": "packages/contrib/index.ts:98"
+          "x-source": "packages/contrib/index.ts:100"
         },
         "enforcement": {
           "properties": {

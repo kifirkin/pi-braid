@@ -1,7 +1,7 @@
 # pi-braid-contrib
 
 Standalone contrib extensions for pi. Each top-level directory is an extension module;
-all 12 are listed individually in `package.json` → `pi.extensions` for native pi loading.
+all 13 are listed individually in `package.json` → `pi.extensions` for native pi loading.
 
 **Loading methods:**
 
@@ -26,6 +26,7 @@ all 12 are listed individually in `package.json` → `pi.extensions` for native 
 | `browser/`                                                            | headless browser automation; **split into core (4 tools + the `/browser` manager, always) + advanced (7 tools, opt-in via `braid.contrib.browserAdvanced`)** |
 | `codebase/`                                                           | consolidated repo explorer: tree + dependency graph + impact analysis                                                                                        |
 | `diff/`                                                               | file diffing                                                                                                                                                 |
+| `git/`                                                                | one git subcommand from an argv array, read-only by default                                                                                                  |
 | `healthcheck/`                                                        | tool/extension diagnostics                                                                                                                                   |
 | `observatory/`                                                        | live agent monitor                                                                                                                                           |
 | `path-security/`                                                      | read-only tool allowlist + write/bash vet                                                                                                                    |
@@ -55,7 +56,7 @@ at use time. The extension toggle behaves the same under native package
 loading and through the bundle.
 
 **Native pi way** (recommended): use pi's package filtering in settings.json to select
-which extensions to load from `pi.extensions` (all 12 listed individually in
+which extensions to load from `pi.extensions` (all 13 listed individually in
 `package.json`). See [`README.md`](README.md#native-pi-load-via-packages-recommended).
 
 **Convenience bundle**: load `index.ts` via `extensions` array and use

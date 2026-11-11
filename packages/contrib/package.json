@@ -1,7 +1,7 @@
 {
   "name": "pi-braid-contrib",
   "version": "0.1.4",
-  "description": "Twelve pi extensions that give your agent a real browser, repo analysis, guarded tool calls, and live system metrics.",
+  "description": "Thirteen pi extensions that give your agent a real browser, repo analysis, guarded tool calls, and live system metrics.",
   "type": "module",
   "files": [
     "index.ts",
@@ -11,6 +11,7 @@
     "browser/",
     "codebase/",
     "diff/",
+    "git/",
     "healthcheck/",
     "network-monitor/",
     "!network-monitor/test.ts",
@@ -31,7 +32,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/contrib-toggles.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs && node test/browser-tool-inputs.test.mjs && node test/tool-input-defaults.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/test-healthcheck-coldstart.mjs",
+    "test": "node test/manifest-deps.test.mjs && node --experimental-strip-types network-monitor/test.ts && node --experimental-strip-types state-paths.test.ts && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/contrib-toggles.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/network-monitor-live-config.test.mjs && node test/browser-tool-inputs.test.mjs && node test/tool-input-defaults.test.mjs && node test/git-tool.test.mjs && node --experimental-strip-types --import ./test/lib/register-ts-resolve.mjs test/test-healthcheck-coldstart.mjs",
     "prepack": "node ../core/scripts/pack-provenance.mjs write",
     "postpack": "node ../core/scripts/pack-provenance.mjs remove"
   },
@@ -73,6 +74,7 @@
       "./browser/index.ts",
       "./codebase/index.ts",
       "./diff/index.ts",
+      "./git/index.ts",
       "./healthcheck/index.ts",
       "./network-monitor/index.ts",
       "./observatory/index.ts",
