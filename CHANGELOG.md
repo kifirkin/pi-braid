@@ -96,6 +96,18 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Core — a skill's class noun stopped qualifying it on its own (2026-11-11)
+
+A question about search quality was answered with `cv-improvement`: the word `improvements` stems to a
+whole token of that name, and the exact-token leg of the matcher was exempt from both the rarity gate and
+the two-signal bar, so one ordinary English word bought a slot. The exemption now holds only for a name
+whose token is not the prompt's own class noun: such a token is ranked but never counted toward the bar,
+so `cv-improvement` needs a second real signal and `meta-improvement` no longer rides the same word. The
+labelled set records the cost honestly: recall@2 moved 14/24 to 13/24, one pair (`doc-identifier-audit`,
+reached by the same class-noun shape via `audit`), and the report shows that no knob in the matcher
+separates that pair from the defect, so restoring it is curation's job, not the matcher's. Slots spent on
+prompts with no applicable skill fell 3/7 to 2/7 and the reported prompt now admits nothing.
+
 ## Telegram — a heartbeat that could not write did not just fail, it ended the process (2026-11-11)
 
 `startPollerHeartbeat` refreshed the poller lock from a `setInterval` callback that called
