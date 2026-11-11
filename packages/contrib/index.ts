@@ -1,11 +1,11 @@
 /**
  * pi-braid-contrib — Convenience bundle loader
  *
- * Loads all 13 contrib extensions at once, with per-extension toggling via
+ * Loads all 14 contrib extensions at once, with per-extension toggling via
  * `braid.contrib.<name>` in `~/.pi/agent/settings.json`.
  *
  * This is a CONVENIENCE entry point. The native pi way to load contrib
- * extensions is via `pi.extensions` in package.json (all 13 listed
+ * extensions is via `pi.extensions` in package.json (all 14 listed
  * individually) — loaded automatically when the package is registered:
  *
  *   {
@@ -48,6 +48,7 @@ import { setLoggerContext } from "./logger.js";
 
 import browser from "./browser/index.js";
 import codebase from "./codebase/index.js";
+import design from "./design/index.js";
 import diff from "./diff/index.js";
 import git from "./git/index.js";
 import healthcheck from "./healthcheck/index.js";
@@ -65,6 +66,7 @@ import toolConfig from "./tool-config/index.js";
 const EXTENSIONS: Record<string, (pi: ExtensionAPI) => void> = {
   browser,
   codebase,
+  design,
   diff,
   git,
   healthcheck,

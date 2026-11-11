@@ -1,6 +1,6 @@
 # pi-braid-contrib
 
-13 focused extensions for [pi](https://pi.dev): a real browser, repo analysis, guarded tool calls,
+14 focused extensions for [pi](https://pi.dev): a real browser, repo analysis, guarded tool calls,
 and the operational detail a long session needs, each loadable on its own.
 
 ## Install
@@ -11,12 +11,13 @@ pi install npm:pi-braid-contrib
 
 ## What you get
 
-13 extensions, each loadable individually. One line per extension:
+14 extensions, each loadable individually. One line per extension:
 
 | Extension         | What it adds                                                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `browser`         | Native CDP browser automation: navigate, DOM snapshot, JS eval, screenshot, plus 7 advanced tools (cookies, readable content, tabs) opt-in via `braid.contrib.browserAdvanced`     |
 | `codebase`        | Repo explorer: directory tree with stats, import and export graph (dead ends, orphans, hubs, cycles), per-file impact analysis                                                     |
+| `design`          | Render a page at declared widths and measure it: contrast, colour coverage, type and space values, tap targets, overflow, and DESIGN.md token verdicts                             |
 | `diff`            | Structured file and git-revision diffing: hunks with line numbers, change types, stats                                                                                             |
 | `git`             | One git subcommand from an argv array, read-only by default: a refusal list for the destructive shapes, `write: true` gated on a clean tree, capped output reported when truncated |
 | `healthcheck`     | Self-diagnostic: tools, extensions, shell, system resources, with recommendations                                                                                                  |
@@ -31,7 +32,7 @@ pi install npm:pi-braid-contrib
 
 ## Configuration
 
-The package declares all 13 entry files in `pi.extensions`, so pi discovers them once the package is
+The package declares all 14 entry files in `pi.extensions`, so pi discovers them once the package is
 registered. Settings are read at extension load: restart the agent after changing one.
 
 | Setting                                                          | Default                          | Effect                                                                                                                  |

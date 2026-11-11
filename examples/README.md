@@ -19,6 +19,6 @@ Copy-ready configuration for pi-braid. Every key and variable in these files is 
 
 ## Notes
 
-- `braid.contrib.<name>: false` disables an extension only when contrib is loaded through its bundle entry (`packages/contrib/index.ts`). When you register `packages/contrib` as a package, pi loads all 13 extensions directly; the per-extension behavior blocks (`networkMonitor`, `pathSecurity`, `observatory`, `rate-limiter`, `browserAdvanced`) apply in both paths.
+- `braid.contrib.<name>: false` disables an extension only when contrib is loaded through its bundle entry (`packages/contrib/index.ts`). When you register `packages/contrib` as a package, pi loads all 14 extensions directly; the per-extension behavior blocks (`networkMonitor`, `pathSecurity`, `observatory`, `rate-limiter`, `browserAdvanced`) apply in both paths.
 - The rate limiter's limits block reads the hyphenated key `braid.contrib["rate-limiter"]`; the bundle toggle name for the extension itself is `rateLimiter`.
 - Provider keys and bot tokens live in the environment, never in settings.json.

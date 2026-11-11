@@ -29,7 +29,7 @@ fails until the other catches up.
 | Braid-registered tools             | 24                                                                                                           | Registered via `pi.registerTool()` in `src/extensions/` - owned by this package                                                                                                                                                                                                    |
 | pi-native core tools               | 9                                                                                                            | `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`/`powershell` - pi builtins surfaced through the package with stable one-liners (`TOOL_GUIDELINES`, `prompt-builder/tool-guidelines.ts`); `tool_search` is pi's built-in tool-search extension, activated by braid at session start |
 | **Documented catalog**             | **33**                                                                                                       | the rows between the markers below                                                                                                                                                                                                                                                 |
-| In-repo sibling `pi-braid-contrib` | 13 extensions                                                                                                | browser, codebase, diff, healthcheck, observatory, repl, sleep, system-monitor - **not owned by this package**, see appendix                                                                                                                                                       |
+| In-repo sibling `pi-braid-contrib` | 14 extensions                                                                                                | browser, codebase, diff, healthcheck, observatory, repl, sleep, system-monitor - **not owned by this package**, see appendix                                                                                                                                                       |
 | Third-party npm packages           | web_search/fetch_content/source_check/get_search_content (pi-web-access); herdr\*\* (@ogulcancelik/pi-herdr) | **not owned by this package**, see appendix                                                                                                                                                                                                                                        |
 
 ## Enablement reference
@@ -126,13 +126,14 @@ fall back to the first sentence of their description.
 ### pi-braid-contrib (in-repo workspace)
 
 `pi-braid-contrib` is the sibling `packages/contrib` workspace of this monorepo.
-Its 13 extensions are all enabled by default with a per-extension toggle via
+Its 14 extensions are all enabled by default with a per-extension toggle via
 `braid.contrib.<name>` in
 `~/.pi/agent/settings.json` (e.g. `"browser": false` drops the whole browser family).
 Tool families it registers:
 
 - **browser** - `browser_navigate`, `browser_snapshot`, `browser_eval`, `browser_screenshot` (plus `browser_content`, `browser_cookies`, `browser_tabs_*` in the full family). Drive a real browser tab for JS-heavy pages.
 - **codebase** - analyze a codebase's structure or module dependency graph (tree/graph/impact).
+- **design** - `design_audit`: render a page at declared widths and measure contrast, colour coverage, type and space values, tap targets, overflow, and DESIGN.md token verdicts.
 - **diff** - `file_diff`: compare two files or git revisions (unified hunks and stats).
 - **git** - `git`: one git subcommand from an argv array, read-only by default; `write: true` needs a clean tree and a fixed refusal list for the destructive shapes.
 - **healthcheck** - comprehensive health checks on tools, extensions, and system resources.

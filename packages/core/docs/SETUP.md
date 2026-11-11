@@ -349,7 +349,7 @@ The full surface as a single file: [`examples/full-config.settings.json`](../../
 
 The 12 contrib extension names: `browser`, `codebase`, `diff`, `healthcheck`, `networkMonitor`, `observatory`, `pathSecurity`, `rateLimiter`, `repl`, `sleep`, `systemMonitor`, `toolConfig`.
 
-- Loaded through the convenience bundle (`packages/contrib/index.ts` as an extension entry): `braid.contrib.<name>: false` skips that extension entirely; absent or `true` loads it. With `packages/contrib` registered as a package, pi loads all 12 directly and these booleans are not read.
+- Loaded through the convenience bundle (`packages/contrib/index.ts` as an extension entry): `braid.contrib.<name>: false` skips that extension entirely; absent or `true` loads it. With `packages/contrib` registered as a package, pi loads all 14 directly and these booleans are not read.
 - Behavior keys (honored in both load paths):
   - `braid.contrib.browserAdvanced: true` - the 7 advanced browser tools (opt-in).
   - `braid.contrib.pathSecurity.block: true` - hard-block dangerous operations instead of soft-warn.
