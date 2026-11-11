@@ -694,15 +694,17 @@ export function matchSkill(
       }
       continue;
     }
-    // Token-prefix match in name ("engine" starting "engineer"): name
-    // evidence, but only while the word is distinctive enough to mean it.
+    // Token-prefix match in name ("engine" starting "engineer", "improve"
+    // starting "improvement"): ranked evidence, never a qualifying signal on its
+    // own. A prefix is a shorter word that happens to start a longer one, and
+    // the ordinary word is usually the prefix ("improve" for "improvement"), so
+    // a prefix alone is exactly the one-shared-word case the bar exists to
+    // refuse. The rarity gate stays: a corpus-common prefix earns nothing.
     if (occurrence?.form === "prefix" && df < COMMON_KEYWORD_DF) {
       score += 2;
       signals++;
       evidenceDf += df;
       noteReason("name");
-      nameHit = true;
-      qualifying++;
       continue;
     }
     // Corpus-common keyword: the weak legs score nothing for it, so a prompt

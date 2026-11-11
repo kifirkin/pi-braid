@@ -207,11 +207,22 @@ test("a generic word that only starts a name token is gated too", () => {
   const common = corpusKeywordFrequency(["line"], skills);
   assert.ok((common.get("line") ?? 0) >= COMMON_KEYWORD_DF);
   assert.equal(matchSkill(skill, ["line"], "", common).score, 0, "common prefix must not qualify");
-  assert.equal(scoreSkill(skill, ["line"]), 2, "without a frequency map the prefix still scores");
+  assert.equal(scoreSkill(skill, ["line"]), 0, "a prefix alone is no match, with or without a map");
   const rareSkill = mkSkill("benchmarking-harness", "unrelated text");
   const rare = corpusKeywordFrequency(["benchmark"], skills);
   assert.ok((rare.get("benchmark") ?? 0) < COMMON_KEYWORD_DF, "the probe word must be rare");
-  assert.equal(matchSkill(rareSkill, ["benchmark"], "", rare).score, 2, "a rare prefix qualifies");
+  assert.equal(
+    matchSkill(rareSkill, ["benchmark"], "", rare).score,
+    0,
+    "a rare prefix alone is ranked, never qualifying: the ordinary word is usually the prefix",
+  );
+  // Ranked, not qualifying: beside a real token the prefix still adds its points.
+  const ranked = mkSkill("benchmarking-harness-kit", "unrelated text");
+  assert.equal(
+    matchSkill(ranked, ["benchmark", "harness"], "", rare).score,
+    5,
+    "the prefix contributes to a match it cannot carry alone (3 for the token, 2 for the prefix)",
+  );
 });
 
 test("a compound name's class noun ranks the skill but does not qualify it", () => {
@@ -724,6 +735,16 @@ test("cv-improvement is not reached by its class noun plus one incidental word",
   assert.equal(match.score, 0, `cv-improvement still scores ${match.score}`);
   const { match: meta } = matchAgainst(cvCatalog, byName.get("meta-improvement"), DEFECT_PROMPT);
   assert.equal(meta.score, 0, `meta-improvement still scores ${meta.score}`);
+});
+
+test("a design complaint does not reach the résumé skill through the improvement prefix", () => {
+  // The second shape of the same defect: "improve" starts "improvement", so the
+  // prefix leg used to count it as a qualifying name hit and a design complaint
+  // selected the CV skill. A prefix is ranked, never qualifying on its own.
+  const complaint = "please improve the landing page, it looks generic and flat";
+  const { match } = matchAgainst(cvCatalog, cvSkill, complaint);
+  assert.equal(match.score, 0, `cv-improvement still scores ${match.score} on a design complaint`);
+  assert.equal(match.reason, null, `cv-improvement still reports ${match.reason}`);
 });
 
 test("a prompt that is about a CV still reaches cv-improvement", () => {

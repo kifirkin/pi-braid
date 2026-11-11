@@ -96,6 +96,17 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Core — a prefix is ranked, never qualifying on its own (2026-11-11)
+
+The same defect as the class noun, one leg over: `improve` starts `improvement`, so the token-prefix leg
+of the matcher counted a plain English word as a qualifying name hit. Measured on the shipped scorer, a
+design complaint ("please improve the landing page, it looks generic and flat") selected
+`cv-improvement` with score 2 and reason `name`, while `visual-creator` scored zero. A prefix hit now
+adds its points and is ranked, and it no longer sets the qualifying flag: a word that only starts a name
+token cannot carry a match by itself, and the corpus-frequency gate still refuses a common prefix. The
+design complaint scores zero against the same skill, the labelled set holds at recall@2 13/24 with the
+same 2/7 slot spend, and a rare prefix beside a real token still contributes its two points.
+
 ## Core — a skill's class noun stopped qualifying it on its own (2026-11-11)
 
 A question about search quality was answered with `cv-improvement`: the word `improvements` stems to a
