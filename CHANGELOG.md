@@ -80,6 +80,22 @@ record; the tag scheme above applies unchanged.
   contract; a new fixture covers both trees, the scoping and the absent-versus-empty
   populations.
 
+## Contrib — the pi-braid-contrib bundle gains a `git` tool (2026-11-11)
+
+A census of 4,387 session files counted 27,200 `git` calls through the shell, 9,551 of them a single
+read-only subcommand: the largest class that needs no shell semantics at all. The new `git` tool takes
+an argv array, never a command string, and refuses an argument carrying a shell metacharacter before
+anything spawns. Read-only subcommands run freely; anything else needs `write: true`, which is gated
+rather than trusted — the call refuses on a dirty tree and names the dirty paths, because that is the
+state where an agent's tidy-up becomes someone's lost work. A data table refuses the destructive
+shapes (`push --force`, `reset --hard`, `clean -fdx`, `filter-branch`, `reflog expire`,
+`gc --prune=now`, `branch -D` of an unmerged branch) with its own message each. Output is bounded and
+reports its truncation in bytes and lines; a non-zero exit is a result, not an exception.
+
+Adding a thirteenth extension moves the counts six source claims pin to the manifest, and the
+schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
+both repairs in the same commit.
+
 ## Core — 0.43.45 (2026-11-11: a re-read is a covered range, not a repeated path)
 
 The re-read whisper keyed `recentlyReadFiles` on the path, so a second slice of one document in a turn
