@@ -53,6 +53,7 @@ const TOOLS = new Map([
   ],
   ["document_screenshot", "pi-docparser extension, screenshot tool"],
   ["document_search", "pi-docparser extension, search tool"],
+  ["design_audit", "pi-braid-contrib, design extension"],
 ]);
 
 /**

@@ -1,8 +1,10 @@
 ---
 name: design-system
-description: "Use when a project needs a written visual identity other sessions can follow, or when an existing DESIGN.md and the code have drifted apart. Produces the token file plus its rationale and enforces it with `npx @google/design.md lint` (published, format alpha): lint findings, a diff between versions, export to Tailwind or DTCG. Not for judging whether one screen looks good (visual-validator) and not for choosing a palette from scratch (visual-creator)."
+description: "Use when the look has to be written down so the next session does not invent it, or when the written style guide and the code no longer match: every session paints the project a different shade of blue, or the design tokens have drifted from what the pages actually use. Keeps DESIGN.md and its tokens as the contract. Not for judging one rendered screen (visual-validator) and not for choosing the palette in the first place (visual-creator)."
 validated: 2026-10-27
 verdict: IMPROVE
+governs:
+  - design
 triggers:
   - DESIGN.md
   - design tokens
@@ -274,6 +276,11 @@ The markdown body explains rationale. Each section answers "why":
 Sections may be omitted, but the ones present must appear in the order above:
 `section-order` is a lint rule, and an out-of-order file fails it.
 
+These decisions are what the render is later checked against: a value the page
+paints with `inTokens: false` in a `design_audit` inventory is a decision this
+file does not carry, and a token no page value matches is vocabulary the page
+has not applied.
+
 ---
 
 ## 3. Consistency Enforcement
@@ -309,18 +316,49 @@ installed version disagrees, the installed version is right.
 
 ### 3.2 Cross-Screen Consistency Check
 
-When verifying that a screen follows the DESIGN.md, run `lint` first and use its
-findings as the input to these five checks:
+`lint` reads the token file. What the screen actually paints is measured, and
+the loop that turns a measurement into a shipped change is owned by
+`visual-validator`: measure with `design_audit`, decide, build, re-measure,
+compare. This skill supplies the decisions and reads the token verdicts.
 
-1. **Color check**: scan every visible color. Does each one map to a token in the DESIGN.md? If not, it's a drift - either the design added an unauthorized color or the DESIGN.md is missing one.
+Run `design_audit(target: "<url-or-file>", design_md: "<DESIGN.md>")` at its
+default widths (320, 390, 768, 1440). Two of its outputs are this file's
+concern, and they point in opposite directions:
 
-2. **Typography check**: scan every text size. Does each map to a typography token? If text appears at sizes not in the type scale, it's drift.
+- **Values in use that DESIGN.md does not hold.** Every row of
+  `inventory.fontSizes`, `fontWeights`, `lineHeights`, `spacings`, `radii` and
+  `shadows` carries `value`, `count`, `onGrid` and `inTokens`. `inTokens: false`
+  is drift: the render uses a value the file does not name. `null` means the
+  file has no comparable section, so there is no verdict to read.
+- **Tokens DESIGN.md holds that nothing paints.** The tool does not return that
+  list; read it off the same inventory by comparing the token values you wrote
+  with the `value` rows the render reports. A token no row carries is either a
+  decision the page has not applied yet or dead vocabulary.
 
-3. **Spacing check**: measure gaps between elements. Do they match a value in the spacing scale? Gaps at non-scale values indicate drift.
+Then run the linter for the file's own findings:
 
-4. **Component check**: do buttons match the button-primary/button-secondary tokens? Same colors, same rounding, same padding?
+```bash
+npx @google/design.md lint DESIGN.md
+```
 
-5. **Grid alignment**: do elements align to the defined grid? If not, realign.
+Lint and the audit fail differently: lint judges the contract, the audit judges
+the render, and a green lint over an unmeasured page says nothing about the
+page. `findings.offGrid` at each width is where alignment lives; read it at
+every width, not only the narrowest.
+
+The judgement is still yours, once the numbers are in:
+
+1. Does each painted colour map to a palette token, or did someone add a colour
+   the file does not name?
+2. Do the detected type values match the typography tokens?
+3. Do the gaps follow the spacing scale, or is there a fourth value nobody
+   wrote down?
+4. Do buttons and cards use the component tokens - same colors, rounding,
+   padding?
+5. Do elements align to the defined grid? `findings.offGrid` counts the ones
+   that do not.
+
+Every discrepancy is an action item in the drift table (§3.3).
 
 ### 3.3 Handling Drift
 
@@ -340,7 +378,7 @@ When writing code that consumes a DESIGN.md:
 
 1. Extract all color values from the DESIGN.md into CSS custom properties or Tailwind config
 2. Build a component library (React/Vue/Svelte) that references these tokens
-3. Read the screenshot as an image attachment and cross-reference it against the DESIGN.md tokens (see §5); `visual-validator` owns the measurement vocabulary
+3. Measure the render with `design_audit` and cross-reference the inventory against the DESIGN.md tokens (§3.2); `visual-validator` owns the loop and the measurement vocabulary
 4. For CI, pipe the token list into a custom lint script that validates CSS variables against the YAML - or use a static schema validator (`yaml-lint`, `ajv`) to catch structural errors in the DESIGN.md itself
 
 ---
@@ -380,21 +418,17 @@ colors:
 
 ## 5. Reviewing a screen against the tokens
 
-Token-level contrast is `lint`'s job (§3.1). Everything else about a rendered
-screen is a measurement, and `visual-validator` owns the measurements: hand it
-the screenshot and the drift table becomes a set of findings rather than an
-impression. Read the image first; [`_shared/inspect-image.md`](../_shared/inspect-image.md)
-says how to get the pixels in front of you when the harness has no image tool
-of its own.
+Token-level contrast is `lint`'s job (§3.1). A rendered screen is measured by
+`design_audit`, and the loop that turns a measurement into a shipped change is
+owned by `visual-validator`: measure, decide, build, re-measure, compare. This
+file supplies the decisions and reads the token verdicts (§3.2).
 
-What only you can answer, once the screen is measured:
-
-1. Do the reported colors map to your palette, or did someone add a colour the
-   file does not name?
-2. Do detected typefaces and sizes match your typography tokens?
-3. Do the gaps follow your spacing scale, or is there a fourth value nobody
-   wrote down?
-4. Every discrepancy is an action item in the drift table (§3.3).
+The comparison table in that report is where the drift table (§3.3) meets the
+render: each `inTokens: false` row is a value the file does not hold, and each
+token no inventory row carries is a decision the page has not applied. Read the
+full-page PNGs beside the numbers;
+[`_shared/inspect-image.md`](../_shared/inspect-image.md) covers the case where
+the harness ships no image tool of its own.
 
 ---
 
@@ -435,13 +469,13 @@ Keep the semantic names stable across modes and change only the values; lint's
 
 ## Quick Reference
 
-| Action           | Command                                                                     | What to do with the output                                                    |
-| ---------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Validate         | `npx @google/design.md lint DESIGN.md`                                      | Fix errors; read warnings as drift, not noise                                 |
-| Check contrast   | the same command                                                            | Report the ratio the finding carries; do not eyeball it                       |
-| Compare versions | `npx @google/design.md diff OLD.md NEW.md`                                  | Every modified token is a migration item; `regression: true` blocks the merge |
-| Export tokens    | `npx @google/design.md export --format <json-tailwind\|css-tailwind\|dtcg>` | Commit the generated file; never hand-edit it                                 |
-| Review a screen  | `visual-validator`, after reading the image as an attachment                | Findings become drift-table rows                                              |
-| Learn the rules  | `npx @google/design.md spec --rules`                                        | The rule list is the source of truth for a custom lint                        |
+| Action           | Command                                                                                                           | What to do with the output                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Validate         | `npx @google/design.md lint DESIGN.md`                                                                            | Fix errors; read warnings as drift, not noise                                 |
+| Check contrast   | the same command                                                                                                  | Report the ratio the finding carries; do not eyeball it                       |
+| Compare versions | `npx @google/design.md diff OLD.md NEW.md`                                                                        | Every modified token is a migration item; `regression: true` blocks the merge |
+| Export tokens    | `npx @google/design.md export --format <json-tailwind\|css-tailwind\|dtcg>`                                       | Commit the generated file; never hand-edit it                                 |
+| Review a screen  | `visual-validator`'s loop: `design_audit` before and after; `inventory.*[].inTokens` rows become drift-table rows | Findings become drift-table rows                                              |
+| Learn the rules  | `npx @google/design.md spec --rules`                                                                              | The rule list is the source of truth for a custom lint                        |
 
 The DESIGN.md format is documented at [Google's design-spec repository](https://github.com/google-labs-code/design.md).

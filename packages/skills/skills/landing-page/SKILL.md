@@ -1,8 +1,10 @@
 ---
 name: landing-page
-description: "Use when a marketing page has to be built or polished from a reference design: a hero that must convert, a rail-and-panel switcher or a carousel borrowed from that reference, a page that must work with JavaScript off, or a layout that has to pass a rendered-layout gate at phone widths. Gives the mechanics that make the borrowed shape safe, the build order, the honesty rules for claims a page may not make, and the gate that sees what a text check cannot. Not for choosing a palette or type scale (visual-creator) and not for auditing a finished screen (visual-validator)."
+description: "Use when a marketing page has to be built or polished from a reference design: a hero that must convert, a tab strip that jumps while the price cards do not line up, a rail-and-panel switcher or a carousel borrowed from that reference, a page that must work with JavaScript off, or a layout that has to pass a rendered-layout gate at phone widths. Gives the mechanics that make the borrowed shape safe, the build order, the honesty rules for claims a page may not make, and the gate that sees what a text check cannot. Not for choosing a palette or type scale (visual-creator) and not for auditing a finished screen (visual-validator)."
 validated: 2026-11-09
 verdict: UNVALIDATED
+governs:
+  - design
 triggers:
   - "landing page"
   - "landing pages"
@@ -49,7 +51,34 @@ A landing page is a single HTML document that must survive three readers: someon
 
 ## The gate that sees what text checks cannot
 
-A text audit cannot see a page that scrolls sideways, and neither can a test that reads HTML. Drive a headless browser at 320, 375, 768 and 1280 and ask two questions per width: is the document wider than the viewport it is drawn in, and does any element's box cross a viewport edge from outside every clipping ancestor. Exempt what is off-canvas by design (a skip link) and what is clipped by an ancestor that really clips, and read the ancestor's computed `overflow-x` to prove the exemption rather than asserting it.
+A text audit cannot see a page that scrolls sideways, and neither can a test
+that reads HTML. The gate is `design_audit`, run at its default widths - 320,
+390, 768, 1440 - against the page as served:
+
+```
+design_audit(target: "<url-or-file>", widths: [320, 390, 768, 1440])
+```
+
+Two of its outputs are this page's gate, and both are per width:
+
+- **`overflow[]`** - every element that crosses the viewport, with `path`,
+  `reason` (`scroll` when the document scrolls sideways, `viewport` when a box
+  crosses the edge from outside every clipping ancestor), `right`,
+  `scrollWidth`, `clientWidth`. An empty list is the gate passing at that
+  width. The tool reads the ancestor's computed `overflow-x` before it exempts a
+  clipped box, so the exemption is proven, not asserted.
+- **`findings.total`** - the one number to put in front of the owner: contrast,
+  off-grid values, values not in the token file, tap targets and overflow,
+  summed. `findings` also carries the five counts separately, so a regression
+  names its class.
+
+The loop that turns those numbers into a change is owned by `visual-validator`:
+measure, decide, build, re-measure at the same widths, compare in a pasted
+table. A landing page's special case is sequence: it is bands, not one screen,
+so attribute each finding to a band by its selector (`contrast.failures[].path`,
+`overflow[].path`, `tapTargets[].path`). For a band's own numbers, extract it
+into a standalone file and audit it at the same widths; the tool measures a
+whole page, not a section.
 
 Two stylesheet facts that trip this gate: `[hidden]` loses to any class rule that sets `display`, so the sheet must state `[hidden]{display:none}`; and a `.switch-rail` that becomes a horizontal strip on phones must be a real `overflow-x:auto` scroller, or the page inherits its width.
 
@@ -59,9 +88,9 @@ Two stylesheet facts that trip this gate: `[hidden]` loses to any class rule tha
 2. Read the reference and write down per band: the shape, and the claim you will not copy.
 3. Change the markup first, with the no-script version complete and readable.
 4. Add the script upgrade; prove keyboard operation.
-5. Run the layout gate at four widths; fix overflow before beautifying.
-6. Screenshot every changed band at 375 and 1280 and read the images yourself, the gate sees geometry, not cheapness.
+5. Run `design_audit` at its four widths; fix `overflow[]` before beautifying.
+6. Read the PNGs `design_audit` wrote, at the phone and desktop widths, band by band; the gate sees geometry, not cheapness.
 
 ## What this does not cover
 
-Palette and type scale belong to visual-creator; the token contract and its linter belong to design-system; judging a finished screen against a brief belongs to visual-validator. This file is the building procedure and the claim discipline between them.
+Palette and type scale belong to visual-creator; the token contract and its linter belong to design-system; the measure-decide-build-remeasure-compare loop belongs to visual-validator. This file is the building procedure and the claim discipline between them.

@@ -1,12 +1,15 @@
 ---
 name: visual-creator
-description: "Use when the output is a visual decision rather than an image: palette, type scale, spacing grid, hierarchy and layout for a UI, a game screen, or a marketing asset. Gives the constraints (contrast ratios, scales, composition laws), a build order, and the critique pass to run before shipping. Not for writing the DESIGN.md contract (design-system) and not for auditing a finished screen (visual-validator)."
+description: "Use when a page, screen, game UI or marketing asset looks generic, flat, cheap or dated, or when its palette, type scale, spacing rhythm or hierarchy is still undecided and everything is the same size and weight. Chooses those identity decisions before anything is built. Not for judging a finished render (visual-validator), not for writing the token file (design-system), and not for landing-page mechanics (landing-page)."
 validated: 2026-10-27
 verdict: IMPROVE
+governs:
+  - design
 triggers:
   - ui layout
   - color palette
   - type scale
+  - spacing
   - spacing grid
   - visual hierarchy
   - game ui
@@ -22,14 +25,33 @@ Create visuals that stand up to professional critique. This skill pairs with vis
 
 ---
 
-## The Full Cycle
+## The loop, and this skill's place in it
+
+`visual-validator` owns the design loop: measure with `design_audit`, decide the
+identity in writing, build, re-measure, compare. This skill is its **decide**
+step - the palette, type scale, spacing rhythm and hierarchy are the decisions
+that loop writes down before anything is built. The loop lives in that file;
+follow it from there.
+
+Two of the ruler's outputs are yours to set and to defend:
+
+- **`inventory`** - the distinct `fontSizes`, `fontWeights`, `lineHeights`,
+  `spacings`, `radii` and `shadows` in use, each with `count`, `onGrid` and
+  `inTokens`. An intentional scale is a short list with high counts; a soup is
+  twenty values at count 1.
+- **`colors[].coverage`** (and `coverageTotal`) - the share of the page each
+  painted colour owns. A dominant surface, a secondary band and an accent should
+  show up as unequal percentages. Four colours at roughly 22% each is an even
+  soup with no hierarchy, whatever the palette looks like in isolation.
+
+Run the audit at its defaults (320, 390, 768, 1440) before you decide:
 
 ```
-CREATE ──→ ANALYZE (read the render) ──→ VALIDATE (visual-validator) ──→ IMPROVE ──→ [repeat]
+design_audit(target: "<url-or-file>")
 ```
 
-Do the cycle at least once. Analysis catches what creation misses; validation
-catches what analysis misses.
+The scale you choose is then the one the render needs, and the same call runs
+again after you build.
 
 ### How the artifact gets made
 
@@ -291,52 +313,50 @@ Pick one scale and use it everywhere:
 
 ---
 
-## 6. The Create → Analyze → Validate → Improve Cycle
+## 6. Working inside the loop
 
-### Step 1: Create
+The loop itself is `visual-validator`'s (see The loop, above): measure, decide,
+build, re-measure, compare. This skill's work happens in its decide and build
+steps; these are the moves that belong to them.
 
-1. Define your design constraints first (palette size, grid, spacing scale)
-2. Build a single component or screen
-3. Document design decisions inline
+### Step 1: Decide, before anything is built
 
-### Step 2: Analyze
+1. Define the design constraints: palette size, grid, spacing scale, type step.
+2. Write them down (§2), and hand them to `design-system` when the project keeps
+   a DESIGN.md other sessions follow.
+
+### Step 2: Create
+
+1. Build a single component or screen against those constraints.
+2. Document the decisions inline where the value is not obvious.
+
+### Step 3: Analyze
 
 Read the render as an image attachment and compare it against the constraints
 you wrote down in Step 1. Extract colors, layout, and typography; every
 discrepancy between intent and output is a finding. The route to the pixels is
 in [`_shared/inspect-image.md`](../_shared/inspect-image.md).
 
-### Step 3: Validate
+### Step 4: Compare, then improve
 
-Run `visual-validator`'s audit format against the image. Before you ship, three
-numbers decide most of it:
-
-- **Contrast**: body text at least 4.5:1, large text at least 3:1, UI edges at
-  least 3:1.
-- **Spacing variance**: gaps should sit on the scale. Count the distinct gap
-  values; more than four in one screen is drift.
-- **Alignment offset**: an element off its axis by one or two pixels is a
-  defect; by more than half a spacing unit is a decision (make it look like
-  one).
-
-### Step 4: Improve
-
-1. Fix P0 issues before showing anyone.
-2. Fix P1 issues in the same session.
-3. Keep a P2 list or drop it. An unfixed P2 list is how a design system rots.
-4. Iterate: go to Step 1 or 2.
+Run the same `design_audit` and paste the before/after table. Every row that
+moved the wrong way is the next change; every row that did not move is a
+decision you did not make. Fix P0 and P1 findings in the same session; keep a
+P2 list or drop it, never carry it as debt.
 
 ### Iterations
 
 Expect more than one pass and fewer than five. The first pass finds the P0s
 (wrong scale, unreadable contrast); the second finds the P1s. If a third pass
 turns up a P0, the constraints were wrong, not the execution: go back to Step 1
-and rewrite them.
+and rewrite them. And more passes do not make an identity: when the numbers are
+clean and the three-decision check in `visual-validator` fails, the palette and
+scale were never decided - Step 1 again.
 
 ### Boundaries
 
 - **`design-system`** writes and enforces the token contract, the DESIGN.md file.
-- **`visual-validator`** measures a finished image and reports findings.
+- **`visual-validator`** owns the loop: it measures a finished image, reports findings, and owns the before/after comparison.
 - **This skill** chooses the palette, scale, and composition before anything exists. If you find yourself auditing a screenshot here, you are in the wrong file.
 
 ---
@@ -361,9 +381,9 @@ These produce mediocre visuals every time:
 
 ## Integration
 
-1. **PLAN** - Define design system (palette, typography, spacing, grid)
-2. **CREATE** - Build visual with design constraints
-3. **ANALYZE** - Read the render as an attachment and compare it against the constraints
-4. **VALIDATE** - Follow visual-validator audit format
-5. **IMPROVE** - Fix issues, refine, document decisions
-6. **REPEAT** - Until P0=0, P1=0, P2 ≤ 3
+1. **MEASURE** - `design_audit` on the unchanged artifact
+2. **DECIDE** - palette, type scale, spacing rhythm, hierarchy (this file)
+3. **BUILD** - the smallest set of changes that serves those decisions
+4. **RE-MEASURE / COMPARE** - same instrument, same widths, pasted table
+5. **CHECK** - three decisions visible in the render; if not, the constraints
+   were never decided
