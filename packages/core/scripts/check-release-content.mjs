@@ -327,6 +327,23 @@ function packWorkspace(workspace, into) {
  * uses: an absent version is exit 1 together with `E404` in the output, and
  * any other failure is a read that says nothing about the version.
  */
+/**
+ * What npm's answer means, and the one distinction the verify path depends on.
+ *
+ * `npm pack name@version` answers a version the registry does not serve with
+ * E404 (`npm view`) or ETARGET (`No matching version found for name@version`);
+ * which of the two appears depends on the verb and the registry's packument, and
+ * a check that knows only E404 reads ETARGET as an unanswerable failure. That is
+ * what failed the first release this gate ran on: the version had just been
+ * published, npm had not served it yet, and the verify step exited 2 while the
+ * publish itself had succeeded.
+ */
+export function registryReadVerdict(status, said) {
+  if (status === 0) return "ok";
+  if (status === 1 && (said.includes("E404") || said.includes("ETARGET"))) return "absent";
+  return "fail";
+}
+
 function fetchPublished(workspace, into, registry) {
   const spec = `${workspace.name}@${workspace.version}`;
   const result = spawnSync("npm", ["pack", spec, "--json", "--pack-destination", into, `--registry=${registry}`], {
@@ -336,9 +353,10 @@ function fetchPublished(workspace, into, registry) {
     env: { ...process.env, npm_config_loglevel: "error", npm_config_audit: "false", npm_config_fund: "false" },
   });
   if (result.error) throw new Unanswerable(`cannot run npm pack for ${spec}: ${result.error.message}`);
-  if (result.status !== 0) {
-    const said = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-    if (result.status === 1 && said.includes("E404")) return null;
+  const said = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  const verdict = registryReadVerdict(result.status, said);
+  if (verdict === "absent") return null;
+  if (verdict === "fail") {
     throw new Unanswerable(`the registry read for ${spec} failed (exit ${result.status}):\n${tail(said)}`);
   }
   const report = packReport(result.stdout);

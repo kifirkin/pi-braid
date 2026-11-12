@@ -312,3 +312,35 @@ test("the command line refuses what it cannot mean", () => {
   const { err } = run(["--ledger", "--record"]);
   assert.match(err, /--ledger/, err);
 });
+
+/**
+ * The registry read's three meanings, because the first release this gate ran
+ * on failed here: a version that had just been published was not yet served,
+ * npm answered ETARGET rather than E404, and the verify step exited 2 while the
+ * publish itself had succeeded. A read is `absent` for either code, and only a
+ * read that answers neither is unanswerable.
+ */
+const { registryReadVerdict } = await import("../../../scripts/check-release-content.mjs");
+
+test("a served version is ok, whatever the output says", () => {
+  assert.equal(registryReadVerdict(0, ""), "ok");
+  assert.equal(registryReadVerdict(0, "added 1 package"), "ok");
+});
+
+test("a version the registry does not serve is absent under both codes npm uses", () => {
+  const e404 = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/pi-braid";
+  const etarget = `{
+  "error": {
+    "code": "ETARGET",
+    "summary": "No matching version found for pi-braid@0.43.58."
+  }
+}`;
+  assert.equal(registryReadVerdict(1, e404), "absent", "npm view answers E404");
+  assert.equal(registryReadVerdict(1, etarget), "absent", "npm pack answers ETARGET for a missing version");
+});
+
+test("a read that failed for any other reason is unanswerable, not absent", () => {
+  assert.equal(registryReadVerdict(1, "npm error code ECONNRESET"), "fail", "a network failure says nothing about the version");
+  assert.equal(registryReadVerdict(1, "npm error 403 Forbidden"), "fail", "an auth failure says nothing about the version");
+  assert.equal(registryReadVerdict(2, "npm error code E404"), "fail", "only exit 1 means a read that answered");
+});

@@ -96,6 +96,14 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Release — a missing version is absence, not a failure (2026-11-12)
+
+The registry gate failed the first release it ran on, and it was right to be looked at: a version that had
+just been published was not yet served, `npm pack` answered `ETARGET` rather than `E404`, the read counted
+as unanswerable, and the verify step exited 2 while the publish itself had succeeded. Absence now covers both
+codes npm uses, and only a read that answers neither is unanswerable, with the three meanings pinned by
+tests that carry the real `ETARGET` body.
+
 ## Skills — one design loop, and a gate that refuses a private literal (2026-11-12)
 
 Two changes in one release, both about a check that did not exist.
