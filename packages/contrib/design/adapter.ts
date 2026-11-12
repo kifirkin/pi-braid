@@ -12,18 +12,16 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import {
-  CdpClient,
-  isBrowserAvailable,
-  spawnChrome,
-  waitForChrome,
-} from "../browser/cdp.js";
+import { CdpClient, isBrowserAvailable, spawnChrome } from "../browser/cdp.js";
 import type { Snapshot } from "./audit.js";
 
 const PORT = 9222;
 const VIEWPORT_HEIGHT = 900;
 const MAX_SCREENSHOT_HEIGHT = 12000;
 const SETTLE_TIMEOUT_MS = 30000;
+/** Upper bound on one readiness probe, so a silent socket cannot outlive the wait. */
+const READY_ATTEMPT_MS = 2000;
+const READY_TIMEOUT_MS = 45000;
 
 interface Target {
   url: string;
@@ -293,13 +291,49 @@ async function loadPage(
   await sleep(50);
 }
 
+/**
+ * Wait for a freshly spawned browser to serve its DevTools endpoint.
+ *
+ * The browser extension's own wait polls the same endpoint with a request
+ * that carries no abort signal. A Chrome that has bound the debugging port
+ * but is not yet serving accepts the TCP connection and leaves that request
+ * open until undici's 300 s header timeout, so the wait can outlive the
+ * deadline it claims. Each attempt here is bounded by the time left on this
+ * deadline, and a browser that never answers fails the call instead of
+ * stalling it.
+ */
+export async function waitForBrowser(
+  port: number,
+  timeoutMs = READY_TIMEOUT_MS,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `browser did not answer on port ${port} within ${timeoutMs}ms`,
+      );
+    }
+    const attempt = Math.min(READY_ATTEMPT_MS, remaining);
+    try {
+      const response = await fetch(`http://localhost:${port}/json/version`, {
+        signal: AbortSignal.timeout(attempt),
+      });
+      if (response.ok) return;
+    } catch {
+      // Not serving yet: the loop retries until the deadline.
+    }
+    await sleep(Math.min(250, Math.max(1, deadline - Date.now())));
+  }
+}
+
 async function openTab(
   port: number,
 ): Promise<{ client: CdpClient; id: string }> {
   const response = await fetch(
     `http://localhost:${port}/json/new?url=` +
       encodeURIComponent("about:blank"),
-    { method: "PUT" },
+    { method: "PUT", signal: AbortSignal.timeout(READY_ATTEMPT_MS) },
   );
   if (!response.ok) {
     throw new Error(`could not open a browser tab (HTTP ${response.status})`);
@@ -367,7 +401,7 @@ export async function capturePage(
   let port = PORT;
   if (!(await isBrowserAvailable(PORT))) {
     port = await spawnChrome({});
-    await waitForChrome(port);
+    await waitForBrowser(port);
   }
 
   const { client, id } = await openTab(port);

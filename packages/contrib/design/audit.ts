@@ -133,6 +133,12 @@ export interface ContrastReport {
   checked: number;
   /** Text-bearing elements whose colour or size could not be read. */
   skipped: number;
+  /**
+   * The lowest ratio any checked pair reached, failing or passing; null when
+   * no pair was measured. A page can pass every pair and still creep toward
+   * the line, so the failure list alone does not say how much room is left.
+   */
+  smallest: number | null;
   failures: ContrastFailure[];
 }
 
@@ -198,6 +204,38 @@ export interface Audit {
 
 const DEFAULT_MIN_TARGET = 44;
 const DEFAULT_GRID_STEP = 4;
+
+/** Viewports a ruler is asked about when the caller names none. */
+export const DEFAULT_WIDTHS = [320, 390, 768, 1440];
+
+/**
+ * A viewport outside this range is refused rather than measured: the area
+ * arithmetic clips every box to the page, and a zero or absurd width turns
+ * coverage into a division the report cannot explain.
+ */
+export const MIN_WIDTH = 240;
+export const MAX_WIDTH = 3840;
+export const MAX_WIDTHS = 8;
+
+export function normaliseWidths(
+  input: number[] | undefined,
+  subject: string,
+): number[] {
+  const widths = input ?? DEFAULT_WIDTHS;
+  if (widths.length === 0)
+    throw new Error("widths must contain at least one width");
+  if (widths.length > MAX_WIDTHS) {
+    throw new Error(`at most ${MAX_WIDTHS} widths per ${subject}`);
+  }
+  for (const width of widths) {
+    if (!Number.isInteger(width) || width < MIN_WIDTH || width > MAX_WIDTH) {
+      throw new Error(
+        `width ${String(width)} is outside ${MIN_WIDTH}..${MAX_WIDTH} CSS px`,
+      );
+    }
+  }
+  return widths;
+}
 
 /** Type sizes treated as a scale when the project has no type tokens. */
 export const DEFAULT_TYPE_SCALE = [12, 14, 16, 18, 20, 24, 30, 32, 36, 48, 60];
@@ -467,6 +505,7 @@ export function auditSnapshot(
   const failures: ContrastFailure[] = [];
   let checked = 0;
   let skipped = 0;
+  let smallest: number | null = null;
   for (let index = 0; index < nodes.length; index += 1) {
     const node = nodes[index];
     if (!isRendered(node) || !hasText(node)) continue;
@@ -490,6 +529,7 @@ export function auditSnapshot(
     const ratio = contrastRatio(foreground, background);
     const required = largeText(fontSizePx, fontWeight) ? 3 : 4.5;
     checked += 1;
+    if (smallest === null || ratio < smallest) smallest = ratio;
     if (ratio + 1e-9 < required) {
       failures.push({
         path: node.path,
@@ -797,7 +837,12 @@ export function auditSnapshot(
     documentHeight: round2(height),
     colors,
     coverageTotal,
-    contrast: { checked, skipped, failures },
+    contrast: {
+      checked,
+      skipped,
+      smallest: smallest === null ? null : round2(smallest),
+      failures,
+    },
     inventory,
     tapTargets,
     overflow,

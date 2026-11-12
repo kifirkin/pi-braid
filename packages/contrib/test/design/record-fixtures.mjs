@@ -47,3 +47,30 @@ for (const name of ["defects", "clean"]) {
     `${name}: ${result.widths.length} widths, ${result.widths[0].snapshot.nodes.length} nodes each`,
   );
 }
+
+// The board fixture: three answers to one screen, recorded at two phone
+// widths. The board test compares variants and plants a measurement edit, so
+// two widths are enough; the page the record carries is the same file.
+const BOARD_WIDTHS = [320, 390];
+const boardDirectory = join(HERE, "fixtures", "board");
+const boardSnapshots = {};
+for (const name of ["stacked", "rail", "sheet"]) {
+  const result = await capturePage(join(boardDirectory, `${name}.html`), {
+    widths: BOARD_WIDTHS,
+    screenshotDir: null,
+  });
+  boardSnapshots[name] = {};
+  for (const width of result.widths) {
+    boardSnapshots[name][String(width.snapshot.viewportWidth)] = {
+      ...width.snapshot,
+      url: `test/design/fixtures/board/${name}.html`,
+    };
+  }
+  console.log(
+    `${name}: ${result.widths.length} widths, ${result.widths[0].snapshot.nodes.length} nodes each`,
+  );
+}
+writeFileSync(
+  join(boardDirectory, "snapshots.json"),
+  `${JSON.stringify(boardSnapshots, null, 2)}\n`,
+);

@@ -20,6 +20,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { register } from "node:module";
+import { createServer } from "node:net";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -40,6 +41,34 @@ const { parseDesignTokens } = await import(
 const { renderAudit } = await import(
   pathToFileURL(join(DESIGN, "render.ts")).href
 );
+const { waitForBrowser } = await import(
+  pathToFileURL(join(DESIGN, "adapter.ts")).href
+);
+
+/**
+ * A socket that accepts the connection and never answers: what Chrome looks
+ * like while it holds the debugging port but has not started serving. The
+ * readiness wait must fail on its own deadline rather than sit on the socket.
+ */
+test("the render path's readiness wait reports a silent browser, not a stall", async () => {
+  const server = createServer(() => {});
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const port = server.address().port;
+  const started = Date.now();
+  try {
+    await assert.rejects(
+      () => waitForBrowser(port, 1200),
+      new RegExp(`did not answer on port ${port} within 1200ms`),
+    );
+    const elapsed = Date.now() - started;
+    assert.ok(
+      elapsed < 5000,
+      `the wait outlived its 1200ms deadline by ${elapsed}ms`,
+    );
+  } finally {
+    server.close();
+  }
+});
 
 const MUTED_PATH = "html > body:nth-of-type(1) > p:nth-of-type(1)";
 const LABEL_PATH = "html > body:nth-of-type(1) > span:nth-of-type(1)";
@@ -322,7 +351,7 @@ test("a malformed snapshot is refused, not measured", () => {
   );
 });
 
-test("registration: the extension registers design_audit and honors its off switch", async () => {
+test("registration: the extension registers both tools and honors its off switch", async () => {
   const { default: designExtension } = await import(
     pathToFileURL(join(DESIGN, "index.ts")).href
   );
@@ -356,7 +385,7 @@ test("registration: the extension registers design_audit and honors its off swit
     designExtension(api);
     assert.deepEqual(
       calls.map((tool) => tool.name),
-      ["design_audit"],
+      ["design_audit", "design_board"],
     );
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
