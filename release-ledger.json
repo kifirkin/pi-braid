@@ -145,6 +145,31 @@
         "virtual-router.ts": "65d76b68abd6618861eeb37bf651ba6b59a218ee316beab44782d23419f00dbf"
       }
     },
+    "pi-braid-providers@1.0.8": {
+      "released_from": "dd2b2d332a3791f8d6d5f1891a7a13ef96ca6743",
+      "source": "tree",
+      "files": {
+        "LICENSE": "691e05e7479b039c6b35954e7c58cb26199a27397f1879d25ccfb36bce16f912",
+        "README.md": "5fbc2e97fb0f225cf7738c87c1701ff396b53068ffbcd915496915d49bf51ffb",
+        "failure-translation.ts": "bf03377252edf403256ad26364ec2d11b57ab474936d2b934397ed7c9dda64e0",
+        "index.ts": "35859badc3a994e4fd890365bed3158b0439b330e70425f25ca5d08baa762860",
+        "key-ring.ts": "427226734d4d987249f372618cb6783f8a488b4a7c7f1057670f1fd5436df577",
+        "log.ts": "290d3537ae9889126b8dd8fab3fdbd63ba67311317cd8676791ddf76582a07cb",
+        "outage-watch.ts": "e611b88cd267df9e0522aadc626ce5b0afa308142bf64284fc9325dabf134a52",
+        "package.json": "1f0ff7ace01a76a1842303dafaa1d38008f70278666aa332287753c269be40a3",
+        "presend-guard.ts": "6557004999345c49e79fa358a407645e6bd4f5a37ac6caaca6d5d944b5db0e29",
+        "probe.ts": "bb231a4b8e57c4d490d3de1445691ffd44aae624483e724b84a834df01f49af6",
+        "ring-health.ts": "49a947634c2326a522073e7b68ec989020106e5ba3369fdf3461ea1c2d7554f0",
+        "ring-lifecycle.ts": "d389c0dae20013fb73fc7b321c59015bfe0e00a195c71f2e787e9bc0dfcb0665",
+        "ring-provider.ts": "12e18efca67b6aa649b6caa7b64542fc0603901e4fb4ba2beb4bb753240a208d",
+        "rotation-census.ts": "234d9e35b5c34ebfbe624a81e34c026561b76fa83dda54ef0c71be73587a66c3",
+        "route-state.ts": "be933ec994a2d4eada57669b722f0084302fc5a2c2bfee94d5dc4245caa0ec82",
+        "state-paths.ts": "26a80286260d498ffd65c081e185981218c95ba66596827bd72de5cdceff73f5",
+        "venice-catalog.ts": "5d6ac1703537d37df41ae1e8a99e838ac73b5a10f18f14651c72988cad6f448b",
+        "venice-direct.ts": "406abda1892abe50911fbd454a235996e62eebb0901ba4df8b6be213af6c2915",
+        "virtual-router.ts": "65d76b68abd6618861eeb37bf651ba6b59a218ee316beab44782d23419f00dbf"
+      }
+    },
     "pi-braid-skills@0.2.6": {
       "released_from": "3a3de965131cd125b58a807b064a43d37b7f466f",
       "source": "registry",

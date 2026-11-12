@@ -1,6 +1,6 @@
 {
   "name": "pi-braid-providers",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Key rotation, provider failover, and route health for the pi coding agent, so one dead key or provider does not end the session.",
   "type": "module",
   "files": [
