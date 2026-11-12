@@ -96,6 +96,26 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Skills — one design loop, and a gate that refuses a private literal (2026-11-12)
+
+Two changes in one release, both about a check that did not exist.
+
+**The design loop.** The four design skills now name one loop - measure with `design_audit` at 320, 390,
+768 and 1440, name the identity decisions, build, re-measure, compare - written once in the validator and
+referenced by the creator, the token contract and the landing skill rather than restated in four voices. Two
+properties are new: a design claim without a pasted before/after table does not count, and the loop no longer
+terminates at "no findings" - a finished page must show three identity decisions, which is the check that
+separates a designed page from an undressed template that happens to be clean. Selection is measured rather
+than asserted: a sixteen-prompt fixture scores the shipped catalog before and after (10 of 16 design prompts
+selected nothing before; 14 of 16 select a design skill now, with 0 of 12 guardrail prompts selecting one and
+a control arm that selects none when the four skills are removed), and the labelled relevance set holds at
+recall@2 13/24 with the same 2/7 slot spend.
+
+**The private-literal gate.** A leak is refused before it is pushed: the tracked tree, the commits a branch
+adds (subject, body, author and committer addresses) and a tag's annotation, with the pattern list as a
+module built from fragments so the gate does not refuse its own source. An allowance covers a declared line
+and is printed, so it cannot hide a second one.
+
 ## Release — a published version names a content, and CI now compares it (2026-11-12)
 
 The publish loop skips a workspace whose version is already on the registry, so a fix that landed in a
