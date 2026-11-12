@@ -96,6 +96,16 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Skills — the VPN skill names the surface that actually starts a tunnel (2026-11-12)
+
+A VPN profile was disconnected for hours and the operator clicked Connect by hand, because the skill's
+recovery table pointed at the client's URL schemes and the client's bundle carries only
+`happ://disconnect`. The operating system was the answer: macOS NetworkExtension profiles are enumerated
+and driven by name with `scutil --nc`, and `scutil --nc start "Happ"` brought the profile up in seconds.
+The skill now names that surface first on macOS, keeps the client links as the fallback for a client that
+tunnels inside its own process, and its roster records Happ as validated with what was observed rather
+than a vendor claim.
+
 ## Contrib — a design audit that measures a rendered page (2026-11-12)
 
 The measurement everything in the design program is judged by, as a tool: `design_audit` renders a page at

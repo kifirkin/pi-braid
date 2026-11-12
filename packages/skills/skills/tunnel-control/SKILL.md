@@ -31,13 +31,13 @@ through the client's own control surface, never through process or extension sur
 An arm is one (platform, client) pair. A row is usable only when its facts were derived from a real
 install and the date is in the row; an unvalidated arm is probe-only and is never toggled.
 
-| Platform | Client   | State                | Facts derived from                                       |
-| -------- | -------- | -------------------- | -------------------------------------------------------- |
-| macOS    | v2RayTun | VALIDATED 2026-11-03 | app bundle, URL schemes, extension processes, profiles   |
-| macOS    | Happ     | UNVALIDATED          | vendor docs name no link that starts or stops the tunnel |
-| macOS    | Incy     | UNVALIDATED          | vendor docs name the control links; no install here      |
-| Windows  | any      | UNVALIDATED          | no install here                                          |
-| Linux    | any      | UNVALIDATED          | no install here                                          |
+| Platform | Client   | State                | Facts derived from                                                                                                                                      |
+| -------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | v2RayTun | VALIDATED 2026-11-03 | app bundle, URL schemes, extension processes, profiles                                                                                                  |
+| macOS    | Happ     | VALIDATED 2026-11-12 | app bundle and NetworkExtension profile `su.ffg.happ`; the bundle exposes `happ://disconnect` only, and `scutil --nc start "Happ"` connects the profile |
+| macOS    | Incy     | UNVALIDATED          | vendor docs name the control links; no install here                                                                                                     |
+| Windows  | any      | UNVALIDATED          | no install here                                                                                                                                         |
+| Linux    | any      | UNVALIDATED          | no install here                                                                                                                                         |
 
 Adding a row means deriving its facts with the recipe below and writing the date. Do not promote a
 row by editing this table: an arm whose facts came from a documentation page is `UNVALIDATED` until
@@ -64,18 +64,31 @@ Interpretation:
 
 ## 2. Recover through the client's own surface
 
-| Platform | Control surface                                                                     |
-| -------- | ----------------------------------------------------------------------------------- |
-| macOS    | `open "<scheme>://disconnect"`, wait about two seconds, `open "<scheme>://connect"` |
-| Windows  | `rasdial "<name>" /disconnect` then `rasdial "<name>"`, or the client's own CLI     |
-| Linux    | `nmcli connection down "<name>"` then `nmcli connection up "<name>"`                |
+| Platform | Control surface                                                                                                                                  |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS    | `scutil --nc start "<profile>"`; fall back to the client's links (`open "<scheme>://disconnect"`, wait two seconds, `open "<scheme>://connect"`) |
+| Windows  | `rasdial "<name>" /disconnect` then `rasdial "<name>"`, or the client's own CLI                                                                  |
+| Linux    | `nmcli connection down "<name>"` then `nmcli connection up "<name>"`                                                                             |
 
 Verify within thirty seconds: the client reports connected and the probe returns a real status. The
 clients in this table persist their configuration and regenerate the tunnel on connect, so a
 recovery needs no re-authentication and no config edit.
 
-If the client exposes no control surface you can derive, stop and hand the machine to its owner.
-Opening the app by hand is a recovery step a person takes, not one an agent invents.
+On macOS the operating system is the surface of first resort, not the app: NetworkExtension
+profiles are enumerated and driven by name with `scutil --nc`, and that works for any client that
+installs one, whether or not its bundle carries a connect link.
+
+```bash
+scutil --nc list                     # the profile's name and state, e.g. Connected / Disconnected
+scutil --nc start "<profile>"        # start it; status turns Connected within a few seconds
+scutil --nc stop  "<profile>"        # stop it
+```
+
+Only when no profile exists (the client tunnels inside its own process rather than through a
+NetworkExtension) look for the client's own links - and only then is a missing connect scheme a dead end.
+
+If neither surface can start the tunnel, stop and hand the machine to its owner. Opening the app by
+hand is a recovery step a person takes, not one an agent invents.
 
 ## Guardrails
 
