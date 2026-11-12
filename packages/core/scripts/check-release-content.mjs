@@ -92,6 +92,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { BUILD_INFO_FILE, SHA_SHORT_LENGTH } from "./build-info.mjs";
 import { readArchive, Unreadable } from "./lib/tar-entries.mjs";
 
@@ -714,13 +715,28 @@ function main() {
   }
 }
 
-try {
-  process.exitCode = main();
-} catch (error) {
-  if (error instanceof Unanswerable || error instanceof Unreadable) {
-    problem(`check-release-content: ${error.message}`);
-    process.exitCode = 2;
-  } else {
-    throw error;
+/**
+ * Run only when this file is the program.
+ *
+ * The check's pieces are worth testing in-process (`registryReadVerdict` is a
+ * pure function over npm's answer), and an import that runs the CLI cannot be
+ * tested that way: importing it packed every workspace, `npm pack` ran this
+ * package's `prepack`, the prepack rebuilt `dist`, and for the fourteen seconds
+ * of that rebuild every fixture in the pooled run that imports `dist` failed
+ * with a module-not-found. A module that runs on import breaks the process that
+ * imports it.
+ */
+const invokedDirectly = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  try {
+    process.exitCode = main();
+  } catch (error) {
+    if (error instanceof Unanswerable || error instanceof Unreadable) {
+      problem(`check-release-content: ${error.message}`);
+      process.exitCode = 2;
+    } else {
+      throw error;
+    }
   }
 }

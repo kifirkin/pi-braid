@@ -104,6 +104,12 @@ as unanswerable, and the verify step exited 2 while the publish itself had succe
 codes npm uses, and only a read that answers neither is unanswerable, with the three meanings pinned by
 tests that carry the real `ETARGET` body.
 
+The fix exposed a second defect on the way in: the script ran its CLI on import, so the test that imports it
+to reach one pure function packed every workspace, `npm pack` ran this package's `prepack`, the prepack
+rebuilt `dist`, and for the fourteen seconds of that rebuild every fixture in the pooled run that imports
+`dist` failed with a module-not-found - nine files, in a run where the same commit passed in a clean
+checkout. The CLI now runs only when the file is the program.
+
 ## Skills — one design loop, and a gate that refuses a private literal (2026-11-12)
 
 Two changes in one release, both about a check that did not exist.
