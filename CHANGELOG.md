@@ -96,6 +96,20 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Release — a published version names a content, and CI now compares it (2026-11-12)
+
+The publish loop skips a workspace whose version is already on the registry, so a fix that landed in a
+workspace whose version did not move was published as nothing. Three fixes were in that state and stayed
+unshipped for a day while CI was green.
+
+`release-ledger.json` now holds, per `name@version`, a digest of the packed file contents and the commit it
+was released from, and two things refuse without it: `npm run ci:check` (a recorded version whose content
+moved is a refusal that names the changed paths and the remedy) and the publish workflow after it publishes
+(`release:content:verify` compares the registry's own answer against the ledger). A version the ledger does
+not hold is a new version and says so. The digest is per file rather than per tarball, because npm's packing
+is not byte-reproducible here: the same tree packs to the same file contents and a different tarball, and
+the fixture proves both halves of that sentence.
+
 ## Skills — a recovery table that lists classes, not one command per platform (2026-11-12)
 
 The macOS row of the VPN skill's recovery table named the client's URL links and nothing else, while the
