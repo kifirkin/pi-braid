@@ -200,6 +200,32 @@ tarball did not have. All three move here, with the fixes they already hold:
   instead of throwing out of a timer and ending the process.
 - `pi-braid-contrib` 0.1.5: the git tool, argv-only and read-only by default.
 
+## Core 0.44.0, Contrib 0.2.0, Providers 1.0.8 — the ruler gains eyes, and refusals learn to speak (2026-11-12)
+
+`design_audit` could measure a rendered page and say nothing about whether it looked cheap. The same
+adapter's full-page PNGs now go to the model the session resolves for vision, one call per width, in
+`visual_judge` beside the audit. The result names the model that answered, its route, the tokens and the
+elapsed time, because an opinion with no author is not a report; the default rubric asks for named
+observations and forbids scores, since a judge that answers 7/10 has measured nothing.
+
+The generic half stayed in `lib/ai`, where the retry ladder, the pre-send budget and the key-ring
+feedback already live. `callLlm` gained an optional image part and `callVision` is the named entry that
+refuses a text-only model or a malformed part before a request is built, so an image is priced at the
+budget where the text estimator had counted it as free. `resolveVisionModel` and `searchVisionModel`
+share one walk, so a refusal prints every rung it passed over and why it was skipped.
+
+A test-harness defect fell out on the way, and it was the kind that hides: contrib's fixtures import core as
+`pi-braid/lib`, which in a checkout resolves through `node_modules` to whichever pi-braid is installed
+rather than the tree under test, so a core export added in the same tree was invisible and the failure read
+as a broken import. The shared hook maps that specifier to this tree's build, and an arm compares the
+build's mtime against the newest core source, because a hook that reads an artifact can otherwise report a
+green suite about code the tree no longer contains. Touching a source without rebuilding reddens it;
+removing the export from the artifact reddens it naming the export; reverting the image part fails one arm
+of twelve.
+
+Contrib moves a minor because a new tool is something a caller notices, core because `pi-braid/lib` gained
+five names; providers carries the rotation census at 1.0.8 and is unchanged here.
+
 ## Core — a prefix is ranked, never qualifying on its own (2026-11-11)
 
 The same defect as the class noun, one leg over: `improve` starts `improvement`, so the token-prefix leg
