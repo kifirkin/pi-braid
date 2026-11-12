@@ -129,6 +129,16 @@ jobs:
             case "${version}" in
               *-*) echo "skip ${name}@${version}: prerelease version"; continue ;;
             esac
+
+            # Before the registry decides whether to skip this version: a
+            # recorded version whose content moved is not publishable at all,
+            # and neither is a version whose content was never recorded. Without
+            # this, a changed file under a version the registry already carries
+            # is skipped silently, which is how three fixes sat unpublished
+            # while CI stayed green. It runs before the registry read because
+            # that read is what returns "already on the registry".
+            node packages/core/scripts/check-release-content.mjs --check --require-recorded --workspace "${dir}"
+
             read_status=0
             read_log="$(npm view "${name}@${version}" version --registry="${REGISTRY}" 2>&1)" || read_status=$?
 
@@ -191,6 +201,23 @@ jobs:
               } >>"${GITHUB_STEP_SUMMARY}"
             fi
           done
+
+      # The registry is the instrument again, and this time the record it is
+      # held against exists: `release-ledger.json` holds what each published
+      # version's content was, recorded before the tag. The publish loop skips a
+      # version the registry already serves, so a version can carry changed
+      # content that was never uploaded; the gates refuse that on a recorded
+      # version, and this step refuses it on the registry's own artifact, which
+      # covers every workspace the run did not name and every version it skipped.
+      #
+      # A failure here fails the run. The advisory step at the end compares the
+      # registry to the tag's tree, which cannot speak about a version the tag
+      # does not name and cannot fail a release; this one has a record of each
+      # version and is allowed to stop the run before the GitHub release is
+      # written. `--verify-published` exits 0 when there is nothing to compare
+      # (a version not yet on the registry), so a dry run is unaffected.
+      - name: Registry content against the ledger
+        run: npm run release:content:verify
 
       # Last in the job on purpose: publishing is what the run is for, and this
       # entry is bookkeeping. A failure here (token scope, API rate limit) must

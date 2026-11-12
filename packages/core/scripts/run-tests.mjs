@@ -186,6 +186,14 @@ const ALLOWANCES = new Map([
     },
   ],
   [
+    "release/test-release-content.mjs",
+    {
+      ms: 180_000,
+      reason:
+        "every case but four drives real `npm pack` runs, so its cost is a sequence of npm spawns whose length follows the box: 19.6s and 20.6s one at a time, 35.7s beside seven other files in one pooled run, and past the 60s default in another where every core was saturated, because each pack spawns npm; the allowance is what lets a slow box report which digest disagreed instead of being killed here as an opaque timeout",
+    },
+  ],
+  [
     "release/test-pack-provenance.mjs",
     {
       ms: 120_000,

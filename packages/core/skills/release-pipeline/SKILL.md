@@ -176,8 +176,36 @@ succeeds and that package stays at its old version on the registry. Bump the
 sibling's `package.json` and commit it before dispatching, or the fix it
 carries ships in the repository and nowhere else.
 
+That skip is also why a version's content is recorded. `release-ledger.json`
+holds one entry per published `name@version`, listing every file the tarball
+carries with its sha256, and the write loop refuses before the registry read
+when a recorded version's content has moved or a version has no entry at all.
+The record is written at release time, never after publishing:
+
+```bash
+npm run release:content:record   # after the version bump, before the tag
+npm run release:content:check    # what the workflow runs, if you want it early
+```
+
+Commit `release-ledger.json` with the bump. It records the tree, so a version
+that is recorded and then edited becomes unpublishable until it is bumped;
+that is the point, since the edit could not reach the registry under the same
+version string. After the workflow publishes, its last comparison is
+`release:content:verify`, which holds each published artifact to the ledger;
+that step covers the versions a run skips, and fails the run when the registry
+serves content the ledger does not hold.
+
+A ledger that predates a package's first entry is seeded from the registry,
+which is the only truthful source for versions that already shipped:
+
+```bash
+npm run release:content:record -- --seed-from-registry
+```
+
 Preparation:
 
+- Record each stable version with `npm run release:content:record` and commit
+  the ledger alongside it.
 - Commit the intended stable package versions. Refresh `package-lock.json` as
   a release convention, as described in `CONTRIBUTING.md`.
 - Configure trusted publishing for the package on npmjs.com.
