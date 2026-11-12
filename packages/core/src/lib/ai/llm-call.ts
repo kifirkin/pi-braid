@@ -28,6 +28,11 @@
  *   callLlm(model, apiKey, systemPrompt, userPrompt, options)
  *   Returns { text } on success or { error } on failure (discriminated union).
  *   const text = result.text;
+ *
+ *   callVision(model, apiKey, systemPrompt, instruction, images, options)
+ *   The same union with image parts attached to the user message. A model
+ *   that declares no image input is refused before anything is sent, so a
+ *   text-only model can never quietly answer about an image it never saw.
  */
 
 import type {
@@ -320,6 +325,30 @@ function releaseModelSlot(modelId: string): void {
 
 // ── Options ────────────────────────────────────────────────────────────────────
 
+/**
+ * One image attached to an auxiliary request: base64 bytes and the MIME type
+ * they carry. `data` is the payload itself, without a `data:` prefix.
+ */
+export interface LlmImagePart {
+  /** Base64 payload. */
+  data: string;
+  /** Declared MIME type, e.g. "image/png". The transport passes it through. */
+  mimeType: string;
+}
+
+/**
+ * What an auxiliary call returns: the text (with the stop reason and usage the
+ * provider reported) or one line naming why it failed. A vision call returns
+ * the same shape, so a caller never branches on which kind of call it made.
+ */
+export type LlmCallResult =
+  | {
+      text: string;
+      stopReason?: string;
+      usage?: { input?: number; output?: number; totalTokens?: number };
+    }
+  | { error: string };
+
 export interface LlmCallOptions {
   /** Temperature for generation. Default: 0.1 */
   temperature?: number;
@@ -357,6 +386,16 @@ export interface LlmCallOptions {
   sdkRetries?: number;
   /** Optional AbortSignal for cancellation */
   signal?: AbortSignal;
+  /**
+   * Image parts attached to the user message. `callVision` is the entry point
+   * that sets this: a text call leaves it out and its user content stays a
+   * plain string, so the request shape of every existing caller is unchanged.
+   *
+   * The model's declared input is checked here as well as in `callVision`,
+   * because the transport would otherwise drop the image silently or return a
+   * provider error that reads like a transient failure.
+   */
+  images?: readonly LlmImagePart[];
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -379,14 +418,7 @@ export async function callLlm(
   systemPrompt: string,
   userPrompt: string,
   options: LlmCallOptions = {},
-): Promise<
-  | {
-      text: string;
-      stopReason?: string;
-      usage?: { input?: number; output?: number; totalTokens?: number };
-    }
-  | { error: string }
-> {
+): Promise<LlmCallResult> {
   // Circuit breaker: skip while a recent 429 cooldown is active ───────
   const now = Date.now();
   if (rateLimitCooldownUntil > 0 && now < rateLimitCooldownUntil) {
@@ -394,6 +426,13 @@ export async function callLlm(
     log.debug(`Skipping LLM call - rate-limit cooldown ${remaining}ms remaining`);
     return { error: "Rate-limit cooldown active" };
   }
+
+  // Images: a request the model cannot read is refused before it is built,
+  // not sent and reported as a provider error (or, worse, answered from the
+  // text alone with no complaint about the missing picture).
+  const images = options.images ?? [];
+  const imageRefusal = refuseImages(model, images);
+  if (imageRefusal !== null) return { error: imageRefusal };
 
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 
@@ -424,7 +463,9 @@ export async function callLlm(
 
   const context: Context = {
     systemPrompt: systemSafe.text,
-    messages: [{ role: "user", content: userSafe.text, timestamp: Date.now() }],
+    messages: [
+      { role: "user", content: userContent(userSafe.text, images), timestamp: Date.now() },
+    ],
   };
 
   // ── pre-send budget ──
@@ -439,7 +480,8 @@ export async function callLlm(
     measure: () =>
       calibrateEstimate(
         estimatePayloadTokens({ systemPrompt: context.systemPrompt, messages: context.messages }),
-      ).tokens,
+      ).tokens +
+      images.length * IMAGE_TOKEN_ALLOWANCE,
     outputTokens: maxTokens,
     contextWindow: resolvedWindow.contextWindow,
     // The only compaction available to an auxiliary call is the published
@@ -763,7 +805,114 @@ export async function callLlm(
   }
 }
 
+// ── Vision ────────────────────────────────────────────────────────────────────
+
+/**
+ * Make an auxiliary call that carries images: the same dispatch, retry ladder,
+ * circuit breaker, pre-send budget and key-ring feedback as `callLlm`, with the
+ * images attached to the user message.
+ *
+ * Why this is a wrapper and not a second dispatcher: every policy the text
+ * path carries (per-model concurrency, transient retry with the backoff
+ * ceiling, the 413 emergency offload, the listener and key-ring seams) applies
+ * to a vision call exactly as it applies to a text one. A copy would drift from
+ * that policy at the first fix made in one place, and a vision call that does
+ * not feed the key ring back is a route that keeps failing without rotating.
+ * The image-specific decisions - is this model image-capable, is this part a
+ * real image - are the only ones the wrapper owns.
+ *
+ * `instruction` is the user turn; `images` are attached after it, in order, so
+ * a caller can refer to "the first image" and mean what it sent.
+ */
+export async function callVision(
+  model: Model<Api>,
+  apiKey: string | undefined,
+  systemPrompt: string,
+  instruction: string,
+  images: readonly LlmImagePart[],
+  options: Omit<LlmCallOptions, "images"> = {},
+): Promise<LlmCallResult> {
+  if (images.length === 0) {
+    return {
+      error:
+        "Image input refused: a vision call needs at least one image part. " +
+        "Use callLlm for a text-only request.",
+    };
+  }
+  return callLlm(model, apiKey, systemPrompt, instruction, { ...options, images });
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+/**
+ * Tokens the pre-send budget counts per attached image.
+ *
+ * The payload estimator reads text only: an image block contributes its
+ * `mimeType` and nothing of its `data` (see estimateMessageTokens in
+ * detection/context-usage.ts), so without this allowance an image-heavy
+ * request looks free and the guard waves through a payload the provider then
+ * rejects. An image is priced by its pixels, not its bytes, and a full-page
+ * capture is a few thousand tokens on every provider that accepts one: OpenAI
+ * at high detail tiles a 1440x3000 capture into 18 tiles (~3.2K tokens),
+ * Anthropic's pixel rule puts the same image near 1.6K after its own downscale.
+ * This constant is the conservative ceiling of that range, so the estimate errs
+ * toward refusing rather than toward a doomed send.
+ */
+const IMAGE_TOKEN_ALLOWANCE = 4_000;
+
+/**
+ * The one place that decides whether a request carrying images may be built.
+ * Null means yes. A refusal names the model, what it declares, and the offending
+ * part, because the caller's next move (pick another model, re-encode the
+ * image) depends on which of those failed.
+ */
+function refuseImages(model: Model<Api>, images: readonly LlmImagePart[]): string | null {
+  if (images.length === 0) return null;
+  const declared = model.input ?? [];
+  if (!declared.includes("image")) {
+    return (
+      `Image input refused: ${model.provider ?? "unknown"}/${model.id} declares input ` +
+      `[${declared.join(", ") || "text"}] and does not accept images. A vision call needs an ` +
+      `image-capable model; resolveVisionModel names one for the current session.`
+    );
+  }
+  for (let index = 0; index < images.length; index++) {
+    const image = images[index];
+    const position = `Image part ${index + 1} of ${images.length}`;
+    if (typeof image.data !== "string" || image.data.length === 0) {
+      return `${position} carries no data. Expected base64 image bytes, not an empty string.`;
+    }
+    if (typeof image.mimeType !== "string" || !/^image\/[a-z0-9.+-]+$/i.test(image.mimeType)) {
+      return (
+        `${position} declares no image MIME type (got ${JSON.stringify(image.mimeType)}). ` +
+        `Expected a type such as "image/png".`
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * The user message content: a plain string for a text call, text-then-images for
+ * a vision call. The text block comes first so an instruction that says "the
+ * image below" reads in the order it was written.
+ */
+function userContent(
+  text: string,
+  images: readonly LlmImagePart[],
+):
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> {
+  if (images.length === 0) return text;
+  return [
+    { type: "text", text },
+    ...images.map((image) => ({
+      type: "image" as const,
+      data: image.data,
+      mimeType: image.mimeType,
+    })),
+  ];
+}
 
 /**
  * Run the published emergency offloader (context-manager's

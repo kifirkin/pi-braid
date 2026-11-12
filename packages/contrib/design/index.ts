@@ -1,25 +1,30 @@
 /**
  * `design_audit`: render a page at declared widths and measure the result.
+ * `design_board`: render variants of one screen and mark the best value per metric.
+ * `visual_judge`: show the same full-page PNGs to a vision model and report what it saw.
  *
- * One tool, three parts behind it. `./audit.ts` is the ruler: pure functions
+ * One toolkit, three parts behind it. `./audit.ts` is the ruler: pure functions
  * over a recorded snapshot, and the only place a number is decided.
  * `./adapter.ts` is the browser: CDP over the contrib package's existing
- * client, one evaluate per width. This file is the registration and the I/O
- * around them: read the token file, name the screenshot directory, return
- * errors as results.
+ * client, one evaluate per width. `./vision.ts` is the judge: the same capture,
+ * sent to an image-capable model with a rubric. This file is the registration
+ * and the I/O around them: read the token file, name the screenshot directory,
+ * return errors as results.
+ *
+ * The ruler and the judge answer different questions and the tools never merge
+ * them: geometry is measured, taste is an opinion with the model named.
  */
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import type {
   ExtensionAPI,
+  ExtensionToolContext,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createLogger } from "../logger.js";
 import { readToggleVerdict } from "../module-toggle.js";
-import { braidDir } from "../state-paths.js";
 import {
   DEFAULT_WIDTHS,
   MAX_WIDTH,
@@ -33,6 +38,11 @@ import { runDesignBoard } from "./board-run.js";
 import { BOARD_FORMAT_VERSION } from "./board.js";
 import { renderAudit, type ScreenshotRef } from "./render.js";
 import { NO_TOKENS, parseDesignTokens } from "./tokens.js";
+import {
+  defaultScreenshotDir,
+  runVisualJudge,
+  type VisualJudgeInput,
+} from "./vision.js";
 
 const log = createLogger("design");
 
@@ -74,6 +84,42 @@ const auditParams = Type.Object({
 });
 
 export type DesignAuditInput = Static<typeof auditParams>;
+
+const judgeParams = Type.Object({
+  target: Type.String({
+    description:
+      "URL to render (http, https or file) or a path to a local HTML file.",
+  }),
+  widths: Type.Optional(
+    Type.Array(Type.Integer({ minimum: MIN_WIDTH, maximum: MAX_WIDTH }), {
+      description:
+        `Viewport widths in CSS px, one judge call each (default ` +
+        `${DEFAULT_WIDTHS.join(", ")}; at most ${MAX_WIDTHS}).`,
+      minItems: 1,
+      maxItems: MAX_WIDTHS,
+    }),
+  ),
+  screenshot_dir: Type.Optional(
+    Type.String({
+      description:
+        "Directory for one full-page PNG per width. Defaults to " +
+        "<braid home>/design/screenshots.",
+    }),
+  ),
+  rubric: Type.Optional(
+    Type.String({
+      description:
+        "Instruction sent with each image, replacing the default rubric. A " +
+        "caption naming the width, the page height and any truncation is " +
+        "appended to it.",
+    }),
+  ),
+  timeout_ms: Type.Optional(
+    Type.Number({
+      description: "Per-width load timeout in milliseconds (default 30000).",
+    }),
+  ),
+});
 
 const boardVariantParams = Type.Object({
   name: Type.String({
@@ -154,11 +200,6 @@ export interface DesignAuditResult {
 
 function resolveWidths(input: number[] | undefined): number[] {
   return normaliseWidths(input, "audit");
-}
-
-function defaultScreenshotDir(): string | null {
-  const root = braidDir();
-  return root === null ? null : join(root, "design", "screenshots");
 }
 
 /**
@@ -342,5 +383,55 @@ export default function designExtension(pi: ExtensionAPI): void {
     },
   } as ToolDefinition<any, any, any>);
 
-  log.info("[design] loaded: design_audit, design_board");
+  pi.registerTool({
+    name: "visual_judge",
+    label: "Visual Judge",
+    promptSnippet:
+      "Show a rendered page to a vision model and report what it said, with the model named",
+    description:
+      "Render a URL or local HTML file at declared widths, then send each full-page PNG to " +
+      "an image-capable model with a rubric and report, per width, what it said, which " +
+      "model answered, the route the request took, the tokens it cost and the time it " +
+      "took. The answer is one model's opinion with the model named, not a measurement: " +
+      "design_audit is the tool that measures. Refuses rather than guesses when no " +
+      "image-capable model or key is available, when the page will not render, and when " +
+      "an image is larger than the request limit. Writes one full-page PNG per width to " +
+      "screenshot_dir and keeps the structured report in details.",
+    parameters: judgeParams,
+    execute: async (
+      _toolCallId: string,
+      params: VisualJudgeInput,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionToolContext,
+    ): Promise<unknown> => {
+      try {
+        const result = await runVisualJudge(params, ctx);
+        return {
+          content: [{ type: "text" as const, text: result.text }],
+          details: {
+            target: result.target,
+            model: result.model,
+            model_source: result.modelSource,
+            model_tried: result.modelTried,
+            custom_rubric: result.customRubric,
+            widths: result.widths,
+            totals: result.totals,
+          },
+          isError: result.widths.every((width) => width.answer === null),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            { type: "text" as const, text: `visual_judge: ${message}` },
+          ],
+          details: { error: message },
+          isError: true,
+        };
+      }
+    },
+  } as ToolDefinition<any, any, any>);
+
+  log.info("[design] loaded: design_audit, design_board, visual_judge");
 }

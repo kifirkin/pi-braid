@@ -13,7 +13,10 @@ export type {
   ClassificationResult,
   ClassifierOptions,
 } from "./ai/text-classifier.js";
-export { resolveVisionModel } from "./ai/model-resolver.js";
+export { resolveVisionModel, searchVisionModel } from "./ai/model-resolver.js";
+export type { VisionModelSearch } from "./ai/model-resolver.js";
+export { callVision } from "./ai/llm-call.js";
+export type { LlmCallOptions, LlmCallResult, LlmImagePart } from "./ai/llm-call.js";
 
 export { healthcheckDir, HEALTHCHECK_DIR } from "./config/braid-paths.js";
 

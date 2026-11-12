@@ -48,6 +48,27 @@ export function normaliseRoleSetting(raw: unknown): string[] {
 }
 
 /**
+ * A model named the way a report names it: provider then id, the pair a reader
+ * can paste into a model flag.
+ */
+function modelLabel(model: Model<Api>): string {
+  return `${model.provider ?? "unknown"}/${model.id}`;
+}
+
+/**
+ * Why a resolved model was not accepted for a role, in words, for a caller that
+ * has to explain an empty result. Null when the model is acceptable.
+ */
+function rejectionReason(model: Model<Api> | undefined, requireImage: boolean): string | null {
+  if (!model) return "no provider serves this pattern";
+  if (requireImage && !model.input?.includes("image")) {
+    const declared = model.input ?? [];
+    return `declares input [${declared.join(", ") || "text"}], no image input`;
+  }
+  return null;
+}
+
+/**
  * Resolve a role setting to a single model.
  *
  * A scalar keeps the pre-list behaviour exactly: resolved and returned as-is,
@@ -60,24 +81,54 @@ export function normaliseRoleSetting(raw: unknown): string[] {
  *
  * @param requireImage - vision role only: entries must accept image input, so
  *   a list may hold a text-only entry without an image being sent to it.
+ * @param trace - optional sink for one line per entry, in the order tried, so a
+ *   caller that gets nothing back can print what was tried and why each entry
+ *   was passed over. Passed in rather than returned because the successful path
+ *   must stay allocation-free for the classification callers.
  */
 function resolveRoleModel(
   ctx: ExtensionContext,
   key: string,
   requireImage = false,
+  trace?: string[],
 ): Model<Api> | undefined {
   const raw: unknown = getCustomModelKey(key);
   const patterns = normaliseRoleSetting(raw);
-  if (patterns.length === 0) return undefined;
+  if (patterns.length === 0) {
+    trace?.push(`${key}: not configured`);
+    return undefined;
+  }
 
   const acceptable = (model: Model<Api> | undefined): Model<Api> | undefined =>
     model && (!requireImage || model.input?.includes("image")) ? model : undefined;
 
-  if (!Array.isArray(raw)) return acceptable(resolveFromPattern(ctx, patterns[0]));
+  if (!Array.isArray(raw)) {
+    const resolved = resolveFromPattern(ctx, patterns[0]);
+    const model = acceptable(resolved);
+    if (!trace) return model;
+    const reason = rejectionReason(resolved, requireImage);
+    trace.push(
+      model && reason === null
+        ? `${key} "${patterns[0]}": using ${modelLabel(model)}, accepts image input`
+        : `${key} "${patterns[0]}": ${reason}`,
+    );
+    return model;
+  }
 
   for (const pattern of patterns) {
-    const model = acceptable(resolveFromPattern(ctx, pattern));
-    if (model && isModelRouteUsable(model)) return model;
+    const resolved = resolveFromPattern(ctx, pattern);
+    const model = acceptable(resolved);
+    if (model && isModelRouteUsable(model)) {
+      trace?.push(
+        `${key} "${pattern}": using ${modelLabel(model)}, the provider reports the route usable`,
+      );
+      return model;
+    }
+    trace?.push(
+      model
+        ? `${key} "${pattern}": resolved ${modelLabel(model)}, but the provider reports the route unusable`
+        : `${key} "${pattern}": ${rejectionReason(resolved, requireImage)}`,
+    );
   }
   return undefined;
 }
@@ -95,7 +146,24 @@ export function resolveUtilityModels(ctx: ExtensionContext): Model<Api>[] {
 }
 
 /**
- * The model a vision call should use.
+ * What a vision-model resolution found and what it passed over.
+ *
+ * `resolveVisionModel` answers "which model"; a caller that reports to a human
+ * also has to answer "and then what should I change", which needs the rungs
+ * that produced nothing. Both come from one walk, so the model a report names
+ * and the trace beside it cannot disagree.
+ */
+export interface VisionModelSearch {
+  /** The model a vision call should use, or undefined when the walk found none. */
+  model?: Model<Api>;
+  /** Which rung supplied `model`; null when none did. */
+  source: "current" | "utilityModel" | "available" | null;
+  /** One line per rung, in the order tried, saying what it found or why not. */
+  tried: string[];
+}
+
+/**
+ * The model a vision call should use, with the walk that produced it.
  *
  * Priority:
  *   1. The current model when it accepts images: the image stays in the call
@@ -106,18 +174,43 @@ export function resolveUtilityModels(ctx: ExtensionContext): Model<Api>[] {
  *
  * A text-only entry is never selected for an image call.
  */
-export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefined {
+export function searchVisionModel(ctx: ExtensionContext): VisionModelSearch {
+  const tried: string[] = [];
+
   // 1. Current model if vision-capable
-  if (ctx.model?.input?.includes("image")) return ctx.model;
+  const current = ctx.model;
+  if (current?.input?.includes("image")) {
+    tried.push(`current model ${modelLabel(current)}: accepts image input`);
+    return { model: current, source: "current", tried };
+  }
+  tried.push(
+    current
+      ? `current model ${modelLabel(current)}: ${rejectionReason(current, true)}`
+      : "current model: none selected",
+  );
 
   // 2. The merged role supplies an image-capable entry; a text-only entry in
   // the list is skipped rather than sent an image.
-  const role = resolveRoleModel(ctx, UTILITY_MODEL_KEY, true);
-  if (role) return role;
+  const role = resolveRoleModel(ctx, UTILITY_MODEL_KEY, true, tried);
+  if (role) return { model: role, source: "utilityModel", tried };
 
   // 3. First available vision model
   const available = ctx.modelRegistry.getAvailable();
-  return available.find((m) => m?.input?.includes("image"));
+  const imageCapable = available.filter((m) => m?.input?.includes("image"));
+  tried.push(`available models: ${available.length}, ${imageCapable.length} accept image input`);
+  const fallback = imageCapable[0];
+  if (fallback) {
+    tried.push(`using ${modelLabel(fallback)}: first available model that accepts images`);
+    return { model: fallback, source: "available", tried };
+  }
+  return { source: null, tried };
+}
+
+/**
+ * The model a vision call should use: the `model` of the walk above.
+ */
+export function resolveVisionModel(ctx: ExtensionContext): Model<Api> | undefined {
+  return searchVisionModel(ctx).model;
 }
 
 /**

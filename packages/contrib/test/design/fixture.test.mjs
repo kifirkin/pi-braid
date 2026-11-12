@@ -351,7 +351,7 @@ test("a malformed snapshot is refused, not measured", () => {
   );
 });
 
-test("registration: the extension registers both tools and honors its off switch", async () => {
+test("registration: the extension registers every tool and honors its off switch", async () => {
   const { default: designExtension } = await import(
     pathToFileURL(join(DESIGN, "index.ts")).href
   );
@@ -385,7 +385,7 @@ test("registration: the extension registers both tools and honors its off switch
     designExtension(api);
     assert.deepEqual(
       calls.map((tool) => tool.name),
-      ["design_audit", "design_board"],
+      ["design_audit", "design_board", "visual_judge"],
     );
   } finally {
     if (savedHome === undefined) delete process.env.HOME;
