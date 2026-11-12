@@ -96,6 +96,20 @@ Adding a thirteenth extension moves the counts six source claims pin to the mani
 schema's recorded line for the `braid.contrib.*` reader; `check:doc-drift` and `check:schema` demanded
 both repairs in the same commit.
 
+## Skills — a recovery table that lists classes, not one command per platform (2026-11-12)
+
+The macOS row of the VPN skill's recovery table named the client's URL links and nothing else, while the
+Windows and Linux rows named their operating system's commands. That shape - one command per platform -
+reads as complete: a reader who finds their platform's row stops looking. It cost hours, because the
+installed client carried no connect link while an OS-visible NetworkExtension profile was startable by
+name the whole time.
+
+The section now enumerates four classes of control surface (the OS profile, the client's links, the
+client's CLI, process state for diagnosis only) in an order that says why it is that order, and the stop
+condition - hand the machine to its owner - is allowed only with the four-class table filled in: the
+command run and its answer per class. The arm-state roster is labelled for what it is, evidence derived
+from installs on one machine, against a procedure that carries over to a machine nobody has seen.
+
 ## Skills — the VPN skill names the surface that actually starts a tunnel (2026-11-12)
 
 A VPN profile was disconnected for hours and the operator clicked Connect by hand, because the skill's

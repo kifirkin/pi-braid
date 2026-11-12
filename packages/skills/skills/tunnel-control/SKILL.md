@@ -31,6 +31,10 @@ through the client's own control surface, never through process or extension sur
 An arm is one (platform, client) pair. A row is usable only when its facts were derived from a real
 install and the date is in the row; an unvalidated arm is probe-only and is never toggled.
 
+The procedure below is platform-generic and carries over to a machine nobody has seen. This table is
+the opposite: it is evidence from installs on one machine, and a client it does not name is not a client
+the procedure refuses - it is one whose facts nobody has derived yet.
+
 | Platform | Client   | State                | Facts derived from                                                                                                                                      |
 | -------- | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | macOS    | v2RayTun | VALIDATED 2026-11-03 | app bundle, URL schemes, extension processes, profiles                                                                                                  |
@@ -62,33 +66,53 @@ Interpretation:
 - App alive, extension alive, status connected, probe answering means healthy. Do nothing.
 - Never declare the tunnel down while the probe answers, whatever the client says.
 
-## 2. Recover through the client's own surface
+## 2. Recover: enumerate the surface classes, then act
 
-| Platform | Control surface                                                                                                                                  |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| macOS    | `scutil --nc start "<profile>"`; fall back to the client's links (`open "<scheme>://disconnect"`, wait two seconds, `open "<scheme>://connect"`) |
-| Windows  | `rasdial "<name>" /disconnect` then `rasdial "<name>"`, or the client's own CLI                                                                  |
-| Linux    | `nmcli connection down "<name>"` then `nmcli connection up "<name>"`                                                                             |
+A tunnel can be driven through four classes of surface, and which ones exist is a property of the
+installed product, not of the platform. Enumerate the classes in this order and record the command and
+its answer for each:
 
-Verify within thirty seconds: the client reports connected and the probe returns a real status. The
-clients in this table persist their configuration and regenerate the tunnel on connect, so a
-recovery needs no re-authentication and no config edit.
+| #   | Class         | macOS                                                                         | Windows                                                    | Linux                                            |
+| --- | ------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------ |
+| 1   | OS profile    | `scutil --nc list`; `scutil --nc start "<profile>"`; `... stop "<profile>"`   | `Get-VpnConnection`; `rasdial "<name>"`; `netsh interface` | `nmcli connection up "<name>"` / `down "<name>"` |
+| 2   | Client links  | `open "<scheme>://disconnect"`, wait two seconds, `open "<scheme>://connect"` | the client's URL protocol                                  | `xdg-open "<scheme>://..."`                      |
+| 3   | Client CLI    | the app's own binary or helper, if it ships one                               | same                                                       | same                                             |
+| 4   | Process state | `pgrep` for diagnosis only - never killed as a repair                         | idem                                                       | idem                                             |
 
-On macOS the operating system is the surface of first resort, not the app: NetworkExtension
-profiles are enumerated and driven by name with `scutil --nc`, and that works for any client that
-installs one, whether or not its bundle carries a connect link.
+The order is the point. A class that is absent says nothing about the classes below it, and the class
+that exists on every macOS install is **not** the app's: NetworkExtension profiles are enumerated and
+driven by name with `scutil --nc`, for any client that installs one, whether or not its bundle carries a
+connect link.
 
 ```bash
-scutil --nc list                     # the profile's name and state, e.g. Connected / Disconnected
-scutil --nc start "<profile>"        # start it; status turns Connected within a few seconds
+scutil --nc list                     # profile names and states: Connected / Disconnected / ...
+scutil --nc start "<profile>"        # start it; the state turns Connected within seconds
+scutil --nc status "<profile>"       # confirm before probing again
 scutil --nc stop  "<profile>"        # stop it
 ```
 
-Only when no profile exists (the client tunnels inside its own process rather than through a
-NetworkExtension) look for the client's own links - and only then is a missing connect scheme a dead end.
+Verify within thirty seconds: the profile reports connected and the probe returns a real status. The
+clients in this table persist their configuration and regenerate the tunnel on connect, so a recovery
+needs no re-authentication and no config edit.
 
-If neither surface can start the tunnel, stop and hand the machine to its owner. Opening the app by
-hand is a recovery step a person takes, not one an agent invents.
+### The stop condition, and what it costs to use it
+
+Handing the machine to its owner is allowed only with the table above filled in: for each class, the
+command that was run and what it answered. Two sentences are specifically **not** an answer:
+
+- "the client exposes no control surface you can derive" - that is a statement about classes 2 and 3,
+  and says nothing about class 1;
+- "the bundle has no connect scheme" - that is evidence about one class only, and it was the shape of a
+  real failure: a profile sat disconnected for hours while a documented `scutil --nc start` was one line
+  away, because the recovery table listed one command per platform and the macOS row named only the
+  client's links.
+
+A table with one row per platform reads as complete, and a reader who finds their platform's row stops
+looking. That is why this section lists classes rather than commands: an enumeration invites the next
+question, a single command answers it.
+
+Opening the app by hand remains a step a person takes, not one an agent invents - but it is the last
+resort, after classes 1 to 3 have been tried and recorded.
 
 ## Guardrails
 
