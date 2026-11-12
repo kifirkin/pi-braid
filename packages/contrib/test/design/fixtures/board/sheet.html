@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feed, one ad — sheet</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: #0b0b10;
+      }
+      body {
+        color: #f3f1f6;
+        font:
+          16px/24px system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        padding: 16px;
+      }
+      .page {
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .sheet {
+        background: #16161e;
+        border: 1px solid #2c2c39;
+        border-radius: 16px;
+        padding: 24px;
+      }
+      .eyebrow {
+        color: #f2a93b;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+      .ad-text {
+        margin-top: 8px;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 32px;
+      }
+      .meta {
+        margin-top: 16px;
+        color: #7a7586;
+        font-size: 14px;
+      }
+      .strip {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 340px;
+        height: 160px;
+        margin-top: 16px;
+        border-radius: 8px;
+        background: #20202b;
+        color: #a8a3b4;
+        font-size: 14px;
+      }
+      .bar {
+        display: flex;
+        gap: 8px;
+        margin-top: 24px;
+      }
+      .primary {
+        flex: 1;
+        min-height: 44px;
+        border: 0;
+        border-radius: 8px;
+        background: #c62f53;
+        color: #ffffff;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .ghost {
+        flex: 1;
+        min-height: 44px;
+        border: 1px solid #6a6a80;
+        border-radius: 8px;
+        background: transparent;
+        color: #f3f1f6;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .foot {
+        color: #a8a3b4;
+        font-size: 14px;
+        padding: 0 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="sheet">
+        <p class="eyebrow">Expires in 2h 14m</p>
+        <p class="ad-text">
+          Gallery opening on Saturday. Looking for company and a second opinion
+          on the art.
+        </p>
+        <div class="strip">photo placeholder</div>
+        <p class="meta">3 km away · verified · 178 cm</p>
+        <div class="bar">
+          <button class="primary" type="button">Instant chat</button>
+          <button class="ghost" type="button">Boost</button>
+        </div>
+      </section>
+      <p class="foot">
+        Ads expire on their own, and a conversation deletes itself when it ends.
+      </p>
+    </div>
+  </body>
+</html>

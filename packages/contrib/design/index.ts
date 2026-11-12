@@ -20,17 +20,22 @@ import type {
 import { createLogger } from "../logger.js";
 import { readToggleVerdict } from "../module-toggle.js";
 import { braidDir } from "../state-paths.js";
-import { auditSnapshots } from "./audit.js";
+import {
+  DEFAULT_WIDTHS,
+  MAX_WIDTH,
+  MAX_WIDTHS,
+  MIN_WIDTH,
+  auditSnapshots,
+  normaliseWidths,
+} from "./audit.js";
 import { capturePage, findDesignFile, resolveTarget } from "./adapter.js";
+import { runDesignBoard } from "./board-run.js";
+import { BOARD_FORMAT_VERSION } from "./board.js";
 import { renderAudit, type ScreenshotRef } from "./render.js";
 import { NO_TOKENS, parseDesignTokens } from "./tokens.js";
 
 const log = createLogger("design");
 
-const DEFAULT_WIDTHS = [320, 390, 768, 1440];
-const MIN_WIDTH = 240;
-const MAX_WIDTH = 3840;
-const MAX_WIDTHS = 8;
 const MAX_TEXT_CHARS = 16000;
 
 const auditParams = Type.Object({
@@ -70,6 +75,70 @@ const auditParams = Type.Object({
 
 export type DesignAuditInput = Static<typeof auditParams>;
 
+const boardVariantParams = Type.Object({
+  name: Type.String({
+    description: "Variant name; it labels the row and the screenshot.",
+  }),
+  path_or_html: Type.String({
+    description:
+      "A URL or local file to render, or the page's own HTML. Inline HTML is " +
+      "written into the board directory, so the record carries what it measured.",
+  }),
+});
+
+const boardParams = Type.Object({
+  variants: Type.Array(boardVariantParams, {
+    description:
+      "Two or more answers to one screen. One is allowed and is not compared.",
+    minItems: 1,
+    maxItems: 12,
+  }),
+  widths: Type.Optional(
+    Type.Array(Type.Integer({ minimum: MIN_WIDTH, maximum: MAX_WIDTH }), {
+      description:
+        `Viewport widths in CSS px (default ${DEFAULT_WIDTHS.join(", ")}; ` +
+        `at most ${MAX_WIDTHS}).`,
+      minItems: 1,
+      maxItems: MAX_WIDTHS,
+    }),
+  ),
+  out_dir: Type.Optional(
+    Type.String({
+      description:
+        "Directory for board.html, board.json, the staged variants and their " +
+        "screenshots. Defaults to <braid home>/design/boards.",
+    }),
+  ),
+  title: Type.Optional(
+    Type.String({
+      description: "What the screen is, for the page heading.",
+    }),
+  ),
+  decision: Type.Optional(
+    Type.Object({
+      variant: Type.String({ description: "The variant that gets built." }),
+      reason: Type.String({
+        description:
+          "One sentence naming the numbers the choice was read from.",
+      }),
+    }),
+  ),
+  check: Type.Optional(
+    Type.Boolean({
+      description:
+        "Re-render the recorded board in out_dir and compare every number it " +
+        "carries; writes nothing.",
+    }),
+  ),
+  timeout_ms: Type.Optional(
+    Type.Number({
+      description: "Per-width load timeout in milliseconds (default 30000).",
+    }),
+  ),
+});
+
+export type DesignBoardInput = Static<typeof boardParams>;
+
 export interface DesignAuditResult {
   target: string;
   designMd: string | null;
@@ -84,20 +153,7 @@ export interface DesignAuditResult {
 }
 
 function resolveWidths(input: number[] | undefined): number[] {
-  const widths = input ?? DEFAULT_WIDTHS;
-  if (widths.length === 0)
-    throw new Error("widths must contain at least one width");
-  if (widths.length > MAX_WIDTHS) {
-    throw new Error(`at most ${MAX_WIDTHS} widths are measured per audit`);
-  }
-  for (const width of widths) {
-    if (!Number.isInteger(width) || width < MIN_WIDTH || width > MAX_WIDTH) {
-      throw new Error(
-        `width ${String(width)} is outside ${MIN_WIDTH}..${MAX_WIDTH} CSS px`,
-      );
-    }
-  }
-  return widths;
+  return normaliseWidths(input, "audit");
 }
 
 function defaultScreenshotDir(): string | null {
@@ -239,5 +295,52 @@ export default function designExtension(pi: ExtensionAPI): void {
     },
   } as ToolDefinition<any, any, any>);
 
-  log.info("[design] loaded: design_audit");
+  pi.registerTool({
+    name: "design_board",
+    label: "Design Board",
+    promptSnippet:
+      "Render variants of one screen side by side and mark the best value per metric",
+    description:
+      "Render several variants of one screen at declared widths and compose one " +
+      "self-contained HTML page that puts them side by side with the ruler's numbers " +
+      "under each, plus a comparison table that marks the best value in every decisive " +
+      "column (contrast failures, weakest ratio, tap targets under 44px, overflow, " +
+      "distinct values, palette) and leaves a verdict column for a human. Writes " +
+      "board.html and board.json; board.json carries the inputs, the measurements, the " +
+      "widths, the tool version and the decision, or states that the choice is still " +
+      "open. check=true re-renders the recorded board and fails on any number that " +
+      "moved.",
+    parameters: boardParams,
+    execute: async (
+      _toolCallId: string,
+      params: DesignBoardInput,
+    ): Promise<unknown> => {
+      try {
+        const result = await runDesignBoard(params);
+        return {
+          content: [{ type: "text" as const, text: result.text }],
+          details: {
+            page: result.pagePath,
+            record: result.manifestPath,
+            format: BOARD_FORMAT_VERSION,
+            decision: result.manifest?.decision ?? null,
+            drift: result.drift,
+            manifest: result.manifest,
+          },
+          isError: result.exitCode !== 0,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            { type: "text" as const, text: `design_board: ${message}` },
+          ],
+          details: { error: message },
+          isError: true,
+        };
+      }
+    },
+  } as ToolDefinition<any, any, any>);
+
+  log.info("[design] loaded: design_audit, design_board");
 }

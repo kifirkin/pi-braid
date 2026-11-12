@@ -59,7 +59,10 @@ function widthSection(audit: WidthAudit, screenshots: ScreenshotRef[]): string {
     "### Contrast",
     "",
     `checked ${audit.contrast.checked}, skipped ${audit.contrast.skipped}, ` +
-      `failing ${audit.contrast.failures.length}`,
+      `failing ${audit.contrast.failures.length}, smallest ratio ` +
+      (audit.contrast.smallest === null
+        ? "none measured"
+        : audit.contrast.smallest),
   );
   for (const failure of list(audit.contrast.failures, MAX_FAILURES)) {
     out.push(contrastLine(failure));

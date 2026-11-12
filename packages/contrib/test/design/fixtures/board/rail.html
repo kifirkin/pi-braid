@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feed, one ad — rail</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: #0b0b10;
+      }
+      body {
+        color: #f3f1f6;
+        font:
+          16px/24px system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        padding: 16px;
+      }
+      .shell {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        width: 100%;
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      .rail {
+        background: #16161e;
+        border: 1px solid #2c2c39;
+        border-radius: 16px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .unit {
+        min-height: 44px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: #a8a3b4;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+        padding: 12px 16px;
+      }
+      .unit[aria-current="true"] {
+        background: #20202b;
+        border-color: #2c2c39;
+        color: #f3f1f6;
+      }
+      .card {
+        width: 360px;
+        background: #16161e;
+        border: 1px solid #2c2c39;
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .strip {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 180px;
+        background: #20202b;
+        color: #a8a3b4;
+        font-size: 14px;
+      }
+      .body {
+        padding: 16px;
+      }
+      .ad-text {
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 26px;
+        color: #f3f1f6;
+      }
+      .meta {
+        margin-top: 8px;
+        color: #a8a3b4;
+        font-size: 14px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 24px;
+      }
+      .primary {
+        min-width: 44px;
+        min-height: 44px;
+        border: 0;
+        border-radius: 8px;
+        background: #c62f53;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 0 24px;
+      }
+      .ghost {
+        min-width: 44px;
+        min-height: 44px;
+        border: 1px solid #6a6a80;
+        border-radius: 8px;
+        background: transparent;
+        color: #f3f1f6;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 0 24px;
+      }
+      .foot {
+        color: #a8a3b4;
+        font-size: 14px;
+      }
+      @media (min-width: 768px) {
+        .shell {
+          flex-direction: row;
+          align-items: flex-start;
+        }
+        .rail {
+          width: 220px;
+          flex: 0 0 220px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="rail" aria-label="Feed filters">
+        <button class="unit" type="button" aria-current="true">Nearby</button>
+        <button class="unit" type="button">Expiring tonight</button>
+        <button class="unit" type="button">Verified only</button>
+      </nav>
+      <main class="panel">
+        <article class="card">
+          <div class="strip">photo placeholder</div>
+          <div class="body">
+            <p class="ad-text">
+              Gallery opening on Saturday. Looking for company and a second
+              opinion on the art.
+            </p>
+            <p class="meta">3 km · verified · 2h 14m left</p>
+            <div class="actions">
+              <button class="primary" type="button">Instant chat</button>
+              <button class="ghost" type="button">Boost</button>
+            </div>
+          </div>
+        </article>
+        <p class="foot">
+          Ads expire on their own, and a conversation deletes itself when it
+          ends.
+        </p>
+      </main>
+    </div>
+  </body>
+</html>
