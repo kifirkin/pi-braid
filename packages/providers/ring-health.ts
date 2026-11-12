@@ -34,6 +34,8 @@ import { join } from "node:path";
 import { createThrottledLogger } from "./log";
 import { homedirAgentDir } from "./state-paths";
 import { readRouteState } from "./route-state";
+import { formatRotationSection } from "./rotation-census";
+import type { RotationCensus } from "./rotation-census";
 import type {
   RouteFailbackRecord,
   RouteProbeRecord,
@@ -426,20 +428,25 @@ export function summarizeRouteHealth(
 
 /**
  * The tool's text report: the configured route order, the header, one line per
- * route, one summary line. Pure, so same facts in means same text out: the
- * extension handler stays a call and the test can pin the rendering without
- * loading pi. `freshness` is the window a recorded death is judged against; see
- * `DeathFreshness`. `order` is the configured preference order - route ids,
- * first to last - which the caller owns and this renderer only prints.
+ * route, the rotation census, one summary line. Pure, so same facts in means
+ * same text out: the extension handler stays a call and the test can pin the
+ * rendering without loading pi. `freshness` is the window a recorded death is
+ * judged against; see `DeathFreshness`. `order` is the configured preference
+ * order - route ids, first to last - which the caller owns and this renderer
+ * only prints. `census` is the rotation record, handed in as data for the same
+ * reason: the reader lives beside the census writer, and this renderer prints
+ * the section without knowing the file's schema. The summary line stays last.
  */
 export function formatRingHealth(
   routes: readonly RouteHealth[],
   freshness: DeathFreshness,
   order: readonly string[],
+  census: RotationCensus,
 ): string {
   const summaries = summarizeRouteHealth(routes, freshness);
   const lines = [formatRouteOrderLine(order), RING_HEALTH_HEADER];
   for (const summary of summaries) lines.push(formatRouteLine(summary));
+  lines.push(formatRotationSection(census));
   lines.push(formatSummaryLine(summaries));
   return lines.join("\n");
 }

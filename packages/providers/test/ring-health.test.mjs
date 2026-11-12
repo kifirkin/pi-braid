@@ -649,7 +649,7 @@ function run() {
       const [orderLine, ...lines] = raw;
       check(
         "rendering a mixed report throws nothing",
-        threw === null && lines.length === 6,
+        threw === null && lines.length === 7,
         JSON.stringify({ threw, lines }),
       );
       check(
@@ -706,8 +706,8 @@ function run() {
       );
       check(
         "the summary line counts routes, rings and keys",
-        lines[5] === "summary: routes 4, with ring state 1, keys usable 1/2",
-        lines[5],
+        lines[6] === "summary: routes 4, with ring state 1, keys usable 1/2",
+        lines[6],
       );
       check(
         "the rendered text carries no key hash and no key value",
@@ -750,12 +750,18 @@ function run() {
           !JSON.stringify(summaries).includes(key),
         JSON.stringify(summaries),
       );
-      const empty = formatRingHealth([], inForce, []);
+      const empty = formatRingHealth([], inForce, [], {
+        state: "absent",
+        savedAt: 0,
+        days: {},
+      });
       check(
-        "an empty report renders the empty order, the header and a zeroed summary",
+        "an empty report renders the empty order, the header, the zero rotation table and a zeroed summary",
         empty ===
           "route order (preference): none configured\n" +
             "ring health (read-only: no probe, no rotation, no provider request, no write)\n" +
+            "rotations, last 7 day(s): 0 total\n" +
+            "  no rotations in this window\n" +
             "summary: routes 0, with ring state 0, keys usable 0/0",
         empty,
       );

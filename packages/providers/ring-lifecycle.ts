@@ -1398,6 +1398,25 @@ export interface WalkDeathRecord {
 }
 
 /**
+ * What the walk records when it MOVES a turn off a route (bound in index.ts).
+ * The class is the one `classifyFailure` returned for this death, carried
+ * through the engage as data: a store handed this record never reads the
+ * message text again, so the census and the walk cannot disagree.
+ */
+export interface WalkRotationRecord {
+  /** The route the turn was on when it refused. */
+  from: string;
+  /** The route the engage selected. */
+  to: string;
+  /** The walk's class for that refusal. */
+  class: FailureClass;
+  /** The HTTP status the refusal named, when it named one. */
+  status: number | null;
+  /** Epoch ms of the engage. */
+  at: number;
+}
+
+/**
  * The model id a route serves for a dead turn's id: the id itself when the
  * route shares it natively, otherwise the route's own id from its models map.
  * Null when the route cannot serve the id.
@@ -1420,11 +1439,13 @@ function resolveRouteModel(
  * Probe steering and the route-death memory are DATA the caller resolves and
  * hands over: `probeStates` and `routeDeaths` are read ONCE per engage (not per
  * candidate) and map a route id to its recorded facts, and `recordRouteDeath`
- * is the store's writer, injected for the same reason. So this module never
- * reaches for a provider table or a state-file path of its own, and absent
- * these readers (or with `probeFreshnessMs` at `0` or less) the walk is
- * byte-identical to a build without steering. The order is captured at load, so
- * a settings change takes effect on reload.
+ * is the store's writer, injected for the same reason. `recordRotation` is the
+ * same seam for the census: one call per successful engage, carrying the class
+ * this walk already decided. So this module never reaches for a provider table
+ * or a state-file path of its own, and absent these readers (or with
+ * `probeFreshnessMs` at `0` or less) the walk is byte-identical to a build
+ * without steering. The order is captured at load, so a settings change takes
+ * effect on reload.
  */
 export function createRotationEngine(deps: {
   order: readonly string[];
@@ -1437,6 +1458,11 @@ export function createRotationEngine(deps: {
   routeDeaths?: () => ReadonlyMap<string, RouteDeathVerdict>;
   /** The route-death store's writer; absent ⇒ nothing is recorded. */
   recordRouteDeath?: (providerId: string, death: WalkDeathRecord) => void;
+  /**
+   * The rotation census's writer; absent ⇒ no rotation is counted. Called once
+   * per successful engage, never for an inert walk or a fail-back.
+   */
+  recordRotation?: (rotation: WalkRotationRecord) => void;
   /**
    * How long a `model-capacity` death keeps a route out of the walk for that
    * model id; defaults to `MODEL_CAPACITY_FRESHNESS_MS`. Separate from
@@ -1611,6 +1637,18 @@ export function createRotationEngine(deps: {
       // waits a full interval, so a just-died primary is not hammered by a
       // probe that can only fail.
       lastProbeAt = now();
+      // One census row per rotation, written where the walk has already decided
+      // both the class and the target. The store is handed the class rather
+      // than the message text, so this is the only place a rotation's reason is
+      // ever named. It never throws (see rotation-census.ts) and an absent
+      // writer simply records nothing.
+      deps.recordRotation?.({
+        from: plan.from,
+        to: target.routeId,
+        class: signal.class,
+        status: signal.status,
+        at: lastProbeAt,
+      });
       const mapped =
         target.providerModelId !== plan.modelId
           ? ` as ${target.providerModelId}`

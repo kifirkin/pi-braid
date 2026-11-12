@@ -61,6 +61,7 @@ import {
   summarizeRouteHealth,
 } from "./ring-health.js";
 import { readRouteState, recordDeath, recordProbe } from "./route-state.js";
+import { readRotationCensus, recordRotation } from "./rotation-census.js";
 import { registerAutoRouter, type RouteHealthSnapshot } from "./virtual-router";
 import { providerLog, setProvidersLogSink } from "./log";
 import {
@@ -454,7 +455,9 @@ export default async function (pi: ExtensionAPI) {
       "retry count, plus the route's last recorded probe state, headroom, " +
       "remaining balance and reset time, and a recorded death with whether " +
       "the freshness window still makes it act, plus the configured route " +
-      "order (preference), first to last. Counts and timestamps only - " +
+      "order (preference), first to last, plus a rotation census for the " +
+      "last 7 days: total rotations, then counts by failure class and by " +
+      "route pair. Counts and timestamps only - " +
       "never key material. Strictly read-only: no probe, no rotation, no " +
       "provider request, no write to any state file.",
     parameters: Type.Object({}),
@@ -472,7 +475,12 @@ export default async function (pi: ExtensionAPI) {
         content: [
           {
             type: "text" as const,
-            text: formatRingHealth(health, freshness, order),
+            text: formatRingHealth(
+              health,
+              freshness,
+              order,
+              readRotationCensus(),
+            ),
           },
         ],
         details: { routes: summarizeRouteHealth(health, freshness) },
@@ -751,6 +759,10 @@ export default async function (pi: ExtensionAPI) {
       return deaths;
     },
     recordRouteDeath: (providerId, death) => recordDeath(providerId, death),
+    // The census writer, bound the same way: the engine hands it the class it
+    // already decided, so no second reading of the failure text exists. The
+    // recorder never throws (a full disk costs one row, not a turn).
+    recordRotation: (rotation) => recordRotation(rotation),
   });
 
   // Health-routed virtual model (`braid/auto`)

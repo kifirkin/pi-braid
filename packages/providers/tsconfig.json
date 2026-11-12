@@ -17,6 +17,7 @@
     "key-ring.ts",
     "ring-lifecycle.ts",
     "log.ts",
+    "rotation-census.ts",
     "venice-catalog.ts",
     "failure-translation.ts"
   ],

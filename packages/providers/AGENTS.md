@@ -14,19 +14,20 @@ runtime provides pi-ai at runtime - it's not bundled here.
 
 ## Files
 
-| File                | Purpose                                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`          | Registers the configured routes + wires the key-ring and rotation handlers                                                                                                      |
-| `venice-catalog.ts` | Userland catalog seam: loads the owner-private venice model catalog + gateway URL                                                                                               |
-| `venice-direct.ts`  | The `venice-direct` route module: constants, direct key ring, model configs (rotation is the engine's job)                                                                      |
-| `probe.ts`          | Non-billable route probes: the provider-agnostic runner plus the adapter table                                                                                                  |
-| `outage-watch.ts`   | Out-of-loop connectivity watch: failure classification, circuit breaker, bounded recovery probe, stall lines                                                                    |
-| `route-state.ts`    | Cross-session route state (probe/death/fail-back/warm-model records) over a shared, CAS-guarded file                                                                            |
-| `state-paths.ts`    | Every state-file location this package writes: pi's agent directory, absolute-or-nothing (never relative to the cwd), plus the braid data root that mirrors core's `braidDir()` |
-| `ring-health.ts`    | Read-only health surface over the key-ring and route-state files: hash-only summaries, never a writer                                                                           |
-| `ring-provider.ts`  | Ring-backed api-key auth, and the re-pointing of a pi-ai provider definition onto a route's ring                                                                                |
-| `package.json`      | `@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai` devDeps, `pi-ai` peerDep                                                                                            |
-| `tsconfig.json`     | TypeScript config for type checking                                                                                                                                             |
+| File                 | Purpose                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`           | Registers the configured routes + wires the key-ring and rotation handlers                                                                                                      |
+| `venice-catalog.ts`  | Userland catalog seam: loads the owner-private venice model catalog + gateway URL                                                                                               |
+| `venice-direct.ts`   | The `venice-direct` route module: constants, direct key ring, model configs (rotation is the engine's job)                                                                      |
+| `probe.ts`           | Non-billable route probes: the provider-agnostic runner plus the adapter table                                                                                                  |
+| `outage-watch.ts`    | Out-of-loop connectivity watch: failure classification, circuit breaker, bounded recovery probe, stall lines                                                                    |
+| `route-state.ts`     | Cross-session route state (probe/death/fail-back/warm-model records) over a shared, CAS-guarded file                                                                            |
+| `rotation-census.ts` | Bounded, durable count of route rotations (day, class, route pair): the class is handed in, the write never throws, no lock                                                     |
+| `state-paths.ts`     | Every state-file location this package writes: pi's agent directory, absolute-or-nothing (never relative to the cwd), plus the braid data root that mirrors core's `braidDir()` |
+| `ring-health.ts`     | Read-only health surface over the key-ring and route-state files: hash-only summaries, never a writer                                                                           |
+| `ring-provider.ts`   | Ring-backed api-key auth, and the re-pointing of a pi-ai provider definition onto a route's ring                                                                                |
+| `package.json`       | `@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai` devDeps, `pi-ai` peerDep                                                                                            |
+| `tsconfig.json`      | TypeScript config for type checking                                                                                                                                             |
 
 ## Local contracts
 
@@ -93,7 +94,19 @@ runtime provides pi-ai at runtime - it's not bundled here.
   it; nothing in `packages/core` does, because the dependency runs from the consumer to this
   package, never the reverse. It is also not a second opinion: the rendering takes the resolved
   death window from its caller and marks a recorded death `(expired)` with the router's own
-  predicate (`deathInForce`), never with an age test of its own.
+  predicate (`deathInForce`), never with an age test of its own. The rotation section is handed in as
+  data from `rotation-census.ts` for the same reason.
+- **The rotation census counts what the walk decided, and nothing else.** `rotation-census.ts` stores
+  one row per rotation (from route, to route, class, status, time) in
+  `<pi agent dir>/.provider-rotation-census.json`, beside the other two state files. Two rules hold it
+  in place: the class is an argument from the walk's own `classifyFailure`, because a second reading
+  of the same message text is how two answers to one question start existing, and the recorder never
+  throws, because a full disk must cost one diagnostic row and never the turn that rotated. The
+  record is bounded (14 day buckets, 200 rows each, oldest dropped first) and written atomically
+  (temp + rename). It takes no lock on purpose: `route-state.ts` holds one and waits up to 2 s for
+  it, which is a stall on the LLM path, and a counter does not buy that back. Two processes rotating
+  inside one read-write window can therefore drop a row; a rotation this engine never performed, and
+  the reason a route was chosen rather than refused, are outside what the file can see.
 
 ## Settings surface
 
@@ -195,6 +208,9 @@ one out-of-loop watcher per extension load:
   `test/route-state.test.mjs` (read tolerance, hash-only identity, lock + CAS),
   and `test/ring-health.test.mjs` (the read-only health surface: read
   tolerance, entry mapping, provider discovery, path defaults, read-only),
+  and `test/rotation-census.test.mjs` (the rotation counter: exact counts,
+  class fidelity, both bounds, atomicity and never-throw, corrupt-record
+  repair, the empty host),
   and `test/outage-watch.test.mjs` (failure classification, breaker
   transitions + half-open gate, blocked-text retry vocabulary, notify claim
   floor, stall lines, config resolution - all with injected clock, probe and
