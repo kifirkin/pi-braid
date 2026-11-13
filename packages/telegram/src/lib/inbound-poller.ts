@@ -103,6 +103,93 @@ export interface IncomingReplyContext {
   excerpt?: string;
 }
 
+/**
+ * One-line cap for an origin's display name (channel title, the name a hidden
+ * sender exposes, a user's name). Same reasoning as REPLY_EXCERPT_MAX_CHARS:
+ * the name is untrusted text (a channel title is whatever its owner typed)
+ * copied into the envelope header, so it is hard-capped too.
+ */
+export const ORIGIN_NAME_MAX_CHARS = 80;
+
+/**
+ * Where a forwarded message came from, as Telegram describes it.
+ *
+ * Read from `Message.forward_origin`, the field Bot API 7.0 introduced in
+ * place of the six `forward_*` fields; that older shape is still read and
+ * marked `legacy`. Four kinds, and each carries only what Telegram actually
+ * sends: a `hidden_user` origin has a name and NO id, a `user` origin has a
+ * user id and no message id, and only `chat`/`channel` origins carry a chat id
+ * plus a message id, which is the pair a link can be built from.
+ */
+export interface IncomingForwardOrigin {
+  kind: "user" | "hidden_user" | "chat" | "channel";
+  /**
+   * Display name: the origin chat's title, the name a hidden sender chose to
+   * expose, or a user's name. Absent when Telegram sent none, never filled in.
+   */
+  name?: string;
+  /** Sender user id of a `user` origin. A USER id, never a chat id. */
+  userId?: number;
+  /** Bot API id of the origin chat, for `chat` and `channel` origins. */
+  chatId?: number;
+  /** Public username of the origin chat, when it has one. */
+  username?: string;
+  /** `author_signature` of the original post, when that post was signed. */
+  signature?: string;
+  /** Publication time AT THE ORIGIN, ISO 8601, from `origin.date`. */
+  dateIso?: string;
+  /** `message_id` of the original post inside the origin chat. */
+  messageId?: number;
+  /** t.me link, reconstructed only when the origin carries both ids. */
+  link?: string;
+  /** True when the update carried the pre-7.0 `forward_*` shape instead. */
+  legacy?: true;
+}
+
+/**
+ * Which clock a consumer holding a timestamp of this message is holding.
+ *
+ * "origin": `origin.date` was read, so the counterpart's publication time is
+ * known and arrival is the SECOND clock. "forwarded": a forward is visible
+ * but its publication date is not, so arrival is the only clock there is.
+ * "manual": nothing says forwarded, so the message is the owner's own typing
+ * and no publication clock exists to inherit (a hand-copied message must never
+ * borrow a forwarded timestamp).
+ */
+export type IncomingTimeSource = "origin" | "forwarded" | "manual";
+
+/** Result of reading the forward origin: an origin, a reason, or neither. */
+export interface ForwardOriginRead {
+  /** Present when an origin was readable. */
+  origin?: IncomingForwardOrigin;
+  /** Present when a forward was visible but unreadable: names the field that failed. */
+  originError?: string;
+}
+
+/**
+ * Everything the message envelope says about provenance besides the sender:
+ * the forward origin, the two clocks, and the edit/bot/on-behalf-of facts.
+ * Assembled once per message so no delivery path reads the update itself.
+ */
+export interface IncomingProvenance {
+  /** Arrival clock (ISO 8601) from `message.date`. Absent when Telegram sent no usable date. */
+  forwardedAt?: string;
+  /** Publication time at the origin (ISO 8601). Present only when the origin carried a date. */
+  originDate?: string;
+  /** Which clock the timestamps above are. */
+  timeSource: IncomingTimeSource;
+  /** Present when the message was forwarded. */
+  origin?: IncomingForwardOrigin;
+  /** Present when a forward was visible but unreadable. */
+  originError?: string;
+  /** `edit_date` (ISO 8601): when the owner last edited the message here. */
+  editedAt?: string;
+  /** `via_bot`: the bot the message was sent through. */
+  viaBot?: { id: number; name?: string; username?: string };
+  /** `sender_chat`: the chat the message was sent on behalf of. */
+  senderChat?: { id: number; type?: string; title?: string; username?: string };
+}
+
 export interface IncomingOwnerMessage {
   updateId: number;
   messageId: number;
@@ -114,6 +201,28 @@ export interface IncomingOwnerMessage {
   text: string;
   /** Present when the owner replied to a specific message (absent otherwise). */
   replyTo?: IncomingReplyContext;
+  /**
+   * Arrival clock (ISO 8601), from `message.date`: when the message landed in
+   * THIS chat. It is named for the fact it exists for (a forward arrives here
+   * long after it was published elsewhere), it is not the origin's clock, and
+   * it is the same instant as `receivedAt` in interchange form. Absent only
+   * when Telegram sent no usable date.
+   */
+  forwardedAt?: string;
+  /** Publication time at the origin (ISO 8601). Present only for a forward whose origin carried a date. */
+  originDate?: string;
+  /** Which clock the timestamps above are: see IncomingTimeSource. */
+  timeSource: IncomingTimeSource;
+  /** Present when Telegram says the message was forwarded. */
+  origin?: IncomingForwardOrigin;
+  /** Present when a forward was visible but unreadable: the field that failed. */
+  originError?: string;
+  /** `edit_date` (ISO 8601): when the owner last edited the message. */
+  editedAt?: string;
+  /** `via_bot`: the bot the message was sent through. */
+  viaBot?: { id: number; name?: string; username?: string };
+  /** `sender_chat`: the chat the message was sent on behalf of. */
+  senderChat?: { id: number; type?: string; title?: string; username?: string };
   /** Present for photo messages (absent for plain-text). */
   photo?: {
     fileId: string;
@@ -520,22 +629,480 @@ function classifyReplyAuthor(
 }
 
 /**
- * Flatten the replied text to ONE line and defuse it before it reaches the
+ * Flatten untrusted text to ONE line and defuse it before it reaches the
  * envelope header: control and format characters (newlines, line separators,
- * zero-width joiners) would let the quoted text forge extra header lines, and
- * a bracketed `[braid-whisper ...]` marker would let it open or close an
- * envelope inside the one it is quoted into. Then cut to the cap, with a
- * visible ellipsis.
+ * zero-width joiners) would let the text forge extra header lines, and a
+ * bracketed `[braid-whisper ...]` marker would let it open or close an
+ * envelope inside the one it is quoted into.
  */
-function oneLineExcerpt(raw: string): string | undefined {
-  const flat = raw
+function flattenOneLine(raw: string): string {
+  return raw
     .replace(/[\p{Cc}\p{Cf}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\[\s*braid-whisper([^\]]*)\]/gi, "braid-whisper$1");
+}
+
+/** Flatten the replied text, then cut to the cap with a visible ellipsis. */
+function oneLineExcerpt(raw: string): string | undefined {
+  const flat = flattenOneLine(raw);
   if (!flat) return undefined;
   if (flat.length <= REPLY_EXCERPT_MAX_CHARS) return flat;
   return flat.slice(0, REPLY_EXCERPT_MAX_CHARS - 1).trimEnd() + "…";
+}
+
+/** Flatten a display name to one capped line. No name at all stays absent. */
+function oneLineName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const flat = flattenOneLine(raw);
+  if (!flat) return undefined;
+  if (flat.length <= ORIGIN_NAME_MAX_CHARS) return flat;
+  return flat.slice(0, ORIGIN_NAME_MAX_CHARS - 1).trimEnd() + "…";
+}
+
+/** Arrays and null are not records here: the Bot API sends JSON objects. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * A field is present when it carries a value. `null` counts as absent: the Bot
+ * API omits optional fields rather than nulling them, so a null is a
+ * serializer's spelling of "absent", not a broken value.
+ */
+function fieldPresent(holder: Record<string, unknown>, key: string): boolean {
+  return holder[key] !== undefined && holder[key] !== null;
+}
+
+/** Unix seconds to ISO 8601, or undefined when the value cannot BE a date. */
+function isoFromUnixSeconds(seconds: unknown): string | undefined {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+    return undefined;
+  }
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/** A present date field: ISO when readable, otherwise the reason it is not. */
+function readOriginDate(
+  value: unknown,
+  label: string,
+): { iso?: string; error?: string } {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { error: `${label} is not a number (${typeof value})` };
+  }
+  const iso = isoFromUnixSeconds(value);
+  if (!iso) return { error: `${label} is out of range (${value})` };
+  return { iso };
+}
+
+/**
+ * A chat, message or user id. A value that is PRESENT but is not an id is a
+ * broken origin rather than an absent fact: swallowing it would silently cost
+ * the link, and a lost link is invisible while a reported one is checkable.
+ */
+function readId(
+  holder: Record<string, unknown>,
+  key: string,
+  label: string,
+): { id?: number; error?: string } {
+  if (!fieldPresent(holder, key)) return {};
+  const value = holder[key];
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value === 0
+  ) {
+    return { error: `${label} is not an id (${typeof value})` };
+  }
+  return { id: value };
+}
+
+/** A nested object field: absent is fine, present-but-not-an-object is a broken origin. */
+function readNested(
+  holder: Record<string, unknown>,
+  key: string,
+  label: string,
+): { value?: Record<string, unknown>; error?: string } {
+  if (!fieldPresent(holder, key)) return {};
+  const value = holder[key];
+  if (!isRecord(value)) return { error: `${label} is not an object` };
+  return { value };
+}
+
+/** A signature string: absent is fine, another type is a broken origin. */
+function readSignature(
+  holder: Record<string, unknown>,
+  key: string,
+  label: string,
+): { signature?: string; error?: string } {
+  if (!fieldPresent(holder, key)) return {};
+  const value = holder[key];
+  if (typeof value !== "string") return { error: `${label} is not a string` };
+  return { signature: oneLineName(value) };
+}
+
+/** Chat title, then first/last name, then username: the best name the object carries. */
+function displayName(source: Record<string, unknown>): string | undefined {
+  if (typeof source.title === "string" && source.title.trim()) {
+    return source.title;
+  }
+  const first = typeof source.first_name === "string" ? source.first_name : "";
+  const last = typeof source.last_name === "string" ? source.last_name : "";
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+  if (typeof source.username === "string" && source.username.trim()) {
+    return source.username;
+  }
+  return undefined;
+}
+
+/** A chat's public username, when it has one (a private channel has none). */
+function chatUsername(source: Record<string, unknown>): string | undefined {
+  const value = source.username;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim().replace(/^@/, "");
+  return trimmed || undefined;
+}
+
+/** Bot API channel/supergroup ids are -(10^12 + raw); a plain group id is not. */
+const CHANNEL_ID_OFFSET = 1_000_000_000_000;
+const CHANNEL_ID_MIN = -(CHANNEL_ID_OFFSET + 1);
+
+/**
+ * The t.me link for an origin, reconstructed from ids only.
+ *
+ * Two cases, stated. A public username gives `https://t.me/<username>/<id>`,
+ * the form Telegram uses for public chats. A channel-range chat id gives
+ * `https://t.me/c/<internal>/<id>`, where `<internal>` is the MTProto channel
+ * id `-botApiId - 1000000000000` (the Bot API id with its `-100` prefix
+ * stripped). That is the private message-link form, and it is why a private
+ * channel's post still has an address even though its Chat carries no
+ * username. Anything else returns NOTHING: an origin with no username and no
+ * channel id has no address, and a guessed link is worse than none because it
+ * looks checkable. A /c/ link opens only for someone already inside that chat,
+ * so even a correct link names the origin rather than making it readable.
+ */
+export function forwardOriginLink(
+  origin: Pick<IncomingForwardOrigin, "username" | "chatId" | "messageId">,
+): string | undefined {
+  const messageId = origin.messageId;
+  if (typeof messageId !== "number" || !Number.isSafeInteger(messageId)) {
+    return undefined;
+  }
+  if (messageId <= 0) return undefined;
+  if (origin.username) {
+    const username = origin.username.replace(/^@/, "");
+    if (username) {
+      return `https://t.me/${encodeURIComponent(username)}/${messageId}`;
+    }
+  }
+  const chatId = origin.chatId;
+  if (typeof chatId !== "number" || !Number.isSafeInteger(chatId)) {
+    return undefined;
+  }
+  if (chatId > CHANNEL_ID_MIN) return undefined;
+  const internal = -chatId - CHANNEL_ID_OFFSET;
+  if (!Number.isSafeInteger(internal) || internal <= 0) return undefined;
+  return `https://t.me/c/${internal}/${messageId}`;
+}
+
+/** Attach the reconstructed link, when the origin carries the ids for one. */
+function withLink(origin: IncomingForwardOrigin): ForwardOriginRead {
+  const link = forwardOriginLink(origin);
+  return { origin: link ? { ...origin, link } : origin };
+}
+
+/**
+ * Read the forward origin from the update the poller already holds.
+ *
+ * Never throws, never fetches: the same contract as extractReplyContext, one
+ * field over. A forward that cannot be read costs the ORIGIN, recorded in
+ * `originError` with the field that failed, and never the message: the seat
+ * may lose the provenance of one message but must never lose the message.
+ *
+ * Malformed is narrower than it sounds. A field Telegram OMITS stays absent
+ * (an omission is not a defect, and nothing is guessed to fill it), while a
+ * field that is PRESENT with the wrong type, or a `type` naming no known
+ * kind, makes the whole origin unreadable rather than half-invented. A
+ * half-read origin is the one failure mode worth refusing: it would present a
+ * guess with the same confidence as a fact.
+ *
+ * `forward_origin` wins whenever it is present. The legacy fields are read
+ * only when it is absent, because Telegram sends one shape or the other and a
+ * broken modern field must not be silently replaced by a shape that may
+ * disagree with it.
+ */
+export function extractForwardOrigin(message: unknown): ForwardOriginRead {
+  if (!isRecord(message)) return {};
+  if (fieldPresent(message, "forward_origin")) {
+    return readModernOrigin(message.forward_origin);
+  }
+  return readLegacyOrigin(message);
+}
+
+/** `forward_origin` (Bot API 7.0+): a MessageOrigin discriminated by `type`. */
+function readModernOrigin(raw: unknown): ForwardOriginRead {
+  if (!isRecord(raw)) return { originError: "forward_origin is not an object" };
+  const type = raw.type;
+  if (typeof type !== "string" || !type) {
+    return { originError: "forward_origin carries no type" };
+  }
+  const date = fieldPresent(raw, "date")
+    ? readOriginDate(raw.date, "forward_origin.date")
+    : {};
+  if (date.error) return { originError: date.error };
+  const signature = readSignature(
+    raw,
+    "author_signature",
+    "forward_origin.author_signature",
+  );
+  if (signature.error) return { originError: signature.error };
+
+  switch (type) {
+    case "user": {
+      const sender = readNested(
+        raw,
+        "sender_user",
+        "forward_origin.sender_user",
+      );
+      if (sender.error) return { originError: sender.error };
+      const userId = sender.value
+        ? readId(sender.value, "id", "forward_origin.sender_user.id")
+        : {};
+      if (userId.error) return { originError: userId.error };
+      return withLink({
+        kind: "user",
+        ...(userId.id !== undefined ? { userId: userId.id } : {}),
+        ...(sender.value ? nameField(displayName(sender.value)) : {}),
+        ...(date.iso ? { dateIso: date.iso } : {}),
+      });
+    }
+    case "hidden_user": {
+      if (
+        fieldPresent(raw, "sender_user_name") &&
+        typeof raw.sender_user_name !== "string"
+      ) {
+        return {
+          originError: "forward_origin.sender_user_name is not a string",
+        };
+      }
+      // The one kind with NO id anywhere: Telegram withholds the sender, so
+      // the origin carries a name and nothing a link could be built from.
+      return withLink({
+        kind: "hidden_user",
+        ...nameField(
+          typeof raw.sender_user_name === "string"
+            ? raw.sender_user_name
+            : undefined,
+        ),
+        ...(date.iso ? { dateIso: date.iso } : {}),
+      });
+    }
+    case "chat": {
+      const sender = readNested(
+        raw,
+        "sender_chat",
+        "forward_origin.sender_chat",
+      );
+      if (sender.error) return { originError: sender.error };
+      const chatId = sender.value
+        ? readId(sender.value, "id", "forward_origin.sender_chat.id")
+        : {};
+      if (chatId.error) return { originError: chatId.error };
+      return withLink({
+        kind: "chat",
+        ...(chatId.id !== undefined ? { chatId: chatId.id } : {}),
+        ...(sender.value ? nameField(displayName(sender.value)) : {}),
+        ...(sender.value ? usernameField(chatUsername(sender.value)) : {}),
+        ...(signature.signature ? { signature: signature.signature } : {}),
+        ...(date.iso ? { dateIso: date.iso } : {}),
+      });
+    }
+    case "channel": {
+      const chat = readNested(raw, "chat", "forward_origin.chat");
+      if (chat.error) return { originError: chat.error };
+      const chatId = chat.value
+        ? readId(chat.value, "id", "forward_origin.chat.id")
+        : {};
+      if (chatId.error) return { originError: chatId.error };
+      const messageId = readId(raw, "message_id", "forward_origin.message_id");
+      if (messageId.error) return { originError: messageId.error };
+      return withLink({
+        kind: "channel",
+        ...(chatId.id !== undefined ? { chatId: chatId.id } : {}),
+        ...(chat.value ? nameField(displayName(chat.value)) : {}),
+        ...(chat.value ? usernameField(chatUsername(chat.value)) : {}),
+        ...(signature.signature ? { signature: signature.signature } : {}),
+        ...(date.iso ? { dateIso: date.iso } : {}),
+        ...(messageId.id !== undefined ? { messageId: messageId.id } : {}),
+      });
+    }
+    default:
+      return {
+        originError: `forward_origin.type "${oneLineName(type) ?? type}" is not a known origin kind`,
+      };
+  }
+}
+
+/** Spread-ready name field: absent when there is no name, never an empty string. */
+function nameField(name: string | undefined): { name?: string } {
+  const clean = oneLineName(name);
+  return clean ? { name: clean } : {};
+}
+
+/** Spread-ready username field: absent when the chat has none. */
+function usernameField(username: string | undefined): { username?: string } {
+  return username ? { username } : {};
+}
+
+/** Spread-ready title field for a chat that sent on its own behalf. */
+function titleField(source: Record<string, unknown> | undefined): {
+  title?: string;
+} {
+  const title = oneLineName(source ? displayName(source) : undefined);
+  return title ? { title } : {};
+}
+
+/**
+ * The pre-7.0 shape, still sent by updates that outlived the field's removal:
+ * `forward_from` (a user), `forward_from_chat` + `forward_from_message_id`
+ * (chat or channel), `forward_sender_name` (the sender hid their account),
+ * with `forward_date` and `forward_signature` alongside. Everything read here
+ * is marked `legacy`, so a consumer can tell a reconstruction from a field
+ * Telegram still documents.
+ */
+function readLegacyOrigin(message: Record<string, unknown>): ForwardOriginRead {
+  const user = readNested(message, "forward_from", "forward_from");
+  if (user.error) return { originError: user.error };
+  const chat = readNested(message, "forward_from_chat", "forward_from_chat");
+  if (chat.error) return { originError: chat.error };
+  const date = fieldPresent(message, "forward_date")
+    ? readOriginDate(message.forward_date, "forward_date")
+    : {};
+  if (date.error) return { originError: date.error };
+  const messageId = readId(
+    message,
+    "forward_from_message_id",
+    "forward_from_message_id",
+  );
+  if (messageId.error) return { originError: messageId.error };
+  const signature = readSignature(
+    message,
+    "forward_signature",
+    "forward_signature",
+  );
+  if (signature.error) return { originError: signature.error };
+
+  if (user.value) {
+    const userId = readId(user.value, "id", "forward_from.id");
+    if (userId.error) return { originError: userId.error };
+    return withLink({
+      kind: "user",
+      legacy: true,
+      ...(userId.id !== undefined ? { userId: userId.id } : {}),
+      ...nameField(displayName(user.value)),
+      ...(date.iso ? { dateIso: date.iso } : {}),
+    });
+  }
+
+  if (chat.value) {
+    const chatId = readId(chat.value, "id", "forward_from_chat.id");
+    if (chatId.error) return { originError: chatId.error };
+    const kind = chat.value.type === "channel" ? "channel" : "chat";
+    return withLink({
+      kind,
+      legacy: true,
+      ...(chatId.id !== undefined ? { chatId: chatId.id } : {}),
+      ...nameField(displayName(chat.value)),
+      ...usernameField(chatUsername(chat.value)),
+      ...(signature.signature ? { signature: signature.signature } : {}),
+      ...(date.iso ? { dateIso: date.iso } : {}),
+      ...(messageId.id !== undefined ? { messageId: messageId.id } : {}),
+    });
+  }
+
+  if (fieldPresent(message, "forward_sender_name")) {
+    if (typeof message.forward_sender_name !== "string") {
+      return { originError: "forward_sender_name is not a string" };
+    }
+    return withLink({
+      kind: "hidden_user",
+      legacy: true,
+      ...nameField(message.forward_sender_name),
+      ...(date.iso ? { dateIso: date.iso } : {}),
+    });
+  }
+
+  return {};
+}
+
+/**
+ * Which clock a consumer holding a timestamp of this message is holding.
+ * See IncomingTimeSource for why the three cases are distinct.
+ */
+export function originTimeSource(read: ForwardOriginRead): IncomingTimeSource {
+  if (read.origin?.dateIso) return "origin";
+  if (read.origin || read.originError) return "forwarded";
+  return "manual";
+}
+
+/**
+ * Read every provenance fact the message carries, once, for every delivery
+ * path: the forward origin, the arrival clock, the edit time, the bot it came
+ * through and the chat it was sent on behalf of. Never throws.
+ */
+export function readMessageProvenance(message: unknown): IncomingProvenance {
+  const raw = isRecord(message) ? message : {};
+  const forward = extractForwardOrigin(raw);
+  const editedAt = fieldPresent(raw, "edit_date")
+    ? readOriginDate(raw.edit_date, "edit_date")
+    : {};
+  const viaBotRead = readNested(raw, "via_bot", "via_bot");
+  const senderChatRead = readNested(raw, "sender_chat", "sender_chat");
+  const viaBotId = viaBotRead.value
+    ? readId(viaBotRead.value, "id", "via_bot.id")
+    : {};
+  const senderChatId = senderChatRead.value
+    ? readId(senderChatRead.value, "id", "sender_chat.id")
+    : {};
+  const forwardedAt = isoFromUnixSeconds(raw.date);
+  return {
+    ...(forwardedAt ? { forwardedAt } : {}),
+    ...(forward.origin?.dateIso ? { originDate: forward.origin.dateIso } : {}),
+    timeSource: originTimeSource(forward),
+    ...(forward.origin ? { origin: forward.origin } : {}),
+    ...(forward.originError ? { originError: forward.originError } : {}),
+    ...(editedAt.iso ? { editedAt: editedAt.iso } : {}),
+    ...(viaBotId.id !== undefined
+      ? {
+          viaBot: {
+            id: viaBotId.id,
+            ...(viaBotRead.value
+              ? nameField(displayName(viaBotRead.value))
+              : {}),
+            ...(viaBotRead.value
+              ? usernameField(chatUsername(viaBotRead.value))
+              : {}),
+          },
+        }
+      : {}),
+    ...(senderChatId.id !== undefined
+      ? {
+          senderChat: {
+            id: senderChatId.id,
+            ...(senderChatRead.value &&
+            typeof senderChatRead.value.type === "string"
+              ? { type: senderChatRead.value.type }
+              : {}),
+            ...titleField(senderChatRead.value),
+            ...(senderChatRead.value
+              ? usernameField(chatUsername(senderChatRead.value))
+              : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -563,10 +1130,12 @@ export async function extractIncomingMessage(
   media: IncomingMediaContext = {},
 ): Promise<IncomingOwnerMessage> {
   const message = update.message!;
-  // Read the reference ONCE and let every variant below inherit it through
-  // `base`: the plain-text, photo, voice, document, and text+document returns
-  // all spread `base`, so no delivery path can lose it by omission.
+  // Read the reference and the provenance ONCE and let every variant below
+  // inherit both through `base`: the plain-text, photo, voice, document, and
+  // text+document returns all spread `base`, so no delivery path can lose
+  // either by omission, and no media formatter has to know what a forward is.
   const replyTo = extractReplyContext(message, media.botId);
+  const provenance = readMessageProvenance(message);
   const base = {
     updateId: update.update_id,
     messageId: message.message_id,
@@ -576,6 +1145,7 @@ export async function extractIncomingMessage(
     chatId: message.chat.id,
     chatType: message.chat.type,
     receivedAt: message.date * 1000,
+    ...provenance,
     ...(replyTo ? { replyTo } : {}),
   };
   const text = typeof message.text === "string" ? message.text.trim() : "";

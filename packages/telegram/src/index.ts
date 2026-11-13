@@ -76,6 +76,7 @@ import {
 } from "./lib/telegram-client.js";
 import {
   createInboundPoller,
+  type IncomingForwardOrigin,
   type IncomingOwnerMessage,
   type IncomingReplyContext,
   type InboundPoller,
@@ -414,6 +415,63 @@ export function formatReplyLine(reply?: IncomingReplyContext): string {
   return `\nreplying to ${target} ${reply.messageId}${quoted}`;
 }
 
+/** How an origin's kind reads in the envelope. */
+function originKindLabel(origin: IncomingForwardOrigin): string {
+  switch (origin.kind) {
+    case "user":
+      return "user";
+    case "hidden_user":
+      return "hidden user";
+    case "chat":
+      return "chat";
+    case "channel":
+      return "channel";
+  }
+}
+
+/**
+ * The forward line, rendered into the envelope header so the seat can tell a
+ * forwarded document from one the owner typed. It renders NOTHING for a
+ * message that was not forwarded: the absence of this line is the evidence
+ * that the owner typed the message himself.
+ *
+ * It prints only what Telegram sent: the kind, the name when there is one, the
+ * signature when the post was signed, the publication time when the origin
+ * carried one, and the link only when the origin carried the ids for one. A
+ * forward that could not be read still gets a line naming the broken field,
+ * because silence there would read as "the owner typed this".
+ */
+export function formatOriginLine(message: IncomingOwnerMessage): string {
+  if (message.originError) {
+    return `\nforwarded: origin unreadable (${message.originError})`;
+  }
+  const origin = message.origin;
+  if (!origin) return "";
+  const legacy = origin.legacy ? " (legacy shape)" : "";
+  const name = origin.name ? ` "${origin.name}"` : "";
+  const hidden = origin.kind === "hidden_user" ? " (no id available)" : "";
+  const signature = origin.signature ? ` (signed "${origin.signature}")` : "";
+  const published = origin.dateIso ? ` published ${origin.dateIso}` : "";
+  const link = origin.link ? ` · ${origin.link}` : "";
+  return `\nforwarded${legacy} from ${originKindLabel(origin)}${name}${hidden}${signature}${published}${link}`;
+}
+
+/**
+ * The message id line: the reference the seat needs to point at this message
+ * later ("that one" in a reply). Rendered only when the id is a real one, so
+ * a malformed fixture cannot print `msg NaN` as if it were a fact.
+ */
+export function formatMessageIdLine(messageId?: number): string {
+  if (
+    typeof messageId !== "number" ||
+    !Number.isSafeInteger(messageId) ||
+    messageId <= 0
+  ) {
+    return "";
+  }
+  return `\nmsg ${messageId}`;
+}
+
 export function formatInboundMessage(message: IncomingOwnerMessage): string {
   const sender = message.username
     ? `@${message.username}`
@@ -427,7 +485,7 @@ export function formatInboundMessage(message: IncomingOwnerMessage): string {
     : "";
   // The opening tag line carries nothing after `]`: the provenance line
   // starts on its own line so the envelope header is readable at a glance.
-  const header = `[braid-whisper - telegram${sentClock}]\nfrom ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatReplyLine(message.replyTo)}`;
+  const header = `[braid-whisper - telegram${sentClock}]\nfrom ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatOriginLine(message)}${formatReplyLine(message.replyTo)}${formatMessageIdLine(message.messageId)}`;
   return `${header}\n\n${message.text.trim()}\n[braid-whisper-end]`;
 }
 
@@ -450,7 +508,7 @@ export function formatInboundBatch(messages: IncomingOwnerMessage[]): string {
     const sentClock = Number.isFinite(message.receivedAt)
       ? ` @ ${formatWhisperClock(message.receivedAt)}`
       : "";
-    const partHeader = `[${index + 1}/${messages.length}${sentClock}] from ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatReplyLine(message.replyTo)}`;
+    const partHeader = `[${index + 1}/${messages.length}${sentClock}] from ${sender}${name} in chat ${message.chatId}/${message.chatType}${formatOriginLine(message)}${formatReplyLine(message.replyTo)}${formatMessageIdLine(message.messageId)}`;
     return `${partHeader}\n\n${message.text.trim()}`;
   });
   return `${header}\n\n${parts.join("\n\n")}\n[braid-whisper-end]`;

@@ -567,6 +567,9 @@ export async function handleDecisionCallbackQuery(
     chatId: message.chat.id,
     chatType: message.chat.type ?? "private",
     text: formatDecisionAnswerText(parsed.token, parsed.value, label),
+    // A tap is the owner acting now: nothing was forwarded, so the delivery
+    // says "manual" and inherits no publication clock from anywhere.
+    timeSource: "manual",
     receivedAt:
       typeof message.date === "number" ? message.date * 1000 : Date.now(),
   };

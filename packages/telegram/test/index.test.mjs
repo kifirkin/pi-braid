@@ -202,7 +202,7 @@ test("formatInboundMessage: braid-whisper envelope with sender provenance, send-
   // Full braid-whisper envelope: prefix + body + [braid-whisper-end]
   assert.ok(
     out.startsWith(
-      "[braid-whisper - telegram @ 17:05 MSK]\nfrom @kifir (Owner) in chat 999888777/private\n\n",
+      "[braid-whisper - telegram @ 17:05 MSK]\nfrom @kifir (Owner) in chat 999888777/private\nmsg 2\n\n",
     ),
     `header must carry the send-time clock: ${out.split("\n")[0]}`,
   );
@@ -222,7 +222,7 @@ test("formatInboundMessage: falls back to id when no username, no firstName nois
   });
   assert.ok(
     out.startsWith(
-      "[braid-whisper - telegram @ 17:05 MSK]\nfrom id 555 in chat 1/private\n\n",
+      "[braid-whisper - telegram @ 17:05 MSK]\nfrom id 555 in chat 1/private\nmsg 2\n\n",
     ),
   );
   assert.ok(out.endsWith("\n[braid-whisper-end]"));
@@ -240,7 +240,7 @@ test("formatInboundMessage: non-finite receivedAt omits the send-time clock (hea
   });
   assert.ok(
     out.startsWith(
-      "[braid-whisper - telegram]\nfrom id 555 in chat 1/private\n\n",
+      "[braid-whisper - telegram]\nfrom id 555 in chat 1/private\nmsg 2\n\n",
     ),
   );
   assert.ok(out.endsWith("\n[braid-whisper-end]"));

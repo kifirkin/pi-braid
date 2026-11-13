@@ -384,6 +384,7 @@ test("envelope: a reply to our message is visible next to the sender line", () =
     "[braid-whisper - telegram @ 17:05 MSK]\n" +
       "from @kifir (Owner) in chat 999888777/private\n" +
       'replying to your message 4242 — "deploy finished, 2 tests failed"\n' +
+      "msg 2\n" +
       "\n" +
       "yes, that one\n" +
       "[braid-whisper-end]",
@@ -415,12 +416,15 @@ test("envelope: unknown sender and absent excerpt still name the message", () =>
   assert.equal(out.includes("—"), false, "no dangling quote separator");
 });
 
-test("envelope: no reply context renders the pre-existing envelope byte for byte", () => {
+test("envelope: no reply context renders no reply line (header, message id, body)", () => {
+  // The message-id line is part of every envelope by design (the seat needs a
+  // name to point at later); this pins that an ABSENT reply adds nothing else.
   const out = formatInboundMessage(ownerMessage());
   assert.equal(
     out,
     "[braid-whisper - telegram @ 17:05 MSK]\n" +
       "from @kifir (Owner) in chat 999888777/private\n" +
+      "msg 2\n" +
       "\n" +
       "yes, that one\n" +
       "[braid-whisper-end]",
