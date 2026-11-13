@@ -308,10 +308,100 @@ export interface AdherenceEscalationState {
   total: number;
   /** Violation records observed in-process this session, by event `rule`. */
   violations: Record<string, number>;
+  /**
+   * Escalations recorded but NOT yet delivered: the owner gets one digest per
+   * window, so a crossing waits here instead of becoming its own message.
+   * A rule's rung is only spent when its entry is committed with a delivered
+   * digest (`planEscalation`/`markEscalated` stay the ladder).
+   */
+  pending?: PendingEscalation[];
+  /** Clock of the last digest the owner channel accepted. */
+  lastDigestAt?: number;
 }
+
+/** One escalation waiting to be folded into the next digest. */
+export interface PendingEscalation {
+  ruleKey: string;
+  /** Rung index the crossing advances to (1-based; the ladder stays pure). */
+  rung: number;
+  /** The milestone that was crossed (a value from the ladder). */
+  milestone: number;
+  source: string;
+  deliveries: number;
+  repeats: number;
+  sessionId: string;
+  at: number;
+}
+
+/** How often the owner may receive an adherence digest. */
+export const ADHERENCE_DIGEST_WINDOW_MS = 60 * 60 * 1000;
 
 export function createEscalationState(): AdherenceEscalationState {
   return { rules: {}, total: 0, violations: {} };
+}
+
+/**
+ * Buffer one crossing. Idempotent per (rule, milestone): a pass that cannot
+ * deliver re-plans the same crossing on the next turn, and the second plan
+ * refreshes the counters instead of queueing a duplicate.
+ */
+export function recordEscalation(state: AdherenceEscalationState, entry: PendingEscalation): void {
+  const pending = state.pending ?? (state.pending = []);
+  const existing = pending.find(
+    (p) => p.ruleKey === entry.ruleKey && p.milestone === entry.milestone,
+  );
+  if (existing) Object.assign(existing, entry);
+  else pending.push(entry);
+}
+
+export type DigestPlanReason = "empty" | "window-closed" | "window-open";
+
+export interface DigestPlan {
+  send: boolean;
+  reason: DigestPlanReason;
+  /** Escalations the digest would report (the last one is its subject). */
+  pending: PendingEscalation[];
+  /** Crossings folded into this digest beyond its subject line. */
+  suppressed: number;
+}
+
+/**
+ * Decide whether the buffered crossings may go out now. One message per
+ * window: the first crossing after a quiet hour reports, everything inside the
+ * hour waits and is counted. Pure — the caller commits only after delivery.
+ */
+export function planDigest(
+  state: AdherenceEscalationState,
+  nowMs: number,
+  opts: { windowMs?: number } = {},
+): DigestPlan {
+  const pending = state.pending ?? [];
+  const windowMs = opts.windowMs ?? ADHERENCE_DIGEST_WINDOW_MS;
+  if (pending.length === 0) {
+    return { send: false, reason: "empty", pending: [], suppressed: 0 };
+  }
+  const last = state.lastDigestAt;
+  if (last !== undefined && nowMs - last < windowMs) {
+    return {
+      send: false,
+      reason: "window-closed",
+      pending: [...pending],
+      suppressed: pending.length - 1,
+    };
+  }
+  return {
+    send: true,
+    reason: "window-open",
+    pending: [...pending],
+    suppressed: pending.length - 1,
+  };
+}
+
+/** Spend the rungs a delivered digest reported and open a fresh window. */
+export function commitDigest(state: AdherenceEscalationState, nowMs: number): void {
+  for (const entry of state.pending ?? []) markEscalated(state, entry.ruleKey);
+  state.pending = [];
+  state.lastDigestAt = nowMs;
 }
 
 export type EscalationPlanReason =

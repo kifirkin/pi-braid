@@ -402,6 +402,12 @@ export const CAP_CASES = [
     },
   },
   {
+    name: "F8 plain: a 297-char raw body is refused before the wire",
+    params: { text: "x".repeat(297) },
+    deps: {},
+    expect: { error: true },
+  },
+  {
     name: "R2 rich pair wrapping a long body (4096-cap tag-aware chunks)",
     params: {
       text: "**" + "y".repeat(9000) + "**",
@@ -451,11 +457,15 @@ export const CAP_CASES = [
   },
   {
     name: "F8 strike 297 authored → 302 rendered under sendMaxChars 300",
-    params: { text: "~" + "x".repeat(295) + "~" },
+    // A 297-char body cannot ship as raw text (the outbound gate refuses
+    // anything over the tweet-length cap without a mode); under an explicit
+    // mode the mechanism under test — the rendered cap refusing the
+    // conversion — still holds.
+    params: { text: "~" + "x".repeat(295) + "~", parse_mode: "Markdown" },
     deps: { sendMaxChars: 300 },
     expect: {
       sends: 1,
-      parseMode: undefined,
+      parseMode: "Markdown",
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,
@@ -463,11 +473,15 @@ export const CAP_CASES = [
   },
   {
     name: "F8 spoiler 297 authored → 315 rendered under sendMaxChars 300",
-    params: { text: "||" + "x".repeat(293) + "||" },
+    // A 297-char body cannot ship as raw text (the outbound gate refuses
+    // anything over the tweet-length cap without a mode); under an explicit
+    // mode the mechanism under test — the rendered cap refusing the
+    // conversion — still holds.
+    params: { text: "||" + "x".repeat(293) + "||", parse_mode: "Markdown" },
     deps: { sendMaxChars: 300 },
     expect: {
       sends: 1,
-      parseMode: undefined,
+      parseMode: "Markdown",
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,
@@ -475,11 +489,15 @@ export const CAP_CASES = [
   },
   {
     name: "F8 underline 297 authored → 302 rendered under sendMaxChars 300",
-    params: { text: "__" + "x".repeat(295) + "__" },
+    // A 297-char body cannot ship as raw text (the outbound gate refuses
+    // anything over the tweet-length cap without a mode); under an explicit
+    // mode the mechanism under test — the rendered cap refusing the
+    // conversion — still holds.
+    params: { text: "__" + "x".repeat(295) + "__", parse_mode: "Markdown" },
     deps: { sendMaxChars: 300 },
     expect: {
       sends: 1,
-      parseMode: undefined,
+      parseMode: "Markdown",
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,

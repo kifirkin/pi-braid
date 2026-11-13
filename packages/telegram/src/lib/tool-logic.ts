@@ -27,13 +27,12 @@ import {
   prepareDecisionOptions,
   type DecisionOptionRows,
 } from "./decision-buttons.js";
-import {
-  sendMessageChunks,
-  resolveDeliveryFormat,
-  TELEGRAM_MAX_TEXT_LENGTH,
-  type ConversionCounts,
-} from "./format.js";
+import { type ConversionCounts } from "./format.js";
 import { markAgentDeliveredMessage } from "./notify/agent-delivery.js";
+import {
+  createOutboundSender,
+  type OutboundSender,
+} from "./notify/outbound.js";
 import {
   DEFAULT_SEND_MAX_CHARS,
   resolveSendMaxChars,
@@ -115,6 +114,13 @@ export interface TelegramSendOutcome {
    * were sent): a tap returns as `[decision] <token> → <label> (<value>)`.
    */
   decisionToken?: string;
+  /**
+   * Set when the outbound gate REFUSED the body before any network call: the
+   * rule that refused it, and where in the body (the cap offset, or the
+   * offending tag's offset). `error` carries the same sentence for a human.
+   */
+  rule?: string;
+  offset?: number;
 }
 
 /** Optional TTS hook. When absent, voice delivery is refused with a clear error. */
@@ -207,6 +213,37 @@ export function overLimitError(textLen: number, limit: number): string {
     `Pick one: rich:true (long formatted report, split-to-fit at Telegram's 4096-cap), ` +
     `shorter text, or strategy:"truncate" (explicit hard truncation) / strategy:"error" (this error).`
   );
+}
+
+/**
+ * The outbound gate for this send. Built per call: it is stateless beyond the
+ * injected client, and the owner chat is resolved by the caller.
+ */
+function gateFor(deps: TelegramSendDeps): OutboundSender {
+  return createOutboundSender({
+    client: deps.client,
+    token: deps.token,
+    chatId: deps.chatId,
+  });
+}
+
+/** Turn a gate refusal into the tool's outcome (undefined when not a refusal). */
+function refusalOutcome(
+  result: { refusal?: { rule: string; offset?: number; error: string } },
+  extra: { truncated: boolean; charCount: number },
+): TelegramSendOutcome | undefined {
+  if (!result.refusal) return undefined;
+  return {
+    ok: false,
+    error: result.refusal.error,
+    truncated: extra.truncated,
+    charCount: extra.charCount,
+    channel: "text",
+    rule: result.refusal.rule,
+    ...(result.refusal.offset !== undefined
+      ? { offset: result.refusal.offset }
+      : {}),
+  };
 }
 
 /**
@@ -440,12 +477,11 @@ async function runTelegramSendInner(
 
   // rich path: no cap enforcement — split-to-fit + optional parse_mode
   if (params.rich === true) {
-    const fmt = resolveDeliveryFormat(parseMode, validated.text);
-    const result = await sendMessageChunks(deps.client, {
-      token: deps.token,
-      chatId: deps.chatId,
-      text: fmt.text,
-      ...(fmt.parseMode ? { parseMode: fmt.parseMode } : {}),
+    const result = await gateFor(deps).send({
+      text: validated.text,
+      ...(parseMode ? { parseMode } : {}),
+      rich: true,
+      source: "tool",
       // Buttons ride the LAST chunk: the end of the report is where the
       // reader answers, and an early chunk would leave a stale keyboard
       // behind it.
@@ -463,23 +499,28 @@ async function runTelegramSendInner(
         channel: "text",
         chunks: result.total,
         ...(decision ? { decisionToken: decision.token } : {}),
-        ...(fmt.converted ? { converted: fmt.converted } : {}),
-        ...(fmt.downgraded
+        ...(result.converted ? { converted: result.converted } : {}),
+        ...(result.downgraded
           ? {
               warn: "parse_mode Markdown dropped — text has unbalanced markdown delimiters",
             }
           : {}),
       };
     }
-    return {
-      ok: false,
-      error: `telegram_send failed: ${result.error ?? "unknown error"}`,
-      truncated: false,
-      charCount: validated.text.length,
-      channel: "text",
-      chunks: result.total,
-      ...(decision ? { decisionToken: decision.token } : {}),
-    };
+    return (
+      refusalOutcome(result, {
+        truncated: false,
+        charCount: validated.text.length,
+      }) ?? {
+        ok: false,
+        error: `telegram_send failed: ${result.error ?? "unknown error"}`,
+        truncated: false,
+        charCount: validated.text.length,
+        channel: "text",
+        chunks: result.total,
+        ...(decision ? { decisionToken: decision.token } : {}),
+      }
+    );
   }
 
   // default (plain) path — truncation contract
@@ -511,65 +552,55 @@ async function runTelegramSendInner(
     };
   }
   const { text, truncated } = resolved;
-  // The conversion may grow the body (tags, escaped characters). Cap it at the
-  // effective limit: when the rendered result would cross the cap the
-  // conversion is refused and the text ships as authored (it was within the
-  // cap before conversion), so a converted body never bypasses a configured
-  // sendMaxChars.
-  const fmt = resolveDeliveryFormat(parseMode, text, false, effectiveLimit);
-  // A convertible body sits under the cap as authored, but its HTML rendering
-  // (tags + escaped reserved characters) can cross Telegram's per-message cap
-  // on marker-dense text. Split-to-fit then, mirroring the rich path: the
-  // conversion must never turn a deliverable send into an API error.
-  if (fmt.converted && fmt.text.length > TELEGRAM_MAX_TEXT_LENGTH) {
-    const chunked = await sendMessageChunks(deps.client, {
-      token: deps.token,
-      chatId: deps.chatId,
-      text: fmt.text,
-      ...(fmt.parseMode ? { parseMode: fmt.parseMode } : {}),
-      ...(decision ? { replyMarkup: decision.keyboard } : {}),
-    });
-    if (chunked.ok) {
-      markAgentDeliveredMessage();
-      const outcome: TelegramSendOutcome = {
-        ok: true,
-        messageId: chunked.messageIds[0],
-        truncated,
-        charCount: text.length,
-        channel: "text",
-        chunks: chunked.total,
-        converted: fmt.converted,
-        ...(decision ? { decisionToken: decision.token } : {}),
-      };
-      return outcome;
-    }
+  // The GATE decides the wire, once: format resolution, HTML validation, and
+  // the plain-length rule (a body over OUTBOUND_PLAIN_MAX_CHARS with neither
+  // parse_mode nor rich is refused here — nothing is sent, and the error names
+  // the rule, the length and the cap). A refusal is an outcome, never a throw.
+  const result = await gateFor(deps).send({
+    text,
+    ...(parseMode ? { parseMode } : {}),
+    rich: false,
+    source: "tool",
+    // A conversion must never push the body past the configured cap: over it,
+    // the conversion is refused and the authored text ships (see
+    // resolveDeliveryFormat's renderedCap).
+    renderedCap: effectiveLimit,
+    ...(decision ? { replyMarkup: decision.keyboard } : {}),
+  });
+  const refused = refusalOutcome(result, { truncated, charCount: text.length });
+  if (refused) return refused;
+  if (!result.ok) {
     return {
       ok: false,
-      error: `telegram_send failed: ${chunked.error ?? "unknown error"}`,
+      error: `telegram_send failed: ${result.error ?? "unknown error"}`,
       truncated,
       charCount: text.length,
       channel: "text",
-      chunks: chunked.total,
+      chunks: result.total,
       ...(decision ? { decisionToken: decision.token } : {}),
     };
   }
-  const result: TelegramSendResult = await deps.client.sendMessage(
-    deps.token,
-    deps.chatId,
-    fmt.text,
-    {
-      ...(fmt.parseMode ? { parseMode: fmt.parseMode } : {}),
-      ...(decision ? { replyMarkup: decision.keyboard } : {}),
-    },
-  );
-  const outcome = resultToOutcome(result, {
+  markAgentDeliveredMessage();
+  const sent: TelegramSendOutcome = {
+    ok: true,
+    ...(result.messageIds[0] !== undefined
+      ? { messageId: result.messageIds[0] }
+      : {}),
     truncated,
+    ...(truncated
+      ? {
+          warn: 'message truncated to the explicit limit (strategy: "truncate")',
+        }
+      : {}),
     charCount: text.length,
     channel: "text",
-  });
-  if (fmt.converted) outcome.converted = fmt.converted;
-  if (decision) outcome.decisionToken = decision.token;
-  return outcome;
+    // One message is the plain path's normal shape; the count only appears
+    // when the gate had to split (a converted body past Telegram's cap).
+    ...(result.total > 1 ? { chunks: result.total } : {}),
+    ...(result.converted ? { converted: result.converted } : {}),
+    ...(decision ? { decisionToken: decision.token } : {}),
+  };
+  return sent;
 }
 
 function resultToOutcome(

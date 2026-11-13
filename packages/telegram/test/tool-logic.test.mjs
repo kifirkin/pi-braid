@@ -11,6 +11,7 @@ import {
   runTelegramSend,
 } from "../dist/lib/tool-logic.js";
 import { DEFAULT_SEND_MAX_CHARS } from "../dist/lib/telegram-settings.js";
+import { OUTBOUND_PLAIN_MAX_CHARS } from "../dist/lib/notify/outbound.js";
 import {
   clearAgentDeliveredMessage,
   wasAgentDeliveredMessage,
@@ -97,10 +98,12 @@ test("runTelegramSend: sendMaxChars:300 — a 250-char body sends verbatim", asy
 
 test("runTelegramSend: an explicit limit overrides the settings cap", async () => {
   const { client, calls } = fakeClient();
-  const body = "z".repeat(500);
+  // Over the settings cap but under the explicit limit (and under the plain
+  // tweet-length cap, which is what governs a body shipped as raw text).
+  const body = "z".repeat(250);
   const outcome = await runTelegramSend(
     { text: body, limit: 1000 },
-    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, sendMaxChars: 300 },
+    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, sendMaxChars: 200 },
   );
   assert.equal(outcome.ok, true);
   assert.equal(outcome.truncated, false);
@@ -254,10 +257,13 @@ test("runTelegramSend: over-limit without explicit choice → ERROR, nothing sen
 
 test("runTelegramSend: explicit strategy:'truncate' → hard-truncated to the limit and sent", async () => {
   const { client, calls } = fakeClient();
-  const long = "b".repeat(N + 100);
+  // The shipped plain body must fit the tweet-length cap; the truncation
+  // contract is exercised at a limit under it.
+  const limit = OUTBOUND_PLAIN_MAX_CHARS;
+  const long = "b".repeat(limit + 100);
   const outcome = await runTelegramSend(
     { text: long, strategy: "truncate" },
-    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, sendMaxChars: N },
+    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, sendMaxChars: limit },
   );
   assert.equal(outcome.ok, true);
   assert.equal(
@@ -266,7 +272,7 @@ test("runTelegramSend: explicit strategy:'truncate' → hard-truncated to the li
     "explicit truncate flags the shortening",
   );
   assert.ok(outcome.warn);
-  assert.equal(calls.sendMessage[0].text, "b".repeat(N - 1) + "…");
+  assert.equal(calls.sendMessage[0].text, "b".repeat(limit - 1) + "…");
   assert.match(outcome.warn, /truncate/);
 });
 
@@ -277,14 +283,21 @@ test("runTelegramSend: explicit strategy:'truncate' skips crafting (user chose t
     craftCalls++;
     return { text: "crafted", crafted: true };
   };
+  const limit = OUTBOUND_PLAIN_MAX_CHARS;
   const outcome = await runTelegramSend(
-    { text: "a".repeat(N + 10), strategy: "truncate" },
-    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, craft, sendMaxChars: N },
+    { text: "a".repeat(limit + 10), strategy: "truncate" },
+    {
+      client,
+      token: BOT_TOKEN,
+      chatId: OWNER_CHAT_ID,
+      craft,
+      sendMaxChars: limit,
+    },
   );
   assert.equal(outcome.ok, true);
   assert.equal(outcome.truncated, true);
   assert.equal(craftCalls, 0, "no LLM rewrite when the strategy is explicit");
-  assert.equal(calls.sendMessage[0].text, "a".repeat(N - 1) + "…");
+  assert.equal(calls.sendMessage[0].text, "a".repeat(limit - 1) + "…");
 });
 
 test("runTelegramSend: explicit strategy:'error' → error, nothing sent, even though craft could run", async () => {
@@ -311,7 +324,8 @@ test("runTelegramSend: explicit limit honored — text within the limit sends ve
     craftCalls++;
     return { text: "crafted", crafted: true };
   };
-  const body = "c".repeat(500); // 500 chars — under the explicit limit of 1000
+  // Under the explicit limit of 1000 and under the plain tweet-length cap.
+  const body = "c".repeat(250);
   const outcome = await runTelegramSend(
     { text: body, limit: 1000 },
     { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, craft },
@@ -926,8 +940,11 @@ test("runTelegramSend: a configured sendMaxChars caps the rendered body (F8)", a
   ];
   for (const body of bodies) {
     const rc = recordingClient();
+    // A body this long ships only under an explicit mode (a raw body over the
+    // tweet-length cap is refused by the outbound gate); the mechanism under
+    // test is the rendered cap refusing the conversion.
     const outcome = await runTelegramSend(
-      { text: body },
+      { text: body, parse_mode: "Markdown" },
       {
         client: rc.client,
         token: BOT_TOKEN,
@@ -941,7 +958,7 @@ test("runTelegramSend: a configured sendMaxChars caps the rendered body (F8)", a
       rc.calls[0].text.length <= 300,
       `rendered body within the configured cap: ${rc.calls[0].text.length}`,
     );
-    assert.equal(rc.calls[0].options.parseMode, undefined);
+    assert.equal(rc.calls[0].options.parseMode, "Markdown");
     assert.equal(outcome.converted, undefined);
   }
   // Control: inside the configured cap the conversion still runs.

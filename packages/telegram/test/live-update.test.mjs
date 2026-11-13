@@ -24,6 +24,7 @@ import { setImmediate as yieldToLoop } from "node:timers/promises";
 
 import {
   createLiveUpdateTracker,
+  trackedStartText,
   TRACKED_START_TEXT,
   TRACKED_DONE_TEXT,
   TRACKED_DONE_TEXT_REPORT_SENT,
@@ -562,13 +563,29 @@ test("restart: a persisted tracked message is resumed (reused edit, no duplicate
     0,
     "resume must NOT re-send the tracked message",
   );
+  // The persisted line is already what the message shows, so the resume does
+  // not spend an edit on it: the API call the old path made was a no-op.
   assert.equal(
     stubB.edits.length,
-    1,
-    "resume re-pins the existing message via edit",
+    0,
+    "resume does not edit a line that is already correct",
   );
-  assert.equal(stubB.edits[0].messageId, 1001);
-  assert.equal(stubB.edits[0].text, TRACKED_START_TEXT);
+  // …but the resume DOES share the chat's tracked message: a second seat
+  // joining makes the count visible, and that IS an edit.
+  const stubC = makeStub();
+  const trackerC = createLiveUpdateTracker({
+    client: stubC.client,
+    token: BOT_TOKEN,
+    chatId: OWNER_CHAT_ID,
+    stateFile,
+    holderId: "seat-b",
+  });
+  const joined = await trackerC.start();
+  assert.equal(joined.reused, true, "second seat reuses the chat's message");
+  assert.equal(joined.messageId, 1001);
+  assert.equal(stubC.sends.length, 0, "no second ack message");
+  assert.equal(stubC.edits.length, 1, "the count is the one edit");
+  assert.equal(stubC.edits[0].text, trackedStartText(2));
   rmSync(dir, { recursive: true, force: true });
 });
 

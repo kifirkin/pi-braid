@@ -7,10 +7,13 @@
  *      family `rule` but no whisper source; there is no durable per-rule
  *      violation record, so this is the only honest count and it is
  *      current-session only.
- *   2. On turn_end, aggregate the active branch and escalate a rule that
- *      repeats past K to the owner over the existing TG signal seam
- *      (`WATCHDOG_TG_SIGNAL_KEY`, the same route the watchdog page uses),
- *      bounded by the milestone ladder and the per-session budget.
+ *   2. On turn_end, aggregate the active branch and report a rule that repeats
+ *      past K to the owner over the existing TG signal seam
+ *      (`WATCHDOG_TG_SIGNAL_KEY`, the same route the watchdog page uses), as at
+ *      most ONE digest per hour that states how many crossings it folded. The
+ *      milestone ladder and the per-session budget are unchanged: a crossing is
+ *      still planned by `planEscalation` and its rung is still spent only when
+ *      the digest was accepted.
  *   3. On session shutdown, append the owner report
  *      (`~/.pi/agent/braid/adherence/report.jsonl`).
  *
@@ -33,18 +36,22 @@ import {
   safeSessionManagerTyped,
 } from "../../../lib/state/extension-state.js";
 import { getWatchdogTgSignalSender } from "../../../lib/state/global-state.js";
+import { readTelegramPollerLiveness } from "../../../lib/state/telegram-poller-liveness.js";
 import { formatLocalTime } from "../../../lib/utils/local-time.js";
 import {
   activeBranchEntries,
+  adherenceReportPath,
   aggregateRuleAdherence,
+  commitDigest,
   createEscalationState,
-  markEscalated,
+  planDigest,
   planEscalation,
   readSessionEntriesFromFile,
+  recordEscalation,
   writeAdherenceReport,
   type AdherenceEscalationState,
   type AdherenceWriteResult,
-  type RuleAdherence,
+  type PendingEscalation,
 } from "../../../lib/enforcement/adherence-meter.js";
 
 const log = createLogger("adherence-meter");
@@ -52,13 +59,47 @@ const log = createLogger("adherence-meter");
 /** Extension-state bucket key for the per-session meter state. */
 const ADHERENCE_STATE_KEY = "adherence-meter";
 
+/** What a crossing may ask the owner channel for. */
+export interface AdherenceOwnerSender {
+  (
+    text: string,
+    opts?: {
+      parseMode?: "HTML" | "Markdown";
+      source?: string;
+      /** Escalations folded into this message instead of sent one by one. */
+      suppressed?: number;
+    },
+  ): boolean | Promise<boolean>;
+}
+
 /** Injectables for fixtures; production callers pass nothing. */
 export interface AdherenceWiringDeps {
   now?: () => number;
   /** Owner-channel factory; defaults to the published TG signal sender. */
-  sender?: () => ((text: string) => boolean | Promise<boolean>) | null;
+  sender?: () => AdherenceOwnerSender | null;
+  /**
+   * True when THIS session is the one that reads the owner's chat. Defaults to
+   * the Telegram poller's live state (the seat that owns the poller is the seat
+   * whose escalations the owner must hear). A second seat shares the bot token
+   * but not the conversation, and its escalations never become owner messages;
+   * a spawned seat registers no Telegram surface at all, so it publishes no
+   * sender either.
+   */
+  ownerSession?: () => boolean;
+  /** How often the owner may receive a digest (default one hour). */
+  digestWindowMs?: number;
   reportDir?: string;
   k?: number;
+}
+
+/**
+ * Owner-facing session predicate. The liveness probe is core's own registry
+ * (`telegram-poller-liveness.ts`): "running" or "unknown" means no other seat
+ * is holding the owner's inbound channel, "stopped" means this process loaded
+ * Telegram and its poller is not the one reading the chat.
+ */
+function isOwnerChannelSession(): boolean {
+  return readTelegramPollerLiveness() !== "stopped";
 }
 
 function adherenceState(ctx: ExtensionContext): AdherenceEscalationState {
@@ -75,30 +116,68 @@ function branchEntries(ctx: ExtensionContext): unknown[] {
   }
 }
 
-/** Compact owner ping: headline rung, source + signal, counters, provenance. */
-function renderEscalation(
-  rule: RuleAdherence,
-  milestone: number,
-  state: AdherenceEscalationState,
-  ctx: ExtensionContext,
-  nowMs: number,
-): string {
-  const signal = rule.signal.length > 140 ? `${rule.signal.slice(0, 137)}...` : rule.signal;
-  const sessionId = getSessionIdSafe(ctx);
-  return (
-    `[adherence] rule repeating · rung ${milestone}\n` +
-    `${rule.source}: "${signal}"\n` +
-    `\n` +
-    `deliveries ${rule.deliveries} · repeats ${rule.repeats} · suppressed ${rule.suppressions} · escalation ${state.total + 1}\n` +
-    `session ${sessionId} · ${formatLocalTime(new Date(nowMs))}`
-  );
+/** Escape the three characters Telegram's HTML parser reserves. */
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function shorten(text: string, max: number): string {
+  const trimmed = text.trim();
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3)}...`;
+}
+
+/** The rule's matched text (the key's `source::pattern` tail), shortened. */
+function ruleLabel(entry: PendingEscalation): string {
+  const tail = entry.ruleKey.includes("::")
+    ? entry.ruleKey.split("::").slice(1).join("::")
+    : entry.ruleKey;
+  return shorten(`${entry.source}: ${tail}`, 64);
 }
 
 /**
- * Aggregate the current branch and escalate every rule that crosses its next
- * milestone. Returns what fired. The rung is marked only after the owner
- * channel accepted the message, so a missing/failing channel retries on the
- * next turn instead of silently spending the rung.
+ * The hourly digest: a bold subject naming the highest rung it reports, then
+ * labelled lines. Short enough to survive as plain text (the owner's
+ * tweet-length rule) and valid under `parse_mode: HTML` (the Telegram outbound
+ * gate validates it before any send).
+ */
+function renderDigest(
+  digest: { pending: PendingEscalation[]; suppressed: number },
+  ctx: ExtensionContext,
+  nowMs: number,
+): string {
+  // The subject is the highest rung in the digest; ties go to the latest.
+  const subject = digest.pending.reduce((best, entry) =>
+    entry.milestone >= best.milestone ? entry : best,
+  );
+  const lines = [
+    `<b>adherence · rung ${subject.milestone}</b>`,
+    `rule ${escapeHtml(ruleLabel(subject))}`,
+    ...(digest.pending.length > 1 ? [`rules ${digest.pending.length}`] : []),
+    `deliveries ${subject.deliveries}`,
+    `repeats ${subject.repeats}`,
+    `suppressed ${digest.suppressed}`,
+    `session ${escapeHtml(shorten(getSessionIdSafe(ctx) || "unknown", 32))}`,
+    `at ${formatLocalTime(new Date(nowMs))}`,
+    // The next step is a pointer, not advice: the full signal text and the
+    // per-rule counts live in the session report.
+    `where ${escapeHtml(shorten(adherenceReportPath(), 72))}`,
+  ];
+  return lines.join("\n");
+}
+
+/**
+ * Aggregate the current branch and fold every crossing into the owner's
+ * hourly digest.
+ *
+ * What did NOT change: the ladder. `planEscalation` is asked exactly as before,
+ * and a rung is still spent only when the owner channel accepted the message
+ * that reported it, so the milestones, thresholds and detection are untouched.
+ *
+ * What changed: a crossing is buffered (`recordEscalation`) and delivered as
+ * ONE digest per window (`planDigest`), which states how many crossings it
+ * folded instead of sending each one as its own message. Two seats sharing a
+ * bot token no longer both write into the owner's chat: only the session that
+ * owns the inbound channel escalates.
  */
 export async function checkAdherence(
   ctx: ExtensionContext,
@@ -106,38 +185,73 @@ export async function checkAdherence(
 ): Promise<{ fired: Array<{ rule: string; milestone: number }> }> {
   const state = adherenceState(ctx);
   const entries = branchEntries(ctx);
-  if (entries.length === 0) return { fired: [] };
-
-  const rules = aggregateRuleAdherence(activeBranchEntries(entries));
+  const rules = entries.length > 0 ? aggregateRuleAdherence(activeBranchEntries(entries)) : [];
   const sender = (deps.sender ?? getWatchdogTgSignalSender)();
   const nowMs = (deps.now ?? Date.now)();
-  const fired: Array<{ rule: string; milestone: number }> = [];
+  const sessionId = getSessionIdSafe(ctx);
 
   for (const rule of rules) {
     const plan = planEscalation(state, rule.rule, rule.repeats);
     if (!plan.fire) continue;
-    if (!sender) {
-      log.debug(
-        `[adherence] ${rule.rule} crossed rung ${plan.milestone}; no owner channel published`,
-      );
-      continue;
-    }
-    let ok = false;
-    try {
-      ok =
-        (await Promise.resolve(
-          sender(renderEscalation(rule, plan.milestone, state, ctx, nowMs)),
-        )) === true;
-    } catch (e) {
-      log.debug(`[adherence] escalation send threw for ${rule.rule}: ${(e as Error).message}`);
-    }
-    if (!ok) {
-      log.debug(`[adherence] escalation not delivered for ${rule.rule}; rung stays unspent`);
-      continue;
-    }
-    markEscalated(state, rule.rule);
-    fired.push({ rule: rule.rule, milestone: plan.milestone });
+    recordEscalation(state, {
+      ruleKey: rule.rule,
+      rung: (state.rules[rule.rule]?.rung ?? 0) + 1,
+      milestone: plan.milestone,
+      source: rule.source,
+      deliveries: rule.deliveries,
+      repeats: rule.repeats,
+      sessionId,
+      at: nowMs,
+    });
   }
+
+  const buffered = state.pending ?? [];
+  if (buffered.length === 0) return { fired: [] };
+  if (!sender) {
+    log.debug(`[adherence] ${buffered.length} escalation(s) buffered; no owner channel published`);
+    return { fired: [] };
+  }
+  if (!(deps.ownerSession ?? isOwnerChannelSession)()) {
+    log.debug(
+      `[adherence] ${buffered.length} escalation(s) buffered; this session does not own the owner channel`,
+    );
+    return { fired: [] };
+  }
+  const digest = planDigest(state, nowMs, {
+    ...(deps.digestWindowMs !== undefined ? { windowMs: deps.digestWindowMs } : {}),
+  });
+  if (!digest.send) {
+    log.debug(
+      `[adherence] ${digest.pending.length} escalation(s) buffered; digest window closed (${digest.suppressed} suppressed so far)`,
+    );
+    return { fired: [] };
+  }
+
+  let ok = false;
+  try {
+    ok =
+      (await Promise.resolve(
+        sender(renderDigest(digest, ctx, nowMs), {
+          parseMode: "HTML",
+          source: "adherence-digest",
+          suppressed: digest.suppressed,
+        }),
+      )) === true;
+  } catch (e) {
+    log.debug(`[adherence] digest send threw: ${(e as Error).message}`);
+  }
+  if (!ok) {
+    log.debug("[adherence] digest not delivered; crossings stay buffered, rungs unspent");
+    return { fired: [] };
+  }
+  const fired = digest.pending.map((entry) => ({
+    rule: entry.ruleKey,
+    milestone: entry.milestone,
+  }));
+  commitDigest(state, nowMs);
+  log.debug(
+    `[adherence] digest delivered: ${fired.length} crossing(s), ${digest.suppressed} suppressed`,
+  );
   return { fired };
 }
 

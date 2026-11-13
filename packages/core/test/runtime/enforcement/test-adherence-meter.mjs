@@ -11,7 +11,8 @@
  *    active-branch walk (an off-branch entry is never counted), digit collapse.
  * 2. Escalation: first crossing of K fires exactly one owner escalation; the milestone
  *    ladder gates the next ones; the per-session budget reaches terminal.
- * 3. Wiring: checkAdherence sends only through the owner sender, once per crossing.
+ * 3. Wiring: checkAdherence sends only through the owner sender, at most one
+ *    digest per window, and spends a rung only when the digest was accepted.
  * 4. Report: schema, hold/not-hold history over the last k sessions, stable path, write.
  * 5. Isolation: no prompt-builder source reads the meter; the meter modules never write
  *    to the agent channel and never register a tool.
@@ -176,7 +177,7 @@ await test("fixture 2: per-session budget stops the next escalations", async () 
 
 // ── 3. Wiring: one escalation per crossing, owner channel only ──────────────
 
-await test("fixture 3: checkAdherence fires exactly once per crossing", async () => {
+await test("fixture 3: checkAdherence reports each crossing once, in the window's digest", async () => {
   const mk = (id, parentId) => entry(id, parentId, { source: "enforcement/whisper", content: ALPHA_1 });
   const entries = [mk("w1", null), mk("w2", "w1"), mk("w3", "w2"), mk("w4", "w3")]; // 4 deliveries = 3 repeats
   const sent = [];
@@ -204,8 +205,19 @@ await test("fixture 3: checkAdherence fires exactly once per crossing", async ()
   entries.push(entry("w6", "w5", { source: "enforcement/whisper", content: ALPHA_1 }));
   entries.push(entry("w7", "w6", { source: "enforcement/whisper", content: ALPHA_1 })); // 7 deliveries = 6 repeats
   const r3 = await wiring.checkAdherence(ctx, deps);
-  assert.equal(r3.fired.length, 1, "second rung fires at 2K");
+  assert.equal(r3.fired.length, 0, "inside the digest window the crossing is buffered");
+  assert.equal(sent.length, 1, "no second owner message inside the hour");
+
+  // An hour later the buffered crossing reports — the rung was never spent
+  // while it waited.
+  const laterDeps = {
+    ...deps,
+    now: () => 1791486000000 + 60 * 60 * 1000 + 1,
+  };
+  const r4 = await wiring.checkAdherence(ctx, laterDeps);
+  assert.equal(r4.fired.length, 1, "second rung fires at 2K once the window opens");
   assert.equal(sent.length, 2);
+  assert.match(sent[1], /rung 6/, "the digest names the higher rung");
 });
 
 await test("fixture 3: absent sender leaves the rung unspent (retry later)", async () => {

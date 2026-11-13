@@ -421,7 +421,24 @@ export function subscribeWatchdogTunnel(fn: (event: WatchdogTunnelEvent) => void
 export const WATCHDOG_TG_SIGNAL_KEY = "__braid_watchdog_tg_signal";
 
 /** Best-effort 1-line tg sender (must never throw). */
-export type WatchdogTgSignalSender = (text: string) => boolean | Promise<boolean>;
+export type WatchdogTgSignalSender = (
+  text: string,
+  opts?: WatchdogTgSignalOptions,
+) => boolean | Promise<boolean>;
+
+/**
+ * What a cross-package sender may ask for. Everything is optional: a caller
+ * that passes only `text` keeps the plain-text canary behaviour it always had.
+ */
+export interface WatchdogTgSignalOptions {
+  /** `parse_mode` for the body (`HTML` for a structured owner message). */
+  parseMode?: "HTML" | "Markdown";
+  /** Metrics bucket (the telegram sender counts owner messages by it). */
+  source?: string;
+  /** Events the caller folded into this message instead of sending each one
+   *  (the adherence meter reports how many escalations it suppressed). */
+  suppressed?: number;
+}
 
 /** Read the optional tg-signal sender published by the telegram extension. */
 export function getWatchdogTgSignalSender(): WatchdogTgSignalSender | null {

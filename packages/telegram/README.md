@@ -44,6 +44,7 @@ Without a token the extension loads, does nothing, and says so in the log.
 | `BRAID_TG_LIVE_UPDATE_ENABLED`     | The tracked "working" message                               | on; `0` disables  |
 | `BRAID_TG_LIVE_UPDATE_MAX_PER_MIN` | Progress edit rate cap                                      | `4`               |
 | `BRAID_TG_VERBOSE`                 | Route debug and info lines to the notify sink               | off               |
+| `BRAID_TG_OUTBOUND_METRICS`        | Log the outbound counters after every send or refusal       | off               |
 
 Two families beyond the table: the `BRAID_TG_STT_*` variables configure speech to text (an API key,
 base URL, model and language, plus a key pool), and `BRAID_TG_STATE_FILE` relocates the poll offset.
@@ -53,13 +54,13 @@ Every `BRAID_TG_*` name has a `TELEGRAM_*` alias; the prefixed name wins when bo
 
 `braid.telegram.*` keys in `~/.pi/agent/settings.json`:
 
-| Key                              | Default  | Effect                                                                                                                                          |
-| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `braid.telegram.sendMaxChars`    | `4096`   | Cap for plain `telegram_send` text; re-read per send                                                                                            |
-| `braid.telegram.notifyMaxChars`  | `1200`   | Cap for the turn-complete update; re-read per notification                                                                                      |
-| `braid.telegram.pollerAutoStart` | off      | Working directories that start the inbound poller by themselves: `true` everywhere, an absolute-cwd array those only, exact match; read at load |
-| `braid.telegram.tts`             | edge-tts | Voice source, rate and voices; read at extension load                                                                                           |
-| `braid.telegram.pauseStateFile`  | unset    | Where the pause control keeps its state; read at load                                                                                           |
+| Key                              | Default  | Effect                                                                                                                                                                  |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `braid.telegram.sendMaxChars`    | `4096`   | Cap for plain `telegram_send` text; re-read per send. The outbound gate additionally refuses any raw body over 280 chars: a longer message needs `rich` or `parse_mode` |
+| `braid.telegram.notifyMaxChars`  | `1200`   | Cap for the turn-complete update; re-read per notification                                                                                                              |
+| `braid.telegram.pollerAutoStart` | off      | Working directories that start the inbound poller by themselves: `true` everywhere, an absolute-cwd array those only, exact match; read at load                         |
+| `braid.telegram.tts`             | edge-tts | Voice source, rate and voices; read at extension load                                                                                                                   |
+| `braid.telegram.pauseStateFile`  | unset    | Where the pause control keeps its state; read at load                                                                                                                   |
 
 ## Limits
 
@@ -75,7 +76,8 @@ Every `BRAID_TG_*` name has a `TELEGRAM_*` alias; the prefixed name wins when bo
 
 ## Documentation
 
-- [Live update](docs/live-update.md): the tracked message, its states and its rate limits.
+- [Live update](docs/live-update.md): the tracked message, its states, and the chat it belongs to.
+- [Outbound gate](docs/outbound-gate.md): what may leave for the owner's chat, and the counters.
 - [Turn-complete notify](docs/turn-complete-notify.md): detection, crafting, and the cap.
 - [Pause control](docs/pause-control.md): how a paused session queues and resumes.
 

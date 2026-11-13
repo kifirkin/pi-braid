@@ -123,6 +123,10 @@ import {
   type LiveUpdateTracker,
 } from "./lib/notify/live-update.js";
 import {
+  createOutboundSender,
+  type OutboundSource,
+} from "./lib/notify/outbound.js";
+import {
   defaultStateFilePath,
   setPathRefusalSink,
   warnUnderivableRoot,
@@ -845,18 +849,44 @@ export default async function telegramExtension(
     );
   };
 
+  // Every automatic owner message goes through ONE gate: it resolves the
+  // wire format once, validates an HTML body against Telegram's parser, and
+  // refuses a body that would ship plain over the tweet-length cap. The chat
+  // is resolved per send (the owner chat is captured at first inbound).
+  const machineOutbound = createOutboundSender({
+    client,
+    token,
+    chatId: () => resolveChatId(),
+    log,
+  });
+
   // Publish the watchdog tg-signal sender so the core watchdog can push a
   // 1-line remote canary ping on escalations (stall/quota; tunnel-down needs
-  // no ping — tg is down). Best-effort: returns false on any failure so the
-  // watchdog treats the optional signal as skipped, never fatal.
+  // no ping — tg is down). The adherence meter rides the same seam with a
+  // structured body (parseMode HTML) and reports how many escalations it
+  // folded into the message. Best-effort: returns false on any failure so the
+  // caller treats the optional signal as skipped, never fatal.
   (globalThis as Record<string, unknown>)[WATCHDOG_TG_SIGNAL_KEY] = async (
     text: string,
+    opts?: {
+      parseMode?: "HTML" | "Markdown";
+      source?: string;
+      suppressed?: number;
+    },
   ): Promise<boolean> => {
-    const chatId = resolveChatId();
-    if (!chatId) return false;
+    if (!resolveChatId()) return false;
+    const source: OutboundSource =
+      opts?.source === "adherence-digest"
+        ? "adherence-digest"
+        : "watchdog-signal";
     try {
-      await client.sendMessage(token, chatId, text);
-      return true;
+      const result = await machineOutbound.send({
+        text,
+        source,
+        ...(opts?.parseMode ? { parseMode: opts.parseMode } : {}),
+        ...(opts?.suppressed ? { suppressed: opts.suppressed } : {}),
+      });
+      return result.ok;
     } catch {
       return false;
     }
@@ -870,9 +900,12 @@ export default async function telegramExtension(
   (globalThis as Record<string, unknown>)[PROVIDER_OUTAGE_NOTIFY_KEY] = async (
     text: string,
   ): Promise<boolean> => {
-    const chatId = resolveChatId();
-    if (!chatId) return false;
-    const result = await client.sendMessage(token, chatId, text);
+    if (!resolveChatId()) return false;
+    const result = await machineOutbound.send({
+      text,
+      source: "outage-notify",
+      rich: true,
+    });
     return result.ok === true;
   };
 
@@ -1134,9 +1167,10 @@ export default async function telegramExtension(
         });
       },
       deliver: async (text) => {
-        const chatId = resolveChatId();
-        if (!chatId) return;
-        await client.sendMessage(token, chatId, text);
+        if (!resolveChatId()) return;
+        // A distilled notification is long-form (`rich`): the plain cap does
+        // not apply, while the gate still refuses an unparseable body.
+        await machineOutbound.send({ text, rich: true, source: "turn-notify" });
       },
       maxPerWindow: notifyMaxPerMin,
     });

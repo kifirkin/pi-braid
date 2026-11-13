@@ -40,11 +40,20 @@ on by default.
   `~/.pi/agent/braid/telegram-live-update.json` (mirrors `telegram-state.json`
   conventions; `BRAID_HOME` overrides the root) so
   a process reload can resume editing the same message.
-- `start()` is **idempotent**: when a tracked message already exists (incl. a
-  persisted one from a prior run), it is REUSED via an edit-re-pin - never a
-  duplicate send (the "no new-message spam" invariant).
+- `start()` is **idempotent and chat-keyed**: the tracked message belongs to the
+  CHAT, not to the session or the process. When the record already holds a
+  message for this chat, it is REUSED - never a duplicate send (the
+  "no new-message spam" invariant). Two seats sharing one chat therefore pin
+  ONE message: the second seat re-pins the line to "… · N tasks" and registers
+  itself as a holder. The record carries the holders (`{id: {count, seenAt}}`),
+  and the message resolves only when the LAST holder drops to zero, so the seat
+  that finishes first does not delete a message the other still works behind. A
+  holder that stops touching the record for ten minutes is reaped, and a send
+  claim (`<state file>.claim`) closes the window in which two seats could both
+  decide the chat has no message yet.
 - `update(text)` - public tracker API - edits the tracked message in place,
-  idempotent (no-op with no tracked message), clipped to 4096 chars.
+  idempotent (no-op with no tracked message), clipped to 4096 chars, and held to
+  the same [outbound gate](outbound-gate.md) as every other owner message.
 
 _`update()` wiring note:_ the brief explicitly wires `start()` (on inbound) and
 `finish()` (on `turn_end`). Periodic mid-turn `update()` calls need a verified

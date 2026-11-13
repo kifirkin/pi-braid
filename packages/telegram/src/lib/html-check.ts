@@ -220,8 +220,15 @@ export function parseTelegramTagAt(
   return { end: i, name, closing, error, attributes };
 }
 
-/** Verdict of `checkTelegramHtml`. */
-export type TelegramHtmlVerdict = { ok: true } | { ok: false; error: string };
+/**
+ * Verdict of `checkTelegramHtml`. The failure carries the offending tag and
+ * its offset when the rule names one, so an outbound refusal can point at the
+ * body instead of restating "can't parse entities". `error` stays the
+ * calibrated API-shaped sentence (fixtures pin it).
+ */
+export type TelegramHtmlVerdict =
+  | { ok: true }
+  | { ok: false; error: string; tag?: string; offset?: number };
 
 /**
  * Check a body against Telegram's HTML parser rules. `ok: false` means the
@@ -234,7 +241,10 @@ export type TelegramHtmlVerdict = { ok: true } | { ok: false; error: string };
  */
 export function checkTelegramHtml(text: string): TelegramHtmlVerdict {
   if (!text) return { ok: true };
-  const open: string[] = [];
+  // Open tags carry the offset they opened at, so the unclosed-tag failure
+  // names WHERE in the body the tag was left open (the API names only the
+  // tag).
+  const open: Array<{ name: string; offset: number }> = [];
   let i = 0;
   while (i < text.length) {
     if (text[i] !== "<") {
@@ -246,26 +256,32 @@ export function checkTelegramHtml(text: string): TelegramHtmlVerdict {
       return {
         ok: false,
         error: `Unsupported start tag "" (stray "<" or unclosed tag)`,
+        offset: i,
       };
     }
-    if (tag.error) return { ok: false, error: tag.error };
+    if (tag.error)
+      return { ok: false, error: tag.error, tag: tag.name, offset: i };
     if (tag.closing) {
       const top = open[open.length - 1];
       if (top === undefined) {
         return {
           ok: false,
           error: `Unexpected end tag at byte offset ${i}: "</${tag.name}>"`,
+          tag: tag.name,
+          offset: i,
         };
       }
-      if (top !== tag.name) {
+      if (top.name !== tag.name) {
         return {
           ok: false,
-          error: `Unmatched end tag: expected "</${top}>", found "</${tag.name}>"`,
+          error: `Unmatched end tag: expected "</${top.name}>", found "</${tag.name}>"`,
+          tag: tag.name,
+          offset: i,
         };
       }
       open.pop();
     } else {
-      open.push(tag.name);
+      open.push({ name: tag.name, offset: i });
     }
     i = tag.end;
   }
@@ -273,7 +289,9 @@ export function checkTelegramHtml(text: string): TelegramHtmlVerdict {
   if (unclosed !== undefined) {
     return {
       ok: false,
-      error: `Can't find end tag corresponding to start tag "${unclosed}"`,
+      error: `Can't find end tag corresponding to start tag "${unclosed.name}"`,
+      tag: unclosed.name,
+      offset: unclosed.offset,
     };
   }
   return { ok: true };
