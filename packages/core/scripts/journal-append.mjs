@@ -46,7 +46,7 @@
  * cannot drift from the readers or from BRAID_HOME pinning.
  */
 
-import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -71,7 +71,9 @@ async function loadDist(relative) {
   return import(pathToFileURL(file).href);
 }
 
-const { journalFilePath } = await loadDist(join("lib", "config", "braid-paths.js"));
+const { journalFilePath, journalRotatedFiles } = await loadDist(
+  join("lib", "config", "braid-paths.js"),
+);
 const { withStoreLock } = await loadDist(join("lib", "memory", "store-lock.js"));
 const { projectSlugFromCwd } = await loadDist(
   join("extensions", "memory", "scratchpad", "persistence.js"),
@@ -302,13 +304,14 @@ function readEntries(file) {
  * a prefix out of the live journal, so a writer that reads only the live file
  * would restart the chain at 1 and break the checker's archive boundary. The
  * archive's numbers are part of the same chain: they are read, never rewritten.
+ * Which files are archives is the path helper's answer, not this file's: the
+ * checker reads the same list, and two spellings of it would let the two
+ * disagree about where the chain continues.
  */
-function readArchivedSeqs(dir) {
+function readArchivedSeqs(journalFile) {
   const seqs = new Set();
-  if (!existsSync(dir)) return seqs;
-  for (const name of readdirSync(dir)) {
-    if (!/^journal-\d{4}\.jsonl$/.test(name)) continue;
-    for (const entry of readEntries(join(dir, name))) {
+  for (const file of journalRotatedFiles(journalFile)) {
+    for (const entry of readEntries(file)) {
       if (Number.isInteger(entry.seq)) seqs.add(entry.seq);
     }
   }
@@ -350,7 +353,7 @@ try {
   entry = await withStoreLock(`${journalFile}.lock`, async () => {
     const entries = readEntries(journalFile);
     const seqs = new Set(entries.map((e) => e.seq).filter(Number.isInteger));
-    const archived = readArchivedSeqs(dirname(journalFile));
+    const archived = readArchivedSeqs(journalFile);
     for (const seq of archived) seqs.add(seq);
     const supersededBy = new Map();
     for (const prior of entries) {

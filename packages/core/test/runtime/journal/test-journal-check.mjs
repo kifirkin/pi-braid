@@ -6,13 +6,15 @@
  * validator. Each case below is one exit-2 shape the design specifies, crafted
  * as a raw line so the failure is in the file and not in the writer: a
  * duplicate seq, a regression, a decision with no reason, a constraint with no
- * expiry, a dangling supersedes, a fork, an evidence path that does not
- * resolve, an empty evidence list without the flag, an unparseable timestamp,
- * an archive boundary that overlaps the live file, and an outcome line newer
- * than every journal entry.
+ * expiry, a dangling supersedes, a fork, an evidence path that is inside the
+ * fixture root and missing, an empty evidence list without the flag, an
+ * unparseable timestamp, an archive boundary that overlaps the live file, and an
+ * outcome line newer than every journal entry.
  *
- * The two clean cases matter as much as the failures: a well-formed journal
- * exits 0, and an unverified entry is allowed to carry no evidence. A checker
+ * The clean cases matter as much as the failures: a well-formed journal exits
+ * 0, an unverified entry is allowed to carry no evidence, and a reference the
+ * fixture root cannot adjudicate (a path whose first component is not there, or
+ * one outside the root) is informational rather than a fabrication. A checker
  * that fails everything guards nothing. The intent's deadline is the third: the
  * field is admissible on `intent` and `constraint`, and a stamp already past is
  * not a finding on either, because an existing file's stamp aged where it sits
@@ -69,10 +71,15 @@ function entry(seq, over = {}) {
   };
 }
 
-function run({ lines, outcomes, archives = {}, digest = false, home }) {
+function run({ lines, outcomes, archives = {}, digest = false, home, files = {} }) {
   const braidHome = home ?? mkdtempSync(join(tmpdir(), "journal-check-braid-"));
   const project = mkdtempSync(join(tmpdir(), "journal-check-proj-"));
   writeFileSync(join(project, "README.md"), "# fixture project\n");
+  for (const [name, body] of Object.entries(files)) {
+    const full = join(project, name);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, body);
+  }
   const dir = join(braidHome, "journal", "check");
   mkdirSync(dir, { recursive: true });
   if (lines) {
@@ -202,11 +209,23 @@ test("evidence [] without unverified is EVIDENCE", () => {
   );
 });
 
-test("a repo-relative evidence path that does not resolve is EVIDENCE", () => {
+test("a repo-relative evidence path whose parent exists and whose file does not is ABSENT", () => {
   expectFinding(
-    run({ lines: [entry(1, { evidence: ["packages/core/src/nope.ts"] })] }),
-    /EVIDENCE: seq 1 names packages\/core\/src\/nope\.ts, absent \(no unverified flag\)/,
-    "EVIDENCE-absent",
+    run({
+      lines: [entry(1, { evidence: ["packages/core/src/nope.ts"] })],
+      files: { "packages/core/src/keep.ts": "// the directory this reference resolves through\n" },
+    }),
+    /ABSENT seq 1 names packages\/core\/src\/nope\.ts, missing under .* \(no unverified flag\)/,
+    "ABSENT",
+  );
+});
+
+test("the same reference with no directory to resolve through is UNRESOLVED and exits 0", () => {
+  const result = run({ lines: [entry(1, { evidence: ["packages/core/src/nope.ts"] })] });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(
+    result.stdout,
+    /UNRESOLVED seq 1 names packages\/core\/src\/nope\.ts, cannot resolve from .*: no packages at the root/,
   );
 });
 

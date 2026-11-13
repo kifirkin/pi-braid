@@ -12,7 +12,7 @@
 
 import * as path from "node:path";
 import * as os from "node:os";
-import { realpathSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 
 // The module-load constants below are the PRECOMPUTED DEFAULT for the paths
 // declared from them. They are read-side compatibility, not a base to write
@@ -330,6 +330,39 @@ export function tagsSlugFromCwd(cwd?: string): string {
  */
 export function journalFilePath(projectSlug: string): string {
   return path.join(journalDir(), projectSlug, "journal.jsonl");
+}
+
+/**
+ * Name of one rotated journal file: `journal-<year>.jsonl` beside the live file.
+ *
+ * Rotation moves a prefix of the live journal into a sibling, so the seq chain
+ * outlives the file that carries it. The name is stated here once because two
+ * programs must agree on which files are ONE journal: the writer, which reads
+ * the archived seqs so a rotated journal does not restart its chain at 1, and
+ * the checker, which reads them so a reference to a rotated entry is not
+ * called absent. A second spelling is how those two drift into disagreeing
+ * about the population.
+ */
+export const ROTATED_JOURNAL_NAME = /^journal-\d{4}\.jsonl$/;
+
+/**
+ * Absolute paths of the rotated siblings of one live journal, in name order so
+ * two readers list one chain in one order. A directory that does not exist yet
+ * has no siblings; a file that does not match ROTATED_JOURNAL_NAME is not part
+ * of the chain and is never read.
+ */
+export function journalRotatedFiles(journalFile: string): string[] {
+  const dir = path.dirname(journalFile);
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((name) => ROTATED_JOURNAL_NAME.test(name))
+    .sort()
+    .map((name) => path.join(dir, name));
 }
 
 /**

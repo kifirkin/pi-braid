@@ -9,7 +9,7 @@
  * parser on purpose: a check that imported the writer's validator would
  * inherit whatever the writer silently accepts.
  *
- * Instrument A — structure. Every finding is one exit-2 shape:
+ * Instrument A: structure and evidence. Every finding is one exit-2 shape:
  *   LINE      a line does not parse as JSON
  *   FIELDS    a field is missing, of the wrong type, or not a field of that
  *             kind (a decision without reason, a constraint without
@@ -17,31 +17,61 @@
  *   TIME      `at` or `expires_at` is not a parseable timestamp
  *   DUP       a seq appears twice
  *   ORDER     seq is not strictly increasing (a regression)
- *   DANGLING  `supersedes` names a seq that does not exist, or names itself or
- *             a later entry
+ *   DANGLING  `supersedes` names a seq that is in neither the live file nor a
+ *             rotated sibling, or names itself or a later entry
  *   FORK      two entries supersede one entry, leaving two live successors
- *   EVIDENCE  a repo-relative evidence path does not resolve and the entry is
- *             not marked unverified
- *   ARCHIVE   an archive file's last seq is not below the live file's first
+ *   ABSENT    an evidence path is inside this root and missing, and the entry
+ *             is not marked unverified
+ *   EVIDENCE  evidence is empty and the entry is not marked unverified
+ *   ARCHIVE   a rotated file's last seq is not below the live file's first
+ *
+ * The journal is a population, not a file. Rotation moves a prefix of the live
+ * journal into `journal-<year>.jsonl` beside it (the name is stated once, in
+ * the path helper both this program and the writer import), so a reference is
+ * resolved across the live file and every rotated sibling. Three readings are
+ * informational and never fail a run on their own, because none of them
+ * proves an entry false:
+ *   ROTATED     a `supersedes` target lives in a rotated sibling
+ *   UNRESOLVED  an evidence reference cannot be resolved from this root: it is
+ *               absolute, it climbs above the root, or its first component
+ *               does not exist here. The root is not the base the entry was
+ *               written against, so this tree cannot say the file is gone; it
+ *               can only say it cannot read the reference from here
+ *   MOVED       the newest entry records a successor journal file, and currency
+ *               is read from there
+ * A run that exits 0 with UNRESOLVED lines has not shown the entries true; it
+ * has shown only that this root cannot adjudicate them. `ABSENT` is the class
+ * that would, and it keeps failing the run.
+ *
+ * Every run ends with one instrument line counting findings by class, so two
+ * runs compare directly and a checker that got quieter instead of more honest
+ * is visible as a shifted count rather than as an absence of output.
  *
  * A stamp already past is not a finding. The writer refuses one at write time,
  * so a past `expires_at` on disk is a line that aged where it sits: the checker
  * reads a file, not the moment the line was written, and a constraint's window
  * closing is exactly what the field records.
  *
- * Instrument B — currency. The newest outcome line's timestamp must not be
+ * Instrument B: currency. The newest outcome line's timestamp must not be
  * later than the newest journal entry's: a task closed with no journal entry
- * for it is the failure the journal exists to prevent. It reports STALE.
+ * for it is the failure the journal exists to prevent. It reports STALE. A
+ * journal that moved to a successor is the exception the rule has to read: an
+ * entry records the successor by naming a journal file in its evidence, and
+ * currency is then read from the later of the two files. A successor that is
+ * missing or unreadable excuses nothing, which is the direction that keeps the
+ * finding.
  *
  * Usage:
  *   node scripts/check-journal.mjs [--cwd <dir>] [--project <slug>] [--digest]
  *
- * Exit: 0 clean (one summary line; --digest prints the open program instead),
- *       2 at least one finding below, 1 an operational error.
+ * Exit: 0 clean (informational readings may still print; --digest prints the
+ *       open program instead), 2 at least one finding from the list above, 1 an
+ *       operational error.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +94,9 @@ async function loadDist(relative) {
   return import(pathToFileURL(file).href);
 }
 
-const { braidDir, journalFilePath } = await loadDist(join("lib", "config", "braid-paths.js"));
+const { braidDir, journalFilePath, journalRotatedFiles, ROTATED_JOURNAL_NAME } = await loadDist(
+  join("lib", "config", "braid-paths.js"),
+);
 const { projectSlugFromCwd } = await loadDist(
   join("extensions", "memory", "scratchpad", "persistence.js"),
 );
@@ -105,7 +137,9 @@ for (let i = 0; i < args.length; i++) {
   else if (arg === "--help" || arg === "-h") {
     process.stdout.write(
       "usage: check-journal [--cwd <dir>] [--project <slug>] [--digest]\n" +
-        "exit 0 clean, 2 findings (LINE|FIELDS|TIME|DUP|ORDER|DANGLING|FORK|EVIDENCE|ARCHIVE|STALE)\n",
+        "exit 0 clean, 2 findings " +
+        "(LINE|FIELDS|TIME|DUP|ORDER|DANGLING|FORK|ABSENT|EVIDENCE|ARCHIVE|STALE)\n" +
+        "informational, never an exit code: ROTATED, UNRESOLVED, MOVED\n",
     );
     process.exit(0);
   } else die(2, `check-journal: unknown argument ${JSON.stringify(arg)}`);
@@ -115,9 +149,17 @@ const slug = project || projectSlugFromCwd(cwd);
 const journalFile = journalFilePath(slug);
 const outcomesFile = join(braidDir(), "self-review", "outcomes.jsonl");
 
-const findings = [];
+/** Findings that fail the run: the entry claims something this tree can
+ *  falsify, and the tree falsifies it. */
+const problems = [];
+/** Readings that do not fail it: each one says this root cannot adjudicate the
+ *  reference, or names where a reference does resolve. */
+const warnings = [];
 function finding(shape, detail) {
-  findings.push(detail ? `${shape} ${detail}` : shape);
+  problems.push(detail ? `${shape} ${detail}` : shape);
+}
+function warning(shape, detail) {
+  warnings.push(detail ? `${shape} ${detail}` : shape);
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
@@ -138,6 +180,46 @@ rawLines.forEach((raw, index) => {
     finding("LINE", `${index + 1}: not JSON (${err.message})`);
   }
 });
+
+// ── The journal is a population, not one file ────────────────────────────
+//
+// Rotation moves a prefix of the live file into `journal-<year>.jsonl` beside
+// it, so a seq reference is a claim about the journal rather than about a file.
+// Which files belong is the path helper's answer, imported here rather than
+// spelled again: the writer reads the same list to keep its chain monotonic,
+// and two spellings would let the two disagree about where the journal is.
+//
+// A rotated file is read for its seqs and nothing else. Its structure was gated
+// when it was the live file; adjudicating its shape again here would fail a
+// record for a rule it never had a chance to meet when it was written.
+const rotated = journalRotatedFiles(journalFile).map((file) => {
+  const seqs = new Set();
+  let last = 0;
+  try {
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const seq = JSON.parse(line)?.seq;
+        if (Number.isInteger(seq)) {
+          seqs.add(seq);
+          last = Math.max(last, seq);
+        }
+      } catch {
+        /* a rotated line's shape is not this run's finding */
+      }
+    }
+  } catch {
+    /* an unreadable sibling holds no seq it can resolve */
+  }
+  return { file, name: basename(file), seqs, last };
+});
+
+/** seq -> the rotated file holding it. First in name order wins, so two readers
+ *  name one file for one seq. */
+const rotatedHolders = new Map();
+for (const archive of rotated) {
+  for (const seq of archive.seqs) if (!rotatedHolders.has(seq)) rotatedHolders.set(seq, archive.name);
+}
 
 // ── Instrument A: structure ───────────────────────────────────────────────
 
@@ -224,7 +306,7 @@ for (const { line, entry } of entries) {
   previous = Math.max(previous, entry.seq);
 }
 
-// supersedes: backward, present, single successor.
+// supersedes: backward, present in the journal, single successor.
 const supersededBy = new Map();
 for (const { entry } of entries) {
   const target = entry.supersedes;
@@ -237,7 +319,12 @@ for (const { entry } of entries) {
     finding("DANGLING", `supersedes: seq ${entry.seq} names itself`);
     continue;
   }
-  if (!seqs.has(target)) {
+  // Present means present in the journal: the live file or a rotated sibling.
+  // Those are the only two populations, and a target in neither is the one
+  // shape that leaves a successor pointing at nothing.
+  const inLive = seqs.has(target);
+  const holder = inLive ? undefined : rotatedHolders.get(target);
+  if (!inLive && holder === undefined) {
     finding("DANGLING", `supersedes: seq ${entry.seq} names ${target}, absent`);
     continue;
   }
@@ -251,57 +338,103 @@ for (const { entry } of entries) {
   } else {
     supersededBy.set(target, entry.seq);
   }
+  // A rotated target is not a fault: rotation moved the prefix and the
+  // supersession stands. It is reported so a reader knows which file to open,
+  // and it changes no exit code.
+  if (holder !== undefined) {
+    warning("ROTATED", `supersedes: seq ${entry.seq} names ${target}, in ${holder}`);
+  }
 }
 
-// evidence: repo-relative paths resolve at read time unless the entry says it
-// could not verify. A command, an absolute path, a revision or a bare word is
-// not a repo-relative path and is left alone: inventing a resolution rule for
-// shapes the journal does not define would fail entries for being prose.
-function relativePathOf(reference) {
+// ── Evidence: what this root can and cannot adjudicate ────────────────────
+//
+// An evidence reference is a claim about the tree this run is rooted at, and
+// resolving one is a walk from that root down its components. Where the walk
+// stops is the whole distinction:
+//
+//   resolved    every component exists: nothing to report.
+//   ABSENT      every component above the missing one exists, so this tree is
+//               the base the entry was written against and the file it names is
+//               gone. This class fails the run.
+//   UNRESOLVED  the walk stops at the first component, or the reference is
+//               absolute or climbs above the root. The root is not the base, so
+//               the tree cannot say the file is missing; it says only that it
+//               cannot read the reference from here, and names the root it
+//               tried and the raw string it was given.
+//
+// A command, a sentence or a revision is not a path and is left alone:
+// inventing a resolution rule for shapes the journal does not define would fail
+// entries for being prose.
+
+/** The path a reference names, or null when it is not a path at all. A suffix
+ *  a reader may add (`path:12-40`) is not part of the path. */
+function pathOf(reference) {
   if (typeof reference !== "string") return null;
   const value = reference.trim();
   if (!value || /\s/.test(value)) return null;
-  if (value.startsWith("/") || value.startsWith("~")) return null;
   const withoutLines = value.replace(/:\d+(?:-\d+)?$/, "");
   return PATH_LIKE.test(withoutLines) ? withoutLines : null;
+}
+
+/** Where one path stands against the root this run was given. */
+function evidenceVerdict(path) {
+  if (path.startsWith("/") || path.startsWith("~")) {
+    const full = path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
+    if (existsSync(full)) return { resolved: true };
+    // An absolute reference that lands inside this root is this tree's claim
+    // after all, so a missing file there is absent rather than unreadable. One
+    // that lands outside it is not this root's to judge, and staying silent
+    // about the difference would let an entry escape ABSENT by writing the
+    // root's own path in full.
+    const inside = relative(cwd, full);
+    if (inside && inside !== ".." && !inside.startsWith(`..${sep}`)) return { absent: true };
+    return {
+      reason: path.startsWith("~")
+        ? "home-relative and not on this machine"
+        : "absolute and outside this root",
+    };
+  }
+  const parts = path.split("/").filter((part) => part && part !== ".");
+  if (parts.length === 0 || parts.includes("..")) {
+    return { reason: "climbs above the root" };
+  }
+  let cursor = cwd;
+  for (let index = 0; index < parts.length; index++) {
+    cursor = resolve(cursor, parts[index]);
+    if (existsSync(cursor)) continue;
+    if (index === 0) return { reason: `no ${parts[0]} at the root` };
+    return { absent: true };
+  }
+  return { resolved: true };
 }
 
 for (const { entry } of entries) {
   if (!Array.isArray(entry.evidence) || entry.unverified === true) continue;
   for (const reference of entry.evidence) {
-    const relative = relativePathOf(reference);
-    if (relative && !existsSync(resolve(cwd, relative))) {
-      finding("EVIDENCE:", `seq ${entry.seq} names ${relative}, absent (no unverified flag)`);
+    const path = pathOf(reference);
+    if (path === null) continue;
+    const verdict = evidenceVerdict(path);
+    if (verdict.resolved) continue;
+    const raw = reference.trim();
+    if (verdict.absent) {
+      finding("ABSENT", `seq ${entry.seq} names ${raw}, missing under ${cwd} (no unverified flag)`);
+    } else {
+      warning(
+        "UNRESOLVED",
+        `seq ${entry.seq} names ${raw}, cannot resolve from ${cwd}: ${verdict.reason}`,
+      );
     }
   }
 }
 
-// The archive boundary: rotation may only move a prefix, so every archived seq
+// The archive boundary: rotation may only move a prefix, so every rotated seq
 // must sit below every live one. A live entry numbered inside an archive is a
 // second seq chain, and supersedes would silently resolve across the two.
-if (present) {
-  const dir = dirname(journalFile);
-  const archives = existsSync(dir)
-    ? readdirSync(dir).filter((name) => /^journal-\d{4}\.jsonl$/.test(name))
-    : [];
-  const liveFirst = entries.length > 0 ? entries[0].entry.seq : null;
-  if (liveFirst !== null) {
-    for (const name of archives) {
-      const archived = readFileSync(join(dir, name), "utf8")
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => {
-          try {
-            return JSON.parse(line).seq;
-          } catch {
-            return undefined;
-          }
-        })
-        .filter(Number.isInteger);
-      const last = archived.reduce((max, seq) => Math.max(max, seq), 0);
-      if (last >= liveFirst) {
-        finding("ARCHIVE:", `${name} ends at seq ${last}, live file starts at ${liveFirst}`);
-      }
+if (present && entries.length > 0) {
+  const liveFirst = entries[0].entry.seq;
+  for (const archive of rotated) {
+    if (archive.last >= liveFirst) {
+      finding("ARCHIVE:", `${archive.name} ends at seq ${archive.last}, live file starts at ${liveFirst}`);
     }
   }
 }
@@ -327,19 +460,95 @@ function newestOutcomeAt() {
   return newest;
 }
 
+/** Newest entry in one journal file, read the way the live file is: an
+ *  unparseable line is skipped rather than adjudicated, because a successor's
+ *  shape is its own run's finding. */
+function newestIn(file) {
+  let newest = null;
+  try {
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        const when = Date.parse(entry?.at);
+        if (Number.isNaN(when)) continue;
+        if (newest === null || when > Date.parse(newest.at)) newest = entry;
+      } catch {
+        /* see above */
+      }
+    }
+  } catch {
+    return null;
+  }
+  return newest;
+}
+
+// A journal that stopped because the record continues elsewhere. The schema
+// carries no successor field, so the pointer is an evidence reference whose
+// last component is a journal file name: the one place an entry can already
+// record a path. It is read, opened and measured, never interpreted - the
+// checker needs a file it can count entries in, not a sentence to believe.
+// The live name and the rotated one are the two names a journal has, and the
+// rotated half is the helper's constant rather than a second spelling of it.
+const LIVE_JOURNAL_NAME = /^journal\.jsonl$/;
+
+function namesAJournal(value) {
+  const name = basename(value);
+  return LIVE_JOURNAL_NAME.test(name) || ROTATED_JOURNAL_NAME.test(name);
+}
+
+function successorOf(entry) {
+  if (!entry || !Array.isArray(entry.evidence)) return null;
+  for (const reference of entry.evidence) {
+    if (typeof reference !== "string") continue;
+    const value = reference.trim();
+    if (!value || /\s/.test(value)) continue;
+    if (!namesAJournal(value)) continue;
+    const full = value.startsWith("~")
+      ? join(homedir(), value.slice(1))
+      : value.startsWith("/")
+        ? value
+        : resolve(dirname(journalFile), value);
+    // A pointer at the live file names no move.
+    return resolve(full) === resolve(journalFile) ? null : full;
+  }
+  return null;
+}
+
 const newestEntry = entries.reduce((best, item) => {
   const when = Date.parse(item.entry.at);
   if (Number.isNaN(when)) return best;
   return best === null || when > Date.parse(best.at) ? item.entry : best;
 }, null);
+const successor = newestEntry === null ? null : successorOf(newestEntry);
+const successorNewest = successor === null ? null : newestIn(successor);
+if (successor !== null) {
+  warning(
+    "MOVED",
+    `${newestEntry.seq} records the move to ${successor}, whose newest entry is ` +
+      (successorNewest === null
+        ? "absent or unreadable"
+        : `seq ${successorNewest.seq} at ${successorNewest.at}`),
+  );
+}
+/** The entry the outcome log is compared against: the later of the live file's
+ *  newest and a recorded successor's, and the live file alone when no successor
+ *  is recorded or it cannot be read. A successor that cannot be read excuses
+ *  nothing, which is the direction that keeps the finding. */
+const horizon =
+  successorNewest !== null && Date.parse(successorNewest.at) > Date.parse(newestEntry.at)
+    ? successorNewest
+    : newestEntry;
 const newestOutcome = newestOutcomeAt();
 if (newestOutcome !== null) {
   if (newestEntry === null) {
     finding("STALE:", `outcome appended ${newestOutcome} with no journal entry (journal empty)`);
-  } else if (Date.parse(newestOutcome) > Date.parse(newestEntry.at)) {
+  } else if (Date.parse(newestOutcome) > Date.parse(horizon.at)) {
     finding(
       "STALE:",
-      `outcome appended ${newestOutcome} with no journal entry since seq ${newestEntry.seq} at ${newestEntry.at}`,
+      successorNewest === null
+        ? `outcome appended ${newestOutcome} with no journal entry since seq ${newestEntry.seq} at ${newestEntry.at}`
+        : `outcome appended ${newestOutcome} with no journal entry since seq ${newestEntry.seq} at ${newestEntry.at} or in ${successor}, whose newest is seq ${successorNewest.seq} at ${successorNewest.at}`,
     );
   }
 }
@@ -372,11 +581,41 @@ function derivedStatus(list) {
   return supersededSeqs.has(carrier.seq) ? "superseded" : carrier.status;
 }
 
+// ── Report ────────────────────────────────────────────────────────────────
+
+/** Class of one finding line: the token that names its shape. */
+function classOf(line) {
+  return line.split(/[:\s]/, 1)[0];
+}
+
+const CENSUS = ["ABSENT", "UNRESOLVED", "ROTATED", "DANGLING"];
+
+/** The instrument line every run ends with. The four classes this reading is
+ *  about are counted by name; everything else is counted together, so no
+ *  finding goes uncounted by being unlisted and two runs compare directly. */
+function instrumentLine() {
+  const counts = new Map();
+  for (const line of [...problems, ...warnings]) {
+    const name = classOf(line);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const named = CENSUS.map((name) => `${name} ${counts.get(name) ?? 0}`).join(", ");
+  const other = (lines) => lines.filter((line) => !CENSUS.includes(classOf(line))).length;
+  return `findings: ${named}; other problems ${other(problems)}, other warnings ${other(warnings)}`;
+}
+
+function emit(lines) {
+  for (const line of lines) process.stdout.write(`${line}\n`);
+}
+
 if (digest) {
-  if (findings.length > 0) {
-    for (const line of findings) process.stdout.write(`${line}\n`);
+  if (problems.length > 0) {
+    emit(problems);
+    emit(warnings);
+    emit([instrumentLine()]);
     process.exit(2);
   }
+  emit(warnings);
   process.stdout.write(
     `journal ${journalFile}: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}, ` +
       `${bySubject.size} subject${bySubject.size === 1 ? "" : "s"}\n`,
@@ -400,18 +639,23 @@ if (digest) {
       process.stdout.write(`  decision #${decision.seq}: ${decision.text} (because: ${decision.reason})\n`);
     }
   }
+  emit([instrumentLine()]);
   process.exit(0);
 }
 
-if (findings.length > 0) {
-  for (const line of findings) process.stdout.write(`${line}\n`);
+if (problems.length > 0) {
+  emit(problems);
+  emit(warnings);
+  emit([instrumentLine()]);
   process.exit(2);
 }
 
+emit(warnings);
 const maxSeq = entries.reduce((max, item) => Math.max(max, item.entry.seq ?? 0), 0);
 process.stdout.write(
   `journal ${journalFile}: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}, ` +
     `seq to ${maxSeq}, ${bySubject.size} subject${bySubject.size === 1 ? "" : "s"}; ` +
     `outcomes ${newestOutcome === null ? "absent" : `current as of ${newestOutcome}`}\n`,
 );
+emit([instrumentLine()]);
 process.exit(0);
