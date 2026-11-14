@@ -41,7 +41,9 @@ import type {
   TelegramReplyMarkup,
 } from "../telegram-client.js";
 import { checkTelegramHtml, type TelegramHtmlVerdict } from "../html-check.js";
+import { attachIdentity } from "../identity.js";
 import {
+  convertMarkdownV2ToHtml,
   resolveDeliveryFormat,
   sendMessageChunks,
   type ConversionCounts,
@@ -64,6 +66,7 @@ export type OutboundSource =
 /** Why a body was refused before any network call. */
 export type OutboundRefusalRule =
   | "plain-over-cap"
+  | "unstructured-over-cap"
   | "unsupported-tag"
   | "unclosed-tag"
   | "stray-end-tag"
@@ -99,6 +102,13 @@ export interface OutboundRequest {
    */
   renderedCap?: number;
   source: OutboundSource;
+  /**
+   * Label to attach instead of this process's own. Exactly one caller uses it:
+   * the chat-keyed tracked message, whose persisted record outlives the process
+   * that pinned it, so its label stays the pinner's. Every other caller omits
+   * it and gets the line `identity.ts` renders from this process.
+   */
+  identityLine?: string;
   /** Inline keyboard, attached to the last chunk only. */
   replyMarkup?: TelegramReplyMarkup;
   /**
@@ -157,6 +167,64 @@ function refusalFromHtml(
   };
 }
 
+/**
+ * Sources whose body a caller can rewrite after a refusal. Only these are held
+ * to the structure rule: for an automatic source (a crafted summary, a digest,
+ * an outage alert) a refusal has no recipient — the message would simply never
+ * arrive — so its delivery stays as it was and only the markup rules apply.
+ */
+const SENDER_FACING_SOURCES: ReadonlySet<OutboundSource> = new Set(["tool"]);
+
+/** A line that is visibly structure: bullet, number, heading, quote, table. */
+const STRUCTURE_LINE_RE =
+  /^[ \t]{0,3}(?:[-•*·–—][ \t]|\d{1,3}[.)][ \t]|#{1,6}[ \t]|>[ \t]|\|)/m;
+
+/**
+ * A labelled line (`Label: value`). A URL is not one: `https://` has no space
+ * after the colon, which is what separates a label from a scheme.
+ */
+const LABEL_LINE_RE = /^[ \t]{0,3}[^:\n]{1,48}:[ \t]\S/m;
+
+/**
+ * Does the body carry formatting a reader can see — a tag, a MarkdownV2 pair
+ * that converts to one, a bullet/numbered/heading line, or a `Label: value`
+ * line? Prose alone is not structure, however many paragraphs it has: that is
+ * the wall the owner asked not to receive.
+ */
+export function hasOutboundStructure(text: string): boolean {
+  if (looksLikeHtmlMarkup(text)) return true;
+  const counts = convertMarkdownV2ToHtml(text).converted;
+  if (counts.bold + counts.underline + counts.strike + counts.spoiler > 0)
+    return true;
+  return STRUCTURE_LINE_RE.test(text) || LABEL_LINE_RE.test(text);
+}
+
+function unstructuredOverCap(
+  text: string,
+  cap: number,
+  requested: ParseMode | undefined,
+  rich: boolean,
+): OutboundRefusal {
+  const asked =
+    requested !== undefined
+      ? `parse_mode ${requested}`
+      : rich
+        ? "rich"
+        : "no format";
+  return {
+    rule: "unstructured-over-cap",
+    length: text.length,
+    offset: cap,
+    error:
+      `outbound refused (rule unstructured-over-cap): body is ${text.length} chars and carries no structure — ` +
+      `no tag, no bullet or numbered line, no "Label: value" line. ` +
+      `The rule: over ${cap} chars a body ships formatted, so ${asked} alone does not make it formatted. ` +
+      `Fix: structure it (a bold subject, short labelled lines, a bullet list) and send it with ` +
+      `parse_mode:"HTML" — or with parse_mode/rich AND that structure for a long report; ` +
+      `or send ${cap} chars or fewer. NOTHING was sent.`,
+  };
+}
+
 function plainOverCap(
   text: string,
   cap: number,
@@ -198,8 +266,9 @@ export function looksLikeHtmlMarkup(text: string): boolean {
 
 /**
  * Decide the wire by deciding the body: a refusal here means the client is
- * never touched. Pure (no network, no clock) so a fixture can assert every
- * rule without a stub that could hide a call.
+ * never touched. Pure of the network and the clock (a fixture can assert every
+ * rule without a stub that could hide a call); the one process fact it reads is
+ * the label `identity.ts` renders — memoized, so a plan is stable.
  */
 export function planOutbound(req: OutboundRequest): OutboundPlan {
   const text = req.text ?? "";
@@ -236,9 +305,33 @@ export function planOutbound(req: OutboundRequest): OutboundPlan {
       };
     }
   }
+  // The other half of the same rule, and the half a REQUEST cannot satisfy:
+  // `rich: true` or a bare `parse_mode` used to exempt any body, so a wall of
+  // prose could ship past the cap by asking for the format instead of using it.
+  // Past the cap a sender-facing body must be structured; the request only
+  // decides which transport carries that structure.
+  if (
+    SENDER_FACING_SOURCES.has(req.source) &&
+    text.length > OUTBOUND_PLAIN_MAX_CHARS &&
+    !hasOutboundStructure(text)
+  ) {
+    return {
+      ok: false,
+      refusal: unstructuredOverCap(
+        text,
+        OUTBOUND_PLAIN_MAX_CHARS,
+        req.parseMode,
+        rich,
+      ),
+    };
+  }
+  // The label goes on at this boundary, not at the call sites: every
+  // owner-facing message in the package plans through here, so a new send path
+  // cannot forget it, and no caller can label a message as someone else's.
+  const body = attachIdentity(fmt.text, fmt.parseMode, req.identityLine);
   return {
     ok: true,
-    text: fmt.text,
+    text: body,
     ...(fmt.parseMode ? { parseMode: fmt.parseMode } : {}),
     ...(fmt.converted ? { converted: fmt.converted } : {}),
     ...(fmt.downgraded ? { downgraded: true } : {}),

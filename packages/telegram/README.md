@@ -54,13 +54,13 @@ Every `BRAID_TG_*` name has a `TELEGRAM_*` alias; the prefixed name wins when bo
 
 `braid.telegram.*` keys in `~/.pi/agent/settings.json`:
 
-| Key                              | Default  | Effect                                                                                                                                                                  |
-| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `braid.telegram.sendMaxChars`    | `4096`   | Cap for plain `telegram_send` text; re-read per send. The outbound gate additionally refuses any raw body over 280 chars: a longer message needs `rich` or `parse_mode` |
-| `braid.telegram.notifyMaxChars`  | `1200`   | Cap for the turn-complete update; re-read per notification                                                                                                              |
-| `braid.telegram.pollerAutoStart` | off      | Working directories that start the inbound poller by themselves: `true` everywhere, an absolute-cwd array those only, exact match; read at load                         |
-| `braid.telegram.tts`             | edge-tts | Voice source, rate and voices; read at extension load                                                                                                                   |
-| `braid.telegram.pauseStateFile`  | unset    | Where the pause control keeps its state; read at load                                                                                                                   |
+| Key                              | Default  | Effect                                                                                                                                                                                                                                                           |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `braid.telegram.sendMaxChars`    | `4096`   | Cap for the `telegram_send` body; re-read per send (the identity line rides on top of it). The outbound gate also refuses a body over 280 chars with no structure: a longer message needs `rich` or `parse_mode` AND formatting (a tag, bullets, labelled lines) |
+| `braid.telegram.notifyMaxChars`  | `1200`   | Cap for the turn-complete update; re-read per notification                                                                                                                                                                                                       |
+| `braid.telegram.pollerAutoStart` | off      | Working directories that start the inbound poller by themselves: `true` everywhere, an absolute-cwd array those only, exact match; read at load                                                                                                                  |
+| `braid.telegram.tts`             | edge-tts | Voice source, rate and voices; read at extension load                                                                                                                                                                                                            |
+| `braid.telegram.pauseStateFile`  | unset    | Where the pause control keeps its state; read at load                                                                                                                                                                                                            |
 
 ## Limits
 

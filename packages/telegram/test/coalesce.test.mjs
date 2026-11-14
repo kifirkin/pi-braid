@@ -54,8 +54,9 @@ import {
   jsonResponse,
   makeFakeFetch,
   sendMessageResult,
+  wire,
 } from "./fixtures.mjs";
-import { sleep, waitFor } from "./helpers/poll.mjs";
+import { sleep, waitFor, waitForJson } from "./helpers/poll.mjs";
 
 /**
  * Set process.env for the duration of fn, restoring every prior value after.
@@ -622,8 +623,15 @@ test("coalescing: one combined batch pins ONE Working indicator (one begin per b
         );
         assert.equal(
           fetchFn.sent[1].text,
-          TRACKED_START_TEXT,
+          wire(TRACKED_START_TEXT),
           "the delivered batch pinned the tracked message",
+        );
+        // start() persists the record AFTER the send lands: wait for the state
+        // the turn_end handler reads instead of racing it.
+        await waitForJson(
+          liveStateFile,
+          (state) => typeof state.messageId === "number" && state.messageId > 0,
+          3000,
         );
 
         // One completed turn must resolve the indicator: the batch is ONE unit of
@@ -647,7 +655,7 @@ test("coalescing: one combined batch pins ONE Working indicator (one begin per b
           1,
           "the one begin resolved on the one turn_end",
         );
-        assert.equal(fetchFn.edited[0].text, TRACKED_DONE_TEXT);
+        assert.equal(fetchFn.edited[0].text, wire(TRACKED_DONE_TEXT));
       } finally {
         pi.emit("session_shutdown");
         await sleep(50);

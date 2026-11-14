@@ -35,6 +35,7 @@ import {
   TELEGRAM_MAX_TEXT_LENGTH,
 } from "../dist/lib/format.js";
 import { runTelegramSend } from "../dist/lib/tool-logic.js";
+import { attachIdentity } from "../dist/lib/identity.js";
 import {
   CAP_CASES,
   EXPECTED_FIDELITY_CHANGES,
@@ -183,6 +184,7 @@ export async function runCorpus() {
   }
 
   // ── 6. cap-crossing bodies (R2/F8) ───────────────────────────────────────
+  const labelWidth = (parseMode) => attachIdentity("x", parseMode).length - 1;
   for (const capCase of CAP_CASES) {
     const { client, calls } = capturingClient();
     const outcome = await runTelegramSend(capCase.params, {
@@ -222,10 +224,20 @@ export async function runCorpus() {
         `cap ${capCase.name}: ${calls.length} sends, expected at least ${expect.minSends}`,
       );
     }
+    // The identity line rides the same message. A configured `sendMaxChars`
+    // bounds the body the sender authored, so the label sits on top of it; a
+    // 4096 `maxChars` is Telegram's own limit and stays strict (the splitter
+    // counts the label, which is why it stays under).
+    const wireCap =
+      expect.maxChars +
+      (expect.identitySlack ? labelWidth(expect.parseMode) : 0);
     for (const call of calls) {
-      if (call.text.length > expect.maxChars) {
+      if (call.text.length > wireCap) {
         failures.push(
-          `cap ${capCase.name}: wire ${call.text.length} chars over cap ${expect.maxChars}`,
+          `cap ${capCase.name}: wire ${call.text.length} chars over cap ${wireCap}` +
+            (expect.identitySlack
+              ? ` (body cap ${expect.maxChars} + label)`
+              : ""),
         );
       }
       if (call.options.parseMode !== expect.parseMode) {

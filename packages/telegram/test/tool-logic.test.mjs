@@ -17,8 +17,9 @@ import {
   wasAgentDeliveredMessage,
 } from "../dist/lib/notify/agent-delivery.js";
 import { checkTelegramHtml } from "../dist/lib/html-check.js";
+import { isIdentityLine } from "../dist/lib/identity.js";
 
-import { BOT_TOKEN, OWNER_CHAT_ID } from "./fixtures.mjs";
+import { BOT_TOKEN, OWNER_CHAT_ID, labelWidth, wire } from "./fixtures.mjs";
 
 // Default plain-path cap (4096 = braid.telegram.sendMaxChars fallback).
 const N = DEFAULT_SEND_MAX_CHARS;
@@ -93,7 +94,7 @@ test("runTelegramSend: sendMaxChars:300 — a 250-char body sends verbatim", asy
   );
   assert.equal(outcome.ok, true);
   assert.equal(outcome.truncated, false);
-  assert.equal(calls.sendMessage[0].text, body);
+  assert.equal(calls.sendMessage[0].text, wire(body));
 });
 
 test("runTelegramSend: an explicit limit overrides the settings cap", async () => {
@@ -107,7 +108,7 @@ test("runTelegramSend: an explicit limit overrides the settings cap", async () =
   );
   assert.equal(outcome.ok, true);
   assert.equal(outcome.truncated, false);
-  assert.equal(calls.sendMessage[0].text, body);
+  assert.equal(calls.sendMessage[0].text, wire(body));
 });
 
 test("enforceConcise: leaves ≤ cap untouched", () => {
@@ -165,7 +166,7 @@ test("runTelegramSend: delivers text and returns message_id", async () => {
   assert.equal(calls.sendMessage[0].chatId, OWNER_CHAT_ID);
   // Outbound carries NO end marker (marker is inbound-only, item 20): raw
   // trimmed text verbatim.
-  assert.equal(calls.sendMessage[0].text, `hello owner`);
+  assert.equal(calls.sendMessage[0].text, wire(`hello owner`));
   assert.ok(
     !calls.sendMessage[0].text.includes("[tg-end]"),
     "outbound must NOT carry the inbound-only [tg-end] marker",
@@ -272,7 +273,7 @@ test("runTelegramSend: explicit strategy:'truncate' → hard-truncated to the li
     "explicit truncate flags the shortening",
   );
   assert.ok(outcome.warn);
-  assert.equal(calls.sendMessage[0].text, "b".repeat(limit - 1) + "…");
+  assert.equal(calls.sendMessage[0].text, wire("b".repeat(limit - 1) + "…"));
   assert.match(outcome.warn, /truncate/);
 });
 
@@ -297,7 +298,7 @@ test("runTelegramSend: explicit strategy:'truncate' skips crafting (user chose t
   assert.equal(outcome.ok, true);
   assert.equal(outcome.truncated, true);
   assert.equal(craftCalls, 0, "no LLM rewrite when the strategy is explicit");
-  assert.equal(calls.sendMessage[0].text, "a".repeat(limit - 1) + "…");
+  assert.equal(calls.sendMessage[0].text, wire("a".repeat(limit - 1) + "…"));
 });
 
 test("runTelegramSend: explicit strategy:'error' → error, nothing sent, even though craft could run", async () => {
@@ -339,7 +340,7 @@ test("runTelegramSend: explicit limit honored — text within the limit sends ve
   );
   assert.equal(
     rc.calls[0].text,
-    body,
+    wire(body),
     "verbatim delivery up to the explicit limit",
   );
 });
@@ -388,7 +389,7 @@ test("runTelegramSend: craft hook replaces dumb truncate — crafted text is del
   assert.equal(craftCalls.length, 1);
   assert.equal(
     calls.sendMessage[0].text,
-    "distilled: the long message, concise",
+    wire("distilled: the long message, concise"),
   );
   assert.ok(
     !calls.sendMessage[0].text.includes("[tg-end]"),
@@ -444,7 +445,7 @@ test("runTelegramSend: short text skips crafting entirely (verbatim delivery)", 
     { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, craft },
   );
   assert.equal(craftCalls, 0, "no model call for already-concise text");
-  assert.equal(calls.sendMessage[0].text, "hi owner");
+  assert.equal(calls.sendMessage[0].text, wire("hi owner"));
 });
 
 test("runTelegramSend: refuses empty text before any send", async () => {
@@ -500,7 +501,7 @@ test("runTelegramSend: voice with a TTS hook synthesizes OGG and calls sendVoice
   const sent = calls.sendVoiceNote[0];
   assert.equal(sent.token, BOT_TOKEN);
   assert.equal(sent.chatId, OWNER_CHAT_ID);
-  assert.equal(sent.caption, "summary"); // concise text is used as the caption
+  assert.equal(sent.caption, wire("summary")); // concise text is the caption
   assert.ok(sent.ogg instanceof Buffer);
   assert.ok(sent.ogg.toString().startsWith("OGG:"));
 });
@@ -513,7 +514,7 @@ test("runTelegramSend: voice with tts but voiceText falls back to the concise te
     { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID, tts },
   );
   assert.equal(outcome.ok, true);
-  assert.equal(calls.sendVoiceNote[0].caption, "short summary");
+  assert.equal(calls.sendVoiceNote[0].caption, wire("short summary"));
   assert.ok(calls.sendVoiceNote[0].ogg.toString().startsWith("OGG:"));
 });
 
@@ -538,10 +539,11 @@ function recordingClient() {
   };
 }
 
+/** A long report as an agent would format it: one bulleted line per point. */
 function longRichText() {
   return Array.from(
     { length: 200 },
-    (_, i) => `line ${i} ` + "z".repeat(30),
+    (_, i) => `- line ${i} ` + "z".repeat(30),
   ).join("\n");
 }
 
@@ -583,7 +585,7 @@ test("runTelegramSend: rich:true short MarkdownV2 message → HTML conversion re
   assert.equal(outcome.ok, true);
   assert.equal(outcome.chunks, 1);
   assert.equal(rc.calls.length, 1);
-  assert.equal(rc.calls[0].text, "<b>short rich</b>");
+  assert.equal(rc.calls[0].text, wire("<b>short rich</b>"));
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.deepEqual(outcome.converted, {
     bold: 1,
@@ -617,7 +619,7 @@ test("runTelegramSend: default path passes legacy Markdown through on a short se
   );
   assert.equal(outcome.ok, true);
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
-  assert.equal(rc.calls[0].text, "*heads up* — short");
+  assert.equal(rc.calls[0].text, wire("*heads up* — short", "Markdown"));
   assert.equal(outcome.converted, undefined);
 });
 
@@ -629,7 +631,7 @@ test("runTelegramSend: default path converts a MarkdownV2 body and reports it", 
   );
   assert.equal(outcome.ok, true);
   assert.equal(rc.calls[0].options.parseMode, "HTML");
-  assert.equal(rc.calls[0].text, "<b>heads up</b> — short");
+  assert.equal(rc.calls[0].text, wire("<b>heads up</b> — short"));
   assert.deepEqual(outcome.converted, {
     bold: 1,
     underline: 0,
@@ -684,7 +686,7 @@ test("runTelegramSend: rich + voice keeps the voice path (rich text used as the 
   assert.equal(outcome.ok, true);
   assert.equal(outcome.channel, "voice");
   assert.equal(rc.calls[0].kind, "voice");
-  assert.equal(rc.calls[0].caption, "short voice note");
+  assert.equal(rc.calls[0].caption, wire("short voice note"));
 });
 
 // ── cross-mode delivery (Task C): parse_mode sanitizes the body to its format ──
@@ -699,7 +701,7 @@ test("runTelegramSend: HTML body + parse_mode HTML → clean HTML render (tags l
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(
     rc.calls[0].text,
-    "see <b>bold</b> and <i>italic</i>",
+    wire("see <b>bold</b> and <i>italic</i>"),
     "HTML tags stay live in HTML mode",
   );
 });
@@ -714,7 +716,7 @@ test("runTelegramSend: HTML body + parse_mode Markdown → tags stripped, no raw
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
   assert.equal(
     rc.calls[0].text,
-    "bold and italic",
+    wire("bold and italic", "Markdown"),
     "raw HTML tags must not reach the wire",
   );
   assert.ok(!rc.calls[0].text.includes("<"), "no raw tag characters delivered");
@@ -732,7 +734,7 @@ test("runTelegramSend: HTML body + no parse_mode → auto-selects HTML (old leak
     "HTML",
     "HTML body auto-selects HTML mode",
   );
-  assert.equal(rc.calls[0].text, "<b>bold</b> summary");
+  assert.equal(rc.calls[0].text, wire("<b>bold</b> summary"));
 });
 
 test("runTelegramSend: MarkdownV2 body + parse_mode HTML → real HTML emphasis, no raw ** leak", async () => {
@@ -745,7 +747,7 @@ test("runTelegramSend: MarkdownV2 body + parse_mode HTML → real HTML emphasis,
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(
     rc.calls[0].text,
-    "<b>bold</b> and <code>code</code>",
+    wire("<b>bold</b> and <code>code</code>"),
     "MarkdownV2 emphasis converts to HTML, never ships literal",
   );
   assert.ok(!rc.calls[0].text.includes("**"), "no raw ** on an HTML wire");
@@ -770,7 +772,7 @@ test("runTelegramSend: mixed cross-mode body → fully HTML, nothing leaks raw",
     "HTML",
     "mixed body with tags ships as HTML",
   );
-  assert.equal(rc.calls[0].text, "<b>md bold</b> and <i>html italic</i>");
+  assert.equal(rc.calls[0].text, wire("<b>md bold</b> and <i>html italic</i>"));
   assert.ok(!rc.calls[0].text.includes("**"), "markdown token converted");
   assert.deepEqual(outcome.converted, {
     bold: 1,
@@ -791,7 +793,7 @@ test("runTelegramSend: legacy Markdown body + parse_mode Markdown stays verbatim
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
   assert.equal(
     rc.calls[0].text,
-    "*bold* and _italic_ and `code`",
+    wire("*bold* and _italic_ and `code`", "Markdown"),
     "legacy Markdown stays verbatim in Markdown mode",
   );
   assert.equal(outcome.converted, undefined);
@@ -807,7 +809,7 @@ test("runTelegramSend: MarkdownV2 body + parse_mode Markdown → converted to HT
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(
     rc.calls[0].text,
-    "<b>bold</b> and italic and <code>code</code>",
+    wire("<b>bold</b> and italic and <code>code</code>"),
   );
   assert.deepEqual(outcome.converted, {
     bold: 1,
@@ -832,7 +834,9 @@ test("runTelegramSend: __underline__, ~strike~ and ||spoiler|| convert and are c
   assert.equal(rc.calls[0].options.parseMode, "HTML");
   assert.equal(
     rc.calls[0].text,
-    "<u>underline</u> and <s>strike</s> and <tg-spoiler>spoiler</tg-spoiler>",
+    wire(
+      "<u>underline</u> and <s>strike</s> and <tg-spoiler>spoiler</tg-spoiler>",
+    ),
   );
   assert.deepEqual(outcome.converted, {
     bold: 0,
@@ -851,7 +855,10 @@ test("runTelegramSend: a spaced operator pair (~ / ||) never converts", async ()
   );
   assert.equal(outcome.ok, true);
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
-  assert.equal(rc.calls[0].text, "cmd || fallback and cd ~ && ls ~");
+  assert.equal(
+    rc.calls[0].text,
+    wire("cmd || fallback and cd ~ && ls ~", "Markdown"),
+  );
   assert.equal(outcome.converted, undefined);
 });
 
@@ -859,23 +866,28 @@ test("runTelegramSend: a rendering past the default cap refuses the conversion a
   const rc = recordingClient();
   // 4094 chars as authored (under the default cap); the <b>/</b> tags would
   // push the rendered HTML past Telegram's 4096 per-message limit. Refusing
-  // the conversion keeps one message under the cap instead of splitting it.
+  // the conversion ships the authored text instead of a conversion that cannot
+  // fit one message. The identity line is host metadata on the same wire, so at
+  // this boundary the body plus its label can need a second chunk.
   const body = `**${"x".repeat(4090)}**`;
   const outcome = await runTelegramSend(
     { text: body, parse_mode: "Markdown" },
     { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
   );
   assert.equal(outcome.ok, true);
-  assert.equal(
-    rc.calls.length,
-    1,
-    "no split when the conversion would cross the cap",
-  );
   assert.equal(rc.calls[0].options.parseMode, "Markdown");
-  assert.equal(rc.calls[0].text, body, "authored text ships verbatim");
-  assert.ok(rc.calls[0].text.length <= 4096, "wire within the cap");
+  assert.ok(
+    rc.calls[0].text.startsWith(wire("x", "Markdown").slice(0, -1)),
+    "the label opens the first message",
+  );
+  for (const call of rc.calls) {
+    assert.ok(call.text.length <= 4096, "every wire chunk within the cap");
+  }
+  assert.ok(
+    rc.calls.every((call) => !call.text.includes("<b>")),
+    "the conversion that could not fit did not ship",
+  );
   assert.equal(outcome.converted, undefined);
-  assert.equal(outcome.chunks, undefined, "single message, no chunk count");
   assert.equal(outcome.truncated, false);
 });
 
@@ -954,9 +966,10 @@ test("runTelegramSend: a configured sendMaxChars caps the rendered body (F8)", a
     );
     assert.equal(outcome.ok, true);
     assert.equal(rc.calls.length, 1);
+    // The configured cap bounds the BODY; the identity line rides on top.
     assert.ok(
-      rc.calls[0].text.length <= 300,
-      `rendered body within the configured cap: ${rc.calls[0].text.length}`,
+      rc.calls[0].text.length <= 300 + labelWidth("Markdown"),
+      `wire within the configured body cap plus the label: ${rc.calls[0].text.length}`,
     );
     assert.equal(rc.calls[0].options.parseMode, "Markdown");
     assert.equal(outcome.converted, undefined);
@@ -1049,4 +1062,35 @@ test("runTelegramSend: rich HTML send marks the flag", async () => {
   assert.equal(outcome.ok, true);
   assert.equal(wasAgentDeliveredMessage(), true);
   clearAgentDeliveredMessage();
+});
+
+test("a rich send that splits into three parts carries the label once, in the first part", async () => {
+  const rc = recordingClient();
+  // Three messages at Telegram's 4096: a body of 12000 chars of bullet lines.
+  const line = "- point " + "z".repeat(30);
+  const body = Array.from({ length: Math.ceil(12000 / (line.length + 1)) })
+    .map(() => line)
+    .join("\n")
+    .slice(0, 12000);
+  const outcome = await runTelegramSend(
+    { text: body, rich: true },
+    { client: rc.client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.chunks, 3, "the fixture sized itself to three parts");
+  assert.equal(rc.calls.length, 3);
+
+  const labelled = rc.calls.filter((call) => call.text.includes("[braid · "));
+  assert.equal(labelled.length, 1, "the label appears in exactly one part");
+  assert.equal(
+    isIdentityLine(rc.calls[0].text.split("\n")[0]),
+    true,
+    "and that part is the first",
+  );
+  for (const call of rc.calls) {
+    assert.ok(
+      call.text.length <= 4096,
+      `chunk ${call.text.length} within 4096`,
+    );
+  }
 });

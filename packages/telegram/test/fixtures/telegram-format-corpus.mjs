@@ -350,6 +350,12 @@ export const MATRIX_CELLS = [
  * body crosses a configured cap; a single tag longer than the cap). Each entry
  * names the wire contract the runner asserts against the capturing client —
  * never against the stub's return value.
+ *
+ * Two different caps appear here. `maxChars` is Telegram's hard per-message
+ * limit: the splitter counts every character of the message, the identity line
+ * included, so it stays strict. `identitySlack` marks the OTHER meaning — a
+ * configured `sendMaxChars`, which bounds the body the sender authored; the
+ * identity line is host metadata on top of it.
  */
 export const CAP_CASES = [
   {
@@ -358,7 +364,7 @@ export const CAP_CASES = [
     deps: {},
     expect: {
       // Refused conversion: the authored body ships verbatim as one message.
-      sends: 1,
+      minSends: 1,
       parseMode: "Markdown",
       maxChars: 4096,
       mode: "conversion-refused",
@@ -370,7 +376,7 @@ export const CAP_CASES = [
     params: { text: "||" + "x".repeat(4090) + "||", parse_mode: "Markdown" },
     deps: {},
     expect: {
-      sends: 1,
+      minSends: 1,
       parseMode: "Markdown",
       maxChars: 4096,
       mode: "conversion-refused",
@@ -382,7 +388,7 @@ export const CAP_CASES = [
     params: { text: "__" + "x".repeat(4092) + "__", parse_mode: "Markdown" },
     deps: {},
     expect: {
-      sends: 1,
+      minSends: 1,
       parseMode: "Markdown",
       maxChars: 4096,
       mode: "conversion-refused",
@@ -394,7 +400,7 @@ export const CAP_CASES = [
     params: { text: "**" + "x".repeat(4090) + "**", parse_mode: "Markdown" },
     deps: {},
     expect: {
-      sends: 1,
+      minSends: 1,
       parseMode: "Markdown",
       maxChars: 4096,
       mode: "conversion-refused",
@@ -469,6 +475,7 @@ export const CAP_CASES = [
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,
+      identitySlack: true,
     },
   },
   {
@@ -485,6 +492,7 @@ export const CAP_CASES = [
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,
+      identitySlack: true,
     },
   },
   {
@@ -501,6 +509,7 @@ export const CAP_CASES = [
       maxChars: 300,
       mode: "conversion-refused",
       htmlValid: false,
+      identitySlack: true,
     },
   },
   {

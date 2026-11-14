@@ -28,6 +28,7 @@ import {
   type DecisionOptionRows,
 } from "./decision-buttons.js";
 import { type ConversionCounts } from "./format.js";
+import { attachIdentity } from "./identity.js";
 import { markAgentDeliveredMessage } from "./notify/agent-delivery.js";
 import {
   createOutboundSender,
@@ -47,6 +48,12 @@ import {
  * through to the default error.
  */
 export type OverLimitStrategy = "truncate" | "error";
+
+/**
+ * Telegram's caption cap for a media message. The voice path sends the body as
+ * the voice note's caption, so the identity label competes with it for room.
+ */
+const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 
 export interface TelegramSendToolParams {
   text: string;
@@ -457,11 +464,20 @@ async function runTelegramSendInner(
         channel: "voice",
       };
     }
+    // The voice caption is a message too, so it carries the same label. The
+    // caption is capped at 1024 by the API and the sender's words are not ours
+    // to cut: when the label would push it past that cap, the caption ships as
+    // authored (unlabelled) instead of truncated.
+    const labelled = attachIdentity(validated.text);
+    const caption =
+      labelled.length <= TELEGRAM_MAX_CAPTION_LENGTH
+        ? labelled
+        : validated.text;
     const result: TelegramSendResult = await deps.client.sendVoiceNote(
       deps.token,
       deps.chatId,
       ogg,
-      validated.text,
+      caption,
     );
     return resultToOutcome(result, {
       truncated: false,

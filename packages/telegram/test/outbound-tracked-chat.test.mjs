@@ -19,7 +19,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -29,7 +29,7 @@ import {
   TRACKED_START_TEXT,
   TRACKED_DONE_TEXT,
 } from "../dist/lib/notify/live-update.js";
-import { BOT_TOKEN, OWNER_CHAT_ID } from "./fixtures.mjs";
+import { BOT_TOKEN, OWNER_CHAT_ID, wire } from "./fixtures.mjs";
 
 function tmpStateFile(label) {
   const dir = mkdtempSync(join(tmpdir(), `tg-chat-${label}-`));
@@ -86,7 +86,7 @@ test("two seats on one chat pin ONE message and the last one resolves it", async
   assert.equal(stubB.edits.length, 1, "the shared line is re-pinned once");
   assert.equal(
     stubB.edits[0].text,
-    trackedStartText(2),
+    wire(trackedStartText(2)),
     "one message, carrying the count of seats behind it",
   );
 
@@ -104,7 +104,7 @@ test("two seats on one chat pin ONE message and the last one resolves it", async
   assert.equal(aDone.ended, true);
   assert.equal(aDone.doneEdited, true);
   assert.equal(aDone.summarySent, true);
-  assert.equal(stubA.edits.at(-1).text, TRACKED_DONE_TEXT);
+  assert.equal(stubA.edits.at(-1).text, wire(TRACKED_DONE_TEXT));
   assert.equal(stubA.sends.length, 2, "pin + summary");
   assert.deepEqual(
     JSON.parse(readFileSync(stateFile, "utf8")),
@@ -178,4 +178,50 @@ test("the start line never exceeds the plain cap, with or without a count", asyn
   assert.equal(trackedStartText(1), TRACKED_START_TEXT);
   assert.ok(trackedStartText(2).length <= 280);
   assert.match(trackedStartText(12), /12 tasks$/);
+});
+
+test("a message pinned by another process keeps ITS label when this seat edits it", async () => {
+  const { dir, stateFile } = tmpStateFile("foreign-label");
+  // A record written by the process that pinned the message: this seat must
+  // update the STATUS without relabelling the ack to itself.
+  const pinnedBy = "[braid · seat · other-project · session 1234abcd · pid 1]";
+  writeFileSync(
+    stateFile,
+    JSON.stringify({
+      messageId: 4242,
+      chatId: OWNER_CHAT_ID,
+      startedAt: 1_000_000,
+      text: `${pinnedBy}\n${TRACKED_START_TEXT}`,
+      identity: pinnedBy,
+      holders: { "seat-other": { count: 1, seenAt: 1_000_000 } },
+    }),
+  );
+
+  const stub = makeStub();
+  const tracker = createLiveUpdateTracker({
+    client: stub.client,
+    token: BOT_TOKEN,
+    chatId: OWNER_CHAT_ID,
+    stateFile,
+    holderId: "seat-this",
+    now: () => 1_000_100,
+  });
+
+  const out = await tracker.begin();
+  assert.equal(out.reused, true, "no second ack message");
+  assert.equal(stub.sends.length, 0);
+  assert.equal(stub.edits.length, 1, "the shared line is re-pinned once");
+  assert.equal(
+    stub.edits[0].text,
+    `${pinnedBy}\n${trackedStartText(2)}`,
+    "the pinner's label stays; the count says two seats are behind it",
+  );
+
+  const persisted = JSON.parse(readFileSync(stateFile, "utf8"));
+  assert.equal(
+    persisted.identity,
+    pinnedBy,
+    "and it is persisted, not re-derived",
+  );
+  rmSync(dir, { recursive: true, force: true });
 });

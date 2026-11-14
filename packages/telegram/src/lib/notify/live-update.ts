@@ -50,6 +50,7 @@ import {
   noteRefusal,
   noteTrackedAck,
 } from "./outbound.js";
+import { currentIdentityLine, isIdentityLine } from "../identity.js";
 import type { TelegramClient } from "../telegram-client.js";
 
 // Types
@@ -69,6 +70,14 @@ export interface LiveUpdateState {
   startedAt: number;
   /** The body last pinned in the message (so a repeated begin() is a no-op). */
   text?: string;
+  /**
+   * The identity line the pinning process attached. The message is keyed by
+   * chat, so it outlives the process that sent it: an edit from another seat
+   * updates the STATUS and keeps this label rather than relabelling the ack to
+   * whoever touched it last. Absent on a record written before labels existed,
+   * which the next write fills in from the editing process.
+   */
+  identity?: string;
   /**
    * Holders sharing this chat's tracked message, keyed by holder id. The
    * message resolves when the LAST holder drops to zero; a holder that stops
@@ -217,11 +226,18 @@ export async function loadLiveState(
     const startedAt = Number(parsed?.startedAt) || 0;
     const holders = readHolders(parsed?.holders);
     const text = typeof parsed?.text === "string" ? parsed.text : undefined;
+    // A stored label is only trusted when it IS one: a hand-edited or legacy
+    // record must not put arbitrary text on the owner's first line.
+    const identity =
+      typeof parsed?.identity === "string" && isIdentityLine(parsed.identity)
+        ? parsed.identity.trim()
+        : undefined;
     return {
       messageId,
       chatId,
       startedAt,
       ...(text ? { text } : {}),
+      ...(identity ? { identity } : {}),
       ...(holders ? { holders } : {}),
     };
   } catch {
@@ -532,6 +548,7 @@ export function createLiveUpdateTracker(
       chatId: state.chatId,
       startedAt: state.startedAt,
       ...(state.text ? { text: state.text } : {}),
+      ...(state.identity ? { identity: state.identity } : {}),
       ...(holders ? { holders } : {}),
     });
   }
@@ -603,11 +620,21 @@ export function createLiveUpdateTracker(
     return undefined;
   }
 
-  /** Plan a tracked body; a refusal is logged and counted, never sent. */
-  function planTracked(text: string): string | undefined {
+  /**
+   * Plan a tracked body; a refusal is logged and counted, never sent. The
+   * label is the record's (the process that pinned the message), so an edit
+   * never relabels a chat-level ack; a record from before labels existed gets
+   * this process's line on its next write.
+   */
+  function planTracked(
+    text: string,
+    identity?: string,
+    maxBodyLen: number = maxTextLen,
+  ): string | undefined {
     const planned = planOutbound({
-      text: clipText(text, maxTextLen),
+      text: clipText(text, maxBodyLen),
       source: "tracked",
+      ...(identity ? { identityLine: identity } : {}),
     });
     if (!planned.ok) {
       noteRefusal(planned.refusal.rule);
@@ -638,14 +665,19 @@ export function createLiveUpdateTracker(
     count: number,
     at: number,
   ): Promise<LiveUpdateStartOutcome> {
-    const next = setHolder(state, count, at);
+    // The label belongs to the record, so a seat touching a record written
+    // before labels existed stamps its own line once and keeps it thereafter.
+    const line = state.identity ?? currentIdentityLine();
+    const next = { ...setHolder(state, count, at), identity: line };
     await writeRecord(next);
     // The visible count is the number of SEATS sharing the chat, not the
     // number of queued units: one seat with three queued messages is still
     // one worker behind one message, and the owner's complaint was two
     // sessions, not two tasks.
     const seats = Object.keys(next.holders ?? {}).length;
-    const body = planTracked(trackedStartText(seats));
+    // The label costs room inside the wire cap; keep the status line inside it.
+    const room = Math.max(1, maxTextLen - line.length - 1);
+    const body = planTracked(trackedStartText(seats), line, room);
     // Re-pin only when the line actually changes: a repeated begin() on the
     // same seat must not edit the message again.
     if (body !== undefined && body !== state.text && limiter.try(at)) {
@@ -753,6 +785,7 @@ export function createLiveUpdateTracker(
     }
     const doneBody = planTracked(
       suppressSummary ? TRACKED_DONE_TEXT_REPORT_SENT : TRACKED_DONE_TEXT,
+      state?.identity,
     );
     const done =
       doneBody !== undefined ? await editTracked(state, doneBody) : false;
@@ -803,7 +836,11 @@ export function createLiveUpdateTracker(
         return { started: false, reused: false, reason: "claimed" };
       }
       try {
-        const body = planTracked(trackedStartText(holderCount));
+        const body = planTracked(
+          trackedStartText(holderCount),
+          undefined,
+          Math.max(1, maxTextLen - currentIdentityLine().length - 1),
+        );
         if (body === undefined)
           return { started: false, reused: false, reason: "refused" };
         const res = await deps.client.sendMessage(deps.token, chatId, body);
@@ -827,6 +864,7 @@ export function createLiveUpdateTracker(
             chatId,
             startedAt: at,
             text: body,
+            identity: currentIdentityLine(),
             holders: { [holderId]: { count: holderCount, seenAt: at } },
           };
           try {
@@ -858,7 +896,7 @@ export function createLiveUpdateTracker(
         return { updated: false, reason: "no-tracked-message" };
       const at = now();
       if (!limiter.try(at)) return { updated: false, reason: "rate-limited" };
-      const body = planTracked(text);
+      const body = planTracked(text, state.identity);
       if (body === undefined) return { updated: false, reason: "refused" };
       const ok = await editTracked(state, body);
       // A touch proves this holder is alive; a holder that only ever wrote at
@@ -919,6 +957,7 @@ export function createLiveUpdateTracker(
       }
       const doneBody = planTracked(
         suppressSummary ? TRACKED_DONE_TEXT_REPORT_SENT : TRACKED_DONE_TEXT,
+        state.identity,
       );
       let doneEdited = false;
       if (doneBody !== undefined)
@@ -957,7 +996,7 @@ export function createLiveUpdateTracker(
         // the other seat is still working behind this message.
         return { terminated: false, terminalEdited: false };
       }
-      const body = planTracked(TRACKED_TERMINAL_TEXT);
+      const body = planTracked(TRACKED_TERMINAL_TEXT, state.identity);
       const terminalEdited =
         body !== undefined ? await editTracked(state, body) : false;
       await clearTracked();

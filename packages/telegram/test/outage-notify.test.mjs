@@ -25,6 +25,7 @@ import {
   jsonResponse,
   makeFakeFetch,
   sendMessageResult,
+  wire,
 } from "./fixtures.mjs";
 
 function withEnv(pairs, fn) {
@@ -97,7 +98,7 @@ test("factory publishes the outage sender; it sends through the configured chat"
     assert.equal(body.chat_id, String(OWNER_CHAT_ID));
     assert.equal(
       body.text,
-      '[braid] Provider route "agent-zero" DOWN since 15:40:12',
+      wire('[braid] Provider route "agent-zero" DOWN since 15:40:12'),
     );
   });
   delete globalThis[PROVIDER_OUTAGE_NOTIFY_KEY];

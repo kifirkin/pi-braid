@@ -54,6 +54,13 @@ on by default.
 - `update(text)` - public tracker API - edits the tracked message in place,
   idempotent (no-op with no tracked message), clipped to 4096 chars, and held to
   the same [outbound gate](outbound-gate.md) as every other owner message.
+- **The label is the pinner's.** Every body the tracker writes opens with the
+  [identity line](outbound-gate.md#the-identity-line) of the process that pinned
+  the message, and the record persists it (`identity`). An edit from another
+  seat updates the STATUS and keeps that label instead of relabelling the ack to
+  whoever touched it last, so the owner never sees the ack flip between
+  processes. A record written before labels existed gets the editing process's
+  line on its next write.
 
 _`update()` wiring note:_ the brief explicitly wires `start()` (on inbound) and
 `finish()` (on `turn_end`). Periodic mid-turn `update()` calls need a verified

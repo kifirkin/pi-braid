@@ -5,6 +5,33 @@
  * by an in-memory fake fetch — NO real network calls ever happen in tests.
  */
 
+import { attachIdentity, currentIdentityLine } from "../dist/lib/identity.js";
+
+/**
+ * The wire body for a body the sender authored: this process's identity line,
+ * then the body (`parseMode` only changes how the LABEL is escaped — the body
+ * is the sender's and is never touched). Assertions compare against this, so a
+ * body that arrives unlabelled, labelled twice, or labelled in the wrong mode
+ * fails instead of passing silently.
+ */
+export function wire(body, parseMode) {
+  return attachIdentity(body, parseMode);
+}
+
+/** The identity line this process attaches (for wire-budget arithmetic). */
+export function identityLine() {
+  return currentIdentityLine();
+}
+
+/**
+ * How many characters the label adds to a wire body in `parseMode`: the line
+ * plus its break. Markdown escapes the label's brackets, so the width is not
+ * the same in every mode.
+ */
+export function labelWidth(parseMode) {
+  return attachIdentity("x", parseMode).length - 1;
+}
+
 // Stable test identities
 export const OWNER_ID = 111222333;
 export const OWNER_CHAT_ID = 999888777;

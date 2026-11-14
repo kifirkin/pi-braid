@@ -26,6 +26,7 @@ import {
   readVoiceTtsConfig,
 } from "../dist/lib/tts.js";
 import { runTelegramSend } from "../dist/lib/tool-logic.js";
+import { wire } from "./fixtures.mjs";
 
 const BOT_TOKEN = "123:TEST-TOKEN";
 const OWNER_CHAT_ID = 999888777;
@@ -394,7 +395,7 @@ test("runTelegramSend: synthesized bytes flow into sendVoiceNote unchanged", asy
   const sent = rc.calls.voice[0];
   assert.equal(sent.token, BOT_TOKEN);
   assert.equal(sent.chatId, OWNER_CHAT_ID);
-  assert.equal(sent.caption, "summary");
+  assert.equal(sent.caption, wire("summary"), "the caption carries the label");
   assert.ok(Buffer.isBuffer(sent.ogg));
   assert.ok(sent.ogg.byteLength > 0);
   assert.ok(sent.ogg.toString().startsWith("OGG:"));

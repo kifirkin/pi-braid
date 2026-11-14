@@ -52,6 +52,7 @@ import {
   makeUpdate,
   makeUpdatesServer,
   sendMessageResult,
+  wire,
 } from "./fixtures.mjs";
 import { sleep, waitFor, waitForJson } from "./helpers/poll.mjs";
 import {
@@ -99,6 +100,19 @@ after(() => rmSync(PINNED_BRAID_HOME, { recursive: true, force: true }));
  * so the world looks exactly like a slow window. The check runs only on
  * timeout, so wrapping a wait never shifts when the case runs.
  */
+/**
+ * The tracked record a turn_end handler reads. start() persists it AFTER the
+ * wire send lands, so a fixture that emits the turn right after the send is
+ * racing the write — wait for the state the next step depends on instead.
+ */
+async function waitForTrackedRecord(liveStateFile, timeoutMs = 3000) {
+  return waitForJson(
+    liveStateFile,
+    (state) => typeof state.messageId === "number" && state.messageId > 0,
+    timeoutMs,
+  );
+}
+
 async function waitForPollerEffect(what, predicate, timeoutMs) {
   try {
     await waitFor(predicate, timeoutMs);
@@ -1213,8 +1227,8 @@ test("/telegram send: delivers plain text verbatim — no [tg-end] marker on out
   assert.equal(sent.length, 1);
   assert.equal(
     sent[0],
-    "hello owner",
-    "outbound must be the raw trimmed text, verbatim",
+    wire("hello owner"),
+    "outbound is the identity line plus the raw trimmed text, verbatim",
   );
   assert.ok(
     !sent[0].includes("[tg-end]"),
@@ -1890,7 +1904,7 @@ test("factory: live-update default-ON — no flags => turn_end finish listener r
       sent[0].reply_markup,
       "sent[0] is the control keyboard (reply_markup attached)",
     );
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
     assert.equal(sent[1].chat_id, String(OWNER_CHAT_ID));
     // start() persists the tracked id asynchronously after the send lands;
     // poll the file rather than read it once (a mid-write read throws).
@@ -1987,7 +2001,8 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=1 pins a Working… tracked message 
       "sent[0] is the control keyboard (reply_markup)",
     );
     assert.equal(sent[1].chat_id, String(OWNER_CHAT_ID));
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     // Steer delivery still intact.
     const [, options] = pi.messages[0];
@@ -2009,11 +2024,11 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=1 pins a Working… tracked message 
 
     assert.equal(edited.length, 1, "tracked message edited once (to Done)");
     assert.equal(edited[0].message_id, 5000);
-    assert.equal(edited[0].text, TRACKED_DONE_TEXT);
+    assert.equal(edited[0].text, wire(TRACKED_DONE_TEXT));
     assert.equal(sent.length, 3, "control keyboard + Working… + final summary");
     assert.equal(
       sent[2].text,
-      "The report is ready.",
+      wire("The report is ready."),
       "raw final answer sent (no craft ctx in test)",
     );
     assert.equal(sent[2].chat_id, String(OWNER_CHAT_ID));
@@ -2086,7 +2101,8 @@ test("factory: live-update finish does NOT fire on a trailing-tool-call turn (ke
       2,
       "boot control keyboard + tracked message pinned",
     );
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     const trailingEvent = {
       type: "turn_end",
@@ -2202,7 +2218,8 @@ test("factory: §5b-2 — abort turn releases the indicator (terminal edit, stat
       "boot control keyboard + tracked Working… pinned",
     );
     assert.ok(sent[0].reply_markup, "sent[0] is the control keyboard");
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     // Abort with NO assistant content — shouldNotifyTurnEnd was false; the
     // indicator must still be released on the terminal path.
@@ -2219,10 +2236,10 @@ test("factory: §5b-2 — abort turn releases the indicator (terminal edit, stat
     assert.equal(edited[0].message_id, 7001);
     assert.equal(
       edited[0].text,
-      TRACKED_TERMINAL_TEXT,
+      wire(TRACKED_TERMINAL_TEXT),
       "terminal edit text, distinct from Done",
     );
-    assert.notEqual(edited[0].text, TRACKED_DONE_TEXT);
+    assert.notEqual(edited[0].text, wire(TRACKED_DONE_TEXT));
     assert.equal(
       sent.length,
       2,
@@ -2302,7 +2319,8 @@ test("factory: §5b-2 — error turn with partial text terminates, never '✅ Do
       2,
       "boot control keyboard + tracked Working… pinned",
     );
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     // Error with STALE partial text: the old finish() path would have treated
     // this as a completed answer ("✅ Done" + summary). §5b-2 says error is
@@ -2323,7 +2341,7 @@ test("factory: §5b-2 — error turn with partial text terminates, never '✅ Do
     assert.equal(edited.length, 1, "error turn edits the tracked message once");
     assert.equal(
       edited[0].text,
-      TRACKED_TERMINAL_TEXT,
+      wire(TRACKED_TERMINAL_TEXT),
       "error → terminal edit, NOT ✅ Done",
     );
     assert.equal(
@@ -2418,7 +2436,8 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
       2,
       "boot control keyboard + first tracked message pinned",
     );
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     // Abort → terminate (edited to the terminal state, no summary, state cleared).
     const abortEvent = {
@@ -2430,7 +2449,7 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
     for (const fn of pi.handlers.get("turn_end") ?? [])
       await fn(abortEvent, undefined);
     assert.equal(edited.length, 1);
-    assert.equal(edited[0].text, TRACKED_TERMINAL_TEXT);
+    assert.equal(edited[0].text, wire(TRACKED_TERMINAL_TEXT));
     assert.deepEqual(
       JSON.parse(readFileSync(liveStateFile, "utf8")),
       { messageId: 0, chatId: 0, startedAt: 0 },
@@ -2470,10 +2489,10 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
       2,
       "abort terminal-edit + completion done-edit",
     );
-    assert.equal(edited[0].text, TRACKED_TERMINAL_TEXT);
+    assert.equal(edited[0].text, wire(TRACKED_TERMINAL_TEXT));
     assert.equal(
       edited[1].text,
-      TRACKED_DONE_TEXT,
+      wire(TRACKED_DONE_TEXT),
       "completion finishes as today (§5b-2 (c))",
     );
     assert.equal(
@@ -2481,7 +2500,7 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
       4,
       "control keyboard + Working… + Working… + final summary",
     );
-    assert.equal(sent[3].text, "Second task done.");
+    assert.equal(sent[3].text, wire("Second task done."));
     assert.deepEqual(
       JSON.parse(readFileSync(liveStateFile, "utf8")),
       { messageId: 0, chatId: 0, startedAt: 0 },
@@ -2562,7 +2581,8 @@ test("factory: indicator NEVER freezes — inbound pinned, no completion event, 
       "boot control keyboard + tracked Working… pinned",
     );
     assert.ok(sent[0].reply_markup, "sent[0] is the control keyboard");
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
+    await waitForTrackedRecord(liveStateFile);
 
     // The agent's turn ends WITHOUT a clean completion mapping: a toolUse turn
     // (work would continue) is the last event, no completed-answer turn_end
@@ -2612,7 +2632,7 @@ test("factory: indicator NEVER freezes — inbound pinned, no completion event, 
     assert.equal(edited[0].message_id, 9002);
     assert.equal(
       edited[0].text,
-      TRACKED_DONE_TEXT,
+      wire(TRACKED_DONE_TEXT),
       "forced to ✅ Done, not left at Working…",
     );
     // settle()'s forced resolve edits first, then clears the state file —
@@ -2705,7 +2725,7 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
       "boot control keyboard + ONE Working… pinned for the first inbound",
     );
     assert.ok(sent[0].reply_markup, "sent[0] is the control keyboard");
-    assert.equal(sent[1].text, TRACKED_START_TEXT);
+    assert.equal(sent[1].text, wire(TRACKED_START_TEXT));
     // start() persists the tracked id asynchronously after the send lands.
     const persisted = await waitForJson(
       liveStateFile,
@@ -2763,7 +2783,7 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
       await fn(doneEvent2, undefined);
 
     assert.equal(edited.length, 1, "resolved only after BOTH units complete");
-    assert.equal(edited[0].text, TRACKED_DONE_TEXT);
+    assert.equal(edited[0].text, wire(TRACKED_DONE_TEXT));
     assert.equal(
       sent.length,
       3,
@@ -2771,7 +2791,7 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
     );
     assert.equal(
       sent[2].text,
-      "second done",
+      wire("second done"),
       "last completed unit's answer is the summary",
     );
     assert.deepEqual(

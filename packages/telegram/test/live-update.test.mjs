@@ -36,7 +36,8 @@ import {
   markAgentDeliveredMessage,
   clearAgentDeliveredMessage,
 } from "../dist/lib/notify/agent-delivery.js";
-import { BOT_TOKEN, OWNER_CHAT_ID } from "./fixtures.mjs";
+import { currentIdentityLine, isIdentityLine } from "../dist/lib/identity.js";
+import { BOT_TOKEN, OWNER_CHAT_ID, wire } from "./fixtures.mjs";
 
 function tmpStateFile(label) {
   const dir = mkdtempSync(join(tmpdir(), `tg-live-${label}-`));
@@ -79,7 +80,7 @@ test("start: sends the immediate Working… message and persists message_id + ch
 
   assert.equal(stub.sends.length, 1);
   assert.equal(stub.sends[0].chatId, OWNER_CHAT_ID);
-  assert.equal(stub.sends[0].text, TRACKED_START_TEXT);
+  assert.equal(stub.sends[0].text, wire(TRACKED_START_TEXT));
   assert.equal(stub.edits.length, 0, "fresh start sends, never edits");
 
   const persisted = JSON.parse(readFileSync(stateFile, "utf8"));
@@ -173,8 +174,8 @@ test("update: edits the tracked message in place — no new-message spam", async
   assert.equal(stub.edits.length, 2);
   assert.equal(stub.edits[0].messageId, 1001);
   assert.equal(stub.edits[1].messageId, 1001);
-  assert.equal(stub.edits[0].text, "step 1: grepping logs");
-  assert.equal(stub.edits[1].text, "step 2: running tests");
+  assert.equal(stub.edits[0].text, wire("step 1: grepping logs"));
+  assert.equal(stub.edits[1].text, wire("step 2: running tests"));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -251,7 +252,7 @@ test("finish: edits tracked → Done, then sends a SEPARATE crafted markdown sum
 
   // done-edit is FIRST (on the tracked message), then a NEW send (summary).
   assert.equal(stub.edits[0].messageId, 1001);
-  assert.equal(stub.edits[0].text, TRACKED_DONE_TEXT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_DONE_TEXT));
   assert.equal(
     stub.sends.length,
     2,
@@ -260,7 +261,7 @@ test("finish: edits tracked → Done, then sends a SEPARATE crafted markdown sum
   assert.equal(stub.sends[1].chatId, OWNER_CHAT_ID);
   assert.equal(
     stub.sends[1].text,
-    "<b>Report ready</b>\n\n- Point one\n- Point two",
+    wire("<b>Report ready</b>\n\n- Point one\n- Point two"),
   );
   assert.equal(
     stub.sends[1].options.parseMode,
@@ -310,7 +311,7 @@ test("finish: suppressSummary skips the separate summary, done-edit points above
 
   // Only the tracked done-edit happens; NO second message goes out.
   assert.equal(stub.edits[0].messageId, 1001);
-  assert.equal(stub.edits[0].text, TRACKED_DONE_TEXT_REPORT_SENT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_DONE_TEXT_REPORT_SENT));
   assert.equal(
     stub.sends.length,
     1,
@@ -348,7 +349,7 @@ test("end(done): the agent-delivered flag suppresses the auto summary through th
     false,
     "flag read by the resolver — summary suppressed",
   );
-  assert.equal(stub.edits[0].text, TRACKED_DONE_TEXT_REPORT_SENT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_DONE_TEXT_REPORT_SENT));
   assert.equal(stub.sends.length, 1, "no summary message sent");
 
   clearAgentDeliveredMessage();
@@ -376,7 +377,7 @@ test("end(done): resolver clears the flag — a later finish on the same turn do
     resultText: "turn without a report",
   });
   assert.equal(out2.summarySent, true, "flag cleared — auto summary restored");
-  assert.equal(stub.edits[1].text, TRACKED_DONE_TEXT);
+  assert.equal(stub.edits[1].text, wire(TRACKED_DONE_TEXT));
 
   clearAgentDeliveredMessage();
   rmSync(dir, { recursive: true, force: true });
@@ -400,7 +401,10 @@ test("finish: drops parse_mode when crafted markdown is unbalanced (plain-text f
   const out = await tracker.finish({ resultText: "raw", craftRich });
 
   assert.equal(out.summarySent, true);
-  assert.equal(stub.sends[1].text, "**unclosed bold * and _orphan italic");
+  assert.equal(
+    stub.sends[1].text,
+    wire("**unclosed bold * and _orphan italic"),
+  );
   assert.equal(
     stub.sends[1].options.parseMode,
     undefined,
@@ -434,7 +438,7 @@ test("finish: crafted HTML summary body ships as HTML, never leaks raw tags unde
     "HTML",
     "HTML body must not ship under Markdown",
   );
-  assert.equal(stub.sends[1].text, "<b>Report ready</b>\n\nDetail here.");
+  assert.equal(stub.sends[1].text, wire("<b>Report ready</b>\n\nDetail here."));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -461,7 +465,7 @@ test("finish: crafted mixed body (HTML + stray Markdown) ships as HTML with mark
     !stub.sends[1].text.includes("**"),
     "markdown marker converted on an HTML wire",
   );
-  assert.equal(stub.sends[1].text, "<b>Lead</b> <i>then</i> detail");
+  assert.equal(stub.sends[1].text, wire("<b>Lead</b> <i>then</i> detail"));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -481,7 +485,10 @@ test("finish: falls back to the raw result text when no craft hook is supplied",
   });
   assert.equal(out.completed, true);
   assert.equal(out.summarySent, true);
-  assert.equal(stub.sends[1].text, "the final answer, split-to-fit if long");
+  assert.equal(
+    stub.sends[1].text,
+    wire("the final answer, split-to-fit if long"),
+  );
   assert.equal(stub.sends[1].options.parseMode, undefined);
   rmSync(dir, { recursive: true, force: true });
 });
@@ -528,7 +535,7 @@ test("finish: completed even with no tracked message — the final summary still
   });
   assert.equal(out.doneEdited, false);
   assert.equal(out.summarySent, true);
-  assert.equal(stub.sends[0].text, "report without a tracked message");
+  assert.equal(stub.sends[0].text, wire("report without a tracked message"));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -585,7 +592,7 @@ test("restart: a persisted tracked message is resumed (reused edit, no duplicate
   assert.equal(joined.messageId, 1001);
   assert.equal(stubC.sends.length, 0, "no second ack message");
   assert.equal(stubC.edits.length, 1, "the count is the one edit");
-  assert.equal(stubC.edits[0].text, trackedStartText(2));
+  assert.equal(stubC.edits[0].text, wire(trackedStartText(2)));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -713,7 +720,7 @@ test("terminate: edits tracked → '⏹️ Turn ended without a report', clears 
     "exactly one edit (to the terminal state)",
   );
   assert.equal(stub.edits[0].messageId, 1001);
-  assert.equal(stub.edits[0].text, TRACKED_TERMINAL_TEXT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_TERMINAL_TEXT));
   assert.equal(
     stub.sends.length,
     1,
@@ -753,7 +760,7 @@ test("activity: begin() 0→1 pins Working; a second unit reuses; end() 1→0 re
   assert.equal(b1.reused, false);
   assert.equal(tracker.activeCount(), 1, "0→1 increments");
   assert.equal(stub.sends.length, 1, "first begin pins the Working… message");
-  assert.equal(stub.sends[0].text, TRACKED_START_TEXT);
+  assert.equal(stub.sends[0].text, wire(TRACKED_START_TEXT));
 
   const b2 = await tracker.begin(); // unit 2 starts while unit 1 is in flight
   assert.equal(tracker.activeCount(), 2, "second unit keeps the counter at 2");
@@ -783,11 +790,11 @@ test("activity: begin() 0→1 pins Working; a second unit reuses; end() 1→0 re
   assert.equal(tracker.activeCount(), 0, "counter back to 0");
   assert.equal(stub.edits.length, 1, "resolved via a single done-edit");
   assert.equal(stub.edits[0].messageId, 1001);
-  assert.equal(stub.edits[0].text, TRACKED_DONE_TEXT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_DONE_TEXT));
   assert.equal(stub.sends.length, 2, "Working… + final summary");
   assert.equal(
     stub.sends[1].text,
-    "the final answer",
+    wire("the final answer"),
     "last completed unit's text becomes the summary",
   );
   assert.equal(
@@ -843,7 +850,7 @@ test("activity: end('no-report') on 1→0 resolves to the ⏹ terminal state —
   );
   assert.equal(
     stub.edits[0].text,
-    TRACKED_TERMINAL_TEXT,
+    wire(TRACKED_TERMINAL_TEXT),
     "terminal edit, never ✅ Done",
   );
   assert.equal(stub.sends.length, 1, "no summary on a no-report turn");
@@ -867,7 +874,7 @@ test("settle: work finished WITHOUT any completion call → forced to ✅ Done �
 
   await tracker.begin(); // inbound work pinned "Working…"
   assert.equal(stub.sends.length, 1);
-  assert.equal(stub.sends[0].text, TRACKED_START_TEXT);
+  assert.equal(stub.sends[0].text, wire(TRACKED_START_TEXT));
 
   // The agent's turn ends WITHOUT any completion path (no finish, no terminate,
   // no end) — the exact owner-reported freeze. Pre-fix: settle() does not exist
@@ -887,7 +894,7 @@ test("settle: work finished WITHOUT any completion call → forced to ✅ Done �
   assert.equal(stub.edits.length, 1, "forced exactly one done-edit");
   assert.equal(
     stub.edits[0].text,
-    TRACKED_DONE_TEXT,
+    wire(TRACKED_DONE_TEXT),
     "settle forces ✅ Done, never leaves Working…",
   );
   assert.equal(
@@ -937,7 +944,7 @@ test("settle: does NOT force while more inbound work may continue (mayContinue) 
   // Once that work REALLY completes → normal 1→0 resolution.
   await tracker.end("done", { resultText: "real completion" });
   assert.equal(stub.edits.length, 1);
-  assert.equal(stub.edits[0].text, TRACKED_DONE_TEXT);
+  assert.equal(stub.edits[0].text, wire(TRACKED_DONE_TEXT));
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -962,7 +969,7 @@ test("settle: preserves the ⏹ terminal outcome on the safety-net path (honest,
   assert.equal(stub.edits.length, 1);
   assert.equal(
     stub.edits[0].text,
-    TRACKED_TERMINAL_TEXT,
+    wire(TRACKED_TERMINAL_TEXT),
     "terminal outcome preserved — never fake ✅ Done",
   );
   assert.equal(stub.sends.length, 1, "no summary on the terminal path");
@@ -1005,7 +1012,7 @@ test("settle: resurrected stale pinned message (no active work this session) →
   assert.equal(stub.edits.length, 1);
   assert.equal(
     stub.edits[0].text,
-    TRACKED_TERMINAL_TEXT,
+    wire(TRACKED_TERMINAL_TEXT),
     "turn ended without a report → ⏹, not a fake ✅",
   );
   assert.equal(
@@ -1056,6 +1063,63 @@ test("terminate: still clears the persisted state when the terminal edit fails (
     persisted.messageId,
     0,
     "stale persisted state always cleared after terminate",
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the tracked message carries ONE identity line across pin, edits and a reload", async () => {
+  const { dir, stateFile } = tmpStateFile("identity-onepin");
+  const first = makeStub();
+  const tracker = createLiveUpdateTracker({
+    client: first.client,
+    token: BOT_TOKEN,
+    chatId: OWNER_CHAT_ID,
+    stateFile,
+    now: () => 1_000_000,
+  });
+
+  await tracker.start();
+  await tracker.update("step 1");
+  await tracker.update("step 2");
+
+  // A reload in the same process reuses the pinned message: the label is read
+  // back from the record, not re-decided, so the message never gains a second.
+  // A restarted process is a NEW holder on the same chat: it reuses the pinned
+  // message (no second ack) and re-pins the counted line once.
+  const second = makeStub();
+  const reloaded = createLiveUpdateTracker({
+    client: second.client,
+    token: BOT_TOKEN,
+    chatId: OWNER_CHAT_ID,
+    stateFile,
+    holderId: "seat-after-restart",
+    now: () => 1_100_000,
+  });
+  const reused = await reloaded.start();
+  assert.equal(reused.reused, true);
+  assert.equal(second.sends.length, 0, "no second ack message");
+
+  const bodies = [
+    ...first.sends.map((call) => call.text),
+    ...first.edits.map((call) => call.text),
+    ...second.edits.map((call) => call.text),
+  ];
+  assert.ok(bodies.length >= 4, "the fixture exercised pin + edits + reuse");
+  for (const body of bodies) {
+    const labels = body.split("\n").filter((line) => isIdentityLine(line));
+    assert.equal(
+      labels.length,
+      1,
+      `exactly one label in ${JSON.stringify(body)}`,
+    );
+    assert.equal(labels[0], currentIdentityLine(), "and it is this process's");
+  }
+
+  const persisted = JSON.parse(readFileSync(stateFile, "utf8"));
+  assert.equal(
+    persisted.identity,
+    currentIdentityLine(),
+    "the record pins the label with the message",
   );
   rmSync(dir, { recursive: true, force: true });
 });

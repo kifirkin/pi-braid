@@ -21,7 +21,7 @@ import {
 } from "../dist/lib/decision-buttons.js";
 import { runTelegramSend } from "../dist/lib/tool-logic.js";
 
-import { BOT_TOKEN, OWNER_CHAT_ID, OWNER_ID } from "./fixtures.mjs";
+import { BOT_TOKEN, OWNER_CHAT_ID, OWNER_ID, wire } from "./fixtures.mjs";
 
 /**
  * Stub client recording answerCallbackQuery + editMessageReplyMarkup +
@@ -538,7 +538,7 @@ test("telegram_send options: the plain path carries the keyboard and echoes the 
   assert.equal(outcome.ok, true);
   assert.equal(outcome.decisionToken, "tok1");
   assert.equal(calls.sendMessage.length, 1);
-  assert.equal(calls.sendMessage[0].text, "Pick one");
+  assert.equal(calls.sendMessage[0].text, wire("Pick one"));
   assert.deepEqual(calls.sendMessage[0].options.replyMarkup, {
     inline_keyboard: [[{ text: "Option A", callback_data: "dec:tok1:a" }]],
   });
@@ -596,7 +596,9 @@ test("telegram_send options + rich: the keyboard rides the LAST chunk only", asy
   const { client, calls } = fakeClient();
   const outcome = await runTelegramSend(
     {
-      text: "x".repeat(5000),
+      // Structure: a body past the cap must carry formatting (the gate
+      // refuses a 5000-char wall), and this test is about the keyboard.
+      text: "<b>report</b>\n" + "x".repeat(5000),
       rich: true,
       options: [[{ label: "A", value: "a" }]],
       decisionToken: "tok1",
