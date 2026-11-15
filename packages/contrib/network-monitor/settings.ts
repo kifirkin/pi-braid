@@ -8,6 +8,12 @@
  * reader - pi's settings.json through core's `readSettingsFileOutcome`, so
  * `PI_CODING_AGENT_DIR` relocates the read like every other braid setting.
  *
+ * The probe URL is admitted through `probeUrlVerdict`, because a reachability
+ * probe and a Bot API send are one string apart: the same host answers
+ * `/bot<token>/sendMessage`. A URL that names a call is refused here, at the
+ * only door a probe URL comes through, rather than at the curl that would run
+ * it, so a second reader of this setting cannot reintroduce the call.
+ *
  * Live semantics (a read-once-at-init read made `networkMonitor: false` a
  * no-op until the process restarted):
  *   - every `current()` call re-reads the document, so an edit lands on the
@@ -96,20 +102,93 @@ function str(v: unknown, fallback: string): string {
   return typeof v === "string" && v.length > 0 ? v : fallback;
 }
 
-/** Pure document -> settings. `false` disables; `true`/absent/unknown means defaults. */
+/**
+ * Bot API methods a URL segment can name. A reachability probe asks a host for
+ * a status code; these name a call that writes to a chat, so a URL carrying one
+ * is a sender rather than a probe.
+ */
+const BOT_API_CALL_SEGMENTS = new Set([
+  "sendmessage",
+  "sendphoto",
+  "sendaudio",
+  "senddocument",
+  "sendvideo",
+  "sendanimation",
+  "sendvoice",
+  "sendvideonote",
+  "sendmediagroup",
+  "sendlocation",
+  "sendpoll",
+  "sendchataction",
+  "copymessage",
+  "forwardmessage",
+  "editmessagetext",
+  "editmessagecaption",
+  "editmessagemedia",
+  "editmessagereplymarkup",
+  "answercallbackquery",
+  "deletemessage",
+  "setwebhook",
+]);
+
+export type ProbeUrlVerdict =
+  | { ok: true; url: string }
+  | { ok: false; reason: string };
+
+/**
+ * Is this string a reachability URL rather than a Bot API call? A probe asks
+ * one host for one status code, so it carries no bot token and names no method.
+ */
+export function probeUrlVerdict(url: string): ProbeUrlVerdict {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, reason: `not a URL: ${url}` };
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+    return { ok: false, reason: `not an http(s) URL: ${url}` };
+  const segments = parsed.pathname.split("/").filter((part) => part.length > 0);
+  for (const segment of segments) {
+    if (/^bot\d+:/i.test(segment))
+      return {
+        ok: false,
+        reason: `carries a bot token in the path, which makes this a call rather than a probe: ${url}`,
+      };
+    if (BOT_API_CALL_SEGMENTS.has(segment.toLowerCase()))
+      return {
+        ok: false,
+        reason: `names the Bot API call ${segment}: a probe URL asks a host for a status code, it does not name a call: ${url}`,
+      };
+  }
+  return { ok: true, url };
+}
+
+/**
+ * Pure document -> settings. `false` disables; `true`/absent/unknown means
+ * defaults. `onRefusal` hears about a setting that was refused rather than
+ * merely absent, so a configured-but-rejected probe URL is not silent.
+ */
 export function parseSettings(
   parsed: SettingsDocument,
+  onRefusal?: (reason: string) => void,
 ): NetworkMonitorSettings {
   const nm = networkMonitorSetting(parsed);
   if (nm === false) return { ...DEFAULTS, enabled: false };
   if (nm === undefined || nm === true) return { ...DEFAULTS, enabled: true };
   if (typeof nm === "object" && nm !== null) {
     const o = nm as Record<string, unknown>;
+    const requestedProbe = str(o.reachabilityUrl, DEFAULTS.reachabilityUrl);
+    const probe = probeUrlVerdict(requestedProbe);
+    if (!probe.ok)
+      onRefusal?.(
+        `reachabilityUrl refused: ${probe.reason}. Probing ${DEFAULTS.reachabilityUrl} instead.`,
+      );
     return {
       enabled: true,
       client: str(o.client, DEFAULTS.client),
       profileName: str(o.profileName, DEFAULTS.profileName),
-      reachabilityUrl: str(o.reachabilityUrl, DEFAULTS.reachabilityUrl),
+      reachabilityUrl: probe.ok ? probe.url : DEFAULTS.reachabilityUrl,
       curlTimeoutSecs: num(o.curlTimeoutSecs, DEFAULTS.curlTimeoutSecs),
       disconnectDelayMs: num(o.disconnectDelayMs, DEFAULTS.disconnectDelayMs),
       connectTimeoutMs: num(o.connectTimeoutMs, DEFAULTS.connectTimeoutMs),
@@ -143,7 +222,10 @@ export type SettingsDocumentReader = () => SettingsDocument | null;
 export interface LiveSettings {
   /** The current settings: a fresh read when it succeeds, last good when it does not. */
   current(): NetworkMonitorSettings;
-  /** Message from the most recent failed read; null after a clean read. */
+  /**
+   * Message from the most recent failed read or refused setting; null after a
+   * read that neither failed nor was refused.
+   */
   error(): string | null;
 }
 
@@ -165,7 +247,9 @@ export function createLiveSettings(read: SettingsDocumentReader): LiveSettings {
         return lastGood;
       }
       lastError = null;
-      lastGood = parseSettings(parsed ?? {});
+      const refusals: string[] = [];
+      lastGood = parseSettings(parsed ?? {}, (reason) => refusals.push(reason));
+      if (refusals.length > 0) lastError = refusals.join(" ");
       return lastGood;
     },
     error(): string | null {

@@ -200,9 +200,11 @@ export default function networkMonitorExtension(
   };
 
   /**
-   * The live settings, with read failures reported once per distinct error.
-   * `live.current()` already returns the last good configuration, so a broken
-   * settings file cannot silently re-enable or re-tune the monitor.
+   * The live settings, with read failures and refused values reported once per
+   * distinct message. `live.current()` already returns the last good
+   * configuration, so a broken settings file cannot silently re-enable or
+   * re-tune the monitor, and a probe URL naming a Bot API call is reported
+   * rather than quietly replaced.
    */
   const settingsNow = (): NetworkMonitorSettings => {
     const s = live.current();
@@ -211,7 +213,7 @@ export default function networkMonitorExtension(
       lastSettingsError = error;
       if (error !== null) {
         warn(
-          "[network-monitor] settings read failed - keeping the last good configuration: " +
+          "[network-monitor] settings not applied - keeping the last good configuration: " +
             error,
         );
       } else {

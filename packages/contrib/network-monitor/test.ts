@@ -33,6 +33,7 @@ import {
 import {
   createLiveSettings,
   parseSettings,
+  probeUrlVerdict,
   DEFAULTS,
   type SettingsDocument,
 } from "./settings.ts";
@@ -966,6 +967,68 @@ console.log("settings: parse, defaults, and out-of-range fallbacks");
     "non-numeric and non-positive values fall back",
     tuned.curlTimeoutSecs === DEFAULTS.curlTimeoutSecs &&
       tuned.maxAttemptsPerOutage === DEFAULTS.maxAttemptsPerOutage,
+  );
+}
+
+console.log("settings: a probe URL that names a Bot API call is refused");
+{
+  check(
+    "the documented default is a probe",
+    probeUrlVerdict(DEFAULTS.reachabilityUrl).ok,
+  );
+  check(
+    "a health path on another host is a probe",
+    probeUrlVerdict("https://example.com/health").ok,
+  );
+  const withToken = probeUrlVerdict(
+    "https://api.telegram.org/bot123456789:AAH-secret/sendMessage",
+  );
+  check("a bot token in the path is refused", withToken.ok === false);
+  const withCall = probeUrlVerdict("https://api.telegram.org/sendMessage");
+  check("a Bot API method in the path is refused", withCall.ok === false);
+  check(
+    "the refusal names the call it saw",
+    withCall.ok === false && withCall.reason.includes("sendMessage"),
+    withCall.ok ? "accepted" : withCall.reason,
+  );
+  check(
+    "a non-http scheme is refused",
+    probeUrlVerdict("file:///etc/passwd").ok === false,
+  );
+  const document = (reachabilityUrl: string): SettingsDocument => ({
+    braid: { contrib: { networkMonitor: { reachabilityUrl } } },
+  });
+  const call = "https://api.telegram.org/bot123456789:AAH-secret/sendMessage";
+  check(
+    "a refused URL falls back to the default",
+    parseSettings(document(call)).reachabilityUrl === DEFAULTS.reachabilityUrl,
+  );
+  const refusals: string[] = [];
+  parseSettings(document(call), (reason) => refusals.push(reason));
+  check(
+    "the refusal is reported rather than silent",
+    refusals.length === 1 && refusals[0].includes("reachabilityUrl refused"),
+    refusals.join("|"),
+  );
+  const live = createLiveSettings(() => document(call));
+  const current = live.current();
+  check(
+    "the live source keeps probing the safe URL",
+    current.reachabilityUrl === DEFAULTS.reachabilityUrl,
+  );
+  check(
+    "the live source reports the refused setting",
+    (live.error() ?? "").includes("reachabilityUrl refused"),
+    live.error() ?? "none",
+  );
+  const clean = createLiveSettings(() =>
+    document("https://example.com/health"),
+  );
+  check(
+    "an accepted URL keeps the configured value",
+    clean.current().reachabilityUrl === "https://example.com/health" &&
+      clean.error() === null,
+    clean.error() ?? "none",
   );
 }
 
