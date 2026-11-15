@@ -254,6 +254,37 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.0: one program and its argv, without a shell (2026-11-16)
+
+The bash census measured 223,137 bash calls out of 504,124 tool calls in a frozen corpus, and ranked the
+argv-shaped replacements it could support. `run` is the first of them and the largest: one program and its
+arguments, no shell in between. It takes `argv` plus a required `timeout_ms`, with optional `cwd`, `env`,
+`stdin` and `max_output_bytes`. stdout and stderr come back separately, each capped; a stream past the cap
+keeps its head and its tail, states how many bytes it dropped, and leaves the full text in a file the
+result names. A program that outlives the timeout is killed with its process group, and no call can hang
+the session.
+
+What it refuses is what a shell would have interpreted: an argument carrying `|`, `&&`, `;`, a backtick or
+`$(`, a shell invoked with `-c`, and a glob at a path-segment boundary (`*.md`, `src/*`). The refusals
+are the design, not a limitation: a tool that accepts those grows back into the shell the census was
+trying to retire, and each refusal names the element and the tool that owns the case (`bash` for a
+pipeline, `find` or `grep` for a pattern). A `*` inside an argument, such as a grep filter or a sed
+quantifier, is left to the program. There is no TTY and no shell profile, and a glob is never expanded.
+
+The destructive guard is narrow and shared: six verbs (`rm`, `mv`, `dd`, `chmod`, `shred`, `truncate`) are
+refused when a path argument resolves outside the session workspace, and the resolution is canonical on
+both sides, so a symlink out of the workspace is caught. The mechanism lives in
+`packages/core/src/lib/tools/workspace-guard.ts` and takes the verb set as an argument; a later `git` tool passes its own
+set to the same guard rather than copying it.
+
+The differential control behind the release ran 120 commands sampled from the live corpus through `/bin/bash
+-c` and through the tool, and all 120 agreed on exit code, stdout and stderr. The sample rule and the
+per-reason exclusion counts are printed by `packages/core/test/manual/run-differential.mjs`, which reads
+the corpus and is not part of the suite. `run-census.mjs` beside it re-measures the class the tool absorbs
+and, with `--since`, the adoption in sessions started after a deploy.
+
+Core moves a minor: a new tool surface a caller can reach, and nothing existing changes shape.
+
 ## Core 0.44.5, Telegram 0.2.1: a label names the session, and the digest reads as a sentence (2026-11-15)
 
 The identity line said `session unknown` on every message a seat sent. pi DELETES `PI_SESSION_ID`
