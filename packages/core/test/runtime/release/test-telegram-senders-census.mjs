@@ -104,10 +104,13 @@ test("a planted sender in a swept root is an unlisted sender", () => {
   }
 });
 
-test("the shipped tree passes with every root present", () => {
+test("the shipped tree passes wherever the roots are", () => {
+  // This arm is the one that has to hold on a runner as well as here: the two
+  // home roots are absent there, and asserting anything about them would make
+  // the fixture a claim about the machine that runs it.
   const result = spawnSync(process.execPath, [CENSUS], { encoding: "utf8" });
   const out = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 0, `the real census must pass:\n${out}`);
   assert.match(out, /0 findings/);
-  assert.doesNotMatch(out, /not checked here/);
+  assert.doesNotMatch(out, /STALE ROW/);
 });

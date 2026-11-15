@@ -200,7 +200,7 @@ tarball did not have. All three move here, with the fixes they already hold:
   instead of throwing out of a timer and ending the process.
 - `pi-braid-contrib` 0.1.5: the git tool, argv-only and read-only by default.
 
-## Core 0.44.3, Telegram 0.2.0, Contrib 0.3.0 — a message names the process that sent it (2026-11-15)
+## Core 0.44.4, Telegram 0.2.0, Contrib 0.3.0 — a message names the process that sent it (2026-11-15)
 
 Two agents writing through one bot were indistinguishable in the owner's chat, and a reply reaches whichever
 process holds the poller. Every message the Telegram package sends now opens with one line rendered from what
@@ -242,16 +242,17 @@ endpoint is the one way a file that posts nothing can post, and the refusal is r
 error channel. Core stays a patch: the checker fix and the census script are not things a caller calls, and
 `braid.schema.json` is regenerated with only its `x-source` line references moved.
 
-Core ships at 0.44.3, and the two numbers before it are why. The 0.44.1 tag's own workflow never got past
+Core ships at 0.44.4, and the three numbers before it are why. The 0.44.1 tag's own workflow never got past
 its gates: the census sweeps three roots, two of which live under the operator's home, and it read a root a
 runner does not have as a row that stopped being true, so both home rows came back stale on every CI machine
 while passing on the machine that wrote them. Presence is now decided once per root, a row under an absent
 root is reported as not checked rather than clean or stale, and `test-telegram-senders-census.mjs` holds both
 halves: an absent root leaves its rows alone, while a root that IS present and holds a listed file that
 reaches nothing still fails. That fixture also moved the suite's own census, which `LOCAL_DEV.md` states as
-a number, so 0.44.2 was recorded and then superseded before it could be published; the ledger keeps the
-record rather than accepting an edit under the same string. The tag for 0.44.1 stays where it is, with its
-failed run beside it.
+a number, so 0.44.2 was recorded and superseded before it could be published. Then 0.44.3's run died on that
+same fixture's last arm, which asserted the operator's home instead of what every machine shares: the arm
+now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
+for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
 ## Core 0.44.0, Contrib 0.2.0, Providers 1.0.8 — the ruler gains eyes, and refusals learn to speak (2026-11-12)
 
