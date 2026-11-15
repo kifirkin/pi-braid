@@ -254,6 +254,35 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.44.5, Telegram 0.2.1: a label names the session, and the digest reads as a sentence (2026-11-15)
+
+The identity line said `session unknown` on every message a seat sent. pi DELETES `PI_SESSION_ID`
+from the environment it hands an extension and re-injects it only into bash children, so the label's
+`process.env` read could never succeed, while the adherence digest beside it printed the real id from
+the extension context. The session now comes from that context: the Telegram factory registers a
+getter (`setIdentitySessionSource`) bound to the live `ExtensionContext` it already keeps for
+`isIdle`, and the label prefers it to the environment, which stays the fallback the standalone
+`node src/lib/identity.ts` command still has. The memo is keyed on the id the getter answers with, so
+one session reads one line, a label rendered before the first `session_start` corrects itself, and a
+reload inside one process relabels to the session that now sends.
+
+The adherence digest was nine labelled lines, and the owner read it as a field dump. It is now one
+thing that happened: a bold subject naming the rung and how many rules are in it, one sentence
+carrying the counts and quoting the rule in full with the internal source token after it in
+parentheses rather than in front, and one time stamp. Two fields are gone. The truncated session id,
+because the message already opens with a label that names the session. The report path, because the
+reader receives this on a chat client and the report is where the counts live, not somewhere to
+navigate to. A digest that folded several crossings now says so and names how many, and a rule is no
+longer clipped to 64 characters: a fragment of a regex told the owner nothing, and above the plain
+cap the body carries the format the outbound gate asks for.
+
+Both changes are fixes to what the owner sees, so both move a patch: core 0.44.5 and Telegram 0.2.1.
+The new function is internal wiring between the package's own modules, not a documented command. The
+three digest shapes are frozen in `packages/telegram/test/fixtures/adherence-digest-bodies.json`
+because the two packages cannot import each other: the producer's fixture asserts the renderer emits
+those lines, and the Telegram fixture pushes the same bytes through the gate and Telegram's own
+parser.
+
 ## Core 0.44.0, Contrib 0.2.0, Providers 1.0.8 — the ruler gains eyes, and refusals learn to speak (2026-11-12)
 
 `design_audit` could measure a rendered page and say nothing about whether it looked cheap. The same

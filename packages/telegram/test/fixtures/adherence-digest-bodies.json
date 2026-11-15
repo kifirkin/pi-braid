@@ -1,0 +1,20 @@
+{
+  "note": "The bodies the core adherence meter renders, frozen so that the gate in THIS package validates the shape the owner actually receives. Telegram cannot import braid core (see src/lib/local-time.ts), so a file is the contract: the producer's fixture (packages/core/test/runtime/enforcement/test-adherence-digest.mjs) asserts renderAdherenceDigest emits exactly these lines, and test/outbound-notifications.test.mjs pushes them through planOutbound and Telegram's own parser. The third line is the renderer's formatLocalTime output at the fixture instant in the owner time zone; the producer compares that line's SHAPE rather than this stamp, so the freeze does not depend on a machine's zone. A body that changes in core stays honest only when this file records the new lines.",
+  "bodies": {
+    "one-rule": [
+      "<b>Adherence · rung 3 · one rule</b>",
+      "The rule \"Alpha rule fired at #/#\" (enforcement/whisper) has repeated 3 times across 4 deliveries.",
+      "at 15:00 MSK (UTC+3)"
+    ],
+    "four-folded": [
+      "<b>Adherence · rung 3 · four rules</b>",
+      "Four crossings, from four rules, are reported together in this message. The rule \"Charlie rule fired\" (rule-c) has repeated 15 times across 16 deliveries.",
+      "at 15:00 MSK (UTC+3)"
+    ],
+    "escaped": [
+      "<b>Adherence · rung 3 · one rule</b>",
+      "The rule \"Use &lt;b&gt;bold&lt;/b&gt; &amp; more\" (enforcement/whisper) has repeated 3 times across 4 deliveries.",
+      "at 15:00 MSK (UTC+3)"
+    ]
+  }
+}

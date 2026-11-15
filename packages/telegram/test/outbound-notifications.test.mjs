@@ -15,6 +15,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   createOutboundSender,
@@ -23,9 +26,28 @@ import {
   renderOutboundMetrics,
   noteOwnerMessage,
   noteRefusal,
-  OUTBOUND_PLAIN_MAX_CHARS,
 } from "../dist/lib/notify/outbound.js";
+import { checkTelegramHtml } from "../dist/lib/html-check.js";
 import { BOT_TOKEN, OWNER_CHAT_ID } from "./fixtures.mjs";
+
+/**
+ * The digest bodies core renders, recorded in the shared fixture file rather
+ * than retyped here: this package cannot import core (it is a standalone
+ * package with no core dependency), so the file is the contract between the
+ * producer's fixture and this one. Every body below is pushed through the real
+ * gate and Telegram's own parser, which is the part only this package can
+ * assert.
+ */
+const FROZEN_DIGESTS = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+      "adherence-digest-bodies.json",
+    ),
+    "utf8",
+  ),
+).bodies;
 
 function capturingClient() {
   const calls = [];
@@ -93,40 +115,44 @@ test("an automatic message over the plain cap is refused exactly like a tool sen
   assert.equal(outboundMetricsSnapshot().refusalsByRule["plain-over-cap"], 3);
 });
 
-test("the adherence digest shape ships as HTML and records the suppressed count", async () => {
+test("the adherence digest bodies ship as HTML, parse, and record the suppressed count", async () => {
   resetOutboundMetrics();
   const stub = capturingClient();
   const gate = makeSender(stub);
-  // The body the adherence meter renders (one screen, bold subject, labelled
-  // lines) — a machine message that must pass the same validator as any other.
-  const digest = [
-    "<b>adherence · rung 6</b>",
-    "rule enforcement/whisper: Alpha rule fired at #/#",
-    "rules 3",
-    "deliveries 41",
-    "repeats 38",
-    "suppressed 11",
-    "session digest-s1",
-    "at 13:05",
-    "where /srv/braid-home/adherence/report.jsonl",
-  ].join("\n");
-  assert.ok(digest.length <= OUTBOUND_PLAIN_MAX_CHARS);
-  const out = await gate.send({
-    text: digest,
-    parseMode: "HTML",
-    source: "adherence-digest",
-    suppressed: 11,
-  });
-  assert.equal(out.ok, true);
-  assert.equal(out.parseMode, "HTML");
-  assert.equal(stub.calls[0].options.parseMode, "HTML");
+  const names = ["one-rule", "four-folded", "escaped"];
+
+  for (const [index, name] of names.entries()) {
+    const body = FROZEN_DIGESTS[name].join("\n");
+    const plan = gate.plan({
+      text: body,
+      parseMode: "HTML",
+      source: "adherence-digest",
+    });
+    assert.equal(plan.ok, true, `${name}: the gate accepts the body`);
+    assert.equal(
+      checkTelegramHtml(body).ok,
+      true,
+      `${name}: Telegram parses it`,
+    );
+
+    const out = await gate.send({
+      text: body,
+      parseMode: "HTML",
+      source: "adherence-digest",
+      suppressed: index,
+    });
+    assert.equal(out.ok, true, `${name}: delivered as HTML`);
+    assert.equal(out.parseMode, "HTML");
+    assert.equal(stub.calls[index].options.parseMode, "HTML");
+  }
+
   const snap = outboundMetricsSnapshot();
   assert.equal(
     snap.escalationsSuppressed,
-    11,
-    "suppressed is recorded with the send",
+    3,
+    "suppressed is recorded with each send",
   );
-  assert.equal(snap.ownerMessagesLastHour["adherence-digest"], 1);
+  assert.equal(snap.ownerMessagesLastHour["adherence-digest"], 3);
 });
 
 test("the counter page covers all four counters and the hourly window", async () => {

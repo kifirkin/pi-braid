@@ -17,14 +17,37 @@
  *   3. a session that does not own the owner channel sends nothing;
  *   4. a refused delivery spends nothing and retries on the next pass;
  *   5. below-threshold rules never become pending (detection unchanged);
- *   6. the digest body is one screen: short lines, only `<b>`, under 280 chars.
+ *   6. the digest body reads as a sentence, and the three shapes it can take
+ *      (one rule, four folded rules, a rule that needs escaping) are frozen so
+ *      the Telegram-side fixture validates the same bytes the owner receives.
  */
 
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+/**
+ * The frozen digest bodies. They live in the telegram package beside the gate
+ * that has to accept them, because that package cannot import core and the
+ * body is the only thing the two sides share. This fixture is the producer
+ * side: it asserts the renderer emits exactly these lines.
+ */
+const FROZEN = JSON.parse(
+  readFileSync(
+    join(
+      ROOT,
+      "..",
+      "telegram",
+      "test",
+      "fixtures",
+      "adherence-digest-bodies.json",
+    ),
+    "utf8",
+  ),
+);
 
 console.log("=== adherence digest ===\n");
 
@@ -110,6 +133,28 @@ function senderSpy() {
 
 const ALPHA = "[braid-whisper - enforcement @ 10:00 MSK]\nAlpha rule fired at 25/30";
 const BETA = "[braid-whisper - rule-b @ 10:01 MSK]\nBeta rule fired";
+const CHARLIE = "[braid-whisper - rule-c @ 10:02 MSK]\nCharlie rule fired";
+const DELTA = "[braid-whisper - rule-d @ 10:03 MSK]\nDelta rule fired";
+
+/**
+ * Assert a rendered body against its frozen lines: the subject, the sentence,
+ * and one short stamp whose text is the machine's owner zone rather than part
+ * of the freeze.
+ */
+function assertFrozenBody(body, name) {
+  const expected = FROZEN.bodies[name];
+  assert.ok(expected, `no frozen body named ${name}`);
+  const lines = body.split("\n");
+  assert.equal(lines.length, 3, `${name}: subject, one sentence, one stamp`);
+  assert.equal(lines[0], expected[0], `${name}: subject line`);
+  assert.equal(lines[1], expected[1], `${name}: the sentence`);
+  assert.match(
+    lines[2],
+    /^at \d{2}:\d{2} \S+ \(UTC[+-]\d+\)$/,
+    `${name}: one short time stamp, saw "${lines[2]}"`,
+  );
+  return lines;
+}
 
 // ── 1. Two crossings in one pass → one digest ───────────────────────────────
 
@@ -129,14 +174,24 @@ await test("fixture 1: two crossings in one pass produce ONE digest with the sup
   assert.equal(opts.parseMode, "HTML", "digest ships as HTML (bold subject)");
   assert.equal(opts.source, "adherence-digest");
   assert.equal(opts.suppressed, 1, "the second crossing is the suppressed count");
-  assert.match(text, /^<b>adherence · rung 3<\/b>/, "bold subject names the rung");
-  assert.match(text, /\nrules 2\n/, "the digest states how many rules it folded");
-  assert.match(text, /\ndeliveries 4\n/);
-  assert.match(text, /\nrepeats 3\n/);
-  assert.match(text, /\nsuppressed 1\n/, "the owner sees how many were held back");
-  assert.match(text, /\nsession digest-s1\n/);
-  assert.match(text, /\nat /);
-  assert.match(text, /\nwhere .*report\.jsonl$/, "points at the full signal");
+  assert.equal(
+    text.split("\n")[0],
+    "<b>Adherence · rung 3 · two rules</b>",
+    "bold subject names the rung and what the message is about",
+  );
+  assert.equal(
+    text.split("\n")[1],
+    `Two crossings, from two rules, are reported together in this message. ` +
+      `The rule "Beta rule fired" (rule-b) has repeated 3 times across 4 deliveries.`,
+    "one sentence carries the folding count and the counts",
+  );
+  for (const field of ["deliveries ", "repeats ", "suppressed ", "session ", "where "]) {
+    assert.equal(
+      text.includes(`\n${field}`),
+      false,
+      `no labelled field survives (${field.trim()})`,
+    );
+  }
 
   // Nothing else fires while the window is closed, even though the branch
   // still carries both crossings above their milestones.
@@ -172,7 +227,16 @@ await test("fixture 2: a crossing inside the window is buffered, then reports af
   assert.equal(spy.sent.length, 2, "the buffered crossing reports after the hour");
   assert.equal(r3.fired.length, 1);
   assert.match(spy.sent[1].text, /rung 6/);
-  assert.match(spy.sent[1].text, /\nsuppressed 0\n/);
+  assert.equal(
+    spy.sent[1].text.split("\n").length,
+    3,
+    "a single crossing has no folding sentence to state",
+  );
+  assert.equal(
+    spy.sent[1].text.includes("crossings"),
+    false,
+    "one crossing is not called a fold",
+  );
 });
 
 // ── 3. Ownership: a non-owner session never messages the owner ──────────────
@@ -242,29 +306,139 @@ await test("fixture 5: a rule below the milestone never becomes pending (detecti
   assert.equal(meter.ADHERENCE_ESCALATION_BUDGET_PER_SESSION, 12);
 });
 
-// ── 6. The body is one screen ─────────────────────────────────────────────
+// ── 6. The body is a sentence ────────────────────────────────────────────
 
-await test("fixture 6: the digest is short, uses only <b>, and fits the plain cap", async () => {
-  const longSignal = `[braid-whisper - enforcement @ 10:00 MSK]\n${"Very long rule text ".repeat(20)}`;
-  const branch = append([], "s", 4, longSignal);
-  append(branch, "t", 4, BETA, "rule-b");
-  const ctx = ctxFor(branch, "digest-shape");
+await test("fixture 6: one rule renders a subject, one sentence and one stamp", async () => {
+  const branch = append([], "o", 4, ALPHA);
+  const ctx = ctxFor(branch, "digest-one");
   const spy = senderSpy();
-  await wiring.checkAdherence(ctx, {
+  await wiring.checkAdherence(ctx, { sender: spy.factory, now: () => T0 });
+  assert.equal(spy.sent.length, 1);
+  const { text, opts } = spy.sent[0];
+  assert.equal(opts.suppressed, 0);
+
+  const lines = assertFrozenBody(text, "one-rule");
+  assert.ok(
+    text.length <= 280,
+    `one rule fits the plain cap (${text.length} chars)`,
+  );
+  // The rule is the subject of the sentence, quoted in full, with the internal
+  // source token after it in parentheses rather than in front of it.
+  assert.equal(
+    lines[1].startsWith(`The rule "Alpha rule fired at #/#" (enforcement/whisper) `),
+    true,
+    `rule first, source after: ${lines[1]}`,
+  );
+});
+
+await test("fixture 7: four folded rules are named in the subject and counted in one sentence", async () => {
+  const branch = append([], "p", 4, ALPHA); // 3 repeats → rung 3
+  append(branch, "q", 7, BETA, "rule-b"); // 6 repeats → rung 6
+  append(branch, "r", 16, CHARLIE, "rule-c"); // 15 repeats → rung 15
+  append(branch, "s", 4, DELTA, "rule-d"); // 3 repeats → rung 3
+  const ctx = ctxFor(branch, "digest-four");
+  const spy = senderSpy();
+  await wiring.checkAdherence(ctx, { sender: spy.factory, now: () => T0 });
+  assert.equal(spy.sent.length, 1, "four crossings, still ONE message");
+  const { text, opts } = spy.sent[0];
+  assert.equal(opts.suppressed, 3, "three of the four are the folded count");
+
+  const lines = assertFrozenBody(text, "four-folded");
+  assert.equal(
+    lines[0],
+    "<b>Adherence · rung 3 · four rules</b>",
+    "the subject names the rung and how many rules are in it",
+  );
+  assert.equal(
+    lines[1].startsWith(
+      "Four crossings, from four rules, are reported together in this message.",
+    ),
+    true,
+    "a digest that folded several says so, and names how many",
+  );
+  // The ladder advances one rung per pass, so four rules crossing together all
+  // sit on rung 3 and the rung says nothing about severity; the repeat counts do.
+  assert.equal(
+    lines[1].includes(
+      'The rule "Charlie rule fired" (rule-c) has repeated 15 times across 16 deliveries.',
+    ),
+    true,
+    "the most-repeated rule is quoted, with its own counts",
+  );
+});
+
+await test("fixture 8: a long rule is quoted in full; past the plain cap the body carries the format", async () => {
+  const longRule = "Very long rule text ".repeat(20);
+  const branch = append(
+    [],
+    "l",
+    4,
+    `[braid-whisper - enforcement @ 10:00 MSK]\n${longRule}`,
+  );
+  const ctx = ctxFor(branch, "digest-long");
+  const spy = senderSpy();
+  await wiring.checkAdherence(ctx, { sender: spy.factory, now: () => T0 });
+  assert.equal(spy.sent.length, 1);
+  const { text, opts } = spy.sent[0];
+
+  // The rule is never clipped into a fragment: a fragment of a rule tells the
+  // owner nothing, and the outbound gate carries a formatted body rather than
+  // asking a sender to pre-chew its subject.
+  const normalized = longRule.replace(/\s+/g, " ").trim();
+  assert.equal(
+    text.includes(`"${normalized}"`),
+    true,
+    "the whole rule is quoted",
+  );
+  assert.equal(text.includes("..."), false, "nothing is shortened");
+
+  // Over the plain cap, so the body must carry a parse mode AND formatting a
+  // reader can see: the bold subject is that formatting, and the HTML is what
+  // the gate validates before any send.
+  assert.ok(text.length > 280, `the body is ${text.length} chars`);
+  assert.equal(opts.parseMode, "HTML", "past the plain cap the body ships formatted");
+  assert.equal(text.startsWith("<b>Adherence · rung 3 · one rule</b>\n"), true);
+});
+
+await test("fixture 9: a rule carrying markup is escaped, and a quoted rule is not quoted twice", async () => {
+  const HOSTILE = "[braid-whisper - enforcement @ 10:00 MSK]\nUse <b>bold</b> & more";
+  const branch = append([], "h", 4, HOSTILE);
+  const spy = senderSpy();
+  await wiring.checkAdherence(ctxFor(branch, "digest-escape"), {
     sender: spy.factory,
     now: () => T0,
   });
   assert.equal(spy.sent.length, 1);
-  const text = spy.sent[0].text;
-  assert.ok(text.length <= 280, `digest is ${text.length} chars — one screen`);
-  for (const line of text.split("\n")) {
-    assert.ok(line.length <= 72, `line too long (${line.length}): ${line}`);
-  }
-  const tags = [...text.matchAll(/<[^>]+>/g)].map((m) => m[0]);
-  assert.ok(tags.length > 0, "the subject is bold");
-  for (const tag of tags) {
-    assert.ok(tag === "<b>" || tag === "</b>", `only <b> is used, saw ${tag}`);
-  }
+  const { text } = spy.sent[0];
+  const lines = assertFrozenBody(text, "escaped");
+  assert.equal(
+    lines[1].includes("&lt;b&gt;bold&lt;/b&gt; &amp; more"),
+    true,
+    "markup in a rule cannot become markup in the digest",
+  );
+  assert.deepEqual(
+    [...text.matchAll(/<\/?[a-z-]+>/g)].map((m) => m[0]),
+    ["<b>", "</b>"],
+    "the only tags on the wire are the subject's own pair",
+  );
+
+  // A body that already carries its own quotation marks is not quoted twice.
+  const alreadyQuoted =
+    '[braid-whisper - enforcement @ 10:00 MSK]\n"Babysit three workers and read each forest outcome write"';
+  const quotedSpy = senderSpy();
+  await wiring.checkAdherence(ctxFor(append([], "k", 4, alreadyQuoted), "digest-quoted"), {
+    sender: quotedSpy.factory,
+    now: () => T0,
+  });
+  assert.equal(quotedSpy.sent.length, 1);
+  const quotedText = quotedSpy.sent[0].text;
+  assert.equal(
+    quotedText.includes(
+      'The rule "Babysit three workers and read each forest outcome write" (enforcement/whisper)',
+    ),
+    true,
+  );
+  assert.equal(quotedText.includes('""'), false, "one pair of quotes, not two");
 });
 
 // ── Summary ─────────────────────────────────────────────────────────────────

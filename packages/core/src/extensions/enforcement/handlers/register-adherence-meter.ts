@@ -40,7 +40,6 @@ import { readTelegramPollerLiveness } from "../../../lib/state/telegram-poller-l
 import { formatLocalTime } from "../../../lib/utils/local-time.js";
 import {
   activeBranchEntries,
-  adherenceReportPath,
   aggregateRuleAdherence,
   commitDigest,
   createEscalationState,
@@ -121,48 +120,109 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function shorten(text: string, max: number): string {
-  const trimmed = text.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 3)}...`;
-}
-
-/** The rule's matched text (the key's `source::pattern` tail), shortened. */
-function ruleLabel(entry: PendingEscalation): string {
-  const tail = entry.ruleKey.includes("::")
+/** The rule's own text: the key is `source::body`, and the body is the rule. */
+function ruleText(entry: PendingEscalation): string {
+  const body = entry.ruleKey.includes("::")
     ? entry.ruleKey.split("::").slice(1).join("::")
     : entry.ruleKey;
-  return shorten(`${entry.source}: ${tail}`, 64);
+  return body.trim();
+}
+
+/** Counts up to twenty in words; past that the numeral is the honest form. */
+const COUNT_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+];
+
+function countWord(n: number): string {
+  return Number.isInteger(n) && n >= 0 && n < COUNT_WORDS.length ? COUNT_WORDS[n] : String(n);
+}
+
+/** The same word, as the opening of a sentence. */
+function sentenceCase(text: string): string {
+  return text.length > 0 ? `${text[0].toUpperCase()}${text.slice(1)}` : text;
 }
 
 /**
- * The hourly digest: a bold subject naming the highest rung it reports, then
- * labelled lines. Short enough to survive as plain text (the owner's
- * tweet-length rule) and valid under `parse_mode: HTML` (the Telegram outbound
- * gate validates it before any send).
+ * A rule body that already carries its own quoting is not quoted twice: the
+ * whisper bodies the meter counts open and close with quotation marks of their
+ * own.
  */
-function renderDigest(
+function quoted(text: string): string {
+  const opens = /^["'“«]/.test(text);
+  const closes = /["'”»]$/.test(text);
+  return opens && closes ? text : `"${text}"`;
+}
+
+/**
+ * The hourly digest: one thing that happened, not a field dump. A bold subject
+ * names the rung and how many rules the message is about; one sentence carries
+ * the counts and the rule it quotes; one stamp says when.
+ *
+ * Two fields the labelled body carried are deliberately gone:
+ *   - the truncated session id, because the message already opens with the
+ *     identity label, and the label names the session the send belongs to
+ *     (`lib/identity.ts`, telegram);
+ *   - the report path. The report is where the counts live, not somewhere a
+ *     reader navigates to from a chat client, so an operator path on the last
+ *     line was one of the labelled fields the owner read as a dump.
+ *
+ * The rule is quoted in FULL, never clipped: a fragment of a regex told the
+ * owner nothing, and the outbound gate carries a formatted body rather than
+ * asking a sender to pre-chew its subject. The quietest honest count of the
+ * crossings it folded is stated in its own sentence, so a digest that carries
+ * several never reads like a single one.
+ */
+export function renderAdherenceDigest(
   digest: { pending: PendingEscalation[]; suppressed: number },
-  ctx: ExtensionContext,
   nowMs: number,
 ): string {
-  // The subject is the highest rung in the digest; ties go to the latest.
+  // The subject is the rule at the highest rung in the digest. Among rules the
+  // ladder put on the same rung (it advances one rung per pass, so a tie is the
+  // ordinary case for a folded digest), the one with the most deliveries is the
+  // informative quote.
   const subject = digest.pending.reduce((best, entry) =>
-    entry.milestone >= best.milestone ? entry : best,
+    entry.milestone > best.milestone ||
+    (entry.milestone === best.milestone && entry.deliveries >= best.deliveries)
+      ? entry
+      : best,
   );
-  const lines = [
-    `<b>adherence · rung ${subject.milestone}</b>`,
-    `rule ${escapeHtml(ruleLabel(subject))}`,
-    ...(digest.pending.length > 1 ? [`rules ${digest.pending.length}`] : []),
-    `deliveries ${subject.deliveries}`,
-    `repeats ${subject.repeats}`,
-    `suppressed ${digest.suppressed}`,
-    `session ${escapeHtml(shorten(getSessionIdSafe(ctx) || "unknown", 32))}`,
+  const crossings = digest.pending.length;
+  const ruleCount = new Set(digest.pending.map((entry) => entry.ruleKey)).size;
+  const rules = ruleCount === 1 ? "rule" : "rules";
+  const folded =
+    crossings > 1
+      ? sentenceCase(
+          `${countWord(crossings)} crossings, from ${countWord(ruleCount)} ${rules}, ` +
+            `are reported together in this message. `,
+        )
+      : "";
+  return [
+    `<b>Adherence · rung ${subject.milestone} · ${countWord(ruleCount)} ${rules}</b>`,
+    `${folded}The rule ${escapeHtml(quoted(ruleText(subject)))} ` +
+      `(${escapeHtml(subject.source)}) has repeated ${subject.repeats} ` +
+      `times across ${subject.deliveries} deliveries.`,
     `at ${formatLocalTime(new Date(nowMs))}`,
-    // The next step is a pointer, not advice: the full signal text and the
-    // per-rule counts live in the session report.
-    `where ${escapeHtml(shorten(adherenceReportPath(), 72))}`,
-  ];
-  return lines.join("\n");
+  ].join("\n");
 }
 
 /**
@@ -231,7 +291,7 @@ export async function checkAdherence(
   try {
     ok =
       (await Promise.resolve(
-        sender(renderDigest(digest, ctx, nowMs), {
+        sender(renderAdherenceDigest(digest, nowMs), {
           parseMode: "HTML",
           source: "adherence-digest",
           suppressed: digest.suppressed,
