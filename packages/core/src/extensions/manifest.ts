@@ -18,6 +18,7 @@ import orchestratorFn from "./orchestrator/index.js";
 // context-management (tool profile switching)
 import contextManagementFn from "./context-management/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
+import coreRunToolFn from "./core/run-tool/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 
 // cognitive (reasoning tools + detectors: think, verify, topic-drift, MARS reflection, ...)
@@ -105,6 +106,11 @@ export const MANIFEST: ManifestEntry[] = [
     fn: coreAgentEnvFn,
     alwaysOn: true,
     desc: "time_status, L1 context injection",
+  },
+  {
+    id: "run-tool",
+    fn: coreRunToolFn,
+    desc: "run tool - one program and its argv, without a shell",
   },
   {
     id: "workspace-snapshot",

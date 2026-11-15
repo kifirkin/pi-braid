@@ -33,6 +33,7 @@ export const TOOL_FAMILIES: Readonly<Record<string, ToolFamily>> = {
   get_search_content: "web-fetch",
 
   bash: "terminal",
+  run: "terminal",
   herdr_pane: "terminal",
   herdr_layout: "terminal",
 

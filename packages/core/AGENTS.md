@@ -154,7 +154,7 @@ command behind it is the same drift with a gate painted on it.
 ## Tool Inventory
 
 The canonical, source-derived inventory of every tool provided/exposed by this
-package is **`packages/core/TOOLS.md`** (33 documented tools: 24 braid-registered
+package is **`packages/core/TOOLS.md`** (34 documented tools: 25 braid-registered
 via `pi.registerTool()` + 9 pi-native core builtins `read`/`bash`/`edit`/`write`/
 `grep`/`find`/`ls`/`powershell`/`tool_search` from pi's built-in tool-search
 extension, plus an appendix separating the standalone `pi-braid-contrib`

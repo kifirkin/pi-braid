@@ -6,7 +6,7 @@ Narrows the active tool set to a curated profile on request, using `pi.setActive
 
 ## Problem
 
-The core package alone documents 33 tools in [TOOLS.md](../../../TOOLS.md); a
+The core package alone documents 34 tools in [TOOLS.md](../../../TOOLS.md); a
 full install adds the contrib and third-party families on top. Most sessions
 use only a subset. Displaying every registered tool in the system prompt wastes
 tokens and increases cognitive load on the model.
@@ -20,13 +20,13 @@ drifted from it.
 
 ## Profiles
 
-| Profile     | Tools                                                                                                                          | Use case                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| `lean`      | read, edit, write, bash, grep, find, ls, think, verify, finalize, scratchpad, memory                                           | General-purpose coding & reasoning   |
-| `research`  | read, fetch_content, grep, find, ls, bash, think, memory, scratchpad, verify                                                   | Information gathering, web search    |
-| `debugging` | read, edit, write, bash, grep, find, ls, think, hypothesize, explore_paths, verify, conflict_qa                                | Bug finding and fixing               |
-| `browser`   | browser_navigate, browser_snapshot, browser_eval, browser_screenshot, read, bash, think, describe_image, fetch_content, verify | Web browsing, UI testing             |
-| `deep`      | read, edit, write, bash, grep, find, ls, think, verify, codebase, file_diff, scratchpad                                        | Deep code analysis, dependency graph |
+| Profile     | Tools                                                                                                                               | Use case                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `lean`      | read, edit, write, bash, run, grep, find, ls, think, verify, finalize, scratchpad, memory                                           | General-purpose coding & reasoning   |
+| `research`  | read, fetch_content, grep, find, ls, bash, run, think, memory, scratchpad, verify                                                   | Information gathering, web search    |
+| `debugging` | read, edit, write, bash, run, grep, find, ls, think, hypothesize, explore_paths, verify, conflict_qa                                | Bug finding and fixing               |
+| `browser`   | browser_navigate, browser_snapshot, browser_eval, browser_screenshot, read, bash, run, think, describe_image, fetch_content, verify | Web browsing, UI testing             |
+| `deep`      | read, edit, write, bash, run, grep, find, ls, think, verify, codebase, file_diff, scratchpad                                        | Deep code analysis, dependency graph |
 
 ## How It Works
 

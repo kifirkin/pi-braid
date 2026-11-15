@@ -94,6 +94,9 @@ export const TOOL_GUIDELINES: Record<string, string> = {
   set_tool_profile:
     "when: task scope is known — focused profiles cut prompt noise and token cost; args: lean/research/debugging/browser/deep",
 
+  // ── run-tool (default-enabled) ──
+  run: "when: one program and its argv, for tests, builds, git, wc, node, python; when-not: pipelines, redirection, heredocs, $(...) or globs (bash), or a destructive verb naming a path outside the workspace; args: argv + required timeout_ms (+ cwd/env/stdin/max_output_bytes); caveat: no TTY, no shell, no glob expansion; a stream past the cap keeps head and tail and names the file holding the rest",
+
   // ── skills-tool (default-enabled) ──
   list_skills:
     "when: entering a domain that may have a skill; when-not: after the skill is loaded; args: page/pageSize/sectionsMax/rank; caveat: rows arrive ordered by relevance to the current task (rows with evidence carry relevance {score, reason}; the response carries ranking {tier, basis, policy}; rank: catalog for the plain order) and reach (reachable, lines, bytes, chars, estTokens, sectionCount, sections) prices the read — read the WHOLE SKILL.md before acting in the domain",

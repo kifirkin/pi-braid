@@ -41,7 +41,7 @@ build flow; [docs/SETUP.md](docs/SETUP.md) covers every install path.
 | Subagents         | `orchestrate` keeps a per-project worker registry with admission, lifecycle, one branch per worker, file locks, conflict detection, and merge verification.                                                                                                        |
 | Prompt assembly   | The system prompt is composed from named sections and published through pi's section seam, so a changed section re-sends alone. `prompt_inspect` prints the assembled prompt at any point.                                                                         |
 
-The suite is 29 extensions; `health-maintenance` and `error-tracking` are off by default, and the
+The suite is 30 extensions; `health-maintenance` and `error-tracking` are off by default, and the
 list is [src/extensions/manifest.ts](src/extensions/manifest.ts). `set_tool_profile` switches the
 active tool set to a curated profile.
 
