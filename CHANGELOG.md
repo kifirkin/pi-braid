@@ -200,6 +200,48 @@ tarball did not have. All three move here, with the fixes they already hold:
   instead of throwing out of a timer and ending the process.
 - `pi-braid-contrib` 0.1.5: the git tool, argv-only and read-only by default.
 
+## Core 0.44.1, Telegram 0.2.0, Contrib 0.3.0 — a message names the process that sent it (2026-11-15)
+
+Two agents writing through one bot were indistinguishable in the owner's chat, and a reply reaches whichever
+process holds the poller. Every message the Telegram package sends now opens with one line rendered from what
+the sending process can observe, `[braid · worker · pi-braid · session 01a1da43 · pid 98675]`: the role
+marker, the working directory's name, the short session id and the pid. It is attached in `planOutbound`, the
+boundary every owner-facing message already crosses, so a new send path cannot forget it and no caller can
+label a message as another process's. An unobservable field says so and a marker the build does not know is
+reported raw rather than upgraded to a role the code does not have; a body split into parts carries the line
+once, in the first part.
+
+The same gate closed a hole it had opened for itself: `rich:true` or a bare `parse_mode` exempted any body
+from the 280-character rule, so a wall of prose could ship past it by asking for the format instead of using
+it. Past the cap a sender-facing body must now carry structure a reader can see, and the refusal names the
+length, the rule and the remedy. Automatic sources keep their delivery, because a refused crafted summary
+has no sender to rewrite it.
+
+Three smaller changes landed in the same window. The tracked ack is keyed by chat and resolves only when the
+last holder ends, so two seats cannot both decide the chat has none; the adherence meter folds crossings
+into at most one digest per hour and states how many it suppressed. A forwarded message carries its origin
+now, read into the four kinds with the fields each actually carries, and two clocks are kept apart:
+`forwardedAt` is arrival here, `originDate` is publication there, and `timeSource` says which one a consumer
+holds, so a hand-copied message cannot inherit a forwarded timestamp. The `t.me` link is rebuilt from ids
+only, with the `/c/` form for a channel-range id, and no link at all rather than a guess. And
+`scripts/check-telegram-senders.mjs` walks the repository, the skills tree and the orchestrator's scripts,
+comparing every file that can reach the Bot API with an allowlist where each row states why the file exists
+and which gate it passes; an unlisted sender exits non-zero and names the file.
+
+The journal checker stopped calling correct records fabrications: a supersedes target in a rotated sibling
+was DANGLING and an evidence path recorded in another repository's coordinates was ABSENT. A seq now
+resolves across the live file and its rotated siblings through one path helper the writer and the checker
+both import, and a reference whose first component is not this tree's is UNRESOLVED and informational,
+naming the root tried and the raw string given. Every run ends with one line counting findings by class, so
+a checker that got quieter instead of more honest shows up as a shifted count.
+
+Telegram moves a minor because a delivered body gains a line the caller did not author and the gate's answer
+to a rich body over the cap flips from delivery to refusal. Contrib moves a minor for the same shape: its
+network monitor's probe URL can no longer name a Bot API call or carry a bot token, since a configurable
+endpoint is the one way a file that posts nothing can post, and the refusal is reported through the settings
+error channel. Core stays a patch: the checker fix and the census script are not things a caller calls, and
+`braid.schema.json` is regenerated with only its `x-source` line references moved.
+
 ## Core 0.44.0, Contrib 0.2.0, Providers 1.0.8 — the ruler gains eyes, and refusals learn to speak (2026-11-12)
 
 `design_audit` could measure a rendered page and say nothing about whether it looked cheap. The same
