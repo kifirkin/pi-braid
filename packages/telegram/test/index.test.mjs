@@ -64,6 +64,11 @@ import {
   CONTROL_RUNNING_TEXT,
   CONTROL_PAUSED_TEXT,
 } from "../dist/lib/pause-control.js";
+import {
+  currentIdentityLine,
+  resetIdentityCache,
+  setIdentitySessionSource,
+} from "../dist/lib/identity.js";
 
 /**
  * Pin the machine-wide braid tree for the WHOLE file.
@@ -1027,6 +1032,59 @@ test("log: extra args fold into the notify message (Error becomes its message)",
       "[telegram] inbound poll error ECONNRESET",
     );
   });
+});
+
+test("factory: the label names the session the live context holds, with no PI_SESSION_ID in the environment", async () => {
+  const pi = makeFakePi();
+  const SESSION = "5c0ffee0-1111-2222-3333-444455556666";
+  try {
+    // The assertions live INSIDE the env window: restoring the environment
+    // puts PI_SESSION_ID back, and a label rendered after that names the
+    // ambient session instead of the one this fixture controls.
+    await withEnv(
+      {
+        BRAID_TG_BOT_TOKEN: BOT_TOKEN,
+        TELEGRAM_BOT_TOKEN: undefined,
+        BRAID_TG_POLL_DISABLED: "1",
+        TELEGRAM_POLL_DISABLED: undefined,
+        // The environment pi actually hands an extension (pi-core
+        // tools/bash.ts deletes both and re-injects them into bash children
+        // only), so nothing but the context can name the session here.
+        PI_SESSION_ID: undefined,
+        PI_SESSION_FILE: undefined,
+        BRAID_SESSION_ROLE: undefined,
+      },
+      async () => {
+        await telegramExtension(pi, { fetch: emptyUpdatesFetch() });
+
+        // The factory is loaded but no context exists yet: the field is honest.
+        resetIdentityCache();
+        assert.equal(
+          currentIdentityLine().includes("· session unknown ·"),
+          true,
+          "no context, no session to name",
+        );
+
+        // session_start binds the live context; the label reads the id from it.
+        const start = (pi.handlers.get("session_start") ?? [])[0];
+        assert.equal(typeof start, "function", "session_start is registered");
+        start(undefined, {
+          ui: { notify: () => {} },
+          isIdle: () => true,
+          cwd: process.cwd(),
+          sessionManager: { getSessionId: () => SESSION },
+        });
+        assert.equal(
+          currentIdentityLine().includes("· session 5c0ffee0 ·"),
+          true,
+          `the factory registers the getter: ${currentIdentityLine()}`,
+        );
+      },
+    );
+  } finally {
+    setIdentitySessionSource(undefined);
+    resetIdentityCache();
+  }
 });
 
 test("factory: session_start binds the sink to ctx.ui.notify; session_shutdown clears it", async () => {

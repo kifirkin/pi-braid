@@ -146,6 +146,7 @@ import {
   type PollerLockWriteFailure,
 } from "./lib/poller-lock.js";
 import { isWorkerRole, resolveSessionRole } from "./lib/session-role.js";
+import { setIdentitySessionSource } from "./lib/identity.js";
 import {
   handlePauseCallbackQuery,
   placeControlKeyboard,
@@ -839,6 +840,15 @@ export default async function telegramExtension(
     return;
   }
   log("info", `Telegram channel enabled (${ENV_TOKEN} present)`);
+
+  // The label's session field: registered as a GETTER, not a value, because
+  // there is no context yet at load and a reload replaces the one there is.
+  // `lib/identity.ts` prefers it to `process.env` for the reason in that
+  // file's header: pi deletes PI_SESSION_ID from the environment it hands an
+  // extension, so a label read from the environment said "session unknown" in
+  // every message. Registered before the first send path exists, so no
+  // automatic message can be planned without it.
+  setIdentitySessionSource(currentSessionId);
 
   const chatIdEnv = env(ENV_CHAT_ID);
   const allowedUsers = parseAllowedUsers(env(ENV_ALLOWED_USERS));

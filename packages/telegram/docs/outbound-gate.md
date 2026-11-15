@@ -67,9 +67,16 @@ Every delivered message states which process sent it, on its own first line:
 Rendered by `lib/identity.ts` from what the process can observe (the
 `BRAID_SESSION_ROLE` marker, the working directory's name, the pi session id and
 the pid), attached in `planOutbound` so no caller renders or forgets it, and
-memoized so one process always produces the same label. A field the process
-cannot observe says so (`unknown role`, `unknown project`, `session unknown`); a
-marker this build does not know is reported with its raw value
+memoized so one session always produces the same label. The session id comes
+from the live extension context, not from the environment: pi deletes
+`PI_SESSION_ID` from the environment it hands an extension and re-injects it
+only into bash children, so an implementation that read `process.env` printed
+`session unknown` on every message. `setIdentitySessionSource` registers the
+getter once at load; the environment stays the fallback a standalone script
+(`node <package>/src/lib/identity.ts`) still has, and the memo is keyed on the
+id so a label rendered before the first `session_start` corrects itself. A field
+the process cannot observe says so (`unknown role`, `unknown project`, `session
+unknown`); a marker this build does not know is reported with its raw value
 (`unknown role (oracle)`). Only the label is escaped for the wire mode; the
 sender's body is never touched. Split bodies carry it once, in the first part,
 and the chat-keyed tracked message keeps the label of the process that pinned

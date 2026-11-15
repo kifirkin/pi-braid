@@ -18,16 +18,27 @@
  *
  * Rules the line obeys:
  *
- *  - Every field comes from the process itself (env, cwd, pid). Nothing is
- *    fetched, guessed or passed in: a caller cannot label a message as someone
- *    else's, and cannot forget to label it at all (`planOutbound` attaches it).
+ *  - Role, project and pid come from the process itself (env, cwd, pid). The
+ *    session does not: pi DELETES `PI_SESSION_ID` (and `PI_SESSION_FILE`) from
+ *    the environment it hands an extension and re-injects them only into bash
+ *    children (pi-core tools/bash.ts, `resolveSpawnContext`), so a label read
+ *    from `process.env` said `session unknown` on every message while the
+ *    digest beside it named the real id from the extension context. The id now
+ *    comes from that context through a getter the package registers once
+ *    (`setIdentitySessionSource`); the environment stays the fallback a
+ *    standalone script still has. Nothing is passed per message: a caller
+ *    cannot label a message as someone else's, and cannot forget to label it
+ *    at all (`planOutbound` attaches it).
  *  - An unobservable field says so. `unknown role`, `unknown project`,
  *    `session unknown` are answers; an invented value is not. A marker this
  *    build does not know (`BRAID_SESSION_ROLE=oracle`) renders as
  *    `unknown role (oracle)` — the raw marker is reported, not upgraded to a
  *    role the code does not have.
- *  - It is stable: one render per process, memoized. The same process reads
- *    the same line every time, which is what makes it usable as a label. Two
+ *  - It is stable: one render per session, memoized. The memo is keyed on the
+ *    session the getter answers with, so a stable session reads the same line
+ *    every time (what makes it usable as a label), a label rendered before the
+ *    first `session_start` corrects itself once the context arrives, and a
+ *    reload inside one process relabels to the session that now sends. Two
  *    processes differ on at least one field (session, pid, or cwd).
  *  - It is one line: field values are clipped of separators, brackets and
  *    newlines, so a hostile project name cannot break the label or the parse.
@@ -76,6 +87,11 @@ export interface IdentityInput {
   cwd?: string;
   /** Process id (defaults to `process.pid`, or `process.pid` of the caller's node). */
   pid?: number;
+  /**
+   * The live session id (the ExtensionContext's), when the caller has one.
+   * Preferred over the environment, which an extension never sees.
+   */
+  sessionId?: string;
 }
 
 /**
@@ -112,10 +128,16 @@ function projectField(cwd: string): string {
 }
 
 /**
- * The session discriminator: the first group of pi's session uuid, else the
+ * The session discriminator: the live context's id when the caller has one,
+ * else the first group of pi's session uuid from the environment, else the
  * session file's name (pi names the file after the session), else unknown.
  */
-function sessionField(env: Record<string, string | undefined>): string {
+function sessionField(
+  env: Record<string, string | undefined>,
+  liveSessionId?: string,
+): string {
+  const live = liveSessionId?.trim();
+  if (live) return shortSession(live);
   const id = env[IDENTITY_SESSION_ID_ENV]?.trim();
   if (id) return shortSession(id);
   const file = env[IDENTITY_SESSION_FILE_ENV]?.trim();
@@ -148,26 +170,66 @@ export function renderIdentityLine(input: IdentityInput = {}): string {
     " · " +
     projectField(cwd) +
     " · session " +
-    sessionField(env) +
+    sessionField(env, input.sessionId) +
     " · pid " +
     pid +
     LINE_CLOSE
   );
 }
 
-let cachedLine: string | undefined;
+/**
+ * Where the live session id comes from: the package registers a getter for the
+ * ExtensionContext it already holds. Module-level because the label is
+ * rendered inside `planOutbound`, which has no context of its own, and every
+ * send path in the package plans through it.
+ */
+let sessionSource: (() => string | undefined) | undefined;
 
 /**
- * The label THIS process attaches, rendered once and remembered. Memoizing is
- * the stability promise: a later env change (a new session in the same
- * process) must not relabel the process mid-run.
+ * Register (or clear, with `undefined`) the live session-id getter. A process
+ * that registers none keeps the environment fallback.
  */
-export function currentIdentityLine(): string {
-  if (cachedLine === undefined) cachedLine = renderIdentityLine();
-  return cachedLine;
+export function setIdentitySessionSource(
+  source: (() => string | undefined) | undefined,
+): void {
+  sessionSource = source;
 }
 
-/** Drop the memoized label (fixtures that model two processes in one). */
+/**
+ * The registered getter's answer, or undefined. A context left behind by a
+ * replaced session throws on access and answers undefined, which is the same
+ * honest "I cannot name it" the rest of this file falls back to.
+ */
+function observedSessionId(): string | undefined {
+  if (!sessionSource) return undefined;
+  try {
+    const id = sessionSource();
+    return typeof id === "string" && id.trim() ? id.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let cachedLine: { sessionKey: string; line: string } | undefined;
+
+/**
+ * The label THIS process attaches, rendered once per session and remembered.
+ * Memoizing is the stability promise; keying the memo on the session id is
+ * what lets a label rendered before the context existed (or after a reload)
+ * name the session that now sends instead of freezing "unknown" for the life
+ * of the process.
+ */
+export function currentIdentityLine(): string {
+  const sessionId = observedSessionId();
+  const sessionKey = sessionId ?? "";
+  if (cachedLine !== undefined && cachedLine.sessionKey === sessionKey)
+    return cachedLine.line;
+  const line = renderIdentityLine(sessionId ? { sessionId } : {});
+  cachedLine = { sessionKey, line };
+  return line;
+}
+
+/** Drop the memoized label (fixtures that model two sessions in one). */
 export function resetIdentityCache(): void {
   cachedLine = undefined;
 }

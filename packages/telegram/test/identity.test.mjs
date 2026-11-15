@@ -34,6 +34,7 @@ import {
   isIdentityLine,
   renderIdentityLine,
   resetIdentityCache,
+  setIdentitySessionSource,
   splitIdentity,
 } from "../dist/lib/identity.js";
 import { ENV_SESSION_ROLE } from "../dist/lib/session-role.js";
@@ -147,6 +148,131 @@ test("unknown fields degrade honestly — nothing is invented", () => {
     renderIdentityLine({ env: baseEnv, cwd: PROJECT, pid: 0 }),
     "[braid · unknown role · demo-project · session 9f3c1b22 · pid unknown]",
   );
+});
+
+test("a process with no PI_SESSION_ID still names the session its context holds", () => {
+  // What pi actually hands an extension: PI_SESSION_ID and PI_SESSION_FILE are
+  // DELETED from the environment and re-injected only into bash children
+  // (pi-core tools/bash.ts, resolveSpawnContext). The extension context is the
+  // only place a loaded telegram surface can read the id, so this fixture's
+  // own environment is that shape rather than a stub of it.
+  const savedId = process.env.PI_SESSION_ID;
+  const savedFile = process.env.PI_SESSION_FILE;
+  const savedRole = process.env.BRAID_SESSION_ROLE;
+  delete process.env.PI_SESSION_ID;
+  delete process.env.PI_SESSION_FILE;
+  process.env.BRAID_SESSION_ROLE = "seat";
+  try {
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(process.env, "PI_SESSION_ID"),
+      false,
+      "the fixture process carries no session id in its environment",
+    );
+
+    // The environment alone cannot name the session: this is the defect the
+    // owner saw, reproduced as an assertion about what a label built from
+    // `process.env` alone would print.
+    assert.equal(
+      renderIdentityLine({ env: {}, cwd: PROJECT, pid: 7 }),
+      "[braid · unknown role · demo-project · session unknown · pid 7]",
+      "env-only rendering has no session to name",
+    );
+
+    // The context can, and it wins over a stale environment value.
+    const SESSION = "9f3c1b22-aaaa-bbbb-cccc-0123456789ab";
+    assert.equal(
+      renderIdentityLine({ env: {}, cwd: PROJECT, pid: 7, sessionId: SESSION }),
+      "[braid · unknown role · demo-project · session 9f3c1b22 · pid 7]",
+    );
+    assert.equal(
+      renderIdentityLine({
+        env: { PI_SESSION_ID: "00000000-aaaa-bbbb-cccc-0123456789ab" },
+        cwd: PROJECT,
+        pid: 7,
+        sessionId: SESSION,
+      }),
+      "[braid · unknown role · demo-project · session 9f3c1b22 · pid 7]",
+      "the live context outranks the environment",
+    );
+
+    // The label this process actually attaches, through the same seam the
+    // telegram factory registers: no environment id anywhere, and the session
+    // still named.
+    setIdentitySessionSource(() => SESSION);
+    resetIdentityCache();
+    const line = currentIdentityLine();
+    assert.match(line, /· session 9f3c1b22 ·/, `label: ${line}`);
+    assert.equal(line.includes("session unknown"), false, "no unknown field");
+    assert.equal(line.includes(`pid ${process.pid}`), true);
+
+    // A context from a replaced session throws on access; the label degrades
+    // to the honest field instead of failing the send.
+    setIdentitySessionSource(() => {
+      throw new Error("replaced session");
+    });
+    resetIdentityCache();
+    assert.equal(currentIdentityLine().includes("· session unknown ·"), true);
+  } finally {
+    setIdentitySessionSource(undefined);
+    resetIdentityCache();
+    if (savedId === undefined) delete process.env.PI_SESSION_ID;
+    else process.env.PI_SESSION_ID = savedId;
+    if (savedFile === undefined) delete process.env.PI_SESSION_FILE;
+    else process.env.PI_SESSION_FILE = savedFile;
+    if (savedRole === undefined) delete process.env.BRAID_SESSION_ROLE;
+    else process.env.BRAID_SESSION_ROLE = savedRole;
+  }
+});
+
+test("the label follows the session its getter answers with, and settles once it is stable", () => {
+  const savedRole = process.env.BRAID_SESSION_ROLE;
+  const savedId = process.env.PI_SESSION_ID;
+  const savedFile = process.env.PI_SESSION_FILE;
+  process.env.BRAID_SESSION_ROLE = "seat";
+  // The ambient environment is whatever ran this file; strip the ids so the
+  // getter is the only thing that can name a session.
+  delete process.env.PI_SESSION_ID;
+  delete process.env.PI_SESSION_FILE;
+  let live;
+  try {
+    setIdentitySessionSource(() => live);
+    resetIdentityCache();
+
+    // Before the first session_start there is no context: the field says so.
+    assert.equal(currentIdentityLine().includes("· session unknown ·"), true);
+
+    // The context arrives. No reset is needed: the memo is keyed on the id.
+    live = "aaaa1111-0000-0000-0000-000000000001";
+    assert.equal(
+      currentIdentityLine().includes("· session aaaa1111 ·"),
+      true,
+      "a label rendered before the context corrects itself",
+    );
+
+    // A stable session reads the same line every time.
+    const settled = currentIdentityLine();
+    assert.equal(currentIdentityLine(), settled);
+    assert.equal(currentIdentityLine(), settled);
+
+    // A reload inside one process is a new session, and a new label.
+    live = "bbbb2222-0000-0000-0000-000000000002";
+    const reloaded = currentIdentityLine();
+    assert.notEqual(
+      reloaded,
+      settled,
+      "the label names the session that sends",
+    );
+    assert.equal(reloaded.includes("· session bbbb2222 ·"), true);
+  } finally {
+    setIdentitySessionSource(undefined);
+    resetIdentityCache();
+    if (savedRole === undefined) delete process.env.BRAID_SESSION_ROLE;
+    else process.env.BRAID_SESSION_ROLE = savedRole;
+    if (savedId === undefined) delete process.env.PI_SESSION_ID;
+    else process.env.PI_SESSION_ID = savedId;
+    if (savedFile === undefined) delete process.env.PI_SESSION_FILE;
+    else process.env.PI_SESSION_FILE = savedFile;
+  }
 });
 
 test("the label stays one line whatever a field contains", () => {
