@@ -65,7 +65,7 @@
  *   node scripts/check-telegram-senders.mjs --repo <dir>     # tree rows resolve against
  *   node scripts/check-telegram-senders.mjs --list           # print every row
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -619,7 +619,20 @@ function verifyRow(row, text, absolute, kind, calls) {
 
 const files = [];
 const skipped = [];
-for (const root of roots) walk(root.path, files, skipped);
+// A root that is not on this machine is not evidence about the file a row
+// names. Reading it as one turned every CI runner, where the operator's home
+// directories do not exist, into a failed release: the two rows for the paper's
+// delivery and the tunnel probe were reported stale on the runner and correct
+// on the machine that wrote them. Presence is therefore decided per root, once,
+// and the stale rule only speaks about roots that were actually swept.
+const absentRoots = [];
+for (const root of roots) {
+  if (!existsSync(root.path)) {
+    absentRoots.push(root);
+    continue;
+  }
+  walk(root.path, files, skipped);
+}
 
 const detections = [];
 const readErrors = [];
@@ -679,18 +692,26 @@ for (const detection of detections) {
 }
 
 const overrideMode = overrideRoots.length > 0;
+const absentPrefixes = absentRoots
+  .filter((root) => root.path !== repoRoot)
+  .map((root) => `${displayKey(root.path)}/`);
+const notChecked = [];
 for (const row of ROWS) {
   // An override run answers for one directory, so a row describing the tree
   // cannot be stale in it: the file it names was never in scope.
   if (overrideMode) continue;
   if (row.permit === true) continue;
-  if (!seen.has(row.key)) {
-    findings.push({
-      key: row.key,
-      kind: "stale row",
-      detail: "listed, but nothing that reaches the Bot API was found there",
-    });
+  if (seen.has(row.key)) continue;
+  const absent = absentPrefixes.find((prefix) => row.key.startsWith(prefix));
+  if (absent !== undefined) {
+    notChecked.push({ key: row.key, prefix: absent });
+    continue;
   }
+  findings.push({
+    key: row.key,
+    kind: "stale row",
+    detail: "listed, but nothing that reaches the Bot API was found there",
+  });
 }
 
 // ── Output ───────────────────────────────────────────────────────────────────
@@ -710,9 +731,11 @@ if (listRows) {
 console.log("telegram senders census");
 console.log("roots swept:");
 for (const root of roots) {
-  console.log(
-    `  ${pad(root.label, 20)} ${root.path === repoRoot ? "." : displayKey(root.path)}`,
-  );
+  const shown = root.path === repoRoot ? "." : displayKey(root.path);
+  const absent = absentRoots.includes(root)
+    ? "  (absent on this machine, its rows are not checked)"
+    : "";
+  console.log(`  ${pad(root.label, 20)} ${shown}${absent}`);
 }
 console.log(
   `files read: ${files.length}, ${plural(skipped.length, "path", "paths")} out of scope by the rules in this script`,
@@ -764,6 +787,17 @@ const senders = detections.filter((entry) => entry.kind === "sender").length;
 console.log(
   `census: ${plural(senders, "sender", "senders")}, ${plural(detections.length - senders, "probe", "probes")}, ${plural(ROWS.length, "row", "rows")}, ${plural(findings.length, "finding", "findings")}`,
 );
+
+if (notChecked.length > 0) {
+  console.log(
+    `not checked here: ${plural(notChecked.length, "row", "rows")} whose root is absent on this machine`,
+  );
+  for (const entry of notChecked)
+    console.log(`  ${entry.key}  (${entry.prefix} missing)`);
+  console.log(
+    "These rows are neither clean nor stale on this machine: the directory they live in was never swept, so nothing here is evidence about them.",
+  );
+}
 
 if (findings.length > 0 || readErrors.length > 0) {
   console.log(
