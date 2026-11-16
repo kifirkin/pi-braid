@@ -34,7 +34,7 @@ Some extensions are large enough to have their own sub-structure:
 
 - `extensions/memory/` - 7 sub-extensions (context-lifecycle, context-manager, memory-agent-bridge, scratchpad, session-recall, three-memory-stores, workspace-snapshot)
 - `extensions/cognitive/` - 6 sub-extensions (metacognition, reasoning, sycophancy-detector, tool-safety, topic-drift, turn-outcome)
-- `extensions/core/` - 4 sub-extensions (polyfill, agent-environment, prompt-builder, skills-tool)
+- `extensions/core/` - 6 sub-extensions (polyfill, agent-environment, prompt-builder, skills-tool, run-tool, bash-cwd)
 - `extensions/self/` - 5 sub-extensions (health-maintenance, error-tracking, watchdog, auto-recovery, latent-activator)
 - `extensions/scheduling/` - 1 sub-extension (timer)
 - `extensions/heartbeat/` - 2 sub-extensions (heartbeat-scheduler, analytics)

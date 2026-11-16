@@ -11,6 +11,7 @@ environmental awareness, and system prompt assembly.
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `polyfill/`          | Polyfills for missing pi core features.                                                                                                                                                                       | (foundation)     |
 | `agent-environment/` | L1 environmental awareness: working dir, time, machine info.                                                                                                                                                  | `prompt-builder` |
+| `bash-cwd/`          | pi's `bash` tool, overridden so the shell's working directory carries across calls. See `bash-cwd/AGENTS.md`.                                                                                                 | (tool surface)   |
 | `prompt-builder/`    | Builds the agent's system prompt. Composes sections; orchestrates once-per-session whisper deliveries from `memory/` and `cognitive/`.                                                                        | (final assembly) |
 | `skills-tool/`       | Skill surface: `list_skills` catalog (on-demand reach and ranking) + `skill_stats` counters, the auto-inject whisper, the skills floor (visible catalog) and drift trigger text rendered by `prompt-builder`. | (tool surface)   |
 

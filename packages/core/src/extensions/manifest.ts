@@ -18,6 +18,7 @@ import orchestratorFn from "./orchestrator/index.js";
 // context-management (tool profile switching)
 import contextManagementFn from "./context-management/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
+import coreBashCwdFn from "./core/bash-cwd/index.js";
 import coreRunToolFn from "./core/run-tool/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 
@@ -111,6 +112,11 @@ export const MANIFEST: ManifestEntry[] = [
     id: "run-tool",
     fn: coreRunToolFn,
     desc: "run tool - one program and its argv, without a shell",
+  },
+  {
+    id: "bash-cwd",
+    fn: coreBashCwdFn,
+    desc: "bash tool override - the shell's working directory carries across calls",
   },
   {
     id: "workspace-snapshot",

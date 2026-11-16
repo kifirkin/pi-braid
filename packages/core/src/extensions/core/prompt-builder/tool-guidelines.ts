@@ -53,7 +53,7 @@ export const TOOL_GUIDELINES: Record<string, string> = {
   //    self-registers thinner promptGuidelines — PINNED_BUILTIN_OVERRIDES
   //    makes these rows win) ──
   read: "when: ground truth for anything on disk, incl. images as attachments, instead of cat or sed; when-not: content search (grep/find); args: path, offset for long files; caveat: text truncated at 2000 lines / 50KB",
-  bash: "when: tests, builds, git, shell pipelines, or inspecting PI-prefixed env vars for model/session details — anything without a dedicated tool; when-not: file read/edit; args: command + timeout; caveat: output truncated to 2000 lines / 50KB",
+  bash: "when: tests, builds, git, shell pipelines, or inspecting PI-prefixed env vars for model/session details — anything without a dedicated tool; when-not: file read/edit; args: command + timeout + optional cwd; caveat: output truncated to 2000 lines / 50KB; the directory carries across calls (a trailing cd from a successful command is inherited, a failed command moves nothing, cwd is one call, and a result off the session start ends with [cwd ...])",
   edit: "when: one precise change to a known file; when-not: new files (write) or whole-file overhauls; args: oldText must match a UNIQUE region exactly; caveat: multiple edits in one call must not overlap",
   write:
     "when: create or overwrite a whole file; when-not: small tweaks to an existing file (edit); args: path + full content; caveat: truncates in place; a failed write can leave a partial file",
