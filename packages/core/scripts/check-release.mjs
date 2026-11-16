@@ -19,9 +19,13 @@
  *      namespace already in its history, and an iteration tag precedes its own
  *      base release: 0.40.0-main.3 < 0.40.0, per semver.org 2.0.0 with build
  *      metadata ignored;
- *   4. with no tag of its own at HEAD, the version the tree derives must sort
- *      strictly above the highest existing tag in this package's namespace: the
- *      rule the tag path enforces, checked here before the tag exists.
+ *   4. with no tag of its own at HEAD, the manifest must not claim a stable
+ *      version below the highest tag in its own history: that number was
+ *      released from an earlier commit and is being reused. A stable version
+ *      equal to that tag is every commit between a release and its next version
+ *      bump, and one above it is a pending release; a prerelease version is an
+ *      iteration tree, and iteration tags never publish. None of those claims a
+ *      released number, so all three are clean.
  *
  * The namespaces are per package (root CHANGELOG, "Two tag roles"): core owns
  * the bare `v` namespace, every sibling owns `<workspace>-v*`. A tag therefore
@@ -161,7 +165,12 @@ const ownAtHead = headTags.filter((tag) => {
 });
 
 const parent = sh("git rev-parse -q --verify HEAD^", top);
-const highestExisting = highestVersion(allTags.map((name) => stripTag(name)));
+// Rule 4 reads the tags this tree actually descends from: a tag on another line
+// says nothing about whether this tree's manifest is a number already released
+// here, and it must not change this tree's verdict.
+const highestInHistory = highestVersion(
+  gitLines(`git tag --list '${tagGlob}' --merged HEAD`, top).map((name) => stripTag(name)),
+);
 
 for (const tag of ownAtHead) {
   const claimed = stripTag(tag);
@@ -196,18 +205,31 @@ for (const tag of ownAtHead) {
   }
 }
 
-// ── rule 4: nothing of this package at HEAD, so the derivation must be ahead ─
+// ── rule 4: nothing of this package at HEAD, so the manifest must not reuse a
+//    released number ────────────────────────────────────────────────────────
 if (ownAtHead.length === 0) {
-  if (isValidVersion(derivedHere) && highestExisting && compareVersions(derivedHere, highestExisting) <= 0) {
-    fail(
-      `${derivedHere}: the version derived for this tree sorts at or below the highest existing ` +
-        `tag ${prefix}v${highestExisting} in the ${namespace} namespace`,
-    );
-  }
   notes.push(`HEAD tags: ${headTags.length > 0 ? headTags.join(", ") : "none"}`);
-  notes.push(`derived for this tree: ${derivedHere}`);
-  notes.push(`highest existing tag: ${highestExisting ? `${prefix}v${highestExisting}` : "(none)"}`);
-  notes.push(`ordering: ${highestExisting ?? "(no earlier tag)"} < ${derivedHere}`);
+  notes.push(`manifest version: ${version}`);
+  notes.push(
+    `highest tag in this tree's history: ${highestInHistory ? `${prefix}v${highestInHistory}` : "(none)"}`,
+  );
+  if (isValidVersion(version)) {
+    if (isPrerelease(version)) {
+      notes.push(`ordering: not claimed (${version} is an iteration version; iteration tags never publish)`);
+    } else if (highestInHistory && compareVersions(version, highestInHistory) < 0) {
+      fail(
+        `${version}: the manifest claims a stable version below the highest tag in this tree's ` +
+          `history (${prefix}v${highestInHistory}); that number was released already`,
+      );
+      notes.push(`ordering: ${version} < ${prefix}v${highestInHistory} (the manifest sits below the released version)`);
+    } else if (highestInHistory && compareVersions(version, highestInHistory) === 0) {
+      notes.push(`ordering: ${prefix}v${highestInHistory} = ${version} (the version already released)`);
+    } else {
+      notes.push(
+        `ordering: ${highestInHistory ? `${prefix}v${highestInHistory}` : "(no earlier tag)"} < ${version}`,
+      );
+    }
+  }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────

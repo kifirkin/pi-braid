@@ -103,7 +103,7 @@ test("a version has to be a version", () => {
 
 // ── the states the release flow produces ────────────────────────────────────
 
-test("clean: an untagged tree whose derived version sorts above the highest tag", () => {
+test("clean: an untagged tree whose manifest sorts above the highest tag", () => {
   const repo = fixture({ core: "0.39.0" });
   sh("git tag -a v0.39.0 -m 'pi-braid 0.39.0'", repo);
   writeManifest(repo, "core", "pi-braid", "0.40.0");
@@ -111,7 +111,7 @@ test("clean: an untagged tree whose derived version sorts above the highest tag"
 
   const { code, out } = run(repo);
   assert.equal(code, 0, out);
-  assert.match(out, /ordering: 0\.39\.0 < 0\.40\.0-main\.0/);
+  assert.match(out, /ordering: v0\.39\.0 < 0\.40\.0/);
 });
 
 test("clean: an annotated release tag that matches the manifest", () => {
@@ -146,6 +146,75 @@ test("clean: a manifest that already carries the full iteration string", () => {
   const { code, out } = run(repo);
   assert.equal(code, 0, out);
   assert.match(out, /v0\.40\.0-main\.3: annotated, matches pi-braid 0\.40\.0-main\.3/);
+});
+
+// ── the matrix: one row per state the rule has to tell apart ─────────────────
+// Each row builds its state in its own throwaway repository and prints the
+// input with the exit it produced, so the table is a run rather than a
+// restatement of the code. The last two rows are the refusals: a tag at HEAD
+// naming a version the manifest does not hold, and a manifest below a tag
+// already in the tree's history.
+
+test("the matrix prints one row per state with its verdict", () => {
+  const rows = [
+    [
+      "tag at HEAD matches the manifest",
+      0,
+      (repo) => sh("git tag -a v0.40.0 -m 'pi-braid 0.40.0'", repo),
+    ],
+    [
+      "no tag at HEAD, manifest above the highest tag",
+      0,
+      (repo) => {
+        writeManifest(repo, "core", "pi-braid", "0.39.0");
+        commitAll(repo, "the released version");
+        sh("git tag -a v0.39.0 -m 'pi-braid 0.39.0'", repo);
+        writeManifest(repo, "core", "pi-braid", "0.40.0");
+        commitAll(repo, "a pending release");
+      },
+    ],
+    [
+      "no tag at HEAD, manifest equal to the highest tag",
+      0,
+      (repo) => {
+        sh("git tag -a v0.40.0 -m 'pi-braid 0.40.0'", repo);
+        writeFileSync(join(repo, "packages", "core", "note.txt"), "work after the release\n");
+        commitAll(repo, "work after the release");
+      },
+    ],
+    [
+      "no tag at HEAD, prerelease manifest",
+      0,
+      (repo) => {
+        sh("git tag -a v0.40.0 -m 'pi-braid 0.40.0'", repo);
+        writeManifest(repo, "core", "pi-braid", "0.39.0-main.1");
+        commitAll(repo, "an iteration tree");
+      },
+    ],
+    [
+      "tag at HEAD names a different version",
+      1,
+      (repo) => sh("git tag -a v0.39.0 -m 'pi-braid 0.39.0'", repo),
+    ],
+    [
+      "manifest below the highest tag",
+      1,
+      (repo) => {
+        sh("git tag -a v0.40.0 -m 'pi-braid 0.40.0'", repo);
+        writeManifest(repo, "core", "pi-braid", "0.39.0");
+        commitAll(repo, "the manifest moves down");
+      },
+    ],
+  ];
+
+  console.log("state                                                  exit  verdict");
+  for (const [label, expected, build] of rows) {
+    const repo = fixture();
+    build(repo);
+    const { code, out, err } = run(repo);
+    console.log(`${label.padEnd(52)} ${String(code).padStart(4)}  ${code === 0 ? "clean" : "refused"}`);
+    assert.equal(code, expected, `${label}: expected exit ${expected}\n${out}${err}`);
+  }
 });
 
 // ── the states it must refuse ───────────────────────────────────────────────
@@ -184,15 +253,17 @@ test("fails: an iteration tag whose base release happened on another commit", ()
   assert.match(err, /its base release v0\.40\.0 was already tagged on another commit/);
 });
 
-test("fails: a tree whose derived version sits below a tag that exists", () => {
-  const repo = fixture({ core: "0.38.0" });
+test("fails: a manifest below a tag already in the tree's history", () => {
+  const repo = fixture({ core: "0.39.0" });
   sh("git tag -a v0.39.0 -m 'pi-braid 0.39.0'", repo);
+  writeManifest(repo, "core", "pi-braid", "0.38.0");
+  commitAll(repo, "the manifest moves down");
 
   const { code, err } = run(repo);
   assert.equal(code, 1);
   assert.match(
     err,
-    /0\.38\.0-main\.0: the version derived for this tree sorts at or below the highest existing tag v0\.39\.0/,
+    /0\.38\.0: the manifest claims a stable version below the highest tag in this tree's history \(v0\.39\.0\)/,
   );
 });
 
@@ -205,7 +276,7 @@ test("clean: a sibling's tag sits in its own namespace and does not block this l
   const { code, out } = run(repo);
   assert.equal(code, 0, out);
   assert.match(out, /namespace: v\*/);
-  assert.match(out, /highest existing tag: \(none\)/);
+  assert.match(out, /highest tag in this tree's history: \(none\)/);
 });
 
 test("clean: a sibling package reads only its own namespace", () => {
@@ -226,8 +297,8 @@ test("clean: a sibling's derived version is not blocked by core's legacy tags", 
   const { code, out } = run(repo, ["telegram"]);
   assert.equal(code, 0, out);
   assert.match(out, /namespace: telegram-v\*/);
-  assert.match(out, /highest existing tag: \(none\)/);
-  assert.match(out, /ordering: \(no earlier tag\) < 0\.1\.4-main\.0/);
+  assert.match(out, /highest tag in this tree's history: \(none\)/);
+  assert.match(out, /ordering: \(no earlier tag\) < 0\.1\.4/);
 });
 
 test("fails: a bare v tag that spells a sibling's version is refused", () => {
@@ -254,15 +325,17 @@ test("fails: a sibling's tag that no manifest for that package holds", () => {
   );
 });
 
-test("fails: a sibling's derived version below its own namespace's highest tag", () => {
-  const repo = fixture({ core: "0.40.0", extra: { telegram: "0.1.4" } });
+test("fails: a sibling's manifest below its own namespace's highest tag", () => {
+  const repo = fixture({ core: "0.40.0", extra: { telegram: "0.1.5" } });
   sh("git tag -a telegram-v0.1.5 -m 'pi-braid-telegram 0.1.5'", repo);
+  writeManifest(repo, "telegram", "pi-braid-telegram", "0.1.4");
+  commitAll(repo, "telegram moves down");
 
   const { code, err } = run(repo, ["telegram"]);
   assert.equal(code, 1);
   assert.match(
     err,
-    /0\.1\.4-main\.0: the version derived for this tree sorts at or below the highest existing tag telegram-v0\.1\.5 in the telegram-v\* namespace/,
+    /0\.1\.4: the manifest claims a stable version below the highest tag in this tree's history \(telegram-v0\.1\.5\)/,
   );
 });
 
