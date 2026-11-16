@@ -17,13 +17,29 @@
 // shell, which is the capability a reviewer must not hand over.
 //
 // Claim entries must be objects with non-empty claim text and a named verifier
-// (`verified_by`). Gate-evidence rows are read for the population stamp
-// (`scanned <n> <unit> at <revision>`, the grammar
-// `packages/core/src/lib/orchestrator/workers.ts` parses at the merge path): a row
-// whose command carries a walk, list or count verb is recognized as a population
-// scan, and a recognized row without a stamp — or any row whose stamp is present
-// but not that shape — warns. Warnings only for now: the merge path is the reader
-// that compares a stamped `files` row against the census its revision names.
+// (`verified_by`).
+//
+// Three reads refuse instead of warning, each keyed to what the block claims
+// about itself:
+//   - `source_revision` must resolve in a repository the gate can see. A
+//     revision that exists nowhere cannot attest the tree its evidence was read
+//     at, and 7-to-40 hex characters are the whole of what a fabricated one has
+//     to get right. `--repo <path>` (repeatable) adds a repository; without it
+//     the search set is `BRAID_GATE_REPOS`, `$PWD` and this file's own checkout.
+//   - a `completed` block's figure must name the instrument that produced it, in
+//     `verified_by` or in a `command` field. Under `partial`, `blocked` or
+//     `error` the same claim is a warning: an incomplete result is allowed to
+//     say what it does not know.
+//   - a `completed` block may not carry a `gate_evidence` row whose subject is a
+//     population with an absent or unreadable `stamp`, because the merge path
+//     compares that record against the census the revision it names holds. The
+//     grammar is `scanned <n> <unit> at <revision>`: `n` a non-negative integer,
+//     `unit` one lowercase word, `revision` a 7-to-40-char hex sha or a ref name.
+//     `packages/core/src/lib/orchestrator/workers.ts` parses the same shape at
+//     the merge path.
+//
+// Everything else keeps its tier: a warning is a read that has not earned a
+// refusal yet.
 //
 // The orchestrator tree that used to hold this file keeps a forwarder to it, so a
 // brief naming that path still works. This copy is the one a reviewer reads and
@@ -473,7 +489,6 @@ const SOURCE_REPOS = (() => {
 let censusRepoDir = null;
 const rawRevision = schema.source_revision;
 const sourceRevision = typeof rawRevision === "string" ? rawRevision.trim() : "";
-let sourceRevisionWarning = null;
 if (!SOURCE_REVISION_RE.test(sourceRevision)) {
   const detail =
     sourceRevision === ""
@@ -498,11 +513,21 @@ if (!SOURCE_REVISION_RE.test(sourceRevision)) {
       break;
     }
   }
-  check("source-revision", true, resolvedIn ? `resolved in ${resolvedIn}` : `well-formed, unresolved in ${tried.join(", ")}`);
-  if (!resolvedIn) {
-    sourceRevisionWarning =
-      `source_revision ${sourceRevision} does not resolve to a commit in any known repo (tried ${tried.join(", ")}); the block is accepted on shape alone`;
-  }
+  // Resolution is the rule, not the shape. A revision no repository holds
+  // cannot attest the tree its evidence was read at: the block's figures are
+  // then traceable to nothing, and accepting it on 7-to-40 hex characters is an
+  // acceptance of the only thing a forger has to get right. The remedy is named
+  // because the common cause is a real revision in a repository the gate was not
+  // told about, not a fabricated one.
+  check(
+    "source-revision",
+    resolvedIn !== null,
+    resolvedIn !== null
+      ? `resolved in ${resolvedIn}`
+      : `unresolved: no repository the gate searched holds ${sourceRevision} (tried ${tried.join(", ")}), ` +
+        "and a revision that does not exist cannot attest the tree its evidence was read at — " +
+        "pass --repo <path> for the repository it lives in",
+  );
 
   // A revision that RESOLVES can still be one the tree has moved past, and an
   // artifact whose ground moved is then consumed as if nothing had changed.
@@ -579,13 +604,22 @@ if (gateEntries.length > 0 && sampleable === 0)
 else if (sampleable < gateEntries.length)
   console.log(`gate-evidence-sampleable: ${sampleable}/${gateEntries.length}`);
 
-// Population-stamp read over every row. Two warnings, both non-fatal: a
-// recognized scan row with no stamp, and any row whose stamp is present but
-// not the contract's shape. The counter line is the measurement surface —
-// the share of recognized scan rows carrying a parseable stamp is grepped
-// from it, and the flip to a refusal is the seat's after that share is read.
+// Population-stamp read over every row. A row whose command carries a walk,
+// list or count verb is a population scan, and any row whose stamp is present
+// but not the contract's shape carries no readable record either. Both are the
+// same defect at the merge path, which compares a stamped row's number against
+// the census the revision it names holds: a row it cannot read is a population
+// it cannot test, and the block then asserts a count nothing can check.
+//
+// The refusal keys on the block's own claim: a `completed` block says the work
+// finished, so an unreadable population record is a finished result with an
+// untestable figure. Under `partial`, `blocked` or `error` the same row is only
+// a warning — an incomplete result is allowed to say what it does not know. The
+// counter line prints in both cases: it is the measurement surface, and it must
+// not vanish when the family turns red.
 let recognizedRows = 0;
 let recognizedStamped = 0;
+const unreadableStamps = [];
 const stampWarnings = [];
 for (let i = 0; i < gateEntries.length; i++) {
   const row = gateEntries[i];
@@ -593,6 +627,7 @@ for (let i = 0; i < gateEntries.length; i++) {
   const hasStamp = record !== null && record.stamp !== undefined;
   const parsed = hasStamp ? parsePopulationStamp(record.stamp) : null;
   if (hasStamp && parsed === null) {
+    unreadableStamps.push(i);
     stampWarnings.push(
       `WARN gate-evidence stamp: row ${i} (cmd: ${commandExcerpt(record.cmd)}) carries an unparseable stamp: ` +
         `${JSON.stringify(record.stamp)} — expected "scanned <n> <unit> at <revision>"`,
@@ -606,6 +641,7 @@ for (let i = 0; i < gateEntries.length; i++) {
     recognizedStamped++;
     continue;
   }
+  unreadableStamps.push(i);
   stampWarnings.push(
     `WARN gate-evidence stamp: row ${i} (cmd: ${commandExcerpt(record.cmd)}) is a population scan ` +
       `(${verbs.join(", ")}) with no stamp — record "scanned <n> <unit> at <revision>" ` +
@@ -657,6 +693,16 @@ if (recognizedRows > 0)
   console.log(
     `gate-evidence-stamps: ${recognizedStamped}/${recognizedRows} recognized scan row(s) carry a parseable stamp`,
   );
+if (unreadableStamps.length > 0 && schema.status === "completed") {
+  failed++;
+  console.log(
+    `FAIL gate-evidence-stamps: ${unreadableStamps.length} row(s) of this completed block carry no readable population record ` +
+      `(row ${unreadableStamps.join(", ")}), and a finished result may not leave a population it scanned untestable — ` +
+      'the record is "scanned <n> <unit> at <revision>": n a non-negative integer, unit ONE lowercase word ' +
+      "(hyphens or underscores join a unit; a space or a path inside it is unreadable), revision a 7-40 char hex sha " +
+      "or a ref name, and the whole string is the stamp",
+  );
+}
 
 // Red-evidence pairing. A RED row asserts that a test failed for the intended
 // reason, and a tree that was never compiled cannot support that assertion: a
@@ -685,7 +731,6 @@ if (redRows.length > 0) {
   );
 }
 
-if (sourceRevisionWarning) console.log(`WARN source-revision: ${sourceRevisionWarning}`);
 if (predictsMissing > 0) console.log(`WARN predicts: ${predictsMissing} claim(s) without a prediction`);
 if (unsourcedVerifier.length > 0) console.log(`WARN claims-verified-by-names: ${unsourcedVerifier.length} claim(s) whose verified_by names no artifact or command (advisory: the decidable case fails, this residue is the seat's re-derivation job)`);
 if (predictsInvalid > 0) console.log(`WARN predicts: ${predictsInvalid} claim(s) carry a prediction failing the heuristic (>=20 chars, one of ${PREDICTS_MARKERS.join(" ")})`);
@@ -703,22 +748,38 @@ if (capability.entries > 0) {
   console.log(`claim-capability: ${capability.read}/${capability.entries} checked, ${capabilityWarns} warn(s) (${breakdown})`);
 }
 
-// Instrument disclosure (the self-review store's most frequent class). Warn tier by
-// default so an existing close is not blocked by a cosmetic wording change;
-// --fail-on-instrument makes it a check, which is the strictness a close asks
-// for and the one a caller can adopt without a migration.
+// Instrument disclosure (the self-review store's most frequent class). A claim
+// that states a figure has to name the instrument behind it, or the figure is
+// unverifiable by a reader and was unverifiable for the claimant too.
+//
+// Two tiers, both keyed on what the block claims about itself. A `completed`
+// block attests a finished result, so every figure it states must name its
+// command: that is a refusal. Under `partial`, `blocked` or `error` the same
+// claim stays a warning, because an incomplete result is allowed to say what it
+// does not know — and `--fail-on-instrument` raises that tier too, for a caller
+// who wants one rule whatever the status. Completion, not the spec kind, is the
+// line: a research close and an impl close both state finished facts, and one
+// worker can produce either.
+const disclosureEnforced = INSTRUMENT_ENFORCED || schema.status === "completed";
 const disclosure = evaluateInstrumentDisclosure(claimEntries);
 for (const finding of disclosure.findings) console.log(instrumentWarningLine(finding));
 if (disclosure.withFigure > 0) {
   console.log(
     `instrument-disclosure: ${disclosure.withFigure}/${disclosure.entries} claim(s) carry a figure, ` +
       `${disclosure.findings.length} without a command` +
-      (INSTRUMENT_ENFORCED ? " (enforced)" : " (advisory)"),
+      (disclosureEnforced ? " (enforced)" : " (advisory: status is not completed, and --fail-on-instrument is off)"),
   );
 }
-if (disclosure.findings.length > 0 && INSTRUMENT_ENFORCED) {
+if (disclosure.findings.length > 0 && disclosureEnforced) {
   failed++;
-  console.log(`FAIL instrument-disclosure: ${disclosure.findings.length} claim(s) state a figure with no command`);
+  const why =
+    schema.status === "completed"
+      ? "a completed block attests a finished result, so every figure it states must name the instrument that produced it"
+      : "--fail-on-instrument makes every figure name its instrument, whatever the status";
+  console.log(
+    `FAIL instrument-disclosure: ${disclosure.findings.length} claim(s) state a figure with no command — ${why} ` +
+      "(name the command in verified_by, or in the claim's command field)",
+  );
 }
 
 console.log(`\n${failed === 0 ? "RESULT: PASS" : `RESULT: ${failed} check(s) failed`} — worker=${schema.worker} spec=${schema.spec} status=${schema.status}`);

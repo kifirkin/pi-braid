@@ -73,6 +73,8 @@ const gateCheckout = spawnSync(
 const gateCheckoutRoot = gateCheckout.status === 0 ? gateCheckout.stdout.trim() : "";
 /** Well-formed and resolvable nowhere: the shape every "isolate another leg" case uses. */
 const ghost = "0123456789abcdef0123456789abcdef01234567";
+/** Resolves through BRAID_GATE_REPOS, so a case can isolate some other leg. */
+const settled = fixtureHead;
 
 
 let checks = 0;
@@ -195,9 +197,10 @@ if (gateCheckoutRoot !== "") {
     cwd: root,
     env: { BRAID_GATE_REPOS: "" },
   });
+  const sourceFail = r.stdout.split("\n").find((l) => l.startsWith("FAIL") && l.includes("source-revision"));
   check(
     "(c) the gate names the checkout it lives in",
-    r.code === 0 && /WARN source-revision:/.test(r.stdout) && r.stdout.includes("this checkout"),
+    r.code === 1 && Boolean(sourceFail) && sourceFail.includes("this checkout"),
     `exit=${r.code} checkout=${gateCheckoutRoot}`,
   );
   const copyDir = join(root, "copied-gate");
@@ -209,10 +212,10 @@ if (gateCheckoutRoot !== "") {
     cwd: root,
     env: { ...process.env, BRAID_GATE_REPOS: "" },
   });
-  const copyOut = copied.stdout || "";
+  const copyFail = (copied.stdout || "").split("\n").find((l) => l.startsWith("FAIL") && l.includes("source-revision"));
   check(
     "(c) a copy outside any work tree names no checkout (control)",
-    copied.status === 0 && /WARN source-revision:/.test(copyOut) && !copyOut.includes("this checkout"),
+    copied.status === 1 && Boolean(copyFail) && !copyFail.includes("this checkout"),
     `exit=${copied.status}`,
   );
 } else {
@@ -220,10 +223,11 @@ if (gateCheckoutRoot !== "") {
 }
 
 // ── (d) well-formed but unresolvable passes with a WARN ──────────────────
-// The block names a sha no repository holds. The verdict is still a pass in this
-// version, and the WARN has to be usable: it names the revision, every label the
-// gate tried, and nothing it did not. The expected labels are computed here from
-// what was actually passed in, so a case cannot agree with a hardcoded order.
+// The block names a sha no repository holds. Shape is not evidence: a revision
+// that exists nowhere attests no tree, so it is a refusal now, not a warning.
+// The refusal has to be usable as well: it names the revision, every label the
+// gate tried, and the remedy. The expected labels are computed from what was
+// actually passed in, so a case cannot agree with a hardcoded order.
 
 const otherRepos = [join(root, "repo-b"), join(root, "repo-c")];
 for (const dir of otherRepos) {
@@ -235,22 +239,27 @@ r = run(makeSession("ghost.jsonl", block({ source_revision: ghost })), ["--repo"
   cwd: root,
   env: { BRAID_GATE_REPOS: otherRepos[1] },
 });
-const warnLine = r.stdout.split("\n").find((l) => l.startsWith("WARN source-revision:"));
+const sourceFail = r.stdout.split("\n").find((l) => l.startsWith("FAIL") && l.includes("source-revision"));
 const expectedTried = [...otherRepos, "$PWD"];
 if (gateCheckoutRoot !== "") expectedTried.push("this checkout");
 check(
-  "(d) an unresolvable sha passes and the WARN names the revision and every repo tried",
-  r.code === 0 &&
-    /RESULT: PASS/.test(r.stdout) &&
-    Boolean(warnLine) &&
-    warnLine.includes(ghost) &&
-    expectedTried.every((label) => warnLine.includes(label)),
-  `exit=${r.code} warn=${warnLine ? warnLine.slice(0, 90) : "absent"}`,
+  "(d) an unresolvable sha is refused, not accepted on shape",
+  r.code === 1 && failLines(r.stdout) === 1 && Boolean(sourceFail),
+  `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
 );
 check(
-  "(d) the WARN names only repos that were searched (control)",
-  Boolean(warnLine) && !warnLine.includes(join(root, "repo-never-tried")),
-  `warn=${warnLine ? warnLine.slice(0, 60) : "absent"}`,
+  "(d) the refusal names the revision, every repo tried, and why",
+  Boolean(sourceFail) &&
+    sourceFail.includes(ghost) &&
+    expectedTried.every((label) => sourceFail.includes(label)) &&
+    /cannot attest/.test(sourceFail) &&
+    /--repo/.test(sourceFail),
+  `detail=${sourceFail ? sourceFail.slice(0, 110) : "absent"}`,
+);
+check(
+  "(d) the refusal names only repos that were searched (control)",
+  Boolean(sourceFail) && !sourceFail.includes(join(root, "repo-never-tried")),
+  `detail=${sourceFail ? sourceFail.slice(0, 60) : "absent"}`,
 );
 
 // ── (e) a verifier that names no instrument is refused ───────────────────────
@@ -266,7 +275,7 @@ const weaselCases = [
   ["too-short", "ok"],
 ];
 for (const [name, verifiedBy] of weaselCases) {
-  const b = block({ source_revision: ghost }); // the source leg WARNs, so the claims leg is the only FAIL
+  const b = block({ source_revision: settled }); // resolves through the env, so the claims leg is the only FAIL
   b.claims[0].verified_by = verifiedBy;
   const rr = run(makeSession(`weasel-${name}.jsonl`, b));
   check(
@@ -278,7 +287,7 @@ for (const [name, verifiedBy] of weaselCases) {
 
 // A verifier that names a command or a path passes the same leg.
 for (const [name, verifiedBy] of [["command", "npm test -w packages/telegram"], ["path", "packages/telegram/test/index.test.mjs:2246"], ["quoted-absence", "no check exists; stated as an absence in the report"]] ) {
-  const b = block({ source_revision: ghost });
+  const b = block({ source_revision: settled });
   b.claims[0].verified_by = verifiedBy;
   const rr = run(makeSession(`verifier-${name}.jsonl`, b));
   check(
@@ -289,8 +298,8 @@ for (const [name, verifiedBy] of [["command", "npm test -w packages/telegram"], 
 }
 
 // ── (f) a close's own repository can be named, so its revision resolves ─────
-// A block whose revision lives outside every default is accepted on shape alone.
-// The same sha resolves when the caller names the repo, which is the whole point
+// A block whose revision lives outside the gate's default search set is refused;
+// the same sha resolves when the caller names the repo, which is the whole point
 // of --repo: the revision is checkable, the gate just has to be told where.
 
 if (fixtureHead) {
@@ -299,8 +308,8 @@ if (fixtureHead) {
     env: { BRAID_GATE_REPOS: "" },
   });
   check(
-    "(f) without --repo a foreign revision is accepted on shape alone (WARN)",
-    without.code === 0 && /WARN source-revision:/.test(without.stdout),
+    "(f) without --repo a revision no default holds is refused",
+    without.code === 1 && /FAIL\s+source-revision/.test(without.stdout),
     `exit=${without.code}`,
   );
   const withRepo = run(
@@ -318,26 +327,52 @@ if (fixtureHead) {
 }
 
 // ── (g) the population-scan stamp contract ──────────────────────────────────
-// A row whose command carries a walk/list/count verb is a population scan and
-// must carry a parseable stamp; any row whose stamp is present but unreadable
-// is named. All of it warns: the block stays valid, the merge path is the
-// reader that tests the number. The counter line is the measurement surface.
+// A row whose command carries a walk/list/count verb is a population scan, and
+// any row whose stamp is present but unreadable carries no record either. The
+// tier keys on the block's claim: a completed block is refused, because the
+// merge path compares that record against the census the revision it names
+// holds, and a row it cannot read is a number nothing can test; an incomplete
+// block keeps the warning. The counter line is the measurement surface in both
+// tiers, and the grammar is quoted by the refusal.
 
 const stampWarn = (stdout) => stdout.split("\n").filter((l) => l.startsWith("WARN gate-evidence stamp:"));
+const stampFail = (stdout) => stdout.split("\n").filter((l) => l.startsWith("FAIL gate-evidence-stamps:"));
 const counterLine = (stdout) => stdout.split("\n").find((l) => l.startsWith("gate-evidence-stamps:"));
-const withGates = (rows) => block({ source_revision: ghost, gate_evidence: rows });
+const withGates = (rows, extra = {}) => block({ source_revision: settled, gate_evidence: rows, ...extra });
 
 r = run(makeSession("scan-unstamped.jsonl", withGates([{ cmd: "git ls-files | wc -l", exit: 0 }])));
 check(
-  "(g) a recognized scan row with no stamp warns and stays valid",
+  "(g) a completed block with a recognized scan row and no stamp is REFUSED",
+  r.code === 1 &&
+    stampFail(r.stdout).length === 1 &&
+    /row 0/.test(stampFail(r.stdout)[0]) &&
+    /scanned <n> <unit> at <revision>/.test(stampFail(r.stdout)[0]) &&
+    /ONE lowercase word/.test(stampFail(r.stdout)[0]) &&
+    counterLine(r.stdout) === "gate-evidence-stamps: 0/1 recognized scan row(s) carry a parseable stamp",
+  `exit=${r.code} fail=${stampFail(r.stdout)[0]?.slice(0, 90) ?? "absent"} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+check(
+  "(g) the refused row still prints its own named line, so the reader sees which row",
+  stampWarn(r.stdout).length === 1 && /row 0/.test(stampWarn(r.stdout)[0]) && /population scan/.test(stampWarn(r.stdout)[0]),
+  `warn=${stampWarn(r.stdout)[0]?.slice(0, 80) ?? "absent"}`,
+);
+
+// The tier boundary: the same row in a block that does not claim completion is
+// a warning, and the counter still prints.
+r = run(
+  makeSession(
+    "scan-unstamped-partial.jsonl",
+    withGates([{ cmd: "git ls-files | wc -l", exit: 0 }], { status: "partial" }),
+  ),
+);
+check(
+  "(g) the same row under status=partial warns and the block stays valid (control)",
   r.code === 0 &&
     /RESULT: PASS/.test(r.stdout) &&
     stampWarn(r.stdout).length === 1 &&
-    /row 0/.test(stampWarn(r.stdout)[0]) &&
-    /population scan/.test(stampWarn(r.stdout)[0]) &&
-    /no stamp/.test(stampWarn(r.stdout)[0]) &&
+    stampFail(r.stdout).length === 0 &&
     counterLine(r.stdout) === "gate-evidence-stamps: 0/1 recognized scan row(s) carry a parseable stamp",
-  `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 80) ?? "absent"} counter=${counterLine(r.stdout) ?? "absent"}`,
+  `exit=${r.code} warn=${stampWarn(r.stdout).length} fail=${stampFail(r.stdout).length}`,
 );
 
 r = run(
@@ -380,24 +415,48 @@ r = run(
   ),
 );
 check(
-  "(g) an unreadable stamp is named with its row and raw value",
-  r.code === 0 &&
+  "(g) an unreadable stamp in a completed block is REFUSED and the row is named",
+  r.code === 1 &&
     stampWarn(r.stdout).length === 1 &&
     /row 0/.test(stampWarn(r.stdout)[0]) &&
     /unparseable stamp: "scanned twelve files"/.test(stampWarn(r.stdout)[0]) &&
-    /expected "scanned <n> <unit> at <revision>"/.test(stampWarn(r.stdout)[0]),
+    /expected "scanned <n> <unit> at <revision>"/.test(stampWarn(r.stdout)[0]) &&
+    stampFail(r.stdout).length === 1,
   `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 90) ?? "absent"}`,
+);
+
+// The shape this grammar exists for: a unit that is a phrase. `in <path>` inside
+// the stamp is the one this machine actually recorded, and the rule that refuses
+// it is the unit, not the revision.
+const phraseStamp = "scanned 42 tests in packages/telegram at 130129c";
+r = run(
+  makeSession("scan-phrase-unit.jsonl", withGates([{ cmd: "npm test -w packages/telegram", exit: 0, stamp: phraseStamp }])),
+);
+check(
+  "(g) a stamp whose unit is a phrase is refused, and the refusal states the unit rule",
+  r.code === 1 &&
+    /scanned 42 tests in packages\/telegram at 130129c/.test(r.stdout) &&
+    /ONE lowercase word/.test(stampFail(r.stdout)[0] ?? ""),
+  `exit=${r.code} fail=${stampFail(r.stdout)[0]?.slice(0, 100) ?? "absent"}`,
+);
+r = run(
+  makeSession("scan-phrase-unit-fixed.jsonl", withGates([{ cmd: "npm test -w packages/telegram", exit: 0, stamp: "scanned 42 tests at 130129c" }])),
+);
+check(
+  "(g) the same row with one word for its unit passes (the repair)",
+  r.code === 0 && stampFail(r.stdout).length === 0 && /RESULT: PASS/.test(r.stdout),
+  `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
 );
 
 r = run(
   makeSession("scan-nonstring.jsonl", withGates([{ cmd: "ls -la", exit: 0, stamp: 12 }])),
 );
 check(
-  "(g) a non-string stamp is unreadable and named",
-  r.code === 0 &&
+  "(g) a non-string stamp is unreadable, named, and refused in a completed block",
+  r.code === 1 &&
     stampWarn(r.stdout).length === 1 &&
     /unparseable stamp: 12/.test(stampWarn(r.stdout)[0]) &&
-    counterLine(r.stdout) === undefined,
+    stampFail(r.stdout).length === 1,
   `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 70) ?? "absent"}`,
 );
 
@@ -421,8 +480,8 @@ const unrecognizedCommands = [
 for (const cmd of recognizedVerbs) {
   const rr = run(makeSession(`verb-${cmd.replace(/\W+/g, "-")}.jsonl`, withGates([{ cmd, exit: 0 }])));
   check(
-    `(g) verb shape recognized: ${cmd}`,
-    rr.code === 0 && stampWarn(rr.stdout).length === 1,
+    `(g) verb shape recognized and refused when unstamped: ${cmd}`,
+    rr.code === 1 && stampWarn(rr.stdout).length === 1 && stampFail(rr.stdout).length === 1,
     `exit=${rr.code} warns=${stampWarn(rr.stdout).length}`,
   );
 }
@@ -446,10 +505,11 @@ r = run(
   ),
 );
 check(
-  "(g) the counter reports recognized-rows-stamped over recognized rows",
-  r.code === 0 &&
+  "(g) the counter reports recognized-rows-stamped over recognized rows, and one row is refused",
+  r.code === 1 &&
     stampWarn(r.stdout).length === 1 &&
     /row 0/.test(stampWarn(r.stdout)[0]) &&
+    /row 0/.test(stampFail(r.stdout)[0] ?? "") &&
     counterLine(r.stdout) === "gate-evidence-stamps: 1/2 recognized scan row(s) carry a parseable stamp",
   `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
 );
@@ -467,7 +527,7 @@ const capabilityWarnLines = (stdout) => stdout.split("\n").filter((l) => l.start
 const capabilityCounterLine = (stdout) => stdout.split("\n").find((l) => l.startsWith("claim-capability:"));
 const claimFixture = (claim, verifiedBy) =>
   block({
-    source_revision: ghost,
+    source_revision: settled,
     claims: [{ claim, verified_by: verifiedBy, predicts: "re-running the cited instrument exits 0 and prints its evidence" }],
   });
 
@@ -479,7 +539,7 @@ const capabilityCases = [
   ["coverage on a content read does not warn", "the legacy entry is removed", "read src/legacy.mjs: 0 bytes; the file is empty", []],
   ["coverage on an execution verb does not warn (the strict tier's bound)", "the old boot path is gone", "node -e 'process.exit(0)' (exits 0)", []],
   ["content on a citation warns (D3)", "the file contains 330 entries", "the report's description of the artifact", ["content-on-citation"]],
-  ["content on a content verb does not warn", "the artifact contains 120 bytes", "measured the artifact: 120 bytes on disk", []],
+  ["content on a content verb does not warn", "the artifact contains 120 bytes", "stat artifact.md: 120 bytes on disk", []],
   ["content on citation plus a read does not warn", "the file contains 12 entries", "report description plus read; 12 entries", []],
   ["classification on a bare count warns (D3)", "only the private rows remain", "rg -c 'row' rows.txt (24 hits)", ["classification-on-bare-count"]],
   ["classification on a decomposed count does not warn", "only the private rows remain; the count decomposes by source", "rg -c 'row' rows.txt (24 hits)", []],
@@ -506,7 +566,7 @@ r = run(
   makeSession(
     "cap-multi.jsonl",
     block({
-      source_revision: ghost,
+      source_revision: settled,
       claims: [
         { claim: "the file contains 330 entries", verified_by: "the report's description of the artifact", predicts: "the report cites the entry count as 330 -> entries = 330" },
         { claim: "the stale reader is gone", verified_by: "rg 'stale-reader' src/", predicts: "rg prints no line -> zero hits" },
@@ -551,7 +611,7 @@ r = run(
   makeSession(
     "cap-t6-zero-point.jsonl",
     block({
-      source_revision: "22f945ae",
+      source_revision: settled,
       spec: "audit",
       claims: [
         {
@@ -701,7 +761,7 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
   r = run(
     makeSession(
       "census-right.jsonl",
-      block({ source_revision: fixtureHead, gate_evidence: [{ cmd: "node packages/core/scripts/check-placement.mjs --strict", exit: 0, stamp: `scanned ${tracked} tracked entries at ${fixtureHead}` }] }),
+      block({ source_revision: fixtureHead, gate_evidence: [{ cmd: "node packages/core/scripts/check-placement.mjs --strict", exit: 0, stamp: `scanned ${tracked} entries at ${fixtureHead}` }] }),
     ),
     ["--repo", fixtureRepo],
   );
@@ -718,12 +778,12 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
 // The self-review store's most frequent class is a measurement taken through
 // something that changed what was measured, so this leg exists to make the
 // pairing decidable: a claim stating a figure with a program named is silent, the
-// same claim with prose only warns, and --fail-on-instrument turns that warn into
-// a refusal so a seat can adopt the strictness without a second migration.
+// same claim with prose only is a warning under an incomplete status and a
+// refusal once the block claims completion.
 
 {
   const disclosed = block({
-    source_revision: ghost, // the source leg WARNs, so the disclosure leg is the only subject
+    source_revision: settled, // the revision resolves, so the disclosure leg is the only subject
     claims: [
       {
         claim: "the suite passes 36 of 36 cases",
@@ -740,7 +800,7 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
   );
 
   const prose = block({
-    source_revision: ghost,
+    source_revision: settled,
     claims: [
       {
         claim: "the suite passes 36 of 36 cases",
@@ -749,23 +809,36 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
       },
     ],
   });
-  r = run(makeSession("l-prose.jsonl", prose));
+  // The tier boundary: an incomplete result may state what it does not know.
+  const prosePartial = { ...prose, status: "partial" };
+  r = run(makeSession("l-prose-completed.jsonl", prose));
   check(
-    "(l2) a figure with prose only warns and still passes",
-    r.code === 0 && /WARN instrument-undisclosed: claim 0 states "36 of 36"/.test(r.stdout) && /1 without a command/.test(r.stdout),
+    "(l2) a completed block whose figure names no command is REFUSED",
+    r.code === 1 &&
+      failLines(r.stdout) === 1 &&
+      /FAIL\s+instrument-disclosure: 1 claim\(s\) state a figure with no command/.test(r.stdout) &&
+      /a completed block attests a finished result/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+  r = run(makeSession("l-prose-partial.jsonl", prosePartial));
+  check(
+    "(l2a) the same claim under status=partial warns and still passes (the tier boundary)",
+    r.code === 0 &&
+      /WARN instrument-undisclosed: claim 0 states "36 of 36"/.test(r.stdout) &&
+      /1 without a command \(advisory: status is not completed/.test(r.stdout),
     `exit=${r.code} warn=${/WARN instrument-undisclosed/.test(r.stdout) ? "present" : "absent"}`,
   );
 
-  r = run(makeSession("l-prose.jsonl", prose), ["--fail-on-instrument"]);
+  r = run(makeSession("l-prose.jsonl", prosePartial), ["--fail-on-instrument"]);
   check(
-    "(l3) the same block fails under --fail-on-instrument",
+    "(l3) --fail-on-instrument lifts the warning tier for an incomplete block too",
     r.code === 1 && failLines(r.stdout) === 1 && /FAIL\s+instrument-disclosure: 1 claim\(s\) state a figure with no command/.test(r.stdout),
     `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
   );
 
   // A named command field is disclosure even when the prose is quiet.
   const fieldCmd = block({
-    source_revision: ghost,
+    source_revision: settled,
     claims: [
       {
         claim: "72 dossiers were read",
@@ -790,7 +863,7 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
 // and these cases pin the refusal.
 
 {
-  const prose = block({ source_revision: ghost, gate_evidence: ["check ran, all green", "placement clean (seat)"] });
+  const prose = block({ source_revision: settled, gate_evidence: ["check ran, all green", "placement clean (seat)"] });
   r = run(makeSession("m-prose.jsonl", prose));
   check(
     "(m1) prose gate rows fail the shape check",
@@ -798,7 +871,7 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
     `exit=${r.code} fail=${(r.stdout.match(/FAIL\s+gate-evidence-shape[^\n]*/) ?? ["absent"])[0].slice(0, 60)}`,
   );
 
-  const noExit = block({ source_revision: ghost, gate_evidence: [{ cmd: "true" }] });
+  const noExit = block({ source_revision: settled, gate_evidence: [{ cmd: "true" }] });
   r = run(makeSession("m-noexit.jsonl", noExit));
   check(
     "(m2) an object without an exit code fails the same way",
@@ -806,7 +879,7 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
     `exit=${r.code} fail=${(r.stdout.match(/FAIL\s+gate-evidence-shape[^\n]*/) ?? ["absent"])[0].slice(0, 60)}`,
   );
 
-  const shaped = block({ source_revision: ghost, gate_evidence: [{ cmd: "true", exit: 0 }] });
+  const shaped = block({ source_revision: settled, gate_evidence: [{ cmd: "true", exit: 0 }] });
   r = run(makeSession("m-shaped.jsonl", shaped));
   check(
     "(m3) a {cmd, exit} row passes",

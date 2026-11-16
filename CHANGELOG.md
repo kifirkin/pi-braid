@@ -254,6 +254,51 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.1: the close gate is a file in the repository, and three of its reads refuse (2026-11-16)
+
+`check-result.mjs` validates the result block every worker close ends with, and it lived in the orchestrator's
+live tree: no diff, no review, no CI leg, and no test any release ran. The repository already leaned on it from
+the other side. A vocabularies test read the file through the home directory to keep the validator's spec and
+status literals in step with the exported ones, so that assertion could only be green on a machine that
+carried the tree, and a red there could as easily mean the tree had moved as the literals had drifted. The gate
+and the sibling it spawns (the freshness read over the revision a block names) are now `packages/core/scripts/`,
+with both harnesses beside them in `packages/core/test/runtime/scripts/`, and `npm run check:close-gate` is a leg
+of `ci:check`. The old paths keep forwarders that pass argv, stdout and the exit code through, so a brief that
+names one still works, and the checkout stays the one place a rule changes.
+
+The move required two things a live tree never had to answer. The repositories a `source_revision` is resolved
+against were two hardcoded checkouts under one home directory, which a clone cannot honour; they are data now,
+tried in the order `--repo`, `BRAID_GATE_REPOS`, `$PWD`, and the checkout the gate itself lives in, with the
+forwarder supplying the machine's own list. And the harness fixtures named those checkouts; they build their own
+repositories now, so a verdict is attributable to the rule under test rather than to a tree the machine happens
+to have.
+
+Three reads that warned now refuse, each keyed to what the block claims about itself. A `source_revision` that
+no visible repository holds is a failure, because a revision that exists nowhere attests no tree and seven hex
+characters are the whole of what a fabricated one has to get right. A `completed` block's figure must name the
+instrument that produced it, in `verified_by` or a `command` field. A `completed` block may not carry a
+gate-evidence row over a population with an absent or unreadable `stamp`, since the merge path compares that
+record against the census the revision it names holds and a row it cannot read is a number nothing can test.
+Completion, not the spec kind, is the line: a research close and an impl close both state finished facts, and
+the same worker produces either. Under `partial`, `blocked` or `error` all three stay warnings, because an
+incomplete result is allowed to say what it does not know.
+
+The stamp grammar has one rule that costs more than the others, and the refusal states it: the unit is one
+lowercase word. A record like `scanned 42 tests in packages/telegram at 130129c` reads to a person and parses to
+nothing, which is why the population stamp and its parse have to agree on that word. The measurement of the
+change counted what that costs, over the 929 result blocks on disk with the gate run on each: 407 passed before,
+101 pass now, and the 306 newly refused split into 247 whose revision resolves nowhere, 91 with an undisclosed
+figure, and 54 with an unreadable population record, overlapping where a block breaks more than one rule. The
+360 blocks that were already failing keep their reasons unchanged, 162 more were already red and gained one of
+these, and nothing that failed before passes now. A second instrument, a structural re-implementation of the
+three rules over the same blocks, agrees with the gate on every block.
+
+Thirty-two of the refused revisions do exist, in a repository the gate was not told about, and one of them is a
+worker's own project checkout rather than pi-braid at all: that is the case `--repo` and `BRAID_GATE_REPOS`
+exist for, and the refusal names both. The new rule also caught a fixture that had been passing while it tested
+nothing: its census case stamped `scanned 2 tracked entries at <sha>`, a two-word unit the parser refuses, so the
+comparison it claimed to exercise had never run. One word for the unit, and it runs.
+
 ## Core 0.45.0: one program and its argv, without a shell (2026-11-16)
 
 The bash census measured 223,137 bash calls out of 504,124 tool calls in a frozen corpus, and ranked the
