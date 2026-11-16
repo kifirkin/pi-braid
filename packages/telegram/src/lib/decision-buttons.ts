@@ -48,11 +48,22 @@ export const MAX_DECISION_BUTTONS_PER_ROW = 4;
  */
 const DECISION_TOKEN_RE = /^[A-Za-z0-9_-]{1,16}$/;
 
-/** One button: `label` is what the owner sees, `value` what the agent gets. */
+/**
+ * One button: `label` is what the owner sees, `value` what the agent gets.
+ * `recommended` marks the agent's own pick for its row (at most one button
+ * per row); the rendered text gains a leading `RECOMMENDED_MARK`.
+ */
 export interface DecisionOption {
   label: string;
   value: string;
+  recommended?: boolean;
 }
+
+/**
+ * Prefix on a recommended button's text. A plain glyph, not an emoji
+ * sequence: the mark has to survive Telegram's button rendering.
+ */
+const RECOMMENDED_MARK = "\u2713 ";
 
 /** Rows of options (Telegram's inline_keyboard layout). */
 export type DecisionOptionRows = DecisionOption[][];
@@ -108,7 +119,7 @@ export function prepareDecisionOptions(
   }
 
   const rows: DecisionOptionRows = [];
-  for (const row of options) {
+  for (const [index, row] of options.entries()) {
     if (
       !Array.isArray(row) ||
       row.length === 0 ||
@@ -121,7 +132,11 @@ export function prepareDecisionOptions(
     }
     const built: DecisionOption[] = [];
     for (const button of row) {
-      const raw = button as { label?: unknown; value?: unknown } | null;
+      const raw = button as {
+        label?: unknown;
+        value?: unknown;
+        recommended?: unknown;
+      } | null;
       const label = typeof raw?.label === "string" ? raw.label.trim() : "";
       const value = typeof raw?.value === "string" ? raw.value.trim() : "";
       if (!label || !value) {
@@ -131,7 +146,30 @@ export function prepareDecisionOptions(
             "telegram_send: every `options` button needs a non-empty `label` and `value`",
         };
       }
-      built.push({ label, value });
+      if (
+        raw?.recommended !== undefined &&
+        typeof raw.recommended !== "boolean"
+      ) {
+        return {
+          ok: false,
+          error: `telegram_send: \`options\` button ${JSON.stringify(label)} has a non-boolean \`recommended\` (pass true or false)`,
+        };
+      }
+      built.push(
+        raw?.recommended === true
+          ? { label, value, recommended: true }
+          : { label, value },
+      );
+    }
+    // One pick per row: two marks in one row ask the owner to choose between
+    // two answers to the same question. Refused before anything is sent, with
+    // the row named.
+    const recommended = built.filter((button) => button.recommended === true);
+    if (recommended.length > 1) {
+      return {
+        ok: false,
+        error: `telegram_send: \`options\` row ${index + 1} marks ${recommended.length} buttons recommended (${recommended.map((button) => JSON.stringify(button.label)).join(", ")}) - at most one per row`,
+      };
     }
     rows.push(built);
   }
@@ -173,7 +211,10 @@ export function prepareDecisionOptions(
     keyboard: {
       inline_keyboard: rows.map((row) =>
         row.map((button) => ({
-          text: button.label,
+          text:
+            button.recommended === true
+              ? `${RECOMMENDED_MARK}${button.label}`
+              : button.label,
           callback_data: decisionCallbackData(token, button.value),
         })),
       ),

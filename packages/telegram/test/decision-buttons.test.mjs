@@ -217,6 +217,107 @@ test("prepareDecisionOptions: callback_data is capped at Telegram's 64 bytes", (
   assert.match(multibyte.error, /64-byte limit/);
 });
 
+// ── send half: the recommendation marker ────────────────────────────────
+
+test("recommended: one marker, on the marked button only (four buttons)", () => {
+  const prepared = prepareDecisionOptions(
+    [
+      [
+        { label: "Keep current line", value: "keep" },
+        { label: "Bump to minor", value: "minor", recommended: true },
+        { label: "Bump to patch", value: "patch" },
+        { label: "Skip", value: "skip" },
+      ],
+    ],
+    "rec1",
+  );
+  assert.equal(prepared.ok, true);
+  const buttons = prepared.keyboard.inline_keyboard.flat();
+  assert.equal(buttons.length, 4);
+  const marked = buttons.filter((button) => button.text.startsWith("✓ "));
+  assert.equal(marked.length, 1, "the mark renders exactly once");
+  assert.deepEqual(marked[0], {
+    text: "✓ Bump to minor",
+    callback_data: "dec:rec1:minor",
+  });
+  assert.deepEqual(
+    buttons
+      .filter((button) => button !== marked[0])
+      .map((button) => button.text),
+    ["Keep current line", "Bump to patch", "Skip"],
+  );
+  // The glyph occurs once in the whole keyboard, and the callback payload
+  // carries none of it: the flag has to be recovered at answer time.
+  assert.equal(
+    buttons
+      .map((button) => button.text)
+      .join("")
+      .split("✓").length - 1,
+    1,
+  );
+  for (const button of buttons) {
+    assert.equal(button.callback_data.startsWith("dec:rec1:"), true);
+    assert.equal(button.callback_data.includes("✓"), false);
+  }
+});
+
+test("recommended: two marked buttons in one row are refused, naming the row and both labels", () => {
+  const prepared = prepareDecisionOptions(
+    [
+      [
+        { label: "Deploy now", value: "deploy", recommended: true },
+        { label: "Roll back", value: "rollback", recommended: true },
+      ],
+    ],
+    "rec2",
+  );
+  assert.equal(prepared.ok, false);
+  assert.equal(prepared.keyboard, undefined, "no keyboard is produced");
+  assert.match(prepared.error, /row 1/);
+  assert.match(prepared.error, /Deploy now/);
+  assert.match(prepared.error, /Roll back/);
+  assert.match(prepared.error, /at most one per row/);
+
+  // The row index is the position in `options`, counted from 1.
+  const secondRow = prepareDecisionOptions(
+    [
+      [{ label: "Ship", value: "ship" }],
+      [
+        { label: "Yes", value: "yes", recommended: true },
+        { label: "No", value: "no", recommended: true },
+      ],
+    ],
+    "rec2",
+  );
+  assert.equal(secondRow.ok, false);
+  assert.match(secondRow.error, /row 2/);
+
+  // One per row is the allowed shape: two rows, one pick each.
+  const allowed = prepareDecisionOptions(
+    [
+      [{ label: "Yes", value: "yes", recommended: true }],
+      [{ label: "Now", value: "now", recommended: true }],
+    ],
+    "rec2",
+  );
+  assert.equal(allowed.ok, true);
+  assert.deepEqual(
+    allowed.keyboard.inline_keyboard.map((row) => row[0].text),
+    ["✓ Yes", "✓ Now"],
+  );
+});
+
+test("recommended: a non-boolean flag is refused instead of silently dropped", () => {
+  for (const recommended of ["yes", 1, null]) {
+    const prepared = prepareDecisionOptions(
+      [[{ label: "A", value: "a", recommended }]],
+      "rec3",
+    );
+    assert.equal(prepared.ok, false, JSON.stringify(recommended));
+    assert.match(prepared.error, /non-boolean `recommended`/);
+  }
+});
+
 // ── receive half: parse / label / format ────────────────────────────────────
 
 test("parseDecisionCallbackData: round-trips token + value (value may contain colons)", () => {
