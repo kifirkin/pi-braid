@@ -412,7 +412,25 @@ function commandExcerpt(cmd) {
 const weaselVerifier = claimObjects.filter((c) => typeof c.verified_by === "string" && verifierNamesNothing(c.verified_by));
 check("claims-verified-by-names", weaselVerifier.length === 0, weaselVerifier.length === 0 ? "" : `${weaselVerifier.length} entr(ies) whose verified_by names no instrument (${weaselVerifier.map((c) => JSON.stringify(String(c.verified_by).slice(0, 40))).join(", ")})`);
 const unsourcedVerifier = claimObjects.filter((c) => typeof c.verified_by === "string" && !verifierNamesNothing(c.verified_by) && !verifierNamesAnArtifact(c.verified_by));
-if (schema.status === "blocked") check("blocked-reason", typeof schema.blocked_reason === "string" && schema.blocked_reason.length > 0, "blocked requires reason");
+// A blocked close names why it stopped. The contract's field is
+// `blocked_reason`, and the refusal has to say so: the writer that hits this is
+// at the end of its context, and a message naming no field sends it to the same
+// guess again. A legacy `reason` is not read — the registry's own `reason`
+// strings are a different surface, and accepting both would give one contract
+// two names.
+if (schema.status === "blocked") {
+  const hasBlockedReason = typeof schema.blocked_reason === "string" && schema.blocked_reason.length > 0;
+  const hasLegacyReason = typeof schema.reason === "string" && schema.reason.length > 0;
+  check(
+    "blocked-reason",
+    hasBlockedReason,
+    hasBlockedReason
+      ? ""
+      : hasLegacyReason
+        ? "blocked requires blocked_reason; a reason field is not read"
+        : "blocked requires blocked_reason",
+  );
+}
 
 let outputOk = false, outputDetail;
 if (typeof schema.output_file === "string" && schema.output_file.startsWith("/")) {

@@ -888,6 +888,47 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
   );
 }
 
+// ── (n) a blocked close names the field the contract reads ──────────────────
+// The validator asks for `blocked_reason`. A close that writes only `reason`
+// has not said why it stopped, and the refusal has to name the field it wanted:
+// the writer that reads it is out of context, and a message naming no field
+// sends it to the same guess again. A legacy alias is not read, and the message
+// says so. Each block is otherwise valid, so the verdict is this leg alone.
+
+{
+  const withReason = block({
+    status: "blocked",
+    source_revision: settled,
+    blocked_reason: "waits on the fixture",
+  });
+  r = run(makeSession("n-blocked-reason.jsonl", withReason));
+  check(
+    "(n1) a blocked block carrying blocked_reason passes",
+    r.code === 0 && /PASS\s+blocked-reason/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+
+  const legacy = block({ status: "blocked", source_revision: settled, reason: "waits on the fixture" });
+  r = run(makeSession("n-legacy-reason.jsonl", legacy));
+  check(
+    "(n2) a blocked block carrying only reason fails, and the message names blocked_reason",
+    r.code === 1 &&
+      failLines(r.stdout) === 1 &&
+      /FAIL\s+blocked-reason\s+\(blocked requires blocked_reason; a reason field is not read\)/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+
+  const neither = block({ status: "blocked", source_revision: settled });
+  r = run(makeSession("n-no-reason.jsonl", neither));
+  check(
+    "(n3) a blocked block carrying neither fails with the same field name",
+    r.code === 1 &&
+      failLines(r.stdout) === 1 &&
+      /FAIL\s+blocked-reason\s+\(blocked requires blocked_reason\)/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+}
+
 // ── Verdict ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${failures === 0 ? `RESULT: PASS (${checks} checks)` : `RESULT: FAIL (${failures}/${checks} checks)`}`);
