@@ -21,6 +21,9 @@
  * 6. Gating: perToolGuidelines() emits exactly one `- <name>: <reflection>`
  * line per tool PRESENT in the active set, none for absent tools — the
  * `if has <tool>`conditional-injection contract.
+ * 7. Property arm: the `run` row names the field a program's source travels
+ * in and the argv shape the tool refuses, by name rather than by prose, so a
+ * rewrite that keeps the meaning passes and a deletion fails.
  *
  * The tests import the modules from dist/ (production compile output),
  * not by grepping source. Kept as a single file (rather than split) to
@@ -199,6 +202,30 @@ describe("tool-guidelines", () => {
         `TOOLS.md Reflection for \`${name}\` must equal the TOOL_GUIDELINES string`,
       );
     }
+  });
+
+  it("run row property: the stdin source shape and the refused -c argv shape are named", () => {
+    // Property by name, not exact prose: the row must say where a program's
+    // source text travels and which argv shape the tool refuses. Removing the
+    // sentence leaves `stdin` only as an optional argument name, so the
+    // conjunction below is what the sentence actually adds.
+    const line = TOOL_GUIDELINES.run;
+    assert.match(line, /\bstdin\b/, "the run row must name the stdin field");
+    assert.match(
+      line,
+      /\bpython3\b/,
+      "the run row must name the interpreter shape whose source travels in stdin",
+    );
+    assert.match(
+      line,
+      /-c\b/,
+      "the run row must name the -c argument shape that argv refuses",
+    );
+    assert.match(
+      line,
+      /\brefus(?:e|es|ed)\b/i,
+      "the run row must say the -c argv shape is refused",
+    );
   });
 
   it("resolveToolLine priority 1: the tool's OWNING package promptGuidelines win over the static record", () => {

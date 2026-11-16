@@ -95,7 +95,7 @@ export const TOOL_GUIDELINES: Record<string, string> = {
     "when: task scope is known — focused profiles cut prompt noise and token cost; args: lean/research/debugging/browser/deep",
 
   // ── run-tool (default-enabled) ──
-  run: "when: one program and its argv, for tests, builds, git, wc, node, python; when-not: pipelines, redirection, heredocs, $(...) or globs (bash), or a destructive verb naming a path outside the workspace; args: argv + required timeout_ms (+ cwd/env/stdin/max_output_bytes); caveat: no TTY, no shell, no glob expansion; a stream past the cap keeps head and tail and names the file holding the rest",
+  run: 'when: one program and its argv, for tests, builds, git, wc, node, python; when-not: pipelines, redirection, heredocs, $(...) or globs (bash), or a destructive verb naming a path outside the workspace; args: argv + required timeout_ms (+ cwd/env/stdin/max_output_bytes); source: a program\'s source text belongs in stdin, never in an argv element, because run refuses shell operators in argv and executes argv without a shell, so argv: ["python3","-"] with the program in stdin is accepted while argv: ["python3","-c","…"] is refused; caveat: no TTY, no shell, no glob expansion; a stream past the cap keeps head and tail and names the file holding the rest',
 
   // ── skills-tool (default-enabled) ──
   list_skills:
