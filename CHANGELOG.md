@@ -254,6 +254,26 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.5: the memory store's cap and its eviction order (2026-11-16)
+
+The semantic store is one file written by every live process, and two of its promises were false. The cap was
+checked against each writer's own snapshot before the merge that decides what the file holds, so a writer that
+loaded 199 entries while another process brought the file to 200 reached 200 in its own snapshot after one write,
+saw nothing to trim, and the merge persisted 201; the live store was found at 203 entries against a cap of 200,
+and two long-lived snapshots grew a copy to 207 in eight alternating writes. The cap is now applied to the merged
+population inside the write lock, which is the only population whose length the file will have, and `pruneMemories`
+still owns the rule.
+
+The eviction order compared utility with a pair-wise tolerance of 0.1 and fell through to recency inside it, which
+is not transitive: 0.84 beat 0.75 on recency, 0.75 beat 0.66 on recency, and 0.84 beat 0.66 on utility, so one
+population produced 40 different orders from 40 input permutations and a 0.94-utility entry could sort below a 0.66
+one. The order is now a key rather than a comparison - utility bucket, then timestamp, then id - so every
+permutation sorts to one sequence and the entry that leaves is the one the rule names.
+
+Also in this line: `examples/dispatch-guard/` ships with its own `check:dispatch-guard` chain leg. It is a pi
+extension whose `tool_call` handler rewrites `wait` to `false` on `herdr_agent prompt` and leaves every other call
+byte-identical, because a dispatch that waits blocks the turn the rule exists to protect.
+
 ## Core 0.45.3: the shell keeps its working directory across calls (2026-11-16)
 
 Every `bash` call started a fresh shell in the session's cwd, so callers spent their opening tokens
