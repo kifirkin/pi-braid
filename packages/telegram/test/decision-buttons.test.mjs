@@ -15,6 +15,7 @@ import {
   decisionCallbackData,
   prepareDecisionOptions,
   parseDecisionCallbackData,
+  findDecisionOption,
   findDecisionOptionLabel,
   formatDecisionAnswerText,
   handleDecisionCallbackQuery,
@@ -379,6 +380,51 @@ test("formatDecisionAnswerText: label + value, value-only, and no duplicate when
   assert.equal(formatDecisionAnswerText("t1", "a", "a"), "[decision] t1 → a");
 });
 
+test("findDecisionOption: a marked button reports recommended and yields the bare label", () => {
+  const markup = {
+    inline_keyboard: [
+      [
+        { text: "✓ Keep current line", callback_data: "dec:t:k" },
+        { text: "Bump to minor", callback_data: "dec:t:m" },
+      ],
+    ],
+  };
+  const tapped = callbackUpdate({ data: "dec:t:k", replyMarkup: markup });
+  assert.deepEqual(findDecisionOption(tapped, "dec:t:k"), {
+    label: "Keep current line",
+    recommended: true,
+  });
+  assert.deepEqual(findDecisionOption(tapped, "dec:t:m"), {
+    label: "Bump to minor",
+    recommended: false,
+  });
+  assert.equal(findDecisionOption(tapped, "dec:t:missing"), undefined);
+  assert.equal(
+    findDecisionOption(callbackUpdate({ data: "dec:t:k" }), "dec:t:k"),
+    undefined,
+  );
+});
+
+test("formatDecisionAnswerText: the recommendation mark appears once, before the shown option", () => {
+  assert.equal(
+    formatDecisionAnswerText("t1", "a", "Option A", true),
+    "[decision] t1 → ✓ Option A (a)",
+  );
+  assert.equal(
+    formatDecisionAnswerText("t1", "a", "a", true),
+    "[decision] t1 → ✓ a",
+  );
+  assert.equal(
+    formatDecisionAnswerText("t1", "a", "Option A", false),
+    "[decision] t1 → Option A (a)",
+  );
+  // The stray glyph is Telegram-only: the answer text never carries two.
+  assert.equal(
+    formatDecisionAnswerText("t1", "a", "Option A", true).split("✓").length,
+    2,
+  );
+});
+
 // ── tap handler ─────────────────────────────────────────────────────────────
 
 test("handleDecisionCallbackQuery: a dec: tap is acknowledged (✓ label) and returns the formatted delivery", async () => {
@@ -455,6 +501,57 @@ test("handleDecisionCallbackQuery: an answerCallbackQuery failure still yields t
   assert.equal(outcome.handled, true);
   assert.equal(outcome.answered, false);
   assert.equal(outcome.delivery.text, "[decision] t4 → a");
+});
+
+test("handleDecisionCallbackQuery: a recommended tap and a plain tap read differently in the answer", async () => {
+  const { client, calls } = fakeClient();
+  const recommended = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:r1:k",
+      id: "cq-r1",
+      replyMarkup: {
+        inline_keyboard: [
+          [{ text: "✓ Keep current line", callback_data: "dec:r1:k" }],
+        ],
+      },
+    }),
+  );
+  const plain = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({
+      data: "dec:r2:m",
+      id: "cq-r2",
+      replyMarkup: {
+        inline_keyboard: [
+          [{ text: "Bump to minor", callback_data: "dec:r2:m" }],
+        ],
+      },
+    }),
+  );
+  assert.equal(
+    recommended.delivery.text,
+    "[decision] r1 → ✓ Keep current line (k)",
+  );
+  assert.equal(plain.delivery.text, "[decision] r2 → Bump to minor (m)");
+  assert.equal(recommended.delivery.text.includes("✓"), true);
+  assert.equal(plain.delivery.text.includes("✓"), false);
+  // The toast names the label once; the mark is not repeated.
+  assert.equal(
+    calls.answerCallbackQuery[0].options.text,
+    "✓ Keep current line",
+  );
+  assert.equal(calls.answerCallbackQuery[1].options.text, "✓ Bump to minor");
+});
+
+test("handleDecisionCallbackQuery: no markup means no recommendation claim (the limit, stated)", async () => {
+  const { client } = fakeClient();
+  const outcome = await handleDecisionCallbackQuery(
+    { client, token: BOT_TOKEN },
+    callbackUpdate({ data: "dec:r3:k" }),
+  );
+  assert.equal(outcome.delivery.text, "[decision] r3 → k");
+  assert.equal(outcome.delivery.text.includes("✓"), false);
 });
 
 // ── single-use tap semantics ────────────────────────────────────────────────
@@ -658,6 +755,49 @@ test("telegram_send options: a generated token is echoed in the outcome and on t
       .callback_data,
     `dec:${outcome.decisionToken}:a`,
   );
+});
+
+test("telegram_send options: a recommended button reaches the wire marked, and two in a row are refused", async () => {
+  const { client, calls } = fakeClient();
+  const outcome = await runTelegramSend(
+    {
+      text: "Pick one",
+      options: [
+        [
+          { label: "Keep current line", value: "keep" },
+          { label: "Bump to minor", value: "minor", recommended: true },
+        ],
+      ],
+      decisionToken: "recw",
+    },
+    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(calls.sendMessage[0].options.replyMarkup, {
+    inline_keyboard: [
+      [
+        { text: "Keep current line", callback_data: "dec:recw:keep" },
+        { text: "✓ Bump to minor", callback_data: "dec:recw:minor" },
+      ],
+    ],
+  });
+
+  const refused = await runTelegramSend(
+    {
+      text: "Pick one",
+      options: [
+        [
+          { label: "Yes", value: "yes", recommended: true },
+          { label: "No", value: "no", recommended: true },
+        ],
+      ],
+      decisionToken: "recx",
+    },
+    { client, token: BOT_TOKEN, chatId: OWNER_CHAT_ID },
+  );
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /row 1/);
+  assert.equal(calls.sendMessage.length, 1, "the refusal delivered nothing");
 });
 
 test("telegram_send options: malformed rows refuse the send (nothing delivered)", async () => {

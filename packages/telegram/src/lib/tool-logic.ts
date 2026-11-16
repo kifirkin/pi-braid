@@ -80,8 +80,11 @@ export interface TelegramSendToolParams {
   /**
    * Decision buttons: 1-2 rows of up to 4 `{ label, value }` buttons attached
    * to the message as an inline keyboard. A tap reaches the agent as an
-   * inbound `[decision] <token> → <label> (<value>)` message. Malformed rows
-   * refuse the whole send (nothing delivered).
+   * inbound `[decision] <token> → <label> (<value>)` message, carrying the
+   * recommendation mark when the tapped button was marked `recommended`. At
+   * most one button per row may be marked, and its rendered text gains the
+   * mark; two in one row refuse the whole send. Malformed rows refuse the
+   * whole send too (nothing delivered).
    */
   options?: DecisionOptionRows;
   /**
@@ -118,7 +121,9 @@ export interface TelegramSendOutcome {
   chunks?: number;
   /**
    * Correlation id carried by the decision buttons (present when `options`
-   * were sent): a tap returns as `[decision] <token> → <label> (<value>)`.
+   * were sent): a tap returns as `[decision] <token> → <label> (<value>)`,
+   * with the recommendation mark before the option when that button was the
+   * marked one.
    */
   decisionToken?: string;
   /**

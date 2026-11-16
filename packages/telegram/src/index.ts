@@ -1088,7 +1088,7 @@ export default async function telegramExtension(
       "`text` is required and must be non-empty; over-cap text without an explicit choice returns an ERROR (nothing sent) — pick rich:true, a shorter text, or an explicit strategy (never a silent truncate).",
       "Set `rich: true` past the cap (or for formatted/split delivery): it bypasses the cap and splits the text to fit Telegram's 4096-char messages, honoring `parse_mode` (HTML or Markdown).",
       'Author the body in the `parse_mode` you pick. `parse_mode:"Markdown"` is Telegram LEGACY Markdown (`*bold*`, `_italic_`, `` `code` ``, `[link](url)`); clean single-line MarkdownV2 pairs (`**bold**`, `__underline__`, `~strike~`, `||spoiler||`) are converted to HTML (`<b>`, `<u>`, `<s>`, `<tg-spoiler>`) and reported as `converted` — runs (`~~x~~`), spaced operators (`x ~ y ~ z`) and pairs that would cross author tags stay literal. HTML (tags: `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, `<tg-spoiler>`, `<a href>`) is the predictable choice for anything nontrivial. Cross-mode markup is sanitized automatically: raw HTML tags never leak into a Markdown message and Markdown markers never show literally in an HTML message.',
-      "Pass `options` (1-2 rows, up to 4 buttons per row: {label, value}) to let the owner answer with a tap: the choice arrives as an inbound `[decision] <token> → <label> (<value>)` message. `decisionToken` is the correlation id (generated when omitted, echoed in the result). The owner can always reply in words instead.",
+      "Pass `options` (1-2 rows, up to 4 buttons per row: {label, value}) to let the owner answer with a tap: the choice arrives as an inbound `[decision] <token> → <label> (<value>)` message. Mark at most one button per row with `recommended: true` when you have a pick: the owner sees a check mark on it, and a tap of it arrives with the same mark, so an override is visible rather than inferred. `decisionToken` is the correlation id (generated when omitted, echoed in the result). The owner can always reply in words instead.",
     ],
     description:
       "Send a message to the owner on Telegram (bidirectional channel). " +
@@ -1099,7 +1099,7 @@ export default async function telegramExtension(
       'Over the cap with no explicit choice: the crafting model distills to ≤ the cap; unavailable distillation = refused — never a silent truncate. Explicit choice wins: strategy:"truncate" hard-cuts; strategy:"error" refuses. ' +
       'rich:true + parse_mode (HTML | Markdown): `"Markdown"` is Telegram LEGACY Markdown (`*bold*`, `_italic_`, `` `code` ``, `[t](url)`); clean single-line MarkdownV2 pairs (`**bold**`, `__underline__`, `~strike~`, `||spoiler||`) convert to HTML (`<b>`, `<u>`, `<s>`, `<tg-spoiler>`) and are reported as `converted` (runs, spaced operators and tag-crossing pairs stay literal). Cross-mode markup is neutralized; a body with HTML tags auto-selects HTML. ' +
       "voice:true sends a voice note (needs a TTS source); voiceText defaults to text. " +
-      "options: 1-2 rows of up to 4 {label,value} buttons attach an inline keyboard; a tap returns to the agent as an inbound `[decision] <token> → <label> (<value>)` message (the owner can always answer in words too); decisionToken is the correlation id, generated when omitted and echoed in the result. " +
+      "options: 1-2 rows of up to 4 {label,value} buttons attach an inline keyboard; a tap returns to the agent as an inbound `[decision] <token> → <label> (<value>)` message, with a check mark before the option when the tapped button was marked `recommended` (at most one per row; two in one row refuse the send). The owner can always answer in words too; decisionToken is the correlation id, generated when omitted and echoed in the result. " +
       "Returns the delivery result (message_id or error). " +
       "A successful send while the inbound poller is OFF carries a warn field — the owner's replies won't reach the agent until telegram_poller enable.",
     parameters: Type.Object({
@@ -1158,6 +1158,12 @@ export default async function telegramExtension(
                 description:
                   "Machine-readable choice returned to the agent when the button is tapped.",
               }),
+              recommended: Type.Optional(
+                Type.Boolean({
+                  description:
+                    "Mark this button as the agent's own pick for its row (at most one per row; two in one row refuse the send). The button renders with a check mark, and a tap of it returns an inbound line carrying the same mark.",
+                }),
+              ),
             }),
             { minItems: 1, maxItems: 4 },
           ),
@@ -1165,7 +1171,7 @@ export default async function telegramExtension(
             minItems: 1,
             maxItems: 2,
             description:
-              "Decision buttons: 1-2 rows of up to 4 {label, value} buttons, attached to the message as an inline keyboard. A tap returns to the agent as an inbound `[decision] <token> → <label> (<value>)` message. Malformed rows refuse the send (nothing delivered).",
+              "Decision buttons: 1-2 rows of up to 4 {label, value} buttons, attached to the message as an inline keyboard. A tap returns to the agent as an inbound `[decision] <token> → <label> (<value>)` message. Mark at most one button per row `recommended: true` for the agent's own pick: it renders with a check mark and the tap's inbound line carries the mark. Malformed rows refuse the send (nothing delivered), including two recommended buttons in one row.",
           },
         ),
       ),

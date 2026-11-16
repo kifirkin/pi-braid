@@ -10,14 +10,15 @@
  *    asked. Telegram caps callback_data at 64 bytes — enforced here, before
  *    anything is sent.
  *  - receive: `parseDecisionCallbackData` recognizes the prefix,
- *    `findDecisionOptionLabel` recovers the tapped button's label from the
- *    message markup, and `handleDecisionCallbackQuery` answers the tap
- *    (toast) and returns the delivery payload (an `IncomingOwnerMessage`
- *    the caller hands to the same inbound path as a text message). Each ROW
- *    of a keyboard is one question: answering it drops that row from the
- *    message and keeps the unanswered rows (Telegram shows the updated markup
- *    in place), a later tap of an answered row is acknowledged only, and a
- *    later tap of a still-open row delivers normally. Control callbacks
+ *    `findDecisionOption` recovers the tapped button's label and its
+ *    recommendation from the message markup, and
+ *    `handleDecisionCallbackQuery` answers the tap (toast) and returns the
+ *    delivery payload (an `IncomingOwnerMessage` the caller hands to the
+ *    same inbound path as a text message). Each ROW of a keyboard is one
+ *    question: answering it drops that row from the message and keeps the
+ *    unanswered rows (Telegram shows the updated markup in place), a later
+ *    tap of an answered row is acknowledged only, and a later tap of a
+ *    still-open row delivers normally. Control callbacks
  *    (`pause`/`resume`/`status`) fail the prefix check and keep their own
  *    handler's path.
  *
@@ -51,7 +52,8 @@ const DECISION_TOKEN_RE = /^[A-Za-z0-9_-]{1,16}$/;
 /**
  * One button: `label` is what the owner sees, `value` what the agent gets.
  * `recommended` marks the agent's own pick for its row (at most one button
- * per row); the rendered text gains a leading `RECOMMENDED_MARK`.
+ * per row): the rendered text gains a leading `RECOMMENDED_MARK`, and the
+ * answer line says whether the tap took it.
  */
 export interface DecisionOption {
   label: string;
@@ -60,8 +62,11 @@ export interface DecisionOption {
 }
 
 /**
- * Prefix on a recommended button's text. A plain glyph, not an emoji
- * sequence: the mark has to survive Telegram's button rendering.
+ * Prefix on a recommended button's text and on the answer line for a tap of
+ * one. A plain glyph, not an emoji sequence: the mark has to survive
+ * Telegram's button rendering. Reading it back off the message markup is how
+ * a tap says whether it was the recommended one; `callback_data` has no room
+ * for the flag (Telegram caps it at 64 bytes).
  */
 const RECOMMENDED_MARK = "\u2713 ";
 
@@ -249,16 +254,31 @@ export function parseDecisionCallbackData(
   return { token, value };
 }
 
+/** What the message markup says about the tapped button. */
+export interface DecisionOptionHit {
+  /** Button text with the recommendation mark removed. */
+  label: string;
+  /** True when the button carried the recommendation mark. */
+  recommended: boolean;
+}
+
 /**
- * Recover the tapped button's label from the message the keyboard is attached
- * to: the button whose callback_data matches the tap. Lookup is deliberately
- * tolerant (unknown markup → undefined) so a tap still delivers with the raw
- * value when the markup is unavailable.
+ * Recover the tapped button from the message the keyboard is attached to: the
+ * button whose callback_data matches the tap.
+ *
+ * The recommendation flag is read off the rendered text, not off the callback.
+ * `callback_data` is `dec:<token>:<value>` and Telegram's 64-byte cap leaves
+ * no room for per-button state, so the message snapshot in the callback is the
+ * only place the flag still exists at answer time. It is the same source the
+ * label already comes from, which is why recovering one costs nothing extra.
+ * Lookup is deliberately tolerant (unknown markup → undefined) so a tap still
+ * delivers with the raw value when the markup is unavailable; such a tap makes
+ * no recommendation claim.
  */
-export function findDecisionOptionLabel(
+export function findDecisionOption(
   update: TelegramUpdate,
   callbackData: string,
-): string | undefined {
+): DecisionOptionHit | undefined {
   const markup = (
     update.callback_query?.message as { reply_markup?: unknown } | undefined
   )?.reply_markup as { inline_keyboard?: unknown } | undefined;
@@ -269,29 +289,50 @@ export function findDecisionOptionLabel(
     for (const button of row) {
       const candidate = button as { text?: unknown; callback_data?: unknown };
       if (
-        candidate?.callback_data === callbackData &&
-        typeof candidate.text === "string" &&
-        candidate.text.trim()
+        candidate?.callback_data !== callbackData ||
+        typeof candidate.text !== "string"
       ) {
-        return candidate.text.trim();
+        continue;
       }
+      const text = candidate.text.trim();
+      if (!text) continue;
+      if (text.startsWith(RECOMMENDED_MARK)) {
+        const label = text.slice(RECOMMENDED_MARK.length).trim();
+        // A bare mark names nothing; fall back to the value.
+        if (!label) return undefined;
+        return { label, recommended: true };
+      }
+      return { label: text, recommended: false };
     }
   }
   return undefined;
 }
 
 /**
- * The inbound body the agent sees: `[decision] <token> → <label> (<value>)`.
- * When the label equals the value (or is unknown) only the value is shown —
- * repeating it would read as two different choices.
+ * The tapped button's label with the recommendation mark removed; undefined
+ * when the markup is unavailable. `findDecisionOption` carries the flag too.
+ */
+export function findDecisionOptionLabel(
+  update: TelegramUpdate,
+  callbackData: string,
+): string | undefined {
+  return findDecisionOption(update, callbackData)?.label;
+}
+
+/**
+ * The inbound body the agent sees: `[decision] <token> → <label> (<value>)`,
+ * with the recommendation mark before the shown option when the tapped button
+ * carried it. When the label equals the value (or is unknown) only the value
+ * is shown - repeating it would read as two different choices.
  */
 export function formatDecisionAnswerText(
   token: string,
   value: string,
   label?: string,
+  recommended = false,
 ): string {
   const shown = label && label !== value ? `${label} (${value})` : value;
-  return `[decision] ${token} → ${shown}`;
+  return `[decision] ${token} → ${recommended ? `${RECOMMENDED_MARK}${shown}` : shown}`;
 }
 
 export interface DecisionCallbackDeps {
@@ -565,7 +606,8 @@ export async function handleDecisionCallbackQuery(
     );
   }
 
-  const label = findDecisionOptionLabel(update, callbackQuery.data ?? "");
+  const tapped = findDecisionOption(update, callbackQuery.data ?? "");
+  const label = tapped?.label;
   const shown = label ?? parsed.value;
   // Record before the first network call: a racing duplicate of this tap sees
   // the value answered and takes the repeat path instead of a second delivery.
@@ -607,7 +649,12 @@ export async function handleDecisionCallbackQuery(
     ...(from.first_name ? { firstName: from.first_name } : {}),
     chatId: message.chat.id,
     chatType: message.chat.type ?? "private",
-    text: formatDecisionAnswerText(parsed.token, parsed.value, label),
+    text: formatDecisionAnswerText(
+      parsed.token,
+      parsed.value,
+      label,
+      tapped?.recommended === true,
+    ),
     // A tap is the owner acting now: nothing was forwarded, so the delivery
     // says "manual" and inherits no publication clock from anywhere.
     timeSource: "manual",
