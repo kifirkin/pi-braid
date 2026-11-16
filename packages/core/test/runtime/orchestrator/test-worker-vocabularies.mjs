@@ -8,11 +8,12 @@
  *    export: the spec and outcome enumerations are exactly the exported lists,
  *    and the tool description names all four layers with their values. A
  *    hand-written copy that drifts from the export fails here.
- * 3. The external result validator (`check-result.mjs`, which lives outside
- *    the repo and cannot be imported) carries the same `SPECS` and `STATUSES`
- *    literals. The file is read from the orchestrator workspace; when it is
- *    absent the sync assertions skip with a clear message, so the suite stays
- *    green on a machine without that workspace.
+ * 3. The result validator (`packages/core/scripts/check-result.mjs`, a
+ *    standalone script that cannot be imported) carries the same `SPECS` and
+ *    `STATUSES` literals. It is read from this repository, so the assertion
+ *    runs wherever the suite runs; a checkout that lost the file fails here
+ *    rather than skipping, because a sync assertion that a missing subject
+ *    turns into a pass is an assertion that cannot fail.
  * 4. The comparator behind the sync assertion is shown to go red on a mutated
  *    copy, so a passing comparison means the lists matched, not that the check
  *    could not fail.
@@ -20,15 +21,11 @@
  *    close-worker gates prose advertises it by that constant, stating the
  *    flag is advisory: a hand-written copy that drifts fails here.
  *
- * The test reads the real HOME on purpose: the external file is addressed
- * through it. Nothing under HOME is written.
- *
  * Run: node test/runtime/orchestrator/test-worker-vocabularies.mjs (after npm run build)
  */
 
 import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 const {
@@ -45,18 +42,16 @@ const { default: orchestratorExtension } = await import(
 );
 
 const CHECK_RESULT_PATH = join(
-  homedir(),
-  ".pi",
-  "agent",
-  "braid",
-  "orchestrator",
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
   "scripts",
   "check-result.mjs",
 );
 
 let passed = 0;
 let failed = 0;
-let skipped = 0;
 function test(name, fn) {
   try {
     fn();
@@ -147,11 +142,9 @@ test("the tool description names all four layers with their exported values", ()
 
 test("check-result.mjs carries the exported SPECS and STATUSES", () => {
   if (!existsSync(CHECK_RESULT_PATH)) {
-    skipped++;
-    console.log(
-      `  [skip] external result validator absent at ${CHECK_RESULT_PATH}; the sync assertion is not checked here`,
+    assert.fail(
+      `the result validator is absent at ${CHECK_RESULT_PATH}; the gate the close ritual runs is part of this repository, so its absence is a broken checkout rather than a machine that lacks a workspace`,
     );
-    return;
   }
   const source = readFileSync(CHECK_RESULT_PATH, "utf8");
   const specs = readListLiteral(source, "SPECS");
@@ -198,5 +191,5 @@ test("the sync comparator reports a mutated list as a mismatch", () => {
   );
 });
 
-console.log(`\n📊 Results: ${passed} passed, ${failed} failed, ${skipped} skipped`);
+console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
 process.exitCode = failed > 0 ? 1 : 0;

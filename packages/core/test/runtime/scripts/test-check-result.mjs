@@ -1,0 +1,823 @@
+#!/usr/bin/env node
+// test-check-result.mjs — offline harness for check-result.mjs.
+//
+// Every repository a case needs is a temp fixture this file builds, so no
+// verdict depends on a checkout that happens to exist on the machine running
+// it. The gate's default repository set is exercised by pointing a fixture at
+// `$PWD` or by asking which checkout the gate itself lives in; no case names a
+// real one.
+//
+// Synthetic session fixtures (one assistant message carrying one fenced result
+// block) cover the source-revision leg: a block without the field and a block
+// with a malformed value exit 1; a well-formed sha that resolves in the fixture
+// repo passes and names the repo it resolved in; a well-formed sha no repo
+// resolves passes with a WARN line naming every repo tried. The block is
+// otherwise valid in every case, so each verdict is attributable to the
+// source-revision leg alone — each failing case must carry exactly one FAIL
+// line. A session with no block still exits 2, the no-schema code. Section (h)
+// covers the instrument-capability pairing read: it is warn-only, so every case
+// there asserts exit 0 and reads the WARN claim-capability lines and the counter
+// line instead of a refusal.
+//
+// The gate under test defaults to the script three directories up;
+// CHECK_RESULT=<path> overrides it, which is how a RED run is recorded against a
+// pre-change copy. BRAID_GATE_REPOS defaults to the fixture repo, so the default
+// search path is what most cases exercise.
+
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const CHECK_RESULT =
+  process.env.CHECK_RESULT ||
+  join(import.meta.dirname, "..", "..", "..", "scripts", "check-result.mjs");
+
+const root = mkdtempSync(join(tmpdir(), "check-result-test-"));
+const outputFile = join(root, "report.md");
+writeFileSync(outputFile, "# fixture report\n\n## Placement\n\nfixture only\n");
+
+// ── the fixture repository every resolve case reads ──────────────────────────
+// Two commits on the main line and one on a side branch, so "this is HEAD",
+// "the tree moved", "the revision never landed" and the tracked-entry census
+// are all expressible without touching a real checkout.
+const fixtureRepo = join(root, "fixture-repo");
+const fx = (...args) => spawnSync("git", ["-C", fixtureRepo, ...args], { encoding: "utf8" });
+spawnSync("git", ["init", "-q", "-b", "main", fixtureRepo]);
+fx("config", "user.email", "fixture@example.test");
+fx("config", "user.name", "fixture");
+writeFileSync(join(fixtureRepo, "first.txt"), "one\n");
+fx("add", "-A");
+fx("commit", "-q", "-m", "first");
+const fixtureFirst = fx("rev-parse", "HEAD").stdout.trim();
+writeFileSync(join(fixtureRepo, "second.txt"), "two\n");
+fx("add", "-A");
+fx("commit", "-q", "-m", "second");
+const fixtureHead = fx("rev-parse", "HEAD").stdout.trim();
+fx("checkout", "-q", "-b", "side");
+writeFileSync(join(fixtureRepo, "side.txt"), "side\n");
+fx("add", "-A");
+fx("commit", "-q", "-m", "side");
+const fixtureSide = fx("rev-parse", "HEAD").stdout.trim();
+fx("checkout", "-q", "main");
+/** Entries the fixture repo tracks at a revision: the census a stamp names. */
+const fixtureCensus = fx("ls-tree", "-r", "--name-only", fixtureHead)
+  .stdout.split("\n")
+  .filter(Boolean).length;
+/** The checkout holding the gate, when the gate is inside one (a copy-out is not). */
+const gateCheckout = spawnSync(
+  "git",
+  ["-C", join(CHECK_RESULT, ".."), "rev-parse", "--show-toplevel"],
+  { encoding: "utf8" },
+);
+const gateCheckoutRoot = gateCheckout.status === 0 ? gateCheckout.stdout.trim() : "";
+/** Well-formed and resolvable nowhere: the shape every "isolate another leg" case uses. */
+const ghost = "0123456789abcdef0123456789abcdef01234567";
+
+
+let checks = 0;
+let failures = 0;
+function check(name, ok, detail = "") {
+  checks++;
+  if (!ok) failures++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+}
+
+function makeSession(file, payload) {
+  const path = join(root, file);
+  const text =
+    payload === null
+      ? "No result block in this message."
+      : `Result follows.\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\`\n`;
+  const entry = { type: "message", message: { role: "assistant", content: [{ type: "text", text }] } };
+  writeFileSync(path, `${JSON.stringify(entry)}\n`);
+  return path;
+}
+
+function block(extra = {}) {
+  return {
+    worker: "fixture-worker",
+    spec: "impl",
+    status: "completed",
+    output_file: outputFile,
+    artifacts: [],
+    gate_evidence: [{ cmd: "true", exit_code: 0 }],
+    claims: [
+      {
+        claim: "fixture claim holds",
+        verified_by: "node test-check-result.mjs (the fixture's own harness)",
+        predicts: "node test-check-result.mjs exits 0",
+      },
+    ],
+    ...extra,
+  };
+}
+
+function run(session, extraArgs = [], opts = {}) {
+  const r = spawnSync(process.execPath, [CHECK_RESULT, session, ...extraArgs], {
+    encoding: "utf8",
+    cwd: opts.cwd,
+    env: {
+      ...process.env,
+      // The default search path names the fixture repo, so a case that tests
+      // something else does not first have to make its revision resolvable.
+      BRAID_GATE_REPOS: fixtureRepo,
+      ...opts.env,
+    },
+  });
+  return { code: r.status, stdout: r.stdout || "", stderr: r.stderr || "" };
+}
+
+const failLines = (stdout) => (stdout.match(/^FAIL/gm) || []).length;
+
+console.log(`validator under test: ${CHECK_RESULT}\n`);
+
+// ── (a) the field is required ────────────────────────────────────────────────
+
+let r = run(makeSession("missing.jsonl", block()));
+check(
+  "(a) a block without source_revision exits 1 on that leg alone",
+  r.code === 1 && failLines(r.stdout) === 1 && /FAIL\s+source-revision/.test(r.stdout) && /missing or empty/.test(r.stdout),
+  `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+);
+
+// ── (b) malformed values are rejected ────────────────────────────────────────
+
+for (const [label, value] of [
+  ["too short", "abc123"],
+  ["not hex", "zzzzzzzz"],
+  ["empty string", ""],
+  ["null", null],
+]) {
+  const s = makeSession(`malformed-${label.replace(/ /g, "-")}.jsonl`, block({ source_revision: value }));
+  r = run(s);
+  check(
+    `(b) ${label} source_revision exits 1`,
+    r.code === 1 && failLines(r.stdout) === 1 && /FAIL\s+source-revision/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+}
+
+// ── (c) a resolvable sha passes and names the repo ────────────────────────
+// Two forms of the same commit: the full sha and a 12-char prefix. The label
+// asserted is the one the gate printed, which is the fixture path it resolved
+// in, so the case also pins that a resolution names its repository.
+
+for (const [label, sha] of [
+  ["full", fixtureHead],
+  ["short", fixtureHead.slice(0, 12)],
+]) {
+  r = run(makeSession(`head-${label}.jsonl`, block({ source_revision: sha })), ["--repo", fixtureRepo]);
+  check(
+    `(c) ${label} sha resolves in the named repo and the check names it`,
+    r.code === 0 && /RESULT: PASS/.test(r.stdout) && r.stdout.includes(`source-revision  (resolved in ${fixtureRepo})`),
+    `exit=${r.code} sha=${sha.slice(0, 12)}`,
+  );
+}
+
+// The default search path, without --repo: $PWD is tried, so running the gate
+// from inside the working tree resolves that tree's own revision.
+r = run(makeSession("pwd-resolves.jsonl", block({ source_revision: fixtureHead })), [], {
+  cwd: fixtureRepo,
+  env: { BRAID_GATE_REPOS: "" },
+});
+check(
+  "(c) with no --repo the revision resolves through $PWD",
+  r.code === 0 && r.stdout.includes("source-revision  (resolved in $PWD)"),
+  `exit=${r.code}`,
+);
+
+// The gate's own checkout is a default too, and only when the gate is inside
+// one: the same run from a copy outside any work tree names $PWD and nothing
+// else, which is what a copied-out single file has to say about itself.
+if (gateCheckoutRoot !== "") {
+  r = run(makeSession("own-checkout.jsonl", block({ source_revision: ghost })), [], {
+    cwd: root,
+    env: { BRAID_GATE_REPOS: "" },
+  });
+  check(
+    "(c) the gate names the checkout it lives in",
+    r.code === 0 && /WARN source-revision:/.test(r.stdout) && r.stdout.includes("this checkout"),
+    `exit=${r.code} checkout=${gateCheckoutRoot}`,
+  );
+  const copyDir = join(root, "copied-gate");
+  mkdirSync(copyDir, { recursive: true });
+  spawnSync("cp", [CHECK_RESULT, join(copyDir, "check-result.mjs")]);
+  const copySession = makeSession("own-checkout-copy.jsonl", block({ source_revision: ghost }));
+  const copied = spawnSync(process.execPath, [join(copyDir, "check-result.mjs"), copySession], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, BRAID_GATE_REPOS: "" },
+  });
+  const copyOut = copied.stdout || "";
+  check(
+    "(c) a copy outside any work tree names no checkout (control)",
+    copied.status === 0 && /WARN source-revision:/.test(copyOut) && !copyOut.includes("this checkout"),
+    `exit=${copied.status}`,
+  );
+} else {
+  console.log("SKIP  (c) the gate is not inside a work tree here; the own-checkout default cannot be exercised");
+}
+
+// ── (d) well-formed but unresolvable passes with a WARN ──────────────────
+// The block names a sha no repository holds. The verdict is still a pass in this
+// version, and the WARN has to be usable: it names the revision, every label the
+// gate tried, and nothing it did not. The expected labels are computed here from
+// what was actually passed in, so a case cannot agree with a hardcoded order.
+
+const otherRepos = [join(root, "repo-b"), join(root, "repo-c")];
+for (const dir of otherRepos) {
+  spawnSync("git", ["init", "-q", "-b", "main", dir]);
+  spawnSync("git", ["-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "fixture"]);
+}
+
+r = run(makeSession("ghost.jsonl", block({ source_revision: ghost })), ["--repo", otherRepos[0]], {
+  cwd: root,
+  env: { BRAID_GATE_REPOS: otherRepos[1] },
+});
+const warnLine = r.stdout.split("\n").find((l) => l.startsWith("WARN source-revision:"));
+const expectedTried = [...otherRepos, "$PWD"];
+if (gateCheckoutRoot !== "") expectedTried.push("this checkout");
+check(
+  "(d) an unresolvable sha passes and the WARN names the revision and every repo tried",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    Boolean(warnLine) &&
+    warnLine.includes(ghost) &&
+    expectedTried.every((label) => warnLine.includes(label)),
+  `exit=${r.code} warn=${warnLine ? warnLine.slice(0, 90) : "absent"}`,
+);
+check(
+  "(d) the WARN names only repos that were searched (control)",
+  Boolean(warnLine) && !warnLine.includes(join(root, "repo-never-tried")),
+  `warn=${warnLine ? warnLine.slice(0, 60) : "absent"}`,
+);
+
+// ── (e) a verifier that names no instrument is refused ───────────────────────
+// The decidable half of the unverified-claim class: a bare weasel word, a
+// weasel word with filler, or a string too short to name anything. Measured
+// over the 607 claims already in the ledger this refuses 1 (0.2%) - the one
+// instance that named no instrument at all - so the rule is sharp rather than
+// a flood, and the prose-but-unsourced residue stays a WARN.
+
+const weaselCases = [
+  ["bare-word", "test"],
+  ["weasel-plus-filler", "read the file"],
+  ["too-short", "ok"],
+];
+for (const [name, verifiedBy] of weaselCases) {
+  const b = block({ source_revision: ghost }); // the source leg WARNs, so the claims leg is the only FAIL
+  b.claims[0].verified_by = verifiedBy;
+  const rr = run(makeSession(`weasel-${name}.jsonl`, b));
+  check(
+    `(e) verified_by ${name} (${JSON.stringify(verifiedBy)}) exits 1 on that leg alone`,
+    rr.code === 1 && failLines(rr.stdout) === 1 && /FAIL\s+claims-verified-by-names/.test(rr.stdout),
+    `exit=${rr.code} fail-lines=${failLines(rr.stdout)}`,
+  );
+}
+
+// A verifier that names a command or a path passes the same leg.
+for (const [name, verifiedBy] of [["command", "npm test -w packages/telegram"], ["path", "packages/telegram/test/index.test.mjs:2246"], ["quoted-absence", "no check exists; stated as an absence in the report"]] ) {
+  const b = block({ source_revision: ghost });
+  b.claims[0].verified_by = verifiedBy;
+  const rr = run(makeSession(`verifier-${name}.jsonl`, b));
+  check(
+    `(e) verified_by naming ${name} does not fail that leg`,
+    !/FAIL\s+claims-verified-by-names/.test(rr.stdout),
+    `exit=${rr.code}${/WARN claims-verified-by-names/.test(rr.stdout) ? " (warned)" : ""}`,
+  );
+}
+
+// ── (f) a close's own repository can be named, so its revision resolves ─────
+// A block whose revision lives outside every default is accepted on shape alone.
+// The same sha resolves when the caller names the repo, which is the whole point
+// of --repo: the revision is checkable, the gate just has to be told where.
+
+if (fixtureHead) {
+  const without = run(makeSession("foreign-without.jsonl", block({ source_revision: fixtureHead })), [], {
+    cwd: root,
+    env: { BRAID_GATE_REPOS: "" },
+  });
+  check(
+    "(f) without --repo a foreign revision is accepted on shape alone (WARN)",
+    without.code === 0 && /WARN source-revision:/.test(without.stdout),
+    `exit=${without.code}`,
+  );
+  const withRepo = run(
+    makeSession("foreign-with.jsonl", block({ source_revision: fixtureHead })),
+    ["--repo", fixtureRepo],
+    { cwd: root, env: { BRAID_GATE_REPOS: "" } },
+  );
+  check(
+    "(f) with --repo the same revision resolves and the label names the repo",
+    withRepo.code === 0 && /resolved in /.test(withRepo.stdout) && !/WARN source-revision:/.test(withRepo.stdout),
+    `exit=${withRepo.code} ${(withRepo.stdout.split("\n").find((l) => /source-revision/.test(l)) || "").trim().slice(0, 70)}`,
+  );
+} else {
+  console.log("SKIP  (f) the fixture repo could not be created here");
+}
+
+// ── (g) the population-scan stamp contract ──────────────────────────────────
+// A row whose command carries a walk/list/count verb is a population scan and
+// must carry a parseable stamp; any row whose stamp is present but unreadable
+// is named. All of it warns: the block stays valid, the merge path is the
+// reader that tests the number. The counter line is the measurement surface.
+
+const stampWarn = (stdout) => stdout.split("\n").filter((l) => l.startsWith("WARN gate-evidence stamp:"));
+const counterLine = (stdout) => stdout.split("\n").find((l) => l.startsWith("gate-evidence-stamps:"));
+const withGates = (rows) => block({ source_revision: ghost, gate_evidence: rows });
+
+r = run(makeSession("scan-unstamped.jsonl", withGates([{ cmd: "git ls-files | wc -l", exit: 0 }])));
+check(
+  "(g) a recognized scan row with no stamp warns and stays valid",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    stampWarn(r.stdout).length === 1 &&
+    /row 0/.test(stampWarn(r.stdout)[0]) &&
+    /population scan/.test(stampWarn(r.stdout)[0]) &&
+    /no stamp/.test(stampWarn(r.stdout)[0]) &&
+    counterLine(r.stdout) === "gate-evidence-stamps: 0/1 recognized scan row(s) carry a parseable stamp",
+  `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 80) ?? "absent"} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+
+r = run(
+  makeSession(
+    "scan-stamped.jsonl",
+    withGates([{ cmd: "git ls-files | wc -l", exit: 0, stamp: "scanned 12 files at abc1234" }]),
+  ),
+);
+check(
+  "(g) a recognized scan row with a parseable stamp is silent and counted",
+  r.code === 0 &&
+    stampWarn(r.stdout).length === 0 &&
+    counterLine(r.stdout) === "gate-evidence-stamps: 1/1 recognized scan row(s) carry a parseable stamp",
+  `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+
+r = run(makeSession("scan-unrecognized.jsonl", withGates([{ cmd: "npm run ci:check", exit: 0 }])));
+check(
+  "(g) an unrecognized command with no stamp is not a scan and does not warn",
+  r.code === 0 && stampWarn(r.stdout).length === 0 && counterLine(r.stdout) === undefined,
+  `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+
+r = run(
+  makeSession(
+    "scan-wrapper.jsonl",
+    withGates([{ cmd: "node packages/core/scripts/check-placement.mjs --strict", exit: 0 }]),
+  ),
+);
+check(
+  "(g) a wrapper whose walk is inside the script stays a miss (no project vocabulary)",
+  r.code === 0 && stampWarn(r.stdout).length === 0 && counterLine(r.stdout) === undefined,
+  `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+
+r = run(
+  makeSession(
+    "scan-unreadable.jsonl",
+    withGates([{ cmd: "node count.mjs", exit: 0, stamp: "scanned twelve files" }]),
+  ),
+);
+check(
+  "(g) an unreadable stamp is named with its row and raw value",
+  r.code === 0 &&
+    stampWarn(r.stdout).length === 1 &&
+    /row 0/.test(stampWarn(r.stdout)[0]) &&
+    /unparseable stamp: "scanned twelve files"/.test(stampWarn(r.stdout)[0]) &&
+    /expected "scanned <n> <unit> at <revision>"/.test(stampWarn(r.stdout)[0]),
+  `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 90) ?? "absent"}`,
+);
+
+r = run(
+  makeSession("scan-nonstring.jsonl", withGates([{ cmd: "ls -la", exit: 0, stamp: 12 }])),
+);
+check(
+  "(g) a non-string stamp is unreadable and named",
+  r.code === 0 &&
+    stampWarn(r.stdout).length === 1 &&
+    /unparseable stamp: 12/.test(stampWarn(r.stdout)[0]) &&
+    counterLine(r.stdout) === undefined,
+  `exit=${r.code} warn=${stampWarn(r.stdout)[0]?.slice(0, 70) ?? "absent"}`,
+);
+
+const recognizedVerbs = [
+  "ls -la",
+  "find . -type f",
+  "fd -e mjs",
+  "git ls-files",
+  "git ls-tree -r --name-only main",
+  "wc -l base.txt",
+  "rg -n pattern .",
+  "grep -rn pattern .",
+];
+const unrecognizedCommands = [
+  "npm run ci:check",
+  "npx tsc --noEmit",
+  "true",
+  "git diff --stat",
+  "node scripts/check-doc-status.mjs",
+];
+for (const cmd of recognizedVerbs) {
+  const rr = run(makeSession(`verb-${cmd.replace(/\W+/g, "-")}.jsonl`, withGates([{ cmd, exit: 0 }])));
+  check(
+    `(g) verb shape recognized: ${cmd}`,
+    rr.code === 0 && stampWarn(rr.stdout).length === 1,
+    `exit=${rr.code} warns=${stampWarn(rr.stdout).length}`,
+  );
+}
+for (const cmd of unrecognizedCommands) {
+  const rr = run(makeSession(`noverb-${cmd.replace(/\W+/g, "-")}.jsonl`, withGates([{ cmd, exit: 0 }])));
+  check(
+    `(g) verb shape unrecognized: ${cmd}`,
+    rr.code === 0 && stampWarn(rr.stdout).length === 0 && counterLine(rr.stdout) === undefined,
+    `exit=${rr.code} warns=${stampWarn(rr.stdout).length}`,
+  );
+}
+
+r = run(
+  makeSession(
+    "scan-mixed.jsonl",
+    withGates([
+      { cmd: "git ls-files | wc -l", exit: 0 },
+      { cmd: "wc -l base.txt", exit: 0, stamp: "scanned 3 rows at abc1234" },
+      { cmd: "npm run ci:check", exit: 0 },
+    ]),
+  ),
+);
+check(
+  "(g) the counter reports recognized-rows-stamped over recognized rows",
+  r.code === 0 &&
+    stampWarn(r.stdout).length === 1 &&
+    /row 0/.test(stampWarn(r.stdout)[0]) &&
+    counterLine(r.stdout) === "gate-evidence-stamps: 1/2 recognized scan row(s) carry a parseable stamp",
+  `exit=${r.code} counter=${counterLine(r.stdout) ?? "absent"}`,
+);
+
+// ── (h) the instrument-capability pairing read (D3/D4) ──────────────────────
+// Warn tier only: a warned pair asserts a property its verifier's shape cannot
+// observe, and the block stays valid (exit 0) whatever the read finds. The
+// table covers each rule in both directions, the D4 elimination clause with
+// and without a census, a verifier the registry cannot classify in each
+// asserted class (no warn: that residue is the seat's re-derivation job), and
+// the T6 fabricated-number block as the zero point — the registry must not
+// claim to catch it.
+
+const capabilityWarnLines = (stdout) => stdout.split("\n").filter((l) => l.startsWith("WARN claim-capability:"));
+const capabilityCounterLine = (stdout) => stdout.split("\n").find((l) => l.startsWith("claim-capability:"));
+const claimFixture = (claim, verifiedBy) =>
+  block({
+    source_revision: ghost,
+    claims: [{ claim, verified_by: verifiedBy, predicts: "re-running the cited instrument exits 0 and prints its evidence" }],
+  });
+
+const capabilityCases = [
+  ["coverage on a search/count verb warns (D4)", "the stale reader is gone from the tree", "rg 'stale-reader' src/ (0 hits)", ["coverage-on-search"]],
+  ["elimination on a search verb warns (D4)", "no remaining callers of the old probe", "grep -rn 'old-probe' packages/", ["coverage-on-search"]],
+  ["elimination on a census does not warn", "the stale reader is gone from the tree", "git ls-files '*.mjs' | wc -l; the census carries no reader", []],
+  ["elimination on a suite run does not warn", "no remaining callers of the old probe", "npm test -w packages/core (suite run, 0 failures)", []],
+  ["coverage on a content read does not warn", "the legacy entry is removed", "read src/legacy.mjs: 0 bytes; the file is empty", []],
+  ["coverage on an execution verb does not warn (the strict tier's bound)", "the old boot path is gone", "node -e 'process.exit(0)' (exits 0)", []],
+  ["content on a citation warns (D3)", "the file contains 330 entries", "the report's description of the artifact", ["content-on-citation"]],
+  ["content on a content verb does not warn", "the artifact contains 120 bytes", "measured the artifact: 120 bytes on disk", []],
+  ["content on citation plus a read does not warn", "the file contains 12 entries", "report description plus read; 12 entries", []],
+  ["classification on a bare count warns (D3)", "only the private rows remain", "rg -c 'row' rows.txt (24 hits)", ["classification-on-bare-count"]],
+  ["classification on a decomposed count does not warn", "only the private rows remain; the count decomposes by source", "rg -c 'row' rows.txt (24 hits)", []],
+  ["classification on a decomposed verifier does not warn", "the leak class is private", "wc -l hits.txt (24 hits; broken down by source)", []],
+  ["classification on a content verifier does not warn", "the leak class is private", "read leak.mjs; inspected the classes", []],
+  ["a description claim on a citation does not warn (no rule pairs descriptions)", "the helper is a stub", "the report's description of the helper", []],
+];
+
+for (const [label, claim, verifiedBy, expected] of capabilityCases) {
+  const rr = run(makeSession(`cap-${label.replace(/\W+/g, "-").slice(0, 40)}.jsonl`, claimFixture(claim, verifiedBy)));
+  const warns = capabilityWarnLines(rr.stdout);
+  const counter = capabilityCounterLine(rr.stdout) ?? "";
+  const rulesOk =
+    warns.length === expected.length &&
+    warns.every((l, i) => l.includes(`[${expected[i]}]`) && /claim 0/.test(l) && /asserted \S+/.test(l) && /observed through/.test(l));
+  check(
+    `(h) ${label}`,
+    rr.code === 0 && /RESULT: PASS/.test(rr.stdout) && rulesOk && counter.startsWith(`claim-capability: 1/1 checked, ${expected.length} warn(s)`),
+    `exit=${rr.code} warns=${warns.length} counter=${counter.slice(0, 60)}`,
+  );
+}
+
+r = run(
+  makeSession(
+    "cap-multi.jsonl",
+    block({
+      source_revision: ghost,
+      claims: [
+        { claim: "the file contains 330 entries", verified_by: "the report's description of the artifact", predicts: "the report cites the entry count as 330 -> entries = 330" },
+        { claim: "the stale reader is gone", verified_by: "rg 'stale-reader' src/", predicts: "rg prints no line -> zero hits" },
+      ],
+    }),
+  ),
+);
+check(
+  "(h) two warned claims are named by index and counted per class",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    capabilityWarnLines(r.stdout).length === 2 &&
+    capabilityWarnLines(r.stdout).some((l) => /claim 0 \[content-on-citation\]/.test(l)) &&
+    capabilityWarnLines(r.stdout).some((l) => /claim 1 \[coverage-on-search\]/.test(l)) &&
+    (capabilityCounterLine(r.stdout) ?? "").includes("2/2 checked, 2 warn(s)") &&
+    (capabilityCounterLine(r.stdout) ?? "").includes("coverage-on-search 1, content-on-citation 1, classification-on-bare-count 0"),
+  `exit=${r.code} warns=${capabilityWarnLines(r.stdout).length} counter=${(capabilityCounterLine(r.stdout) ?? "absent").slice(0, 80)}`,
+);
+
+// A verifier naming no registry class leaves the pairing read undecidable and
+// silent (the design's refusal tier would cover it, and that tier is closed).
+for (const [cls, claim] of [
+  ["coverage", "the stale reader is gone from the tree"],
+  ["content", "the file contains 9 entries"],
+  ["classification", "the leak class is private"],
+]) {
+  const rr = run(makeSession(`cap-unpinned-${cls}.jsonl`, claimFixture(claim, "the fixture's own prose attestation")));
+  check(
+    `(h) an unpinned verifier on a ${cls} claim warns nothing for capability reasons`,
+    rr.code === 0 &&
+      /RESULT: PASS/.test(rr.stdout) &&
+      capabilityWarnLines(rr.stdout).length === 0 &&
+      (capabilityCounterLine(rr.stdout) ?? "").startsWith("claim-capability: 1/1 checked, 0 warn(s)"),
+    `exit=${rr.code} warns=${capabilityWarnLines(rr.stdout).length}`,
+  );
+}
+
+// The fabricated-number block from the instrument-registry dry run: schema-valid,
+// one fabricated count. It must keep passing with no capability warn — the
+// registry reads instrument shapes, not numbers.
+r = run(
+  makeSession(
+    "cap-t6-zero-point.jsonl",
+    block({
+      source_revision: "22f945ae",
+      spec: "audit",
+      claims: [
+        {
+          claim: "check-self-review.mjs at revision 22f945ae reports 999 passing checks and zero failures",
+          verified_by: "node scripts/check-self-review.mjs",
+          predicts: "output contains 999 lines beginning with PASS -> count of PASS lines = 999",
+        },
+      ],
+    }),
+  ),
+);
+check(
+  "(h) the T6 fabricated-number block passes and warns nothing for capability reasons (zero point)",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    capabilityWarnLines(r.stdout).length === 0 &&
+    (capabilityCounterLine(r.stdout) ?? "").startsWith("claim-capability: 1/1 checked, 0 warn(s)"),
+  `exit=${r.code} warns=${capabilityWarnLines(r.stdout).length} counter=${(capabilityCounterLine(r.stdout) ?? "absent").slice(0, 60)}`,
+);
+
+// ── exit-code discipline: no block is exit 2 ─────────────────────────────────
+
+r = run(makeSession("none.jsonl", null));
+check("a session with no result block exits 2", r.code === 2, `exit=${r.code}`);
+
+// ── (i) source-revision-freshness: drift is named, and --strict-staleness is fatal ──
+// The fixture repo's first commit is one file behind its HEAD, so "the artifact's
+// revision" and "HEAD" differ by a known file and the moved count is a fact this
+// file can state rather than a number read from somewhere else.
+
+const driftSession = makeSession("drift.jsonl", block({ source_revision: fixtureFirst }));
+const relaxed = run(driftSession, ["--repo", fixtureRepo]);
+check(
+  "(i1) drift stays report-only by default, and the moved count is named in the transcript",
+  relaxed.code === 0 && /moved:\s+\d+ file\(s\) since/.test(relaxed.stdout) && /PASS {2}source-revision-freshness/.test(relaxed.stdout),
+  `exit=${relaxed.code}`,
+);
+
+const strictDrift = run(driftSession, ["--repo", fixtureRepo, "--strict-staleness"]);
+check(
+  "(i2) --strict-staleness turns the same drift into a failure that names the moved scope",
+  strictDrift.code === 1 && /FAIL {2}source-revision-freshness/.test(strictDrift.stdout) && /FAIL \(--strict\): the artifact's scope moved/.test(strictDrift.stdout),
+  `exit=${strictDrift.code}`,
+);
+
+const atHead = run(makeSession("at-head.jsonl", block({ source_revision: fixtureHead })), ["--repo", fixtureRepo, "--strict-staleness"]);
+check(
+  "(i3) a revision that IS HEAD passes even under --strict-staleness (the control)",
+  atHead.code === 0 && /PASS {2}source-revision-freshness/.test(atHead.stdout),
+  `exit=${atHead.code}`,
+);
+
+// The shape every close actually has: the block names its OWN commit, which is
+// not in HEAD until it is merged. This case is what the first real close exposed:
+// with it missing, the gate failed a correct block.
+const unmergedSession = makeSession("unmerged.jsonl", block({ source_revision: fixtureSide }));
+const unmergedRelaxed = run(unmergedSession, ["--repo", fixtureRepo]);
+check(
+  "(i4) an unmerged side-branch commit passes in report-only mode and the fact is stated",
+  unmergedRelaxed.code === 0 && /PASS {2}source-revision-freshness/.test(unmergedRelaxed.stdout) && /unmerged or foreign revision/.test(unmergedRelaxed.stdout),
+  `exit=${unmergedRelaxed.code}`,
+);
+
+const unmergedStrict = run(unmergedSession, ["--repo", fixtureRepo, "--strict-staleness"]);
+check(
+  "(i5) the same unmerged commit FAILS under --strict-staleness (consuming it as landed evidence)",
+  unmergedStrict.code === 1 && /FAIL {2}source-revision-freshness/.test(unmergedStrict.stdout),
+  `exit=${unmergedStrict.code}`,
+);
+
+// ── (j) red-evidence pairing: a RED row needs a build row beside it ─────────
+//
+// A planted revert reported from a tree that was never compiled is a RED for
+// the wrong reason, and the class has re-entered this ledger three times. The
+// read is warn-tier, so every case here asserts exit 0 and reads the WARN and
+// counter lines rather than a refusal.
+
+const redBuildWarn = (stdout) =>
+  stdout.split("\n").filter((l) => l.startsWith("WARN gate-evidence red-build:"));
+const redBuildCounter = (stdout) =>
+  stdout.split("\n").find((l) => l.startsWith("gate-evidence-red-build:"));
+
+r = run(
+  makeSession(
+    "red-unpaired.jsonl",
+    withGates([{ cmd: "revert src/extensions/foo.ts, then node test-foo.mjs", exit: 1 }]),
+  ),
+);
+check(
+  "(j1) a red row with no build row warns and counts 0/1",
+  r.code === 0 &&
+    redBuildWarn(r.stdout).length === 1 &&
+    /no build or typecheck row/.test(redBuildWarn(r.stdout)[0]) &&
+    redBuildCounter(r.stdout) === "gate-evidence-red-build: 0/1 red row(s) paired with a build row",
+  `exit=${r.code} warn=${redBuildWarn(r.stdout)[0]?.slice(0, 70) ?? "absent"} counter=${redBuildCounter(r.stdout) ?? "absent"}`,
+);
+
+r = run(
+  makeSession(
+    "red-paired.jsonl",
+    withGates([
+      { cmd: "revert src/extensions/foo.ts, then node test-foo.mjs", exit: 1 },
+      { cmd: "cd packages/core && npx tsc --noEmit", exit: 0 },
+    ]),
+  ),
+);
+check(
+  "(j2) the same red row paired with a build row is silent and counts 1/1",
+  r.code === 0 &&
+    redBuildWarn(r.stdout).length === 0 &&
+    redBuildCounter(r.stdout) === "gate-evidence-red-build: 1/1 red row(s) paired with a build row",
+  `exit=${r.code} warn=${redBuildWarn(r.stdout)[0]?.slice(0, 70) ?? "absent"} counter=${redBuildCounter(r.stdout) ?? "absent"}`,
+);
+
+r = run(makeSession("no-red.jsonl", withGates([{ cmd: "npm run ci:check", exit: 0 }])));
+check(
+  "(j3) a block with no red row is not asked the question and prints no counter",
+  r.code === 0 && redBuildWarn(r.stdout).length === 0 && redBuildCounter(r.stdout) === undefined,
+  `exit=${r.code} counter=${redBuildCounter(r.stdout) ?? "absent"}`,
+);
+
+// ── (k) a stamp must be the census of the revision it names ──────────────
+//
+// The failure this reads is a worker stamping the population it touched: the
+// number of changed files recorded where the merge path expects tracked entries.
+// The fixture repo's census at its HEAD is two entries, so a stamp of one is
+// wrong for its revision and a stamp of two is right, whatever the working tree
+// holds.
+
+const censusRun = fx("ls-tree", "-r", "--name-only", fixtureHead);
+if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
+  // The census of the STAMPED revision, which is what the merge path compares
+  // against; the working tree can legitimately differ from it.
+  const tracked = fixtureCensus;
+  r = run(
+    makeSession(
+      "census-wrong.jsonl",
+      block({ source_revision: fixtureHead, gate_evidence: [{ cmd: "node packages/core/scripts/check-placement.mjs --strict", exit: 0, stamp: `scanned ${tracked - 1} files at ${fixtureHead}` }] }),
+    ),
+    ["--repo", fixtureRepo],
+  );
+  check(
+    "(k1) a stamp below the tracked census warns with both numbers",
+    r.code === 0 && /WARN gate-evidence census: .*stamps \d+ but .* tracks \d+ entries/.test(r.stdout),
+    `exit=${r.code} warn=${(r.stdout.match(/WARN gate-evidence census[^\n]*/) ?? ["absent"])[0].slice(0, 80)}`,
+  );
+  r = run(
+    makeSession(
+      "census-right.jsonl",
+      block({ source_revision: fixtureHead, gate_evidence: [{ cmd: "node packages/core/scripts/check-placement.mjs --strict", exit: 0, stamp: `scanned ${tracked} tracked entries at ${fixtureHead}` }] }),
+    ),
+    ["--repo", fixtureRepo],
+  );
+  check(
+    "(k2) the same row stamping the real census is silent",
+    r.code === 0 && !/gate-evidence census/.test(r.stdout),
+    `exit=${r.code} warn=${/gate-evidence census/.test(r.stdout) ? "present" : "absent"}`,
+  );
+} else {
+  check("(k) census fixture skipped: the fixture repo is not readable", false, `git -C ${fixtureRepo} ls-tree exited ${censusRun.status}`);
+}
+
+// ── (l) instrument disclosure: a figure must name the command that made it ──
+// The self-review store's most frequent class is a measurement taken through
+// something that changed what was measured, so this leg exists to make the
+// pairing decidable: a claim stating a figure with a program named is silent, the
+// same claim with prose only warns, and --fail-on-instrument turns that warn into
+// a refusal so a seat can adopt the strictness without a second migration.
+
+{
+  const disclosed = block({
+    source_revision: ghost, // the source leg WARNs, so the disclosure leg is the only subject
+    claims: [
+      {
+        claim: "the suite passes 36 of 36 cases",
+        verified_by: "npm run test in packages/telegram, exit 0",
+        predicts: "node test-check-result.mjs exits 0",
+      },
+    ],
+  });
+  r = run(makeSession("l-disclosed.jsonl", disclosed));
+  check(
+    "(l1) a figure with the command that produced it is silent",
+    r.code === 0 && !/instrument-undisclosed/.test(r.stdout) && /instrument-disclosure: 1\/1 claim\(s\) carry a figure, 0 without a command/.test(r.stdout),
+    `exit=${r.code} warn=${/instrument-undisclosed/.test(r.stdout) ? "present" : "absent"}`,
+  );
+
+  const prose = block({
+    source_revision: ghost,
+    claims: [
+      {
+        claim: "the suite passes 36 of 36 cases",
+        verified_by: "looked at the output and it was green",
+        predicts: "node test-check-result.mjs exits 0",
+      },
+    ],
+  });
+  r = run(makeSession("l-prose.jsonl", prose));
+  check(
+    "(l2) a figure with prose only warns and still passes",
+    r.code === 0 && /WARN instrument-undisclosed: claim 0 states "36 of 36"/.test(r.stdout) && /1 without a command/.test(r.stdout),
+    `exit=${r.code} warn=${/WARN instrument-undisclosed/.test(r.stdout) ? "present" : "absent"}`,
+  );
+
+  r = run(makeSession("l-prose.jsonl", prose), ["--fail-on-instrument"]);
+  check(
+    "(l3) the same block fails under --fail-on-instrument",
+    r.code === 1 && failLines(r.stdout) === 1 && /FAIL\s+instrument-disclosure: 1 claim\(s\) state a figure with no command/.test(r.stdout),
+    `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
+  );
+
+  // A named command field is disclosure even when the prose is quiet.
+  const fieldCmd = block({
+    source_revision: ghost,
+    claims: [
+      {
+        claim: "72 dossiers were read",
+        verified_by: "the dossier set",
+        command: "node check-dossiers.mjs --all",
+        predicts: "node test-check-result.mjs exits 0",
+      },
+    ],
+  });
+  r = run(makeSession("l-field.jsonl", fieldCmd));
+  check(
+    "(l4) a command field counts as disclosure",
+    r.code === 0 && !/instrument-undisclosed/.test(r.stdout),
+    `exit=${r.code} warn=${/instrument-undisclosed/.test(r.stdout) ? "present" : "absent"}`,
+  );
+}
+
+// ── (m) gate-evidence shape: a row must carry {cmd, exit} ───────────────────
+// A prose row reads fine to a person and cannot be re-run by the sampler, so the
+// evidence behind a close is unreadable exactly when someone needs it. The gap
+// was a WARN until the registry was counted (2 899 of 2 899 rows already shaped),
+// and these cases pin the refusal.
+
+{
+  const prose = block({ source_revision: ghost, gate_evidence: ["check ran, all green", "placement clean (seat)"] });
+  r = run(makeSession("m-prose.jsonl", prose));
+  check(
+    "(m1) prose gate rows fail the shape check",
+    r.code === 1 && /FAIL\s+gate-evidence-shape\s+\(0\/2 row/.test(r.stdout),
+    `exit=${r.code} fail=${(r.stdout.match(/FAIL\s+gate-evidence-shape[^\n]*/) ?? ["absent"])[0].slice(0, 60)}`,
+  );
+
+  const noExit = block({ source_revision: ghost, gate_evidence: [{ cmd: "true" }] });
+  r = run(makeSession("m-noexit.jsonl", noExit));
+  check(
+    "(m2) an object without an exit code fails the same way",
+    r.code === 1 && /FAIL\s+gate-evidence-shape/.test(r.stdout),
+    `exit=${r.code} fail=${(r.stdout.match(/FAIL\s+gate-evidence-shape[^\n]*/) ?? ["absent"])[0].slice(0, 60)}`,
+  );
+
+  const shaped = block({ source_revision: ghost, gate_evidence: [{ cmd: "true", exit: 0 }] });
+  r = run(makeSession("m-shaped.jsonl", shaped));
+  check(
+    "(m3) a {cmd, exit} row passes",
+    r.code === 0 && !/FAIL\s+gate-evidence-shape/.test(r.stdout),
+    `exit=${r.code} fail=${/FAIL\s+gate-evidence-shape/.test(r.stdout) ? "present" : "absent"}`,
+  );
+}
+
+// ── Verdict ──────────────────────────────────────────────────────────────────
+
+console.log(`\n${failures === 0 ? `RESULT: PASS (${checks} checks)` : `RESULT: FAIL (${failures}/${checks} checks)`}`);
+if (failures === 0) rmSync(root, { recursive: true, force: true });
+else console.log(`fixtures kept for inspection: ${root}`);
+process.exit(failures === 0 ? 0 : 1);
