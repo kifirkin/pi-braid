@@ -254,6 +254,17 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.2: a release may not be tagged before its content is recorded (2026-11-16)
+
+`v0.45.1` was tagged and pushed with a version the release ledger had never recorded, so Publish refused
+at its first step and nothing reached the registry: `pi-braid@0.45.1 has no ledger entry, so its content was
+never recorded`. The refusal was correct and two layers late. `check-release-content.mjs` has carried a
+`--require-recorded` mode for exactly this, and no chain leg ran it: the default check reports an unrecorded
+version as `no ledger entry: a new version to publish`, which is the right answer for a tree mid-bump and the
+wrong answer for a tree about to be tagged. `npm run release:content:recorded` is now a leg of `ci:check`, so a
+version with no ledger entry reddens on the push instead of on the tag. The tag `v0.45.1` stays where it is,
+beside its failed run, as `v0.44.1` and `v0.44.3` do.
+
 ## Core 0.45.1: the close gate is a file in the repository, and three of its reads refuse (2026-11-16)
 
 `check-result.mjs` validates the result block every worker close ends with, and it lived in the orchestrator's
