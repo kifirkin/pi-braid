@@ -28,6 +28,15 @@
  * those sessions, adoption = run calls / (run calls + absorbable bash calls).
  * The numerator is what moved; the denominator is what could have.
  *
+ * Stdin adoption, over the same window: a second arm answers whether program
+ * source moved out of bash. Its class is printed with the numbers - a `run`
+ * call carrying a non-empty `stdin`, against a bash call whose program (after
+ * the same prelude strip) is `python`/`python3` and whose own arguments carry
+ * `-c` or a heredoc. The denominator is an upper bound, as the absorbable
+ * class is: a heredoc followed by another shell stage is counted here and no
+ * argv tool can take it. A window holding no run call says so instead of
+ * printing a ratio over nothing, because 0% reads as measured non-adoption.
+ *
  * Run (after npm run build in packages/core):
  *   node test/manual/run-census.mjs
  *   node test/manual/run-census.mjs --since 2026-11-17T00:00:00Z
@@ -125,6 +134,28 @@ function isAbsorbable(command) {
   };
 }
 
+/**
+ * The python shape whose source `run` can carry in its `stdin` field: the
+ * program is the interpreter and the code arrives as `-c` (separate or
+ * attached) or as a heredoc body. Reads the command the same way the
+ * absorbable class does (prelude stripped, first line tokenized), so the two
+ * classes cannot disagree about which program a command runs. Returns the
+ * shape, or null when the call is not that class.
+ */
+function pythonSourceShape(command) {
+  const { rest } = stripPrelude(command);
+  const argv = tokenize(rest.split("\n")[0]);
+  if (argv.length === 0) return null;
+  const program = basename(argv[0]);
+  if (program !== "python" && program !== "python3") return null;
+  const args = argv.slice(1);
+  if (args.some((element) => element.startsWith("-c"))) return "-c";
+  if (args.some((element) => element.startsWith("<<") && !element.startsWith("<<<"))) {
+    return "heredoc";
+  }
+  return null;
+}
+
 function corpusFiles() {
   const files = [];
   const walk = (dir) => {
@@ -157,6 +188,8 @@ const totals = {
   bashCalls: 0,
   bashWithoutCommand: 0,
   runCalls: 0,
+  runStdinCalls: 0,
+  pythonSourceBashCalls: 0,
   absorbableStrict: 0,
   absorbableWithContext: 0,
   destructiveVerbsInClass: 0,
@@ -166,6 +199,8 @@ const totals = {
   sinceUnix: null,
   sinceSessions: 0,
   sinceRunCalls: 0,
+  sinceRunStdinCalls: 0,
+  sincePythonSourceBashCalls: 0,
   sinceAbsorbableBash: 0,
 };
 
@@ -206,6 +241,11 @@ for (const file of corpusFiles()) {
       if (element.name === "run") {
         totals.runCalls++;
         if (inWindow) totals.sinceRunCalls++;
+        const stdin = element?.arguments?.stdin;
+        if (typeof stdin === "string" && stdin.length > 0) {
+          totals.runStdinCalls++;
+          if (inWindow) totals.sinceRunStdinCalls++;
+        }
         continue;
       }
       if (element.name !== "bash") continue;
@@ -214,6 +254,10 @@ for (const file of corpusFiles()) {
       if (typeof command !== "string" || command.trim() === "") {
         totals.bashWithoutCommand++;
         continue;
+      }
+      if (pythonSourceShape(command) !== null) {
+        totals.pythonSourceBashCalls++;
+        if (inWindow) totals.sincePythonSourceBashCalls++;
       }
       const verdict = isAbsorbable(command);
       if (verdict.absorbable) {
@@ -245,6 +289,27 @@ for (const file of corpusFiles()) {
 }
 
 const share = (part) => (totals.bashCalls === 0 ? 0 : (part / totals.bashCalls) * 100);
+const stdinDefinition =
+  "stdin adoption = run calls carrying a non-empty stdin string / (those + bash calls whose program is python or python3 and whose own arguments carry -c or a heredoc); the denominator is an upper bound, because a heredoc followed by another shell stage needs the shell";
+let stdinAdoptionPercent = null;
+let stdinAdoptionNote = null;
+if (since !== null) {
+  if (totals.sinceRunCalls === 0) {
+    stdinAdoptionNote = "no run calls in the window";
+  } else if (totals.sinceRunStdinCalls === 0) {
+    stdinAdoptionNote = "no run calls carrying stdin in the window";
+  } else if (totals.sincePythonSourceBashCalls === 0) {
+    stdinAdoptionNote = "no python -c or heredoc bash calls in the window";
+  } else {
+    stdinAdoptionPercent = Number(
+      (
+        (totals.sinceRunStdinCalls /
+          (totals.sinceRunStdinCalls + totals.sincePythonSourceBashCalls)) *
+        100
+      ).toFixed(2),
+    );
+  }
+}
 const summary = {
   corpus,
   asof: asof.toISOString(),
@@ -255,6 +320,8 @@ const summary = {
   bashCalls: totals.bashCalls,
   bashWithoutCommand: totals.bashWithoutCommand,
   runCalls: totals.runCalls,
+  runStdinCalls: totals.runStdinCalls,
+  pythonSourceBashCalls: totals.pythonSourceBashCalls,
   absorbableStrict: totals.absorbableStrict,
   absorbableStrictShare: Number(share(totals.absorbableStrict).toFixed(2)),
   absorbableWithContext: totals.absorbableWithContext,
@@ -270,6 +337,8 @@ const summary = {
   since: since === null ? null : new Date(since).toISOString(),
   sinceSessions: since === null ? null : totals.sinceSessions,
   sinceRunCalls: since === null ? null : totals.sinceRunCalls,
+  sinceRunStdinCalls: since === null ? null : totals.sinceRunStdinCalls,
+  sincePythonSourceBashCalls: since === null ? null : totals.sincePythonSourceBashCalls,
   sinceAbsorbableBash: since === null ? null : totals.sinceAbsorbableBash,
   adoptionPercent:
     since === null
@@ -283,6 +352,9 @@ const summary = {
               100
             ).toFixed(2),
           ),
+  stdinDefinition,
+  stdinAdoptionPercent,
+  stdinAdoptionNote,
 };
 
 console.log("run census");
@@ -316,6 +388,20 @@ if (since !== null) {
   console.log(`  run calls: ${summary.sinceRunCalls}`);
   console.log(`  absorbable bash calls: ${summary.sinceAbsorbableBash}`);
   console.log(`  adoption: ${summary.adoptionPercent}%`);
+  console.log("");
+  console.log("stdin adoption (program source moved out of bash):");
+  console.log(`  definition: ${stdinDefinition}`);
+  console.log(`  run calls carrying stdin: ${summary.sinceRunStdinCalls}`);
+  console.log(
+    `  python -c or heredoc bash calls: ${summary.sincePythonSourceBashCalls}`,
+  );
+  if (summary.stdinAdoptionPercent === null) {
+    console.log(`  ratio: ${summary.stdinAdoptionNote}`);
+  } else {
+    console.log(
+      `  ratio: ${summary.stdinAdoptionPercent}% (${summary.sinceRunStdinCalls} of ${summary.sinceRunStdinCalls + summary.sincePythonSourceBashCalls})`,
+    );
+  }
 } else {
   console.log("");
   console.log(

@@ -254,6 +254,25 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.6: the run row names where program source travels (2026-11-16)
+
+The `run` guideline described argv and a shell-less execution but never said where a program's source text
+goes. An agent writing a Python body reached for `python3 -c` in bash, or tried it as argv and met the
+refusal of a shell operator in an argv element. The row now carries the shape: source text belongs in
+`stdin`, so `python3` with `-` and the body in `stdin` is accepted, while `python3` with `-c` is refused,
+because argv is executed without a shell. `TOOLS.md` mirrors the string through the existing sync contract,
+and the prompt fixture asserts the property by name, so deleting the sentence fails a test rather than a
+review.
+
+The census gained the arm that measures whether that shape moves: for a `--since` window it prints run calls
+carrying `stdin`, bash calls whose program is `python` or `python3` with `-c` or a heredoc, and the ratio
+between them, with the class definition printed beside the numbers. Over the live corpus at release it counted
+12,300 python-source bash calls and no run call carrying `stdin`; a window with no run call says so instead of
+printing a ratio over nothing.
+
+Core moves a patch: one prompt string, mirrored in its catalog, and a measurement script that is not packed.
+No tool signature moves.
+
 ## Core 0.45.5: the memory store's cap and its eviction order (2026-11-16)
 
 The semantic store is one file written by every live process, and two of its promises were false. The cap was
