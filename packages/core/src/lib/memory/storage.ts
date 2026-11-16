@@ -4,10 +4,10 @@
  * The disk store is the shared baseline for every live pi process: writers
  * never rewrite it from their own snapshot. `saveMemory` re-reads the file
  * under a cross-process lock, merges the caller's records by entry id
- * (store-merge.ts), and persists the merged result atomically
- * (temp file + rename, via the file mutation queue). A caller that removed
- * ids from its snapshot passes them so deletions are expressed instead of
- * accidentally resurrecting the removed entries.
+ * (store-merge.ts), holds the merged store to MAX_ENTRIES, and persists it
+ * atomically (temp file + rename, via the file mutation queue). A caller that
+ * removed ids from its snapshot passes them so deletions are expressed instead
+ * of accidentally resurrecting the removed entries.
  */
 
 import * as fs from "node:fs/promises";
@@ -16,6 +16,8 @@ import { createLogger } from "../core/logger.js";
 import { memoryDir, semanticMemoryFilePath, legacyMemoryFilePath } from "../config/braid-paths.js";
 import { withStoreLock } from "./store-lock.js";
 import { mergeStores, type MergeStoresOptions } from "./store-merge.js";
+import { pruneMemories } from "./lifecycle.js";
+import { MAX_ENTRIES } from "./constants.js";
 import type { CognitiveMemoryEntry, CognitiveMemoryStore } from "./types.js";
 
 const _log = createLogger("semantic-memory:storage");
@@ -164,10 +166,19 @@ export async function loadMemory(): Promise<CognitiveMemoryStore> {
 
 /**
  * Merge-on-write persistence: re-read the disk store under the lock, union
- * the caller's records by entry id, and write the merged result atomically.
- * Returns the merged store; persistent callers (the CognitiveMemory class)
- * adopt it as their new in-memory snapshot so the next read sees what other
- * processes wrote.
+ * the caller's records by entry id, hold the result to the store's cap, and
+ * write it atomically. Returns the merged store; persistent callers (the
+ * CognitiveMemory class) adopt it as their new in-memory snapshot so the next
+ * read sees what other processes wrote.
+ *
+ * The cap is enforced here, on the merged population, because the file is
+ * what has the cap: a writer that loaded 199 entries while another process
+ * brought the store to 200 sees a snapshot of 200 after its own write, so a
+ * guard phrased on the caller's count is false and the merge writes 201. The
+ * merged store is the only population whose length the file will actually
+ * have, so it is the only one worth trimming. pruneMemories owns the rule
+ * (recency window, utility order, the configured reserved partition); this
+ * function decides only when it runs.
  *
  * `opts.replaceAll` is for explicit wipes only. `opts.removeIds` carries the
  * caller's deletion intent (ids it removed from its snapshot since loading);
@@ -181,7 +192,11 @@ export async function saveMemory(
   return withStoreLock(semanticStoreLockFilePath(), async () => {
     const disk = await readStoreFile();
     const merged = mergeStores(disk, local, opts);
-    await fileMutationQueue.write(semanticMemoryFilePath(), merged);
-    return merged;
+    const capped =
+      merged.memories.length > MAX_ENTRIES
+        ? { ...merged, memories: pruneMemories(merged.memories) }
+        : merged;
+    await fileMutationQueue.write(semanticMemoryFilePath(), capped);
+    return capped;
   });
 }
