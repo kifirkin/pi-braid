@@ -254,6 +254,19 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.7: a decision names its recommendation, and the tap says whether it was taken (2026-11-17)
+
+The telegram package gains the marker. `telegram_send` options may say which button the agent recommends, and the
+answer line the owner's tap returns now says which option was recommended and whether the tap took it. The
+recommendation is recovered from the keyboard the message actually carried rather than from a record of what was
+sent, because `callback_data` is the only thing a tap carries and its 64-byte cap leaves no room for a flag.
+Deleting the mark from the keyboard builder fails three fixture cases; hardcoding the answer-side flag fails one.
+`packages/telegram` moves a minor, 0.2.1 to 0.3.0, because a caller can observe a new field.
+
+Core moves a patch with no behaviour of its own: the bare `v<core version>` tag is the vehicle that publishes the
+sibling, so the version moves to give that tag something to name. No prompt string, tool signature or catalog
+entry changes.
+
 ## Core 0.45.6: the run row names where program source travels (2026-11-16)
 
 The `run` guideline described argv and a shell-less execution but never said where a program's source text
