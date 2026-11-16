@@ -254,6 +254,39 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.3: the shell keeps its working directory across calls (2026-11-16)
+
+Every `bash` call started a fresh shell in the session's cwd, so callers spent their opening tokens
+re-establishing a directory they had already set: 49,024 of 70,736 calls in the session corpus begin
+with `cd`, 17,266,308 of 24,166,019 bytes of command text. The tool now registers under pi's own name
+and delegates to pi's definition with a spawn hook that pins the directory the call resolved to: an
+explicit `cwd`, else the session's persisted directory, else the session start. A call that exits 0
+leaves its last `cd` behind, resolved against the directory it ran in; a failed call moves nothing; a
+persisted directory that was removed falls back to the session start and the result says so; and a
+result that ran outside the session start ends with one `[cwd ...]` line naming what the next call
+inherits.
+
+The parser declines every shape where the text no longer says where the shell ended up: a `cd` in a
+subshell, a command substitution, a pipeline, a background job, a control-flow or function body, or an
+argument the shell would expand. A wrong directory is worse than a missing one, and commands are never
+rewritten, so a declined `cd` is still the caller's. Quotes, comments and heredoc bodies are text, so
+`git commit -m "… cd …"` and a `python3 - <<'PY'` body are not read.
+
+Measured by replaying the corpus through the shipped state machine (1,034 session files, 961 with
+`bash` calls) and re-executing 600 eligible calls in both arms. The reachable ceiling is 91.61% of
+`cd`-first calls (44,913 whose directory is a single leading `cd` and nothing else); the floor is
+5.81%, the calls whose directory comes from a mid-line `cd`, a pipe or an expansion. Dropping the
+prefix exactly when the persisted directory already equals its target takes the share from 69.31% to
+16.43% and the command text down by 1,481,278 bytes; the 7,514 calls that remain between those two
+numbers are the ones that move the session between trees, and expressing such a move with `cwd` rather
+than a `cd` reaches the 5.81% floor. Re-executed in both arms, 600 calls kept their exit code apart
+from one, which succeeded in the inherited directory where it had failed at the session start. The
+changed-directory population (9.21% of calls) failed less often before the change than the corpus
+average (4.05% against 5.11%), and each of its calls is the one that carries the `[cwd ...]` line.
+
+Core moves a patch: the tool gains an optional argument and a session field, and no caller's command
+changes.
+
 ## Core 0.45.2: a release may not be tagged before its content is recorded (2026-11-16)
 
 `v0.45.1` was tagged and pushed with a version the release ledger had never recorded, so Publish refused
