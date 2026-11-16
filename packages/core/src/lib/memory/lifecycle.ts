@@ -73,13 +73,31 @@ export function calculateUtility(
 }
 
 /**
- * The order the prune applies: a utility difference larger than 0.1 decides,
- * and inside that tolerance the newer entry wins. Extracted so the reserved
- * partition ranks its own population exactly as the general pool is ranked.
+ * The order the prune applies, rank 1 first: a higher utility bucket, then a
+ * newer timestamp, then the smaller id.
+ *
+ * Utility is compared as a bucket, not as a pair-wise tolerance. A tolerance
+ * cannot sit inside a comparator: with `|a-b| <= 0.1` deciding whether utility
+ * or recency speaks, 0.84 vs 0.75 lets recency speak and 0.75 vs 0.66 lets it
+ * speak again, while 0.84 vs 0.66 is decided by utility - so `a<b` and `b<c`
+ * coexist with `c<a`, and `Array.prototype.sort` returns whatever order the
+ * input array was in. A bucket is a key instead of a comparison: a tenth is a
+ * tenth wide, so any two entries at least 0.1 apart fall in different buckets
+ * and are ordered by utility, and entries sharing a bucket are ordered by
+ * recency.
+ *
+ * The id is the last tiebreak so the order is strict for distinct entries:
+ * two entries that tie on bucket and timestamp still sort the same way
+ * whatever order the input array arrived in. Exported because the order is a
+ * property of the store, not of the prune: the tests sort a population through
+ * it directly instead of re-deriving the comparator they are judging.
  */
-function byUtilityThenRecency(a: CognitiveMemoryEntry, b: CognitiveMemoryEntry): number {
-  if (Math.abs(a.utility - b.utility) > 0.1) return b.utility - a.utility;
-  return b.timestamp - a.timestamp;
+export function byUtilityThenRecency(a: CognitiveMemoryEntry, b: CognitiveMemoryEntry): number {
+  const bucketA = Math.floor(a.utility * 10);
+  const bucketB = Math.floor(b.utility * 10);
+  if (bucketA !== bucketB) return bucketB - bucketA;
+  if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 /**
@@ -106,8 +124,10 @@ function pruneToCap(memories: CognitiveMemoryEntry[], cap: number): CognitiveMem
 
 /**
  * Prune memories down to MAX_ENTRIES, keeping recent-access and
- * high-utility entries. Recent (last 5 min) entries are always kept.
- * Other entries are sorted by utility, then timestamp, and trimmed.
+ * high-utility entries. Entries touched in the last five minutes are kept
+ * outside the competition for slots, so they stay unless more than the cap
+ * itself was touched inside that window. Other entries are ranked by
+ * byUtilityThenRecency and trimmed.
  *
  * A configured partition (`braid.memory.reservedProvenance`) takes its slots
  * first: entries whose `source` starts with the configured prefix may occupy
