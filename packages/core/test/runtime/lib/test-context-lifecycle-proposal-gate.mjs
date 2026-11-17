@@ -23,7 +23,7 @@
  * over-suppression regression);
  * 6. agent declined the same suggestion class -> suppressed (compliance
  * feedback via the real context_proposals reject tool);
- * 7. same-class suggestion ignored (implicitly approved) -> back off for
+ * 7. same-class suggestion with no action taken (implicitly approved) -> back off for
  * PROPOSAL_IGNORED_BACKOFF_TURNS (independent compliance-feedback cork);
  * 8. envelope/end-marker invariants survive: every persisted proposal still
  * carries the [braid-whisper - context-lifecycle] envelope and exactly
@@ -181,7 +181,7 @@ function freshState(h) {
   const s = h.state();
   s.proposalKeysSeeded = false;
   s.proposalKeys.clear();
-  s.proposalIgnoredTurns.clear();
+  s.proposalTurnsWithoutAction.clear();
   s.declinedKeys.clear();
   s.lastContextActionTurn = 0;
 }
@@ -355,9 +355,9 @@ await test("6. declining a suggestion class via context_proposals reject suppres
   assert.equal(h.entries.length, 1, "a declined suggestion class is not re-proposed");
 });
 
-// ── 7. Ignored (implicitly approved) -> compliance-feedback backoff ─────────
+// ── 7. No action taken (implicitly approved) -> backoff ─────────────────────
 
-await test("7. a class the agent ignored backs off for PROPOSAL_IGNORED_BACKOFF_TURNS", async () => {
+await test("7. a class with no action taken backs off for PROPOSAL_NO_ACTION_BACKOFF_TURNS", async () => {
   clearAllBuckets();
   _resetForTests();
   const h = makeHarness(55);
@@ -368,9 +368,9 @@ await test("7. a class the agent ignored backs off for PROPOSAL_IGNORED_BACKOFF_
   const key = proposalKeyFor(advisoryBody(55), "context_compress");
 
   // Simulate the state after the implicit-approval loop marked the class
-  // ignored AND the delivery cooldown lapsed / map re-armed: only the
+  // unacted AND the delivery cooldown lapsed / map re-armed: only the
   // independent compliance-feedback cork remains.
-  h.state().proposalIgnoredTurns.set(key, 1); // ignored at turn 1
+  h.state().proposalTurnsWithoutAction.set(key, 1); // no action taken at turn 1
   h.state().proposalKeys.delete(key); // cooldown gone
   h.entries[0].details.resolution = "implicit_approved";
 
@@ -379,18 +379,18 @@ await test("7. a class the agent ignored backs off for PROPOSAL_IGNORED_BACKOFF_
   assert.equal(
     h.entries.length,
     1,
-    "same-class suggestion the agent ignored is backed off while ignored-backoff holds",
+    "same-class suggestion with no action taken is backed off while no-action-after-proposal holds",
   );
 
   // After the backoff window lapses, a genuinely-new actionable advisory may
   // fire again (persisted proposal already resolved; only the cork held it).
-  h.state().proposalIgnoredTurns.delete(key);
+  h.state().proposalTurnsWithoutAction.delete(key);
   h.rearm("pressure-proposal");
   await h.runTurn(); // turn 3: backoff cleared -> re-armed
   assert.equal(
     h.entries.length,
     2,
-    "after the ignored-backoff window, the class may be proposed again when warranted",
+    "after the no-action-after-proposal window, the class may be proposed again when warranted",
   );
 });
 

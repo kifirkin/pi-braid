@@ -777,7 +777,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                     `  context_compress(action="slide")`,
                     `  context_compress(action="slide", keep=80)  # keep recent 80 entries`,
                     ``,
-                    `Run context_inspect(detail="quick") first to assess current state.`,
+                    `Run context_inspect(detail="quick") first to assess current state (cold tool: tool_search first).`,
                   ].join("\n"),
                 },
               ],
@@ -805,7 +805,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   ``,
                   `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
-                  `Run context_inspect(detail='quick') after resume to verify.`,
+                  `Run context_inspect(detail='quick') after resume to verify (cold tool: tool_search first).`,
                 ].join("\n"),
               },
             ],
@@ -813,7 +813,6 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               action,
               compactionTriggered: true,
               keep: params?.keep ?? "auto",
-              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
             },
           };
 
@@ -844,7 +843,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   type: "text" as const,
                   text: [
                     `**Compact skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
-                    `No compaction needed. Use context_inspect(detail="quick") to verify.`,
+                    `No compaction needed. Use context_inspect(detail="quick") to verify (cold tool: tool_search first).`,
                   ].join("\n"),
                 },
               ],
@@ -1194,7 +1193,8 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           "",
           "Compaction is armed and fires when the run settles — live usage " +
             "will NOT drop until it fires.",
-          "Verify after it lands: context_inspect(detail='quick') shows the drop and any still-pending arm.",
+          "Verify after it lands: context_inspect(detail='quick') shows the drop and any still-pending " +
+            "arm. It is a cold tool: tool_search first.",
         );
 
         // Cancel any stale resume timer from a previous compaction cycle.
@@ -1260,7 +1260,6 @@ export function registerContextCompress(pi: ExtensionAPI): void {
             endIndex,
             honorRange: true,
             compactionTriggered,
-            nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
           },
         };
       }
@@ -1350,7 +1349,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   "",
                   `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
-                  `Run context_inspect(detail='quick') after resume to verify.`,
+                  `Run context_inspect(detail='quick') after resume to verify (cold tool: tool_search first).`,
                   "",
                   `Topic: ${topic}`,
                 ].join("\n"),
@@ -1362,7 +1361,6 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               archived: count,
               compactionTriggered: true,
               topic,
-              nextStep: { tool: "context_inspect", detail: "quick", note: "after auto-resume" },
             },
           };
         } catch (e: any) {
@@ -1441,7 +1439,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   type: "text" as const,
                   text: [
                     `**Slide skipped — context at ${usage.percent.toFixed(1)}% (already low).**`,
-                    `No entries need dropping. Use context_inspect(detail="quick") to verify.`,
+                    `No entries need dropping. Use context_inspect(detail="quick") to verify (cold tool: tool_search first).`,
                   ].join("\n"),
                 },
               ],
@@ -1483,7 +1481,7 @@ export function registerContextCompress(pi: ExtensionAPI): void {
                   ``,
                   `Compaction armed; it fires when the run settles — live usage will NOT drop until it lands.`,
                   `Agent will resume automatically after compaction completes.`,
-                  `Run context_inspect(detail='quick') after resume to verify.`,
+                  `Run context_inspect(detail='quick') after resume to verify (cold tool: tool_search first).`,
                 ].join("\n"),
               },
             ],
@@ -1493,11 +1491,6 @@ export function registerContextCompress(pi: ExtensionAPI): void {
               keep: keepCount,
               dropped: droppedCount,
               branchLength: branch.length,
-              nextStep: {
-                tool: "context_inspect",
-                detail: "quick",
-                note: "after auto-resume",
-              },
             },
           };
         } catch (e: any) {

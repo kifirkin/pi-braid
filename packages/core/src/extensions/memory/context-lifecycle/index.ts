@@ -97,10 +97,10 @@ const PROPOSAL_ACTED_SUPPRESS_TURNS = 3; // [gate] quiet window after the agent 
 const PROPOSAL_URGENT_USAGE = 75; // [gate] = USAGE_WHISPER_CRITICAL - genuinely urgent nudge bypasses gate + dedupe (keep urgency)
 const PROPOSAL_URGENT_TOKENS = HYGIENE_AUTO_COMPACT_HARD_BACKSTOP(); // [gate, tokens] hard-backstop band is urgent at any window
 const PROPOSAL_DEDUPE_COOLDOWN_MS = 20 * 60 * 1000; // [dedupe] a delivered suggestion stays "in effect" this long (mirrors reprime)
-const PROPOSAL_IGNORED_BACKOFF_TURNS = 8; // [dedupe/compliance, independent] after a same-class proposal was ignored, back off N turns
+const PROPOSAL_NO_ACTION_BACKOFF_TURNS = 8; // [dedupe, independent] after a same-class proposal's window closed with no action on it, back off N turns
 
 // Compaction Escalation Thresholds
-// When the agent ignores 3+ compaction nudges at >=85% usage, auto-compact with timer.
+// After this many escalation steps at >=85% usage, auto-compact with timer.
 const COMPACT_ESCALATION_THRESHOLD = 3;
 const COMPACT_ESCALATION_USAGE = 85;
 
@@ -110,6 +110,7 @@ import {
   USAGE_TOKENS_CRITICAL,
   HYGIENE_AUTO_COMPACT_HARD_BACKSTOP,
   USAGE_TOKENS_ESCALATE,
+  CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS,
 } from "../../../lib/detection/context-thresholds.js";
 
 // Context management tools that count as "agent acted on compaction nudge"
@@ -237,8 +238,9 @@ function sendCompactNudge(
 
 /**
  * Execute auto-compaction.
- * This is the escalation path: when the agent ignores compaction nudges,
- * we auto-trigger compaction. The agent loop automatically continues after
+ * This is the escalation path: when escalation steps accumulated at high usage
+ * (turns without a context-management tool call, plus memory evictions), we
+ * auto-trigger compaction. The agent loop automatically continues after
  * compaction completes (pi-core's _runAutoCompaction() returns `true` →
  * agent.continue()). No resume timer is needed.
  */
@@ -276,8 +278,8 @@ async function executeAutoCompact(pi: ExtensionAPI, ctx: ExtensionContext): Prom
             type: "text" as const,
             text: [
               "## ⚡ Auto-compacting context",
-              "Compaction nudges were ignored. Auto-tagging then compacting to prevent overflow.",
-              'Use context_navigate(action="tag") proactively next time to avoid losing the completion summary.',
+              `No context tool in the last ${COMPACT_ESCALATION_THRESHOLD} turns, and context is above the escalation band. Auto-tagging then compacting to prevent overflow.`,
+              'Use context_navigate(action="tag") before a phase boundary next time to keep the completion summary.',
             ].join("\n"),
           },
         ],
@@ -489,12 +491,15 @@ function proposeSuppressionCause(
     if (lastSentAt !== undefined && now - lastSentAt < PROPOSAL_DEDUPE_COOLDOWN_MS) {
       return "repeat-session";
     }
-    // Compliance feedback: a same-class suggestion was ignored recently
-    // (implicitly approved = agent never acted) - back off for an independent,
-    // session-scoped window so usefulness and volume are separately tunable.
-    const ignoredTurn = s.proposalIgnoredTurns.get(key);
-    if (ignoredTurn !== undefined && s.turnCount - ignoredTurn <= PROPOSAL_IGNORED_BACKOFF_TURNS) {
-      return "ignored-backoff";
+    // Backoff: a same-class suggestion's window closed with no action taken on
+    // it (implicitly approved) - back off for an independent, session-scoped
+    // window so usefulness and volume are separately tunable.
+    const noActionTurn = s.proposalTurnsWithoutAction.get(key);
+    if (
+      noActionTurn !== undefined &&
+      s.turnCount - noActionTurn <= PROPOSAL_NO_ACTION_BACKOFF_TURNS
+    ) {
+      return "no-action-after-proposal";
     }
   }
 
@@ -520,7 +525,7 @@ async function queueProposal(
   // compaction replay must not re-inject), then decide in ONE place whether
   // this candidate may reach the agent. Possible reasons:
   //   no-actionable-need / agent-just-acted / declined-same-class /
-  //   proposal-pending / repeat-session / ignored-backoff
+  //   proposal-pending / repeat-session / no-action-after-proposal
   ensureProposalKeysSeeded(ctx, existingProposals);
   const suppressReason = proposeSuppressionCause(ctx, evaluated, existingProposals, usage, tokens);
 
@@ -663,19 +668,38 @@ async function queueProposal(
         : `**Task boundary detected** (explore → implement → verify pattern).\n\n` +
           `Auto-tagged position as \`${tagName}\`. Consider archiving the current phase with \`context_compress(action="archive")\` before proceeding.`;
 
-    sendTrackedMessage(
-      pi,
-      {
-        customType: "context-lifecycle",
-        content: [{ type: "text" as const, text: msg }],
-        display: true,
-      },
-      { deliverAs: "nextTurn" },
-      { type: "context", source: "context-lifecycle/phase-boundary-enforcement" },
-    );
+    // One repeat per CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS, below the act
+    // arm only: a phase-boundary signal is a guess about the work, so the
+    // whisper is paced where context hygiene is optional. At or above the arm
+    // the escalation path carries the channel and pacing is off. The auto-tag
+    // above runs either way - it is cheap and it is a recovery point, which is
+    // the part worth keeping on a silent repeat.
+    const aboveActArm = tokens >= USAGE_TOKENS_CRITICAL();
+    const sinceLastWhisper = state(ctx).turnCount - state(ctx).lastNavigationWhisperTurn;
+    const paced =
+      !aboveActArm &&
+      state(ctx).lastNavigationWhisperTurn > 0 &&
+      sinceLastWhisper < CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS;
 
-    // Track navigation whisper for escalation monitoring
-    state(ctx).lastNavigationWhisperTurn = state(ctx).turnCount;
+    if (paced) {
+      log.debug(
+        `Phase-boundary whisper paced: ${sinceLastWhisper}/${CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS} turns since the last one`,
+      );
+    } else {
+      sendTrackedMessage(
+        pi,
+        {
+          customType: "context-lifecycle",
+          content: [{ type: "text" as const, text: msg }],
+          display: true,
+        },
+        { deliverAs: "nextTurn" },
+        { type: "context", source: "context-lifecycle/phase-boundary-enforcement" },
+      );
+
+      // Anchor for the escalation counter: the turn this advisory was sent.
+      state(ctx).lastNavigationWhisperTurn = state(ctx).turnCount;
+    }
   }
 }
 
@@ -709,7 +733,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     // Large evictions increase compact urgency for the next proposal check
     if (event.count > 5) {
       const s = state();
-      s.ignoredCompactNudges = Math.min(5, s.ignoredCompactNudges + 1);
+      s.compactNudgeEscalationSteps = Math.min(5, s.compactNudgeEscalationSteps + 1);
     }
   });
 
@@ -742,54 +766,66 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       evictOldOutcomes(state(ctx));
 
       const usage = getContextUsage(ctx);
+      const contextTokens = getContextTokens(ctx);
       const entries = getAllEntries(ctx) as SessionEntry[];
       const branch = getBranchEntries(ctx) as SessionEntry[];
 
       // COMPACTION ESCALATION CHECK
-      // If we sent a compact nudge last turn and the agent didn't use any
-      // context management tool, increment the ignored counter.
-      // If they DID use a tool, reset the counter.
+      // While a compact nudge is outstanding, a turn that passes with no
+      // context management tool call is one escalation step; a tool call ends
+      // the count. The steps feed the usage-gated auto-compact below, so turns
+      // alone never trigger it.
       if (state(ctx).compactNudgeActive) {
         if (state(ctx).agentActedOnContext) {
-          state(ctx).ignoredCompactNudges = 0;
+          state(ctx).compactNudgeEscalationSteps = 0;
           state(ctx).compactNudgeActive = false;
-          log.debug("Compact nudge acknowledged - agent used a context management tool");
+          log.debug("Compact nudge answered - agent used a context management tool");
         } else if (state(ctx).turnCount - state(ctx).lastCompactNudgeTurn > 0) {
-          // Agent had a turn to respond but didn't act
-          state(ctx).ignoredCompactNudges++;
+          state(ctx).compactNudgeEscalationSteps++;
           log.info(
-            `Compact nudge ignored (${state(ctx).ignoredCompactNudges}/${COMPACT_ESCALATION_THRESHOLD}) ` +
+            `No context tool since the compact nudge ` +
+              `(${state(ctx).compactNudgeEscalationSteps}/${COMPACT_ESCALATION_THRESHOLD} steps) ` +
               `usage=${usage.toFixed(0)}%`,
           );
         }
       }
-      // NAVIGATION PROPOSAL ESCALATION
-      // Mirror the compaction escalation pattern: if the agent ignores
-      // navigation enforcement whispers, increment the count and escalate.
-      // The enforcement whisper is sent from queueProposal() with triggerTurn.
-      // If the agent ignores 3+ whispers, auto-tag and send a stronger message.
+      // NAVIGATION ESCALATION
+      // The counter counts turns since a navigation advisory that passed with
+      // no context-management tool call. It is tallied only at or above the act
+      // arm: below the arm the advisory is a paced reminder (see queueProposal),
+      // and three turns of reading, testing or writing code are work, not a
+      // refusal. At the arm, three such turns auto-tag and name the two tools
+      // that reset the count.
+      const atActArm = contextTokens >= USAGE_TOKENS_CRITICAL();
       if (state(ctx).lastNavigationWhisperTurn > 0) {
         if (state(ctx).agentActedOnContext) {
-          state(ctx).ignoredNavigationProposals = 0;
-          log.debug("Navigation proposal acknowledged - agent used a context management tool");
+          state(ctx).navigationTurnsWithoutContextTool = 0;
+          log.debug("Navigation advisory answered - agent used a context management tool");
+        } else if (!atActArm) {
+          // Below the act arm the paced light advisory owns the channel.
+          state(ctx).navigationTurnsWithoutContextTool = 0;
         } else if (state(ctx).turnCount - state(ctx).lastNavigationWhisperTurn > 0) {
-          state(ctx).ignoredNavigationProposals++;
-          log.info(`Navigation proposal ignored (${state(ctx).ignoredNavigationProposals}/3)`);
+          state(ctx).navigationTurnsWithoutContextTool++;
+          log.info(
+            `No context tool in the last ${state(ctx).navigationTurnsWithoutContextTool} turn(s) ` +
+              `since the navigation advisory (act arm, ${Math.round(contextTokens / 1000)}K tokens)`,
+          );
 
-          // Escalate: after 3 ignored proposals, auto-tag and send stronger whisper
-          if (state(ctx).ignoredNavigationProposals >= 3) {
-            state(ctx).ignoredNavigationProposals = 0;
+          if (state(ctx).navigationTurnsWithoutContextTool >= COMPACT_ESCALATION_THRESHOLD) {
+            const turns = state(ctx).navigationTurnsWithoutContextTool;
+            state(ctx).navigationTurnsWithoutContextTool = 0;
             state(ctx).lastNavigationWhisperTurn = 0;
+            const tagName = `auto-tag-${state(ctx).turnCount}`;
 
             // Auto-tag position
             try {
               const sm = getSessionManager(ctx);
               const leafId = sm.getLeafId();
-              pi.setLabel(leafId, `auto-tag-${state(ctx).turnCount}`);
+              pi.setLabel(leafId, tagName);
               log.info(`Auto-tagged position on escalation (turn ${state(ctx).turnCount})`);
             } catch {
               // Session manager may be detached mid-escalation; the tag is
-              // cosmetic — navigation still works untagged.
+              // cosmetic - navigation still works untagged.
             }
 
             sendTrackedMessage(
@@ -800,11 +836,11 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
                   {
                     type: "text" as const,
                     text:
-                      `## ⚡ Navigation enforcement escalated\n\n` +
-                      `Navigation proposals were ignored ${COMPACT_ESCALATION_THRESHOLD} times. ` +
-                      `Auto-tagged current position.\n\n` +
-                      `Use \`context_compress(action="archive")\` to free context before continuing.\n` +
-                      `Use \`context_navigate(action="checkout", target="auto-tag-${state(ctx).turnCount}")\` to return to this point.`,
+                      `## Context advisories: no context tool in the last ${turns} turns\n\n` +
+                      `Context is above the act arm, where the advisory stops being optional. Auto-tagged the current position as \`${tagName}\`.\n\n` +
+                      `Archive a finished phase: \`context_compress(action="archive")\`\n` +
+                      `Return to the tag: \`context_navigate(action="checkout", target="${tagName}")\`\n\n` +
+                      `Either one counts as acting on context and resets this count.`,
                   },
                 ],
                 display: true,
@@ -848,7 +884,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       const evaluated = evaluatePolicies(s.policyEngine, {
         signals,
         contextUsage: usage,
-        contextTokens: getContextTokens(ctx),
+        contextTokens,
         turnCount: branch.length,
         redundancyCount,
       });
@@ -866,23 +902,25 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           await queueProposal(ev, pi, ctx, branch.length);
         } else if (ev.action.type === "compact" && ev.canExecute) {
           // ESCALATION GATE
-          // If the agent has ignored 3+ compaction nudges and context is
-          // still above 85%, auto-compact with a pre-scheduled resume timer.
-          // This avoids the mid-task overflow death spiral (scenario 2.2).
+          // After COMPACT_ESCALATION_THRESHOLD escalation steps and while usage
+          // is still above the escalation band, auto-compact with a
+          // pre-scheduled resume timer. The usage arm is what makes this a
+          // decision; the steps alone never trigger it. This avoids the
+          // mid-task overflow death spiral (scenario 2.2).
           if (
-            state(ctx).ignoredCompactNudges >= COMPACT_ESCALATION_THRESHOLD &&
+            state(ctx).compactNudgeEscalationSteps >= COMPACT_ESCALATION_THRESHOLD &&
             usage >= COMPACT_ESCALATION_USAGE
           ) {
             log.warn(
-              `Escalating: auto-compacting (${state(ctx).ignoredCompactNudges} ignored nudges, ` +
+              `Escalating: auto-compacting (${state(ctx).compactNudgeEscalationSteps} steps with no context tool, ` +
                 `usage=${usage.toFixed(0)}%)`,
             );
             await executeAutoCompact(pi, ctx);
-            state(ctx).ignoredCompactNudges = 0;
+            state(ctx).compactNudgeEscalationSteps = 0;
             state(ctx).compactNudgeActive = false;
           } else {
             // Normal: send compact nudge
-            sendCompactNudge(pi, ev, usage, getContextTokens(ctx));
+            sendCompactNudge(pi, ev, usage, contextTokens);
             state(ctx).compactNudgeActive = true;
             state(ctx).lastCompactNudgeTurn = state(ctx).turnCount;
             state(ctx).lastCompactNudgeUsage = usage;
@@ -911,11 +949,10 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
             timestamp: Date.now(),
           });
 
-          // A same-class suggestion the agent never acted on
-          // was implicitly approved = ignored. Record the class so the
-          // compliance-feedback backoff suppresses re-proposing it for
-          // PROPOSAL_IGNORED_BACKOFF_TURNS.
-          state(ctx).proposalIgnoredTurns.set(
+          // A same-class suggestion nobody acted on inside the window was
+          // implicitly approved. Record the class so the backoff suppresses
+          // re-proposing it for PROPOSAL_NO_ACTION_BACKOFF_TURNS.
+          state(ctx).proposalTurnsWithoutAction.set(
             proposalKeyFor(proposal.message, proposal.suggested_action),
             state(ctx).turnCount,
           );
@@ -947,13 +984,13 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
     }
 
     // Compaction escalation reset
-    // If the agent calls any context management tool, the compaction nudge
-    // is considered "acted upon" and we reset the escalation counter.
+    // If the agent calls any context management tool, the compact nudge is
+    // considered acted upon and the escalation steps reset.
     if (CONTEXT_MGMT_TOOLS.has(toolName)) {
       state(ctx).agentActedOnContext = true;
-      state(ctx).ignoredCompactNudges = 0;
+      state(ctx).compactNudgeEscalationSteps = 0;
       state(ctx).compactNudgeActive = false;
-      state(ctx).ignoredNavigationProposals = 0;
+      state(ctx).navigationTurnsWithoutContextTool = 0;
       // The agent acted on a context suggestion — re-arm
       // the proposal dedupe (the actionable suggestions are no longer
       // pending) and remember the turn so recently-acting suppresses fresh
@@ -1072,7 +1109,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
             content: [
               {
                 type: "text" as const,
-                text: `## Pending Proposals (${pending.length})\n\n${lines.join("\n\n")}\n\nUse context_proposals(action="approve", id="<id>") or the suggested tool.`,
+                text: `## Pending Proposals (${pending.length})\n\n${lines.join("\n\n")}\n\nApprove or reject one with action="approve" / action="reject" and id="<id>", or run the tool a proposal suggests.`,
               },
             ],
             details: { pending: pending.length, proposals },
@@ -1114,7 +1151,6 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
             details: {
               approved: id,
               proposal,
-              nextStep: { tool: "context_inspect", detail: "quick" },
             },
           };
         }
@@ -1148,8 +1184,8 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
           });
 
           // Remember that this suggestion class was declined
-          // so the real-need gate backs off re-proposing it (compliance
-          // feedback) for the rest of the session.
+          // so the real-need gate backs off re-proposing it for the rest of
+          // the session.
           state(ctx).declinedKeys.add(proposalKeyFor(proposal.message, proposal.suggested_action));
 
           return {

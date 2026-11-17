@@ -35,6 +35,11 @@ import {
 
 const MAX_SESSION_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 const MAX_TURNS_SINCE_ROTATION = 500; // 500 turns
+// Turn count is not a size. A session that has run this many turns needs
+// rotation only once its file has actually grown: below this floor the notice
+// has no action behind it, and a live seat reads the same notice every 25
+// turns without anything to do about it.
+const ROTATION_TURNS_MIN_SIZE_BYTES = MAX_SESSION_SIZE_BYTES / 10; // 5 MB
 
 // Advisory kind for the in-flight registry (injection-tracker). One size
 // notice in flight at a time: a second one would queue behind the first on
@@ -92,10 +97,13 @@ function shouldRotate(ctx: ExtensionContext): { needed: boolean; reason: string 
     };
   }
   if (state.turnsSinceRotation > MAX_TURNS_SINCE_ROTATION) {
-    return {
-      needed: true,
-      reason: `${state.turnsSinceRotation} turns since last rotation (limit: ${MAX_TURNS_SINCE_ROTATION})`,
-    };
+    if (size > ROTATION_TURNS_MIN_SIZE_BYTES) {
+      return {
+        needed: true,
+        reason: `${state.turnsSinceRotation} turns since last rotation (limit: ${MAX_TURNS_SINCE_ROTATION}), session file ${Math.round(size / 1024 / 1024)}MB`,
+      };
+    }
+    return { needed: false, reason: "" };
   }
   if (age > MAX_SESSION_AGE_MS) {
     return {
@@ -243,9 +251,9 @@ export function registerRotationHandlers(pi: ExtensionAPI): void {
                 reason,
                 "",
                 "The session has grown large. To keep working smoothly:",
-                "1. **`finalize()`** - when done with current work; rotates session with summary",
-                "2. **`context_compress(action='archive', startIndex, endIndex, topic, summary)`** - archive completed work mid-session",
-                "3. **`memory_store(...)`** - preserve critical facts before compression",
+                "1. **`context_compress(action='archive', startIndex, endIndex, topic, summary)`** - archive completed work and keep the live session running",
+                "2. **`memory_store(...)`** - preserve critical facts before compression",
+                "3. **`finalize()`** - when the current work is done; rotates the session with a summary",
                 "",
                 "If this stamp predates your last `context_compress`/`finalize`, this notice is already satisfied; ignore it.",
                 "",

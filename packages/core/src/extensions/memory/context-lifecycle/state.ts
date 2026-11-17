@@ -38,8 +38,13 @@ export interface ContextLifecycleState {
   turnCount: number;
   proposalsByEntryId: Map<string, any>;
   outcomes: Outcome[];
-  /** How many compact nudges the agent has ignored consecutively */
-  ignoredCompactNudges: number;
+  /**
+   * Escalation steps accumulated since the last compact nudge: one per turn
+   * that passed with no context-management tool call, plus one per large
+   * memory eviction. It counts steps toward auto-compaction; a turn in which
+   * the agent read, tested or wrote code is one step, not a refusal.
+   */
+  compactNudgeEscalationSteps: number;
   /** Turn number when we last sent a compact nudge */
   lastCompactNudgeTurn: number;
   /** Context usage % at the time of last compact nudge */
@@ -48,9 +53,14 @@ export interface ContextLifecycleState {
   compactNudgeActive: boolean;
   /** Whether the agent called a context management tool since the last nudge check */
   agentActedOnContext: boolean;
-  // Navigation proposal escalation (mirrors compaction escalation)
-  /** How many navigation proposals (topic_shift/task_boundary) the agent has ignored */
-  ignoredNavigationProposals: number;
+  // Navigation advisory escalation (mirrors compaction escalation)
+  /**
+   * Consecutive turns since the last navigation advisory passed with no
+   * context-management tool call. Counted only at or above the act arm, where
+   * the advisory stops being optional; below it the light advisory repeats on
+   * CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS and nothing is tallied.
+   */
+  navigationTurnsWithoutContextTool: number;
   /** Turn number when we last sent a navigation enforcement whisper */
   lastNavigationWhisperTurn: number;
   /**
@@ -83,11 +93,11 @@ export interface ContextLifecycleState {
    */
   declinedKeys: Set<string>;
   /**
-   * Suggestion key -> turn when a same-class proposal was implicitly
-   * approved (agent never acted -> ignored). Feeds the compliance-feedback
-   * backoff (PROPOSAL_IGNORED_BACKOFF_TURNS).
+   * Suggestion key -> turn when a same-class proposal's window closed with no
+   * action taken on it (implicitly approved). Feeds the backoff in
+   * PROPOSAL_NO_ACTION_BACKOFF_TURNS.
    */
-  proposalIgnoredTurns: Map<string, number>;
+  proposalTurnsWithoutAction: Map<string, number>;
 }
 
 export function createState(): ContextLifecycleState {
@@ -99,9 +109,9 @@ export function createState(): ContextLifecycleState {
     turnCount: 0,
     proposalsByEntryId: new Map(),
     outcomes: [],
-    ignoredCompactNudges: 0,
+    compactNudgeEscalationSteps: 0,
     lastCompactNudgeTurn: 0,
-    ignoredNavigationProposals: 0,
+    navigationTurnsWithoutContextTool: 0,
     lastNavigationWhisperTurn: 0,
     lastCompactNudgeUsage: 0,
     compactNudgeActive: false,
@@ -110,7 +120,7 @@ export function createState(): ContextLifecycleState {
     proposalKeysSeeded: false,
     lastContextActionTurn: 0,
     declinedKeys: new Set(),
-    proposalIgnoredTurns: new Map(),
+    proposalTurnsWithoutAction: new Map(),
     policyEngine: createPolicyEngineState(),
     detector: createDetectorState(),
   };

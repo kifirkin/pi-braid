@@ -124,6 +124,18 @@ export const HYGIENE_LARGE_CONTEXT_COOLDOWN_TURNS = 15;
 export const HYGIENE_AUTO_COMPACT_COOLDOWN_TURNS = 15;
 
 /**
+ * Repeat cadence for a context-lifecycle advisory below the act arm (turns).
+ *
+ * Below the act arm an advisory repeats at most once per this window: at
+ * sub-arm usage a reminder is information, not a refusal, so it is paced
+ * rather than escalated. At or above the arm the escalation path is allowed
+ * and pacing is off. 20 is the cadence this repo already gives a below-arm
+ * reminder channel (HYGIENE_DENSITY_WHISPER_COOLDOWN_TURNS), and it caps the
+ * measured ~90 advisories per 830 turns (one per 9) below one per 20.
+ */
+export const CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS = 20;
+
+/**
  * Watchdog escalation injection budget per condition per session: after this many escalation injections for one
  * condition, only a crossing of the final REWARN_MILESTONE (500) still
  * escalates. Caps the watchdog's own contribution to context mass (the

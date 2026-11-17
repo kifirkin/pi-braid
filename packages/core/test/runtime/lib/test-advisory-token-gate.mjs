@@ -267,7 +267,7 @@ function freshState(h) {
   const s = h.state();
   s.proposalKeysSeeded = false;
   s.proposalKeys.clear();
-  s.proposalIgnoredTurns.clear();
+  s.proposalTurnsWithoutAction.clear();
   s.declinedKeys.clear();
   s.lastContextActionTurn = 0;
 }
