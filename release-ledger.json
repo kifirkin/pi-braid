@@ -21036,11 +21036,11 @@
       }
     },
     "pi-braid@0.45.8": {
-      "released_from": "623f52162e2d1b73e0bf61e5250278627f213574",
+      "released_from": "2a8607b0b2944ca3dadf08abb4a16e8265c46148",
       "source": "tree",
       "files": {
         "AGENTS.md": "39eec20652fa964f07c10f7336c6f2e57163d1552c87910491090fcbd10da9fe",
-        "CHANGELOG.md": "b23da2d14835baae6e85ab7d2b1c9f6272028c5c79b66bd7e5efd2e9d8d92ccf",
+        "CHANGELOG.md": "25ba18a58efd63603fcb99fca6175719a12106eb6b963d7a8ffa24aa6a81e29f",
         "CONTRIBUTING.md": "886687557bf2191efd0ab9406d0551f1fc99791ecfdad4d0f1e3697d161b090a",
         "LICENSE": "691e05e7479b039c6b35954e7c58cb26199a27397f1879d25ccfb36bce16f912",
         "README.md": "4e69face9a327a6ad8b363ad8b977f8e38f8ae69f3db7e41b793ab05a8334c62",
