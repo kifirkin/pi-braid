@@ -254,6 +254,34 @@ same fixture's last arm, which asserted the operator's home instead of what ever
 now states the property it was meant to hold, that the shipped tree passes wherever the roots are. The tags
 for 0.44.1 and 0.44.3 stay where they are, each with its failed run beside it.
 
+## Core 0.45.8: a suggestion is claimed on the work's evidence, and the catalog read stops paging (2026-11-17)
+
+A worker dispatch was answered with `braid-reference`'s whole body as "the best match": on the recorded
+dispatch that produced the report, it scored 10 with 6 signals against the 23-skill catalog while the
+brief's subject was a percentage table. The mechanism was the weak legs: a point for any _substring_ of a
+prompt word found in a skill's description, so the winner was whichever description shared the most
+ordinary words with the prompt, and braid's own skills describe braid's own plumbing. The scored text now
+drops absolute paths (they name a machine, not a task) and the dispatch protocol's vocabulary (50 words,
+defined once in `skills-tool/process-vocabulary.ts`), so the brief's subject is what is weighed.
+
+The claim and the payload became a decision rather than a rank. `decideSuggestion` returns a pick only
+when the top row leads the runner-up by two points and stands on identity evidence, an authored phrase
+naming the work or a keyword in the identity part of the skill's name; anything weaker yields a notice
+that names the closest rows, prints the terms each one matched, and points at the catalog in the prompt.
+Only a pick may say "best match" or carry a body, and its line prints the terms it stands on, so the
+message can be checked against its own evidence. A row that matched only dispatch vocabulary
+(`orchestrator registry`) is reported and named as such instead of being expanded.
+
+`list_skills` answers the whole catalog by default, in the order the prompt renders it (each pack
+directory, rows by name), identical call to call; `page`/`pageSize` window it when asked, and
+`rank: "relevance"` is now the explicit request for the ranked view with its verdict. A bare call used
+to return page 1 of 10 in the cache's order, so five tools saw five different subsets of one catalog.
+
+Recall on the 24-prompt labelled set falls 13/24 to 11/24, and both lost hits were won by the
+dispatch's own vocabulary (`worker` for `placement-discipline`, `result` for `agent-testing`); the
+fixture's floor moves with the cases named. `check-placement` gained one exclusion, for the vocabulary
+module, and its budget rises to 24.
+
 ## Core 0.45.7: a decision names its recommendation, and the tap says whether it was taken (2026-11-17)
 
 The telegram package gains the marker. `telegram_send` options may say which button the agent recommends, and the
