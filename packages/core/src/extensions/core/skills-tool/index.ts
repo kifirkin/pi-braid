@@ -65,6 +65,7 @@ import {
   getSessionObligation,
   judgeSessionObligations,
 } from "./session-records.js";
+import { catalogOrder } from "./loading-guidance.js";
 import { checkArgumentValues } from "../../../lib/utils/argument-report.js";
 
 const log = createLogger("skills-tool");
@@ -269,7 +270,7 @@ export function resolveRanking(
   skills: CachedSkill[],
   options: { rank: "relevance" | "catalog"; policy?: SkillsRankingMode },
 ): RankingAnswer {
-  if (options.rank === "catalog") return { order: skills, relevance: new Map() };
+  if (options.rank === "catalog") return { order: catalogOrder(skills), relevance: new Map() };
 
   const det = rankSkillsDeterministic(skills, currentTaskText(ctx));
   const relevance = new Map<string, RowRelevance>();
@@ -316,8 +317,8 @@ const listSkillsSchema = Type.Object({
   page: Type.Optional(
     Type.Number({
       minimum: 1,
-      default: 1,
-      description: "Page number for list (1-based)",
+      description:
+        "Page number, for a caller that wants a window: naming it (or pageSize) is what paginates at all",
     }),
   ),
   pageSize: Type.Optional(
@@ -325,7 +326,8 @@ const listSkillsSchema = Type.Object({
       minimum: 1,
       maximum: 50,
       default: 10,
-      description: "Entries per page for list",
+      description:
+        "Entries per page when paginating; omit both page and pageSize to get the whole catalog",
     }),
   ),
   sectionsMax: Type.Optional(
@@ -338,9 +340,9 @@ const listSkillsSchema = Type.Object({
   ),
   rank: Type.Optional(
     Type.Union([Type.Literal("relevance"), Type.Literal("catalog")], {
-      default: "relevance",
+      default: "catalog",
       description:
-        "relevance (default) = order by fit to the current task; catalog = the plain catalog order, with no ranking fields",
+        "catalog (default) = the whole catalog in the prompt's own order, unchanged call to call; relevance = order by fit to the current task, with per-row evidence and a ranking verdict",
     }),
   ),
 });
@@ -352,7 +354,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
     name: "list_skills",
     label: "List Skills",
     description:
-      "Discover skills on demand: paginated catalog (name, filePath, description, source) plus each skill's reach (reachable, lines, bytes, chars, estTokens, sectionCount, section headings with line numbers), so the price of a read is visible before the read. Rows are ordered by relevance to the current task; a row with match evidence carries relevance {score, reason}, and the response carries ranking {tier, basis, policy}. Pass rank: 'catalog' for the plain catalog order. `read` a SKILL.md to load it.",
+      "Discover skills on demand: the catalog (name, filePath, description, source) with each skill's reach (reachable, lines, bytes, chars, estTokens, sectionCount, section headings with line numbers), so the price of a read is visible before the read. By default it answers the whole catalog in the order the prompt renders it — the same list, unchanged call to call; pass page/pageSize to look at a window of it, or rank: 'relevance' to order it against the current task (rows then carry relevance {score, reason} and the response carries ranking {tier, basis, policy}). `read` a SKILL.md to load it.",
     parameters: listSkillsSchema,
     // Paging without an action is a listing call: fill the action the call
     // implies before pi validates, and refuse a guessed value with the accepted
@@ -366,17 +368,21 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       return prepared as Static<typeof listSkillsSchema>;
     },
     execute: async (_id, params, signal, _onUpdate, ctx) => {
-      const page = (params.page as number) ?? 1;
-      const pageSize = (params.pageSize as number) ?? 10;
+      // Pagination is opt-in: a call that names no page and no page size asks
+      // for the catalog, and the catalog is what it gets. The window exists for
+      // a caller that wants one, and it defaults to the shipped page length.
+      const pageAsked = params.page != null || params.pageSize != null;
       const sectionsMax = clampSectionsMax(params.sectionsMax);
-      const rank = (params.rank as "relevance" | "catalog" | undefined) ?? "relevance";
+      const rank = (params.rank as "relevance" | "catalog" | undefined) ?? "catalog";
       // Explicit-invocation-only skills stay out of the catalog; the cache
       // itself stays unfiltered for the read-detector that counts explicit
       // loads.
       const visible = cachedSkills.filter((s) => !s.disableModelInvocation);
       const answer = resolveRanking(ctx, visible, { rank });
       const total = answer.order.length;
-      const start = (page - 1) * pageSize;
+      const page = pageAsked ? ((params.page as number) ?? 1) : 1;
+      const pageSize = pageAsked ? ((params.pageSize as number) ?? 10) : total;
+      const start = pageAsked ? (page - 1) * pageSize : 0;
       const slice = answer.order.slice(start, start + pageSize);
       const hasMore = start + pageSize < total;
 

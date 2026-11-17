@@ -81,10 +81,10 @@ function byName(a: string, b: string): number {
 }
 
 /** One directory a catalog's bodies live in, with the skills filed under it. */
-export interface CatalogGroup {
+export interface CatalogGroup<T extends CatalogEntry = CatalogEntry> {
   /** The pack directory itself, in forward-slash form. */
   dir: string;
-  skills: CatalogEntry[];
+  skills: T[];
 }
 
 /**
@@ -105,8 +105,8 @@ function packOf(filePath: string): string {
  * rows are sorted, so identical catalogs render byte-identical text in any
  * cache order. Pure.
  */
-export function catalogGroups(skills: CatalogEntry[]): CatalogGroup[] {
-  const byDir = new Map<string, CatalogEntry[]>();
+export function catalogGroups<T extends CatalogEntry>(skills: T[]): CatalogGroup<T>[] {
+  const byDir = new Map<string, T[]>();
   for (const skill of skills) {
     const dir = packOf(skill.filePath ?? "");
     const bucket = byDir.get(dir);
@@ -114,6 +114,22 @@ export function catalogGroups(skills: CatalogEntry[]): CatalogGroup[] {
     else byDir.set(dir, [skill]);
   }
   return [...byDir.keys()].sort(byName).map((dir) => ({ dir, skills: byDir.get(dir) ?? [] }));
+}
+
+/**
+ * The catalog's own order: each pack directory in turn, its rows by name.
+ *
+ * This is the order the prompt's skills section renders (see catalogRows), and
+ * `list_skills` answers in it too. Keeping one function for both is what makes
+ * the two surfaces agree by construction: the catalog the model reads in the
+ * prompt and the catalog it pages open are the same list in the same order, so
+ * a page reads as a window over the prompt rather than a second, re-sorted
+ * view of it. Pure.
+ */
+export function catalogOrder<T extends CatalogEntry>(skills: T[]): T[] {
+  return catalogGroups(skills).flatMap((group) =>
+    [...group.skills].sort((a, b) => byName(a.name, b.name)),
+  );
 }
 
 /**
@@ -125,7 +141,6 @@ export function skillReadRoot(skills: CatalogEntry[]): string {
   const groups = catalogGroups(skills);
   return groups.length === 1 ? groups[0].dir : "";
 }
-
 /**
  * One row per skill: `- name: description`, whitespace collapsed to a single
  * line. Descriptions are NOT clipped: the row is the whole reason the floor
@@ -133,12 +148,10 @@ export function skillReadRoot(skills: CatalogEntry[]): string {
  * Pure.
  */
 export function catalogRows(skills: CatalogEntry[]): string[] {
-  return [...skills]
-    .sort((a, b) => byName(a.name, b.name))
-    .map((s) => {
-      const description = (s.description ?? "").replace(/\s+/g, " ").trim();
-      return description ? `- ${s.name}: ${description}` : `- ${s.name}`;
-    });
+  return catalogOrder(skills).map((s) => {
+    const description = (s.description ?? "").replace(/\s+/g, " ").trim();
+    return description ? `- ${s.name}: ${description}` : `- ${s.name}`;
+  });
 }
 
 /**
