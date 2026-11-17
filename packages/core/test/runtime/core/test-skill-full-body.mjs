@@ -74,6 +74,25 @@ function writeSkill(name, body, description = `${name} skill`) {
   return { name, description, filePath, baseDir: SKILLS_DIR };
 }
 
+/**
+ * The same, with authored trigger phrases: a phrase is the author's own
+ * relevance signal, and only a row standing on one is delivered first-class
+ * (see decideSuggestion). The handler cases below use it, because a row matched
+ * on two description words alone is reported and not expanded.
+ */
+function writeSkillWithTriggers(name, body, description, triggers) {
+  const dir = join(SKILLS_DIR, name);
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, "SKILL.md");
+  const phrases = triggers.map((t) => `  - "${t}"`).join("\n");
+  writeFileSync(
+    filePath,
+    `---\nname: ${name}\ndescription: ${description}\ntriggers:\n${phrases}\n---\n\n${body}`,
+    "utf-8",
+  );
+  return { name, description, filePath, baseDir: SKILLS_DIR, triggers };
+}
+
 /** ~8,000 characters: the size a real skill body occupies. */
 function eightThousandCharBody(tag) {
   const rules = [];
@@ -98,7 +117,12 @@ const BIG_BODY = eightThousandCharBody("BIGSKILL");
 // name ends in its class noun ("match"), which is ranked but never counted as
 // evidence, so the fixture clears the bar the way any real skill would — two
 // distinct description words.
-const BIG = writeSkill("big-match", BIG_BODY, "Matching rules for panes in a big body");
+const BIG = writeSkillWithTriggers(
+  "big-match",
+  BIG_BODY,
+  "Matching rules for panes in a big body",
+  ["big-match rules"],
+);
 
 const LONG_BODY = longWordBody();
 const LONG = writeSkill("long-match", LONG_BODY, "Long body skill");
@@ -112,10 +136,11 @@ const THIRD = writeSkill(
   `# Third\n\n${"third body text ".repeat(60)}\nEND-OF-THIRD`,
 );
 
-const PANE = writeSkill(
+const PANE = writeSkillWithTriggers(
   "pane-topology",
   "Create panes, split them right or down, and wait for an agent to settle.\n",
   "Terminal pane topology",
+  ["pane topology"],
 );
 
 // ── pi double (see test-skill-delivery-honest: reaching sendMessage is reaching
@@ -362,9 +387,12 @@ test("(e2) a suppressed whisper moves neither counter", async () => {
 // ── (f) the added payload, measured ────────────────────────────────────────
 
 test("(f) the added payload at the cap is measured, not estimated", () => {
+  // Measured in the delivered shape: the pick's evidence clause rides the same
+  // message, so the framing below is what a reader would actually pay.
+  const evidence = [{ term: "big-match rules", field: "trigger", process: false }];
   const pointerText = formatWhisper([LONG]);
-  const wholeText = formatWhisper([BIG], BIG.name);
-  const cappedText = formatWhisper([LONG], LONG.name);
+  const wholeText = formatWhisperContent([BIG], BIG.name, evidence).text;
+  const cappedText = formatWhisperContent([LONG], LONG.name, evidence).text;
   // The pointer row already carries MAX_EXCERPT_CHARS of the body, so the added
   // bytes are the body minus that excerpt plus the body section's own framing.
   const wholeAdded = wholeText.length - formatWhisper([BIG]).length;
@@ -384,10 +412,12 @@ test("(f) the added payload at the cap is measured, not estimated", () => {
   );
   assert.equal(estTokens(FULL_BODY_MAX_CHARS), 3_000, "the cap is 3,000 estTokens at the pack divisor");
   assert.ok(
-    framing > 0 && framing <= 400,
-    // Three fixed lines (opening, body title, catalog trailer) plus the blank
-    // lines between them measure 345 characters here; the bound guards a
-    // header that grows, not a derivation.
+    framing > 0 && framing <= BIG_BODY.length / 10,
+    // The framing is four fixed lines (opening with the evidence clause, body
+    // title, catalog trailer, blank lines between them) plus the body's own
+    // path, which is as long as $TMPDIR makes it — so the bound is a share of
+    // the body rather than a constant: it guards a header that grows, and a
+    // constant here measured the runner's temp directory instead.
     `the whole-body message is the body plus ${framing} chars of framing`,
   );
   assert.ok(

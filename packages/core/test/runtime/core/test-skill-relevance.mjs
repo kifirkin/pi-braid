@@ -606,7 +606,21 @@ test("recall@2 holds at or above the measured floor", () => {
   // reaches it on "audit" plus one description word — the same shape as the
   // reported defect, which is why no rule that keeps that pair can also keep
   // the reported prompt empty. A drop below 13 hits is a matcher regression.
-  assert.ok(expectedHit >= 13, `recall@2 ${expectedHit}/${expectedTotal} holds ${expectedHit} of the 13 hits`);
+  //
+  // It moved again, 13 -> 11, when the matcher stopped scoring the dispatch's
+  // own vocabulary (PROCESS_VOCABULARY in auto-suggest... see auto-inject.ts).
+  // Both lost hits were won by exactly that vocabulary, which is the check that
+  // the loss is the fix rather than an accident:
+  //   verify-worker x placement-discipline — reached on "worker" (the
+  //     dispatch's word for who runs the job) plus "review"; with the word
+  //     gone, "verify" alone is under the bar and gated as corpus-common.
+  //   probe-harness x agent-testing — reached on "harness" plus "result"; the
+  //     prompt says "probe harness", so the skill's own phrase ("test
+  //     harness") never fires and "harness" alone is one signal.
+  // Keeping either word to keep its hit is what hands braid-reference the top
+  // slot on a dispatch, which is the defect this change removes (see
+  // test-skill-dispatch.mjs). A further drop is a regression.
+  assert.ok(expectedHit >= 11, `recall@2 ${expectedHit}/${expectedTotal} holds ${expectedHit} of the 11 hits`);
 });
 
 // ── 3b. session twins ──────────────────────────────────────────────────────

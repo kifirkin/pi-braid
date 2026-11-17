@@ -18,8 +18,9 @@
  *      to rank. An unmatched row carries no relevance field, so no row pays
  *      bytes for "nothing matched".
  *   3. `rank: "catalog"` is the plain catalog, with no ranking fields at all.
- *   4. The schema gates `rank` through pi-core's own validator (the default is
- *      applied by the handler, not by the schema).
+ *   4. The schema gates `rank` through pi-core's own validator, and the
+ *      handler's default is the catalog: a read that asks for no ranking gets
+ *      no report, and `rank: "relevance"` is what asks for one.
  *   5. `braid.skills.ranking` is read and echoed in the report; the reserved
  *      values evaluate to the keyword path.
  *   6. The task text is the newest user message on the branch; no task text
@@ -124,14 +125,21 @@ function fakeCtx(task, { hasBranch = true } = {}) {
   };
 }
 
-/** The registered list_skills tool, called the way pi calls it. */
+/**
+ * The registered list_skills tool, called the way pi calls it.
+ *
+ * Defaults to the ranked view, because that is this fixture's subject: the
+ * catalog default (the whole catalog in the prompt's order, no report) has its
+ * own fixture in test-skills-catalog-order.mjs, and a ranking assertion read off
+ * an unranked answer would be checking nothing.
+ */
 async function callList(ctx, args) {
   const pi = fakePi();
   skillsToolExtension(pi);
   const tool = pi.tools.find((t) => t.name === "list_skills");
   const validated = validateToolArguments(
     { name: tool.name, parameters: tool.parameters },
-    { name: tool.name, arguments: { action: "list", ...args } },
+    { name: tool.name, arguments: { action: "list", rank: "relevance", ...args } },
   );
   const result = await tool.execute("call-1", validated, undefined, undefined, ctx);
   return JSON.parse(result.content[0].text);
@@ -236,8 +244,8 @@ await test("rank: catalog returns the unranked catalog, with no ranking fields",
   assert.equal("ranking" in payload, false);
   assert.deepEqual(
     payload.skills.map((s) => s.name),
-    CATALOG_ROWS.map((s) => s.name),
-    "catalog order is the cache order",
+    CATALOG_ROWS.map((s) => s.name).sort(),
+    "catalog order is the catalog's own: one pack, rows by name",
   );
   for (const row of payload.skills) {
     assert.equal("relevance" in row, false, `${row.name} carries no ranking field`);
@@ -246,7 +254,7 @@ await test("rank: catalog returns the unranked catalog, with no ranking fields",
 
 // ── 4. the schema ─────────────────────────────────────────────────────────
 
-await test("the schema gates rank, and the handler applies the default", async () => {
+await test("the schema gates rank, and the handler's default is the catalog", async () => {
   const pi = fakePi();
   skillsToolExtension(pi);
   const tool = pi.tools.find((t) => t.name === "list_skills");
@@ -262,8 +270,13 @@ await test("the schema gates rank, and the handler applies the default", async (
     { name: tool.name, arguments: { action: "list" } },
   );
   assert.equal(omitted.rank, undefined, "the schema leaves it absent");
-  const payload = await callList(fakeCtx(AMBIGUOUS_TASK), { pageSize: 4 });
-  assert.ok(payload.ranking, "…and the handler's default is relevance");
+  // The default answer carries no report: a read that asked no question about
+  // fit is not given a verdict on it (test-skills-catalog-order.mjs pins the
+  // order and the completeness of that answer).
+  const catalog = await callList(fakeCtx(AMBIGUOUS_TASK), { pageSize: 4, rank: "catalog" });
+  assert.equal(catalog.ranking, undefined, "an unranked read has no verdict");
+  const ranked = await callList(fakeCtx(AMBIGUOUS_TASK), { pageSize: 4 });
+  assert.ok(ranked.ranking, "rank: relevance is what asks for the ranked view");
   assert.throws(
     () =>
       validateToolArguments(
