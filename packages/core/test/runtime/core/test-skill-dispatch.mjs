@@ -57,7 +57,7 @@ const { beginTurn } = await import(join(ROOT, "dist", "lib", "enforcement", "tur
  * percentage→word table on a numerology site. Generalized in three places only,
  * because each names a machine rather than the work: the operator's home
  * (`/Users/…` → `/srv/agent`), the worktree (`/private/tmp/wt-forest-band` →
- * `/work/wt-band`), and the worker id (`w884` → `w1`). Everything else — the
+ * `/work/wt-band`), and the worker id (an invented placeholder). Everything else — the
  * brief path, the report path, the branch, the commit hash, the dispatch
  * sentence, the defect paragraph — is as it was sent.
  */
@@ -83,7 +83,7 @@ const BRAID_DOCS_QUESTION =
   "braid docs question: which document owns the timers and wakes, and what does the skills catalog say about compaction?";
 
 /** Dispatch vocabulary and one word that is not: the prompt carries a task. */
-const PROCESS_ONLY_PROMPT = "the orchestrator registry logged the wave";
+const PROCESS_ONLY_PROMPT = "the orchestrator registry logged the run";
 
 // ── the catalog ────────────────────────────────────────────────────────────
 
