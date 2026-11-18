@@ -12,7 +12,9 @@
  * directory into `<braidDir>/telegram/`. Both are read-compatible with their
  * pre-move location: a read falls back to the old copy when the new one is
  * absent (`resolveMediaReadPath`, `legacyPauseStateFile`), a write never
- * touches it.
+ * touches it. The placement record that names the control message in the
+ * owner's chat (`controlRecordFileFor`) lives in that same directory, so a
+ * placement redirect carries the pause state and the record together.
  *
  * Refusal contract: `braidDir()` returns null when no absolute root can be
  * derived - BRAID_HOME is unset and `os.homedir()` does not resolve an
@@ -148,6 +150,27 @@ export function resolveMediaReadPath(fileName: string): string | null {
 export function defaultPauseStateFile(): string | null {
   const dir = telegramStateDir();
   return dir === null ? null : path.join(dir, "pause-state.json");
+}
+
+/**
+ * Filename of the control-keyboard placement record, kept in the pause state's
+ * directory so one override (`braid.telegram.pauseStateFile`) and one braid
+ * root own both halves of the control.
+ */
+const CONTROL_RECORD_FILE_NAME = "control-message.json";
+
+/**
+ * Placement-record path for a resolved pause-state path: the same directory,
+ * so a redirected pause state redirects the record with it — one knob, no
+ * second config key. Null when the pause-state path is null (no derivable
+ * root): the caller then posts, and a boot cannot dedupe against the last one.
+ */
+export function controlRecordFileFor(
+  pauseStateFile: string | null,
+): string | null {
+  return pauseStateFile === null
+    ? null
+    : path.join(path.dirname(pauseStateFile), CONTROL_RECORD_FILE_NAME);
 }
 
 /** Pre-move pause-state file directly under pi's agent directory. Read-only

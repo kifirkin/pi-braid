@@ -148,6 +148,7 @@ import {
 import { isWorkerRole, resolveSessionRole } from "./lib/session-role.js";
 import { setIdentitySessionSource } from "./lib/identity.js";
 import {
+  controlRecordFileFor,
   handlePauseCallbackQuery,
   placeControlKeyboard,
   resolvePauseStateFile,
@@ -1041,25 +1042,31 @@ export default async function telegramExtension(
   // The owner must actually SEE the ⏸/▶️/📊 control — placement is wired at the
   // POLLER-START seam: every time the background poller starts (env auto-start
   // at boot, /telegram enable, telegram_poller enable) the persisted pause flag
-  // is read and placeControlKeyboard places the control in the owner chat.
+  // is read and placeControlKeyboard puts the control in the owner chat.
   // Delivery-neutral: nothing self-sends on import — THIS factory (the entity
   // that owns the inbound poller) places. When the owner chat is not yet known
   // at start (no BRAID_TG_CHAT_ID and no allow-list — pure first-message
   // bootstrap) placement is DEFERRED and fires once the first owner message
   // captures ownerChatId (deliverOwnerMessage → flushDeferredControlPlacement).
+  // ACROSS boots the control is found through the placement record beside the
+  // pause state (lib/state-paths.ts): the next process edits that message in
+  // place, so a restart refreshes the control instead of stacking another one.
   // Post-resume correctness is already cheap: the callback handler edits the
   // SAME keyboard in place (editMessageText) on every tap, so pause/resume
   // refresh in place — no per-transition re-send/spam.
+  const controlRecordFile = controlRecordFileFor(pauseStateFile);
   let controlPlacement: "idle" | "placed" | "deferred" = "idle";
   // Arrow const (not a hoisted declaration) so `token` stays narrow-typed to
   // `string` inside this closure — the same pattern live-update/turn-notify use.
   const placeControlKeyboardOnce = async (): Promise<void> => {
-    if (controlPlacement === "placed") return; // already in the owner chat this boot
+    if (controlPlacement === "placed") return; // already resolved in this boot
     const outcome = await placeControlKeyboard(resolveChatId(), {
       client,
       token,
       // Same reader the poller pause gate uses — placement and gate always agree.
       getPauseState: readPauseState,
+      // Beside the pause state, so a redirected pause state takes the record with it.
+      recordFile: controlRecordFile,
       log,
     });
     controlPlacement = outcome.deferred ? "deferred" : "placed";
@@ -2085,6 +2092,7 @@ export default async function telegramExtension(
 // placement seam). The flag is a signal for the consumer — this package never
 // blocks the poller.
 export {
+  controlRecordFileFor,
   defaultPauseStateFile,
   getPauseState,
   resolvePauseStateReadFile,
@@ -2092,5 +2100,8 @@ export {
   sendControlKeyboard,
   placeControlKeyboard,
   buildControlKeyboard,
+  loadControlPlacementRecord,
+  saveControlPlacementRecord,
+  type ControlPlacementRecord,
   type PauseState,
 } from "./lib/pause-control.js";

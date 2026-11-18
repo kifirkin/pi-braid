@@ -12,6 +12,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -303,6 +304,22 @@ function tmpStateFile(prefix) {
     `tg-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     "telegram-state.json",
   );
+}
+
+/**
+ * A braid root with no control-placement record in it.
+ *
+ * The record lives beside the pause state (lib/state-paths.ts), and this file
+ * pins ONE braid root for every case. A case asserting the POST — the first
+ * placement in a chat — therefore needs its own empty root: a boot that finds
+ * the record left by an earlier case edits that message instead, which is the
+ * cross-restart behaviour the placement record exists for. Nested in the
+ * file's pin so the after() hook still removes it.
+ */
+function freshControlRoot(name) {
+  const dir = join(PINNED_BRAID_HOME, `ctrl-${name}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 /**
@@ -635,6 +652,7 @@ test("poller auto-start: control keyboard placed in the owner chat at boot (corr
       TELEGRAM_POLL_DISABLED: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "0",
       TELEGRAM_LIVE_UPDATE_ENABLED: undefined,
+      BRAID_HOME: freshControlRoot("boot"),
       BRAID_TG_STATE_FILE: tmpStateFile("ctrlkb-boot"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_NOTIFY_ENABLED: undefined,
@@ -703,6 +721,7 @@ test("/telegram enable ALSO places the control keyboard (the poller-start seam i
       TELEGRAM_POLL_ENABLED: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "0",
       TELEGRAM_LIVE_UPDATE_ENABLED: undefined,
+      BRAID_HOME: freshControlRoot("enable"),
       BRAID_TG_STATE_FILE: tmpStateFile("ctrlkb-enable"),
       TELEGRAM_STATE_FILE: undefined,
     },
@@ -782,6 +801,7 @@ test("poller start with unknown owner chat defers the control keyboard to the fi
       TELEGRAM_POLL_DISABLED: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "0",
       TELEGRAM_LIVE_UPDATE_ENABLED: undefined,
+      BRAID_HOME: freshControlRoot("defer"),
       BRAID_TG_STATE_FILE: tmpStateFile("ctrlkb-defer"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_POLL_INTERVAL_MS: "200",
@@ -1844,6 +1864,7 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=0 disables live-update — no turn_e
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-off"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-off"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "0",
@@ -1922,6 +1943,7 @@ test("factory: live-update default-ON — no flags => turn_end finish listener r
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-default-on"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-default-on-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: undefined,
@@ -2019,6 +2041,7 @@ test("factory: BRAID_TG_LIVE_UPDATE_ENABLED=1 pins a Working… tracked message 
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-on"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-on-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2135,6 +2158,7 @@ test("factory: live-update finish does NOT fire on a trailing-tool-call turn (ke
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-trailing"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-trailing-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2249,6 +2273,7 @@ test("factory: §5b-2 — abort turn releases the indicator (terminal edit, stat
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-5b2-abort"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-5b2-abort-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2351,6 +2376,7 @@ test("factory: §5b-2 — error turn with partial text terminates, never '✅ Do
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-5b2-error"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-5b2-error-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2468,6 +2494,7 @@ test("factory: §5b-2 — a completed turn still finishes '✅ Done' after a pri
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-5b2-coexist"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-5b2-coexist-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2614,6 +2641,7 @@ test("factory: indicator NEVER freezes — inbound pinned, no completion event, 
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-settle"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-settle-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
@@ -2756,6 +2784,7 @@ test("factory: two inbound messages → ONE Working tracked message, resolved on
       TELEGRAM_COALESCE_WINDOW_MS: undefined,
       BRAID_TG_POLL_DISABLED: undefined,
       TELEGRAM_POLL_DISABLED: undefined,
+      BRAID_HOME: freshControlRoot("live-refcount"),
       BRAID_TG_STATE_FILE: tmpStateFile("live-refcount-offset"),
       TELEGRAM_STATE_FILE: undefined,
       BRAID_TG_LIVE_UPDATE_ENABLED: "1",
