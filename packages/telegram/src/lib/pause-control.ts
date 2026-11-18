@@ -34,13 +34,14 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import {
+  controlRecordFileFor,
   defaultPauseStateFile,
   legacyPauseStateFile,
   warnUnderivableRoot,
 } from "./state-paths.js";
 import type { TelegramClient, TelegramReplyMarkup } from "./telegram-client.js";
 
-export { defaultPauseStateFile, legacyPauseStateFile };
+export { controlRecordFileFor, defaultPauseStateFile, legacyPauseStateFile };
 
 // Callback actions (button callback_data)
 
@@ -181,6 +182,22 @@ export function buildControlKeyboard(paused: boolean): TelegramReplyMarkup {
   };
 }
 
+/**
+ * The body the pause flag implies, for all three writers of the control (the
+ * placement post, the placement edit, the tap edit). One renderer keeps them
+ * from disagreeing: a restart while paused and a tap while paused must show
+ * the same sentence and the same primary button.
+ */
+function controlBody(paused: boolean): {
+  text: string;
+  replyMarkup: TelegramReplyMarkup;
+} {
+  return {
+    text: paused ? CONTROL_PAUSED_TEXT : CONTROL_RUNNING_TEXT,
+    replyMarkup: buildControlKeyboard(paused),
+  };
+}
+
 export interface SendControlKeyboardResult {
   ok: boolean;
   messageId?: number;
@@ -198,20 +215,98 @@ export async function sendControlKeyboard(
   chatId: number | string,
   paused: boolean,
 ): Promise<SendControlKeyboardResult> {
-  const text = paused ? CONTROL_PAUSED_TEXT : CONTROL_RUNNING_TEXT;
-  const res = await client.sendMessage(token, chatId, text, {
-    replyMarkup: buildControlKeyboard(paused),
+  const body = controlBody(paused);
+  const res = await client.sendMessage(token, chatId, body.text, {
+    replyMarkup: body.replyMarkup,
   });
   return res.ok
     ? { ok: true, messageId: res.messageId }
     : { ok: false, error: res.error };
 }
 
+/**
+ * The control message the owner is looking at, persisted so the NEXT process
+ * edits that message instead of posting a second control below it. The record
+ * is a cache of one Telegram fact no API can answer ("which message is the
+ * control in this chat"); losing it costs one duplicate message, never a
+ * missing control.
+ */
+export interface ControlPlacementRecord {
+  /** The chat the control lives in, as given at placement (number or env string). */
+  chatId: number | string;
+  /** The control message's id in that chat. */
+  messageId: number;
+  /** Epoch ms this record was last written — the last placement that resolved the control. */
+  placedAt: number;
+}
+
+/**
+ * Read the placement record. A missing, corrupt, or half-written file means
+ * "no record" (null), never a throw: the caller posts, which is the pre-record
+ * behaviour, and a chat cannot lose its control to a bad file.
+ */
+export async function loadControlPlacementRecord(
+  file: string | null,
+): Promise<ControlPlacementRecord | null> {
+  if (file === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(await readFile(file, "utf8"));
+    if (parsed === null || typeof parsed !== "object") return null;
+    const { chatId, messageId, placedAt } = parsed as Record<string, unknown>;
+    const id = Number(messageId);
+    if (typeof chatId !== "string" && typeof chatId !== "number") return null;
+    if (!Number.isFinite(id) || id <= 0) return null;
+    const stamp = Number(placedAt);
+    return {
+      chatId,
+      messageId: id,
+      placedAt: Number.isFinite(stamp) ? stamp : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist the placement record atomically (write-temp-then-rename, the same
+ * idiom as savePauseState). Best-effort by design: returns false instead of
+ * throwing, because the record is a dedupe hint and a placement that already
+ * reached the chat must not report failure over an unwritable cache.
+ */
+export async function saveControlPlacementRecord(
+  file: string,
+  record: ControlPlacementRecord,
+): Promise<boolean> {
+  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(temp, `${JSON.stringify(record)}\n`, "utf8");
+    await rename(temp, file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Telegram's "that message is not there" class: the edit cannot be satisfied
+ * because the target is gone — deleted by the owner, aged out, or never visible
+ * to this bot. ONLY this class earns a replacement message. A transient failure
+ * (network, rate limit, parse error) leaves the recorded control in place: it
+ * is still in the chat, and a second control under it is worse than a stale
+ * button the owner will tap into the next placement.
+ */
+function isMissingMessageError(error: string | undefined): boolean {
+  if (typeof error !== "string") return false;
+  const text = error.toLowerCase();
+  return text.includes("not found") || text.includes("message_id_invalid");
+}
+
 /** Comparable pause-state reader for the placement helper (see PauseControlDeps.getPauseState). */
 export type PauseStateReaderLike = () => Promise<PauseState>;
 
 export interface PlaceControlKeyboardDeps {
-  client: Pick<TelegramClient, "sendMessage">;
+  client: Pick<TelegramClient, "sendMessage" | "editMessageText">;
   token: string;
   /**
    * Pause-state reader — defaults to the (unpersisted-default) getPauseState().
@@ -219,6 +314,12 @@ export interface PlaceControlKeyboardDeps {
    * same readPauseState the poller gate uses: placement and gate always agree).
    */
   getPauseState?: PauseStateReaderLike;
+  /**
+   * Placement-record path (see controlRecordFileFor). When omitted or null no
+   * record is read or written, so every call posts — correct for a caller that
+   * cannot persist, and the reason a caller that CAN persist must pass it.
+   */
+  recordFile?: string | null;
   log?: (
     level: "debug" | "info" | "warn" | "error",
     message: string,
@@ -234,19 +335,31 @@ export interface PlaceControlKeyboardResult {
    * first owner message captures the real chat id. Never true alongside ok:true.
    */
   deferred: boolean;
+  /** How the control reached the chat: the recorded message edited in place, or a new message posted. */
+  via?: "edit" | "send";
   messageId?: number;
   error?: string;
 }
 
 /**
- * Consumer-side placement helper: ONE call sends the
- * control keyboard to `chatId`, reflecting the CURRENT persisted pause flag —
- * running shows ⏸ Pause, paused shows ▶ Resume. This stays delivery-neutral:
- * NOTHING self-sends on import — the CONSUMER (index.ts) calls this at the
- * poller-start seam. Best-effort: failures are returned in the result, never
- * thrown. When `chatId` is empty/0 the call returns `deferred: true` without
- * sending, so a poller that started before the owner chat was discovered
- * (bootstrap) can place once the first owner message provides a chat id.
+ * Consumer-side placement helper: ONE call puts the control keyboard in
+ * `chatId`, reflecting the CURRENT persisted pause flag — running shows
+ * ⏸ Pause, paused shows ▶ Resume — by EDITING the message the record names.
+ *
+ * A process-local flag cannot answer this: a restart is a new process, so the
+ * placement has to be a fact on disk. The record (controlRecordFileFor) is
+ * written beside the pause state and read back here, so the second boot and the
+ * hundredth edit the same message instead of stacking a control per boot. A new
+ * message is posted only when the record cannot answer: no record (first boot
+ * after this exists), the record names a different chat (the owner chat moved),
+ * or the edit fails with not-found (the owner deleted the control).
+ *
+ * Stays delivery-neutral: NOTHING self-sends on import — the CONSUMER (index.ts)
+ * calls this at the poller-start seam. Best-effort: failures are returned in the
+ * result, never thrown. When `chatId` is empty/0 the call returns
+ * `deferred: true` without sending, so a poller that started before the owner
+ * chat was discovered (bootstrap) can place once the first owner message
+ * provides a chat id.
  */
 export async function placeControlKeyboard(
   chatId: number | string | undefined,
@@ -263,24 +376,104 @@ export async function placeControlKeyboard(
   const state = deps.getPauseState
     ? await deps.getPauseState()
     : await getPauseState();
+  const body = controlBody(state.paused);
+  const label = state.paused ? "paused — ▶ Resume" : "running — ⏸ Pause";
+  const recordFile = deps.recordFile ?? null;
+  const record = await loadControlPlacementRecord(recordFile);
+
+  if (record !== null && String(record.chatId) === String(chatId)) {
+    const edit = await deps.client.editMessageText(
+      deps.token,
+      chatId,
+      record.messageId,
+      body.text,
+      { replyMarkup: body.replyMarkup },
+    );
+    const messageId = edit.messageId ?? record.messageId;
+    if (edit.ok) {
+      await recordPlacement(
+        recordFile,
+        { chatId, messageId, placedAt: Date.now() },
+        log,
+      );
+      log(
+        "info",
+        `telegram: control keyboard edited in place in chat ${chatId} (${label}, msg ${messageId})`,
+      );
+      return { ok: true, deferred: false, via: "edit", messageId };
+    }
+    if (!isMissingMessageError(edit.error)) {
+      // Transient: the recorded control is still there. Reporting the failure
+      // and keeping the record beats posting a rival control under it.
+      log(
+        "warn",
+        `telegram: control keyboard edit failed for chat ${chatId} (msg ${record.messageId}): ${edit.error ?? "unknown"} — keeping the recorded control`,
+      );
+      return {
+        ok: false,
+        deferred: false,
+        via: "edit",
+        messageId: record.messageId,
+        error: edit.error,
+      };
+    }
+    log(
+      "info",
+      `telegram: control message ${record.messageId} is gone from chat ${chatId} — posting a new one`,
+    );
+  }
+
   const res = await sendControlKeyboard(
     deps.client,
     deps.token,
     chatId,
     state.paused,
   );
-  if (res.ok) {
-    log(
-      "info",
-      `telegram: control keyboard placed in chat ${chatId} (${state.paused ? "paused — ▶ Resume" : "running — ⏸ Pause"}${res.messageId != null ? `, msg ${res.messageId}` : ""})`,
-    );
-  } else {
+  if (!res.ok) {
     log(
       "warn",
       `telegram: control keyboard placement failed for chat ${chatId}: ${res.error ?? "unknown"}`,
     );
+    return { ok: false, deferred: false, via: "send", error: res.error };
   }
-  return { ...res, deferred: false };
+  if (res.messageId != null) {
+    await recordPlacement(
+      recordFile,
+      { chatId, messageId: res.messageId, placedAt: Date.now() },
+      log,
+    );
+  } else if (recordFile !== null) {
+    log(
+      "warn",
+      `telegram: control keyboard posted to chat ${chatId} without a message id — no placement record written, so the next boot posts again`,
+    );
+  }
+  log(
+    "info",
+    `telegram: control keyboard placed in chat ${chatId} (${label}${res.messageId != null ? `, msg ${res.messageId}` : ""})`,
+  );
+  return {
+    ok: true,
+    deferred: false,
+    via: "send",
+    messageId: res.messageId,
+  };
+}
+
+/** Write the record when there is a file to write; a failure is a warning, not a placement failure. */
+async function recordPlacement(
+  file: string | null,
+  record: ControlPlacementRecord,
+  log: PlaceControlKeyboardDeps["log"],
+): Promise<void> {
+  if (file === null) return;
+  const written = await saveControlPlacementRecord(file, record);
+  if (!written) {
+    log?.(
+      "warn",
+      `telegram: control placement record not written to ${file} — the next boot will post a second control`,
+    );
+  }
 }
 
 /** The callback_query shape this handler consumes (subset of Telegram's). */
@@ -406,12 +599,13 @@ export async function handlePauseCallbackQuery(
   let edited = false;
   const msg = callbackQuery.message;
   if (msg?.message_id && msg?.chat?.id != null) {
+    const body = controlBody(current.paused);
     const res = await deps.client.editMessageText(
       deps.token,
       msg.chat.id,
       msg.message_id,
-      current.paused ? CONTROL_PAUSED_TEXT : CONTROL_RUNNING_TEXT,
-      { replyMarkup: buildControlKeyboard(current.paused) },
+      body.text,
+      { replyMarkup: body.replyMarkup },
     );
     edited = res.ok;
     if (!res.ok)

@@ -291,8 +291,8 @@ const ROWS = [
   },
   {
     key: "packages/telegram/src/lib/pause-control.ts",
-    calls: 3,
-    why: "the pause control keyboard: two module constants and a tap answer, no caller text",
+    calls: 4,
+    why: "the pause control keyboard: two module constants, a tap answer, and the placement edit that re-applies the same body, no caller text",
     gate: "exempt:constant",
     constants: ["CONTROL_RUNNING_TEXT", "CONTROL_PAUSED_TEXT"],
     maxLength: 49,
