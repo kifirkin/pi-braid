@@ -71,7 +71,7 @@ const MAX_PROPOSALS_SESSION = 10;
 // de-bloat target: 2,546 deliveries / 69,558 tokens at 4% acted-on, with
 // 33% of deliveries being exact-repeat same-session bodies re-injected turn
 // after turn. Two independent levers suppress that class at the single
-// proposal-send chokepoint (queueProposal):
+// proposal-admission chokepoint (queueProposal), before the tick emits once:
 //
 //   GATE (fire only on real need): proposals triggered by PERSISTENT
 //     conditions (usage %, token counts, density) only fire when context
@@ -98,6 +98,17 @@ const PROPOSAL_URGENT_USAGE = 75; // [gate] = USAGE_WHISPER_CRITICAL - genuinely
 const PROPOSAL_URGENT_TOKENS = HYGIENE_AUTO_COMPACT_HARD_BACKSTOP(); // [gate, tokens] hard-backstop band is urgent at any window
 const PROPOSAL_DEDUPE_COOLDOWN_MS = 20 * 60 * 1000; // [dedupe] a delivered suggestion stays "in effect" this long (mirrors reprime)
 const PROPOSAL_NO_ACTION_BACKOFF_TURNS = 8; // [dedupe, independent] after a same-class proposal's window closed with no action on it, back off N turns
+
+// One whisper envelope per tick.
+// A tick's proposals leave as ONE body: distinct policies fire on the same
+// observation (the token ladder raises soft + advisory together; the density
+// signals raise a decision count beside a duplicate count), and delivered one
+// envelope per policy the agent reads two events where the system observed
+// one. The budget is the size a merged body may reach before its tail clauses
+// lose their detail: the longest shipped proposal body measures 205 chars
+// (tokens-warning at a 1M window), so 600 carries any two whole bodies and
+// their clauses, and past that the tail names the action without the number.
+const PROPOSAL_MERGE_BUDGET_CHARS = 600;
 
 // Compaction Escalation Thresholds
 // After this many escalation steps at >=85% usage, auto-compact with timer.
@@ -417,9 +428,13 @@ function ensureProposalKeysSeeded(
   if (s.proposalKeysSeeded) return;
   s.proposalKeysSeeded = true;
   for (const p of existingProposals) {
-    const key = proposalKeyFor(p.message, p.suggested_action);
-    if (!s.proposalKeys.has(key)) {
-      s.proposalKeys.set(key, p.created_at);
+    // A merged entry replayed from disk carries its siblings in the record, so
+    // the classes that rode in its body seed the map too.
+    for (const one of [p, ...mergedSiblingsOf(p)]) {
+      const key = proposalKeyFor(one.message, one.suggested_action);
+      if (!s.proposalKeys.has(key)) {
+        s.proposalKeys.set(key, one.created_at);
+      }
     }
   }
 }
@@ -506,11 +521,17 @@ function proposeSuppressionCause(
   return null;
 }
 
+/**
+ * Decide whether one evaluated propose-action may reach the agent, and queue it
+ * for the tick's single delivery (emitTickProposals). Admission - the gate, the
+ * dedupe, the caps - is decided per proposal; only the delivery is merged.
+ */
 async function queueProposal(
   evaluated: EvaluatedAction,
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   branchLength: number,
+  admitted: AdmittedProposal[],
 ): Promise<void> {
   if (evaluated.action.type !== "propose") return;
 
@@ -542,60 +563,18 @@ async function queueProposal(
         `Session limit reached: ${state(ctx).proposalsTotal} proposals (max ${MAX_PROPOSALS_SESSION})`,
       );
     } else {
-      const proposal = createProposal(
-        "compact",
-        interpolateMessage(action.message, ctx, evaluated.signal?.data),
-        evaluated.policy.id,
-        branchLength,
-        action.priority,
-        0.7,
-        evaluated.policy.suggested_action,
-      );
-
-      const sm = getCachedSessionManager(ctx) as
-        | {
-            appendCustomMessageEntry?: (
-              type: string,
-              entry: unknown,
-              persistent: boolean,
-              meta: unknown,
-            ) => void;
-          }
-        | undefined;
-      // Apply the universal whisper envelope + [braid-whisper-end] marker to
-      // the proposal content array. appendCustomMessageEntry bypasses the
-      // sendTrackedMessage trunk, so the envelope must be applied here -- this
-      // is the sole call site for that channel. The end-marker is essential
-      // because the proposal is persisted as a custom_message entry and replayed
-      // into agent context on session resume/compaction: without it the agent
-      // has no unambiguous boundary for the suggestion body.
-      const proposalContent: { type: "text"; text: string }[] = [
-        { type: "text" as const, text: `Context Suggestion: ${proposal.message}` },
-      ];
-      // The envelope source was "memory/context-lifecycle",
-      // whose first segment maps to `[braid-whisper - memory]` — misattributing
-      // these context-lifecycle proposal bodies to the memory family (114
-      // measured deliveries). The source must be the TRUE family, so the
-      // envelope says context-lifecycle.
-      applyWhisperEnvelope(proposalContent, "context-lifecycle/proposal");
-      // A custom message rendered into an exported session prints its content
-      // as JSON when the content is an array of parts (pi-core's export template
-      // falls back to JSON.stringify for a non-string). The proposal is text, so
-      // it is stored as text: one string, envelope first and marker last, which
-      // is also what the agent reads on resume.
-      sm?.appendCustomMessageEntry?.(
-        PROPOSAL_CUSTOM_TYPE,
-        proposalContent.map((part) => part.text).join("\n"),
-        true,
-        proposal,
-      );
-      // Record the suggestion class so a repeat re-fire is suppressed while
-      // this one is still actionable (gate + dedupe rely on this map).
-      state(ctx).proposalKeys.set(
-        proposalKeyFor(proposal.message, proposal.suggested_action),
-        Date.now(),
-      );
-      log.debug(`Created proposal: ${proposal.id}`);
+      admitted.push({
+        proposal: createProposal(
+          "compact",
+          interpolateMessage(action.message, ctx, evaluated.signal?.data),
+          evaluated.policy.id,
+          branchLength,
+          action.priority,
+          0.7,
+          evaluated.policy.suggested_action,
+        ),
+        policyPriority: evaluated.policy.priority,
+      });
     }
   } else {
     log.info(
@@ -701,6 +680,141 @@ async function queueProposal(
       state(ctx).lastNavigationWhisperTurn = state(ctx).turnCount;
     }
   }
+}
+
+// One envelope per tick
+
+/** A proposal admitted this tick, with the number that orders the merged body. */
+interface AdmittedProposal {
+  proposal: ContextProposal;
+  /** Policy priority (higher leads): the merged body opens with the highest. */
+  policyPriority: number;
+}
+
+/**
+ * A stored proposal record plus the siblings a merged entry carried.
+ *
+ * `details` is read back as a single ContextProposal (readProposalsFromSession,
+ * the proposals tool, the outcome pass), so the lead owns the record and the
+ * other proposals ride in this field rather than in a second entry.
+ */
+interface MergedProposalRecord extends ContextProposal {
+  merged_proposals?: ContextProposal[];
+}
+
+/** The other proposals a merged entry carries, or [] for a single one. */
+function mergedSiblingsOf(details: unknown): ContextProposal[] {
+  const merged = (details as { merged_proposals?: unknown } | null | undefined)?.merged_proposals;
+  return Array.isArray(merged) ? (merged as ContextProposal[]) : [];
+}
+
+interface OrderedProposal {
+  proposal: ContextProposal;
+  key: string;
+}
+
+/**
+ * Order the tick's admissions for one body: highest policy priority leads, and
+ * one clause per suggestion class, so a class two policies describe cannot
+ * appear twice in one delivery.
+ */
+function orderTickProposals(admitted: readonly AdmittedProposal[]): OrderedProposal[] {
+  const ordered = new Map<string, OrderedProposal>();
+  for (const item of [...admitted].sort((a, b) => b.policyPriority - a.policyPriority)) {
+    const key = proposalKeyFor(item.proposal.message, item.proposal.suggested_action);
+    if (!ordered.has(key)) ordered.set(key, { proposal: item.proposal, key });
+  }
+  return [...ordered.values()];
+}
+
+/**
+ * Render the tick's proposals as ONE body.
+ *
+ * The lead proposal goes out whole. Each later one follows as its own clause,
+ * keeping the action and the number its policy measured. Past
+ * PROPOSAL_MERGE_BUDGET_CHARS the lead still goes out whole and the tail
+ * degrades to the action it would have demanded: a clause that cannot fit
+ * loses its detail, never the proposal.
+ *
+ * A one-proposal tick renders byte-identically to the pre-merge body
+ * (`Context Suggestion: <message>`).
+ */
+function renderTickProposalBody(ordered: readonly OrderedProposal[]): string {
+  const [lead, ...rest] = ordered;
+  let body = `Context Suggestion: ${lead.proposal.message}`;
+  const actionOnly: string[] = [];
+  for (const item of rest) {
+    const clause = `\nAlso raised this tick: ${item.proposal.message}`;
+    if (body.length + clause.length <= PROPOSAL_MERGE_BUDGET_CHARS) {
+      body += clause;
+    } else {
+      const action = item.proposal.suggested_action ?? item.proposal.policy_id;
+      if (!actionOnly.includes(action)) actionOnly.push(action);
+    }
+  }
+  if (actionOnly.length > 0) {
+    body += `\nAlso raised this tick, action only: ${actionOnly.join(", ")}`;
+  }
+  return body;
+}
+
+/**
+ * Emit the tick's proposals: one envelope, one entry, one end-marker.
+ *
+ * appendCustomMessageEntry bypasses the sendTrackedMessage trunk, so the
+ * universal whisper envelope + [braid-whisper-end] marker are applied here --
+ * this is the sole call site for that channel. The end-marker is essential
+ * because the proposal is persisted as a custom_message entry and replayed
+ * into agent context on session resume/compaction: without it the agent has no
+ * unambiguous boundary for the suggestion body.
+ */
+function emitTickProposals(ctx: ExtensionContext, admitted: readonly AdmittedProposal[]): void {
+  const ordered = orderTickProposals(admitted);
+  if (ordered.length === 0) return;
+
+  const lead = ordered[0].proposal;
+  const sm = getCachedSessionManager(ctx) as
+    | {
+        appendCustomMessageEntry?: (
+          type: string,
+          entry: unknown,
+          persistent: boolean,
+          meta: unknown,
+        ) => void;
+      }
+    | undefined;
+  const proposalContent: { type: "text"; text: string }[] = [
+    { type: "text" as const, text: renderTickProposalBody(ordered) },
+  ];
+  // The envelope source was "memory/context-lifecycle",
+  // whose first segment maps to `[braid-whisper - memory]` — misattributing
+  // these context-lifecycle proposal bodies to the memory family (114
+  // measured deliveries). The source must be the TRUE family, so the
+  // envelope says context-lifecycle.
+  applyWhisperEnvelope(proposalContent, "context-lifecycle/proposal");
+  // A custom message rendered into an exported session prints its content
+  // as JSON when the content is an array of parts (pi-core's export template
+  // falls back to JSON.stringify for a non-string). The proposal is text, so
+  // it is stored as text: one string, envelope first and marker last, which
+  // is also what the agent reads on resume.
+  const record: MergedProposalRecord = {
+    ...lead,
+    ...(ordered.length > 1 ? { merged_proposals: ordered.slice(1).map((o) => o.proposal) } : {}),
+  };
+  sm?.appendCustomMessageEntry?.(
+    PROPOSAL_CUSTOM_TYPE,
+    proposalContent.map((part) => part.text).join("\n"),
+    true,
+    record,
+  );
+  // Record every delivered suggestion class so a repeat re-fire is suppressed
+  // while this one is still actionable (gate + dedupe rely on this map). A
+  // class whose clause was merged into the body was delivered all the same.
+  const now = Date.now();
+  for (const { key } of ordered) state(ctx).proposalKeys.set(key, now);
+  log.debug(
+    `Created proposal${ordered.length > 1 ? ` (${ordered.length} merged)` : ""}: ${lead.id}`,
+  );
 }
 
 // Extension Factory
@@ -890,6 +1004,9 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
       });
 
       // CONTROL: Validate and select actions
+      // Proposals are collected here and leave as one envelope after the loop:
+      // a tick is one observation, however many policies it triggered.
+      const admitted: AdmittedProposal[] = [];
       for (const ev of evaluated) {
         if (!ev.validation.valid) {
           log.warn(`Governance blocked: ${ev.validation.messages.join(", ")}`);
@@ -899,7 +1016,7 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
         // ACTION: Execute or queue
         if (ev.action.type === "propose") {
-          await queueProposal(ev, pi, ctx, branch.length);
+          await queueProposal(ev, pi, ctx, branch.length, admitted);
         } else if (ev.action.type === "compact" && ev.canExecute) {
           // ESCALATION GATE
           // After COMPACT_ESCALATION_THRESHOLD escalation steps and while usage
@@ -930,16 +1047,25 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
         }
       }
 
+      // One whisper envelope for everything this tick raised.
+      emitTickProposals(ctx, admitted);
+
       // MEMORY: Track implicit approvals
       const proposalEntries = entries.filter(isProposalEntry);
       for (const entry of proposalEntries) {
-        const proposal = entry.details as ContextProposal;
-        if (proposal?.resolution) continue;
+        const lead = entry.details as ContextProposal;
+        if (!lead) continue;
 
-        if (Date.now() - proposal.created_at > 120_000) {
+        // A merged entry carries its other proposals, and each one is closed
+        // with the lead: a class delivered inside a merged body must reach the
+        // no-action backoff, or it re-proposes on its next cooldown.
+        for (const proposal of [lead, ...mergedSiblingsOf(lead)]) {
+          if (proposal.resolution) continue;
+          if (Date.now() - proposal.created_at <= 120_000) continue;
+
           proposal.resolution = "implicit_approved";
           proposal.resolved_at = Date.now();
-          state(ctx).proposalsByEntryId.set(entry.id, proposal);
+          if (proposal === lead) state(ctx).proposalsByEntryId.set(entry.id, proposal);
 
           // Track outcome for closed-loop feedback
           state(ctx).outcomes.push({
@@ -1185,8 +1311,23 @@ export default function contextLifecycleExtension(pi: ExtensionAPI): void {
 
           // Remember that this suggestion class was declined
           // so the real-need gate backs off re-proposing it for the rest of
-          // the session.
-          state(ctx).declinedKeys.add(proposalKeyFor(proposal.message, proposal.suggested_action));
+          // the session. A merged entry named more than one class: rejecting
+          // the body declines every class it carried, and the siblings close
+          // with it rather than ageing into an implicit approval instead.
+          for (const one of [proposal, ...mergedSiblingsOf(proposal)]) {
+            state(ctx).declinedKeys.add(proposalKeyFor(one.message, one.suggested_action));
+          }
+          for (const sibling of mergedSiblingsOf(proposal)) {
+            if (sibling.resolution) continue;
+            sibling.resolution = "rejected";
+            sibling.resolved_at = Date.now();
+            state(ctx).outcomes.push({
+              proposalId: sibling.id,
+              resolution: "rejected",
+              turnsToResolve: state(ctx).turnCount - sibling.turn,
+              timestamp: Date.now(),
+            });
+          }
 
           return {
             content: [{ type: "text" as const, text: `[x] Rejected **${id}**.` }],
