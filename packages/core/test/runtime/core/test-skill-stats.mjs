@@ -174,6 +174,7 @@ await test("skill_stats all-time section surfaces the durable file content", asy
       claimed: 0,
       actual: 4,
       fullBody: 0,
+      reloads: 0,
       lastAt: "2026-09-05T01:02:03.000Z",
       epoch: "mixed",
     },
@@ -186,6 +187,7 @@ await test("skill_stats all-time section surfaces the durable file content", asy
       loaded: 4,
       claimed: 0,
       actual: 0 + 4,
+      reloads: 0,
       suggestedDelivered: 0,
       suggestedMixed: 11,
       suggestedEpoch: "mixed",
@@ -353,6 +355,7 @@ await test("per-entry garbage is dropped, valid entries kept, no throw", async (
     claimed: 0,
     actual: 1,
     fullBody: 0,
+    reloads: 0,
     lastAt: "2026-09-05T00:00:00.000Z",
     epoch: "mixed",
   });
@@ -366,6 +369,7 @@ await test("per-entry garbage is dropped, valid entries kept, no throw", async (
     claimed: 0,
     actual: 0,
     fullBody: 0,
+    reloads: 0,
     lastAt: "",
     epoch: "mixed",
   });
@@ -390,6 +394,7 @@ await test("legacy rows load without migration errors: actual defaults to loaded
     claimed: 0,
     actual: 9,
     fullBody: 0,
+    reloads: 0,
     lastAt: "2026-09-01T00:00:00.000Z",
     epoch: "mixed",
   });

@@ -463,7 +463,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       // Detected reads are the primary signal: a session where the agent only
       // verbally claimed loads does not count as an adoption session.
       const actualAny = Object.values(stats).some((s) => s.actual > 0);
-      const totals = { suggested: 0, loaded: 0, claimed: 0, actual: 0 };
+      const totals = { suggested: 0, loaded: 0, claimed: 0, actual: 0, reloads: 0 };
       let suggestedDelivered = 0;
       let suggestedMixed = 0;
       for (const s of Object.values(allTime)) {
@@ -471,6 +471,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
         totals.loaded += s.loaded;
         totals.claimed += s.claimed;
         totals.actual += s.actual;
+        totals.reloads += s.reloads;
         if (s.epoch === "delivered") suggestedDelivered += s.suggested;
         else suggestedMixed += s.suggested;
       }

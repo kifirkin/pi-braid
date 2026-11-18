@@ -108,7 +108,17 @@
  *      and never within that window of a suggestion or a SKILL.md read). The
  *      rule and its bounds live in loading-guidance.ts beside the floor text
  *      the line points at; this module only wires them to tool results.
- *  11. At-use inform (`braid.skills.inform`, default off): a COMPLETED call in
+ *  11. Compaction reload line: a body that arrived this session (a detected
+ *      read, or a whisper delivery that carried it whole) is remembered with
+ *      the file it came from. A compaction asks, per skill, whether the model's
+ *      active context still carries that body; one that does not gets a single
+ *      steer line naming the skill and its file, once per skill per session,
+ *      and moves the durable `reloads` counter. Both refusals are deliberate:
+ *      a body still in context says nothing, and a body already named is not
+ *      named again, because a second compaction that finds the same gap
+ *      describes the same loss. The check reads the projection pi hands the
+ *      model, so an offloaded or summarized-away result counts as gone.
+ *  12. At-use inform (`braid.skills.inform`, default off): a COMPLETED call in
  *      a family a visible skill's file declares with `governs:` and no read of
  *      that body on the session record gets one steer line naming the file and
  *      the obligation. Once per session per skill, suppressed by the same
@@ -129,7 +139,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { createLogger } from "../../../lib/core/logger.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { getExtensionState } from "../../../lib/state/extension-state.js";
@@ -377,6 +387,8 @@ interface AutoInjectState {
   applicability: ApplicabilityState;
   /** What the session did with each skill body it met (see ObligationState). */
   obligations: ObligationState;
+  /** Bodies that reached the transcript, and which of them were re-announced. */
+  reload: ReloadState;
   /**
    * Skills whose body the whisper already delivered first-class this session.
    * The same answer obligations.legs gives for the read leg: a body that
@@ -395,6 +407,24 @@ interface AutoInjectState {
    * missing the catalog would be told the same thing every turn.
    */
   notices: Set<string>;
+}
+
+/**
+ * The session's body bookkeeping for the compaction check.
+ *
+ * `landed` is the population the check judges: every skill whose body text
+ * reached the transcript, with the file that text came from (the read tool's
+ * own path, or the catalogue entry the whisper delivered). `announced` is the
+ * one-line budget: a skill named at a compaction is not named again, because
+ * the second compaction reports the same absence.
+ */
+interface ReloadState {
+  landed: Map<string, string>;
+  announced: Set<string>;
+}
+
+function initialReload(): ReloadState {
+  return { landed: new Map(), announced: new Set() };
 }
 
 /**
@@ -448,6 +478,7 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     drift: initialDrift(),
     applicability: initialApplicability(),
     obligations: initialObligations(),
+    reload: initialReload(),
     fullBodies: new Set<string>(),
     notices: new Set<string>(),
   }));
@@ -1391,6 +1422,14 @@ export interface SkillStats {
   actual: number;
   /** Whispers that carried this skill's body first-class (whole or capped). */
   fullBody: number;
+  /** Bodies of this skill a compaction took out of the transcript (see stepCompactionReload). */
+  reloads: number;
+}
+
+/** A zeroed session counter row: one literal, so a new counter cannot land in
+ *  one write path and be missed in another. */
+function emptySkillStats(): SkillStats {
+  return { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0, reloads: 0 };
 }
 
 const STATS_KEY = "skills-usage-stats";
@@ -1409,7 +1448,7 @@ export function getSkillStats(ctx: ExtensionContext): Record<string, SkillStats>
 export function recordSkillSuggestion(ctx: ExtensionContext, names: string[]): void {
   const stats = getStats(ctx);
   for (const name of names) {
-    const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
+    const s = (stats[name] ??= emptySkillStats());
     s.suggested++;
     recordDurable(name, "suggested");
   }
@@ -1424,7 +1463,7 @@ export function recordSkillSuggestion(ctx: ExtensionContext, names: string[]): v
 export function recordSkillLoad(ctx: ExtensionContext, name: string): void {
   if (!name) return;
   const stats = getStats(ctx);
-  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
+  const s = (stats[name] ??= emptySkillStats());
   s.loaded++;
   s.actual++;
   recordDurable(name, "actual");
@@ -1440,7 +1479,7 @@ export function recordSkillLoad(ctx: ExtensionContext, name: string): void {
 export function recordSkillClaim(ctx: ExtensionContext, name: string): void {
   if (!name) return;
   const stats = getStats(ctx);
-  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
+  const s = (stats[name] ??= emptySkillStats());
   s.loaded++;
   s.claimed++;
   recordDurable(name, "claim");
@@ -1459,9 +1498,25 @@ export function recordSkillClaim(ctx: ExtensionContext, name: string): void {
 export function recordSkillFullDelivery(ctx: ExtensionContext, name: string): void {
   if (!name) return;
   const stats = getStats(ctx);
-  const s = (stats[name] ??= { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0 });
+  const s = (stats[name] ??= emptySkillStats());
   s.fullBody++;
   recordDurable(name, "fullBody");
+}
+
+/**
+ * Record a reload line: the session had this skill's body, and a compaction
+ * left it out of the context the model now reads.
+ *
+ * The counter is the store's answer to "how often does this house lose a body
+ * it read" without opening a transcript, so it moves only where the line did:
+ * a suppressed send counts nothing and tells the agent nothing.
+ */
+export function recordSkillReload(ctx: ExtensionContext, name: string): void {
+  if (!name) return;
+  const stats = getStats(ctx);
+  const s = (stats[name] ??= emptySkillStats());
+  s.reloads++;
+  recordDurable(name, "reload");
 }
 
 // Durable adoption counters (cross-session)
@@ -1496,6 +1551,8 @@ export interface DurableSkillStats {
   actual: number;
   /** All-time count of first-class body deliveries (see recordSkillFullDelivery). */
   fullBody: number;
+  /** All-time count of reload lines: bodies a compaction took out of the transcript. */
+  reloads: number;
   /** ISO timestamp of the most recent recorded event. */
   lastAt: string;
   /** Which counting regime `suggested` mixes (see SuggestedEpoch). */
@@ -1521,12 +1578,16 @@ function normalizeDurableEntry(raw: unknown): DurableSkillStats | undefined {
   // Rows written before the body tier carry no fullBody: the count starts at
   // zero for them, the same way a legacy row's claimed starts at zero.
   const fullBody = typeof r.fullBody === "number" && Number.isFinite(r.fullBody) ? r.fullBody : 0;
+  // Rows written before the reload line carry no reloads, and none of their
+  // bodies was ever announced: zero is the count, not a missing value.
+  const reloads = typeof r.reloads === "number" && Number.isFinite(r.reloads) ? r.reloads : 0;
   return {
     suggested,
     loaded,
     claimed,
     actual,
     fullBody,
+    reloads,
     lastAt: typeof r.lastAt === "string" ? r.lastAt : "",
     // Rows without an epoch predate the split: their `suggested` may mix
     // pre-delivery-regime increments with delivered ones.
@@ -1593,7 +1654,10 @@ function reportDurableFailure(action: string, err: unknown): void {
 }
 
 /** Record one durable event and flush to disk (best-effort). */
-function recordDurable(name: string, kind: "suggested" | "claim" | "actual" | "fullBody"): void {
+function recordDurable(
+  name: string,
+  kind: "suggested" | "claim" | "actual" | "fullBody" | "reload",
+): void {
   try {
     const store = getDurableStore();
     const entry = (store[name] ??= {
@@ -1602,6 +1666,7 @@ function recordDurable(name: string, kind: "suggested" | "claim" | "actual" | "f
       claimed: 0,
       actual: 0,
       fullBody: 0,
+      reloads: 0,
       lastAt: "",
       epoch: "delivered",
     });
@@ -1609,6 +1674,8 @@ function recordDurable(name: string, kind: "suggested" | "claim" | "actual" | "f
       entry.suggested++;
     } else if (kind === "fullBody") {
       entry.fullBody++;
+    } else if (kind === "reload") {
+      entry.reloads++;
     } else {
       entry.loaded++;
       if (kind === "claim") entry.claimed++;
@@ -1708,6 +1775,162 @@ export function resolveDiscoveryMode(ctx: ExtensionContext): DiscoveryState {
     }
   }
   return state;
+}
+
+// Compaction reload line (a body that left the transcript)
+
+/**
+ * Characters of a skill body that identify it in the transcript.
+ *
+ * A whole-file read and a first-class body delivery both start at the body's
+ * first character after the frontmatter, so the head is present exactly when
+ * the body is. Longer buys nothing: a compaction summary never quotes a hundred
+ * characters of a skill verbatim, so the needle does not need to outrun a
+ * paraphrase, and a shorter one starts matching a single heading that can
+ * survive on its own.
+ */
+export const RELOAD_SIGNATURE_CHARS = 120;
+
+/**
+ * Shortest head that may sign a body. Below it the needle is a handful of
+ * words that any text about the skill could carry, so the skill is treated as
+ * present: a line that can be wrong is worse than a line that is not sent.
+ */
+const RELOAD_SIGNATURE_MIN_CHARS = 40;
+
+/** The body head the active context carries while the body is present. */
+export function bodySignature(body: string): string {
+  return body.replace(/\s+/g, " ").trim().slice(0, RELOAD_SIGNATURE_CHARS);
+}
+
+/**
+ * The steer line that names a body the compaction took away. One line: it is
+ * read beside whatever the agent is already doing, and its two facts (which
+ * skill, which file) are the whole of what a reload needs.
+ */
+export function formatReloadPayload(name: string, filePath: string): string {
+  return (
+    `[SKILL RELOAD] skill "${name}" arrived earlier this session and its body is gone from the ` +
+    `transcript after compaction; read \`${filePath}\` again before acting on it.`
+  );
+}
+
+/** The text blocks of one message, joined. Non-text blocks carry no body text. */
+function messageText(message: unknown): string {
+  const content = (message as { content?: unknown })?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => (part as { text?: unknown })?.text)
+    .filter((text): text is string => typeof text === "string")
+    .join("\n");
+}
+
+/**
+ * The model's active context as one whitespace-flattened string, or undefined
+ * when the session manager cannot answer.
+ *
+ * The projection is the list pi hands the model: summarized entries are gone
+ * and context edits are applied, so a tool result an offload rewrote into a
+ * pointer reads here as the pointer it now is. The raw entry list would answer
+ * the wrong question: it keeps every entry a compaction summarized away, so
+ * every body would still look present.
+ */
+function activeContextText(ctx: ExtensionContext): string | undefined {
+  try {
+    const sm = ctx.sessionManager as
+      | { buildSessionProjection?: () => { messages?: unknown[] } }
+      | undefined;
+    const projection = sm?.buildSessionProjection?.();
+    if (!projection || !Array.isArray(projection.messages)) return undefined;
+    return projection.messages.map(messageText).join("\n").replace(/\s+/g, " ");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Remember a body that reached the transcript, with the file it came from, so
+ * the compaction check can ask which of them are still there.
+ *
+ * The path is the one the load actually used (the read tool's own argument,
+ * resolved the way the tool resolved it), never reconstructed from the skill
+ * name: a renamed skill still points at the file whose text the session saw.
+ */
+function noteBodyLanded(
+  ctx: ExtensionContext,
+  state: AutoInjectState,
+  name: string | undefined,
+  filePath: string | undefined,
+): void {
+  if (!name || !filePath) return;
+  try {
+    state.reload.landed.set(name, resolve(ctx.cwd ?? process.cwd(), filePath));
+  } catch {
+    // best-effort: a path that cannot be resolved names no body to check
+  }
+}
+
+/**
+ * One line per body the compaction took away, once per skill per session.
+ *
+ * The population is the session's landed bodies, each checked against the
+ * active context by its own head. Three refusals, each for its own reason: a
+ * skill that landed no body has nothing to lose; a body still in context needs
+ * no line; a skill already named is not named again, because a second
+ * compaction that finds the same body absent describes the same loss.
+ *
+ * The line and the counter move together and only on an accepted send, so the
+ * store never claims a reload the agent was not told about.
+ */
+function stepCompactionReload(pi: ExtensionAPI, ctx: ExtensionContext): void {
+  const state = getState(ctx);
+  if (!state.reload.landed.size) return;
+  const context = activeContextText(ctx);
+  if (context === undefined) {
+    log.debug("[skills-auto-inject] reload check skipped: the session projection is unreadable");
+    return;
+  }
+  for (const [name, filePath] of state.reload.landed) {
+    if (state.reload.announced.has(name)) continue;
+    let body: string;
+    try {
+      body = stripSkillFrontmatter(readFileSync(filePath, "utf-8"));
+    } catch {
+      continue; // the file is gone: there is no body to send the agent back to
+    }
+    const signature = bodySignature(body);
+    if (signature.length < RELOAD_SIGNATURE_MIN_CHARS) continue;
+    if (context.includes(signature)) continue;
+    const delivered = sendTrackedMessage(
+      pi,
+      {
+        customType: "skills-reload",
+        content: [{ type: "text" as const, text: formatReloadPayload(name, filePath) }],
+        display: true,
+        details: {
+          [BRAID_INJECTED]: true,
+          [BRAID_SOURCE]: "skills-auto-inject",
+          skill: name,
+        },
+      },
+      { delivery: "park", deliverAs: "steer" },
+      { type: "context", source: "skills-auto-inject" },
+      // The session guard is the bound (one line per skill), and the line is
+      // for the run that follows this compaction: a per-turn cap must not drop
+      // it there.
+      { bypassFloodCap: true },
+    );
+    if (!delivered) {
+      log.debug(
+        `[skills-auto-inject] reload line for "${name}" suppressed before delivery; not counted`,
+      );
+      continue;
+    }
+    state.reload.announced.add(name);
+    recordSkillReload(ctx, name);
+    log.info(`[skills-auto-inject] reload line for "${name}" after a compaction left its body out`);
+  }
 }
 
 // Applicability verdict (recorded, never enforced)
@@ -1912,6 +2135,9 @@ function detectSkillLoad(
   const held = state.injected.find((i) => i.name === name && i.loadedTurn === undefined);
   if (held) held.loadedTurn = state.currentTurn;
   recordSkillLoad(ctx, name);
+  // The body is in the transcript now; the compaction check is what notices
+  // when it is not.
+  noteBodyLanded(ctx, state, name, ev.input?.path);
   // The load counters say a read happened; this says whether the session was
   // one where the skill applied. Independent writes, independent failures.
   markApplicabilityRead(ctx, state, name);
@@ -2143,6 +2369,10 @@ export function registerAutoInject(pi: ExtensionAPI): void {
           ? ((event as { reason: string }).reason as string)
           : undefined;
       state.pendingCatalogCheck = true;
+      // A second reader of the same event: the discovery record asks what the
+      // rebuilt system prompt carries, and this one asks which bodies it left
+      // behind. The transcript is already compacted when the event lands.
+      stepCompactionReload(pi, ctx);
     } catch {
       // best-effort
     }
@@ -2374,6 +2604,7 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       // so the next match of the same skill is a pointer.
       if (content.body) {
         state.fullBodies.add(content.body.name);
+        noteBodyLanded(ctx, state, content.body.name, pick.skill.filePath);
         recordSkillFullDelivery(ctx, content.body.name);
       }
     } catch (err) {
