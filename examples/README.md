@@ -10,6 +10,7 @@ Copy-ready configuration for pi-braid. Every key and variable in these files is 
 | [`.env.example`](.env.example)                                 | Environment variables: Venice provider keys with the key ring, Telegram channel credentials, the loader's `BRAID_MODULES` override.                                                                                                                              |
 | [`session-profiles.config.json`](session-profiles.config.json) | Cwd-routed session profiles for `~/.pi/agent/braid/config.json`: per-directory profile names and one-shot first-turn hints.                                                                                                                                      |
 | [`minimal-extension/`](minimal-extension)                      | Smallest possible pi extension - one `hello` tool, mirroring the shape of a braid contrib module.                                                                                                                                                                |
+| [`bash-run-rewrite/`](bash-run-rewrite)                        | A pi extension that replaces `bash`: a command that is one program and plain words executes as `run` (argv, no shell), and every other command runs through pi's bash definition untouched.                                                                      |
 
 ## Where each file goes
 
