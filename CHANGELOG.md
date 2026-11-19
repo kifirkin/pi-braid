@@ -53,6 +53,88 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.45.12: relevance is a judgement call, and the turn end leaves nothing unwatched (2026-11-19)
+
+The suggestion whisper decided relevance by testing authored trigger phrases as word-bounded occurrences in
+the prompt. The repository's 34 skill files declare 210 phrases and all 210 are ASCII, which `awk '/^triggers:/{t=1;next} t&&/^  - /{n++; if ($0 ~ /[^ -~]/) bad++} t&&!/^  - /{t=0} END{print n" phrases, "bad+0" non-ASCII"}' $(git ls-files '*SKILL.md')` prints as `210 phrases, 0 non-ASCII`; a task written in Cyrillic could match none of them by construction. `307485a` deletes the matcher and asks the utility model the house already keeps for small judgement calls (`skills-tool/ranker.ts`): the prompt cut at `RANKER_PROMPT_CHARS`, the catalog as `name - first sentence` rows, at most `RANKER_LIMIT` `{name, why}` entries parsed strictly against the catalog, so an unknown name yields no suggestion rather than a repaired one. Cost sets the shape, because the call sits in front of the turn it informs: one call per turn at most, none under `RANKER_MIN_PROMPT_CHARS`, a repeated prompt answered from the session cache, `RANKER_TIMEOUT_MS` with no retry ladder behind it. A missing model, a transport error, a timeout or an unparseable answer yields silence, one recorded reason and a `rankedFailed` count, and no phrase fallback survives anywhere in the path. `skill_stats` reports `ranker {ranked, rankedCached, rankedFailed, lastFailure}`. Deleted with the matcher: `applicability.ts`, the best-match claim, the closest-rows notice and the whisper's keyword scoring; the deterministic scorer stays, read by `list_skills` alone. The four bounds are `grep -nE 'RANKER_(PROMPT_CHARS|MIN_PROMPT_CHARS|LIMIT|TIMEOUT_MS) =' packages/core/src/extensions/core/skills-tool/ranker.ts`, and the legs in `node --test packages/core/test/runtime/core/test-skill-ranker.mjs` are the contract.
+
+A dispatched worker was watched by a timer the seat armed by hand after the dispatch, so a turn that ended
+on the dispatch armed nothing. `f07f9d5` takes the arm at `turn_end`, where the state it acts on (a session
+settling with a live worker no pending timer names) first becomes true: one timer, tagged
+`orchestrator-babysit`, whose reason names every uncovered worker, `SETTLE_ARM_DEFAULTS` giving the first
+fire and the recurrence, and `broker.orchestrator {settleArm, settleDelayMs, settleIntervalMs}` overriding
+them field by field. A fleet with no live row withdraws the babysit timers instead of arming another, and a
+throw inside the handler is a log line, never a broken turn.
+`grep -nA4 'const SETTLE_ARM_DEFAULTS' packages/core/src/extensions/orchestrator/index.ts` prints the two
+delays.
+
+The same commit ends the pane a closed worker's row names, after the row is closed, so a refused close
+never touches a pane. herdr is asked for the pane's state before it is closed: a pane it reports `working`
+or `blocked` is left running, this process's own pane is out of reach, a pane holding a different agent
+session than the row records is refused with both paths named, a pane that is already gone counts as
+cleared, and a herdr that cannot answer costs a line in the close report rather than the close.
+`node --test packages/core/test/runtime/orchestrator/test-close-worker-closes-pane.mjs` carries one leg per
+way the act could be wrong, and
+`node --test packages/core/test/runtime/orchestrator/test-settle-arms-babysit-timer.mjs` holds the arm.
+
+## Core 0.45.11: the commit chain stops reading the ledger, and a compaction names the body it dropped (2026-11-19)
+
+The release ledger refuses a recorded version whose packed content has moved, and only a version bump
+satisfies it, so `release:content:check` as a `ci:check` leg reddened every commit that touched shipped
+content until a release happened. `58a653b` removes that leg from the chain: `node -p "require('./package.json').scripts['ci:check']" | grep -c release:content` prints `0`. The gate itself is unchanged and stays on the release path: `release:content:check` and `release:content:recorded` remain defined, `check-ci-chain.mjs` still holds every `check:*` entry to a command that runs on every commit, and the publish workflow still runs `--check --require-recorded` per workspace before its registry read. The version bump is the seat's act at merge, and a worker cannot make it.
+
+The catalog survives a compaction; a `SKILL.md` body does not. A body read at the start of a session is
+summarized or offloaded away, and the counters kept saying `loaded` while the text was gone. `00b059d`
+remembers every body that reached the transcript (a detected read, or a whisper that carried it whole) with
+the file it came from, and at a compaction asks, per skill, whether the model's active context still
+carries that body. The presence check reads pi's session projection (`buildSessionProjection()`) rather
+than the raw entry list, because the raw list keeps every entry a compaction summarized away and would
+find every body present. A body that is gone gets one steer line naming the skill and its file, once per
+skill per session, and moves a durable `reloads` counter that `skill_stats` reports per skill and in its
+totals. A body still in context says nothing, a second compaction reporting the same absence says nothing,
+and a send the injection path suppresses counts nothing.
+`node --test packages/core/test/runtime/core/test-skill-reload-after-compaction.mjs` holds the legs,
+including the one that reads the counter back from the usage store in a fresh process.
+
+## Core 0.45.10: one tick, one whisper envelope (2026-11-18)
+
+A tick evaluates the policy set once, and every propose action it returned called `queueProposal`, which
+appended its own custom message. The token ladder raises soft and advisory together, and the density
+signals raise a decision count beside a duplicate count, so the same observation reached the agent as
+separate envelopes milliseconds apart against ordinary advisories minutes to hours apart. `7acf021`
+separates admission from delivery. Admission still decides per proposal, with the real-need gate, the
+same-class dedupe and the per-turn caps, and collects what it admits; one `emitTickProposals` call per tick
+renders that collection into one body behind one envelope and one end marker, so a resumed session replays
+one entry for the one situation the tick observed. The lead clause is the highest-priority proposal whole,
+and later clauses keep their own action and figure; past `PROPOSAL_MERGE_BUDGET_CHARS` the lead still ships
+whole and the tail degrades to the action it would have demanded, so a clause loses detail and never its
+proposal. A one-proposal tick renders byte-identically to the pre-merge body. The stored record keeps one
+proposal shape: the lead owns the details, the siblings ride in `merged_proposals`, the dedupe map seeds
+from them on replay, the outcome pass closes them with the lead, and rejecting the body declines every
+class it named. `grep -nE 'MAX_PROPOSALS_PER_TURN = |PROPOSAL_MERGE_BUDGET_CHARS =' packages/core/src/extensions/memory/context-lifecycle/index.ts` prints both bounds, and `node --test packages/core/test/runtime/lib/test-context-lifecycle-tick-merge.mjs` fails if two envelopes leave a tick.
+
+## Core 0.45.9: the advisory counts what it observes, and the notice has an action behind it (2026-11-18)
+
+The context-lifecycle advisory fired on turn count and asserted intent: the counter behind a message that
+said navigation proposals were ignored was turns since a context-management tool, so turns of reading,
+testing or writing code were tallied as non-compliance. `f13eb4b` makes the counter count what it counts.
+Escalation is tallied only at or above the act arm, `USAGE_TOKENS_CRITICAL()`, where the advisory stops
+being optional; below the arm the light advisory repeats at most once per
+`CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS` and nothing is tallied as a refusal, while the auto-tag that
+fires with it runs either way. The escalation message states the observation, names the two calls that
+reset the count (`context_compress(action="archive")` and `context_navigate(action="checkout", target=...)`)
+and says that either one does.
+
+The rotation notice had the same shape and no action behind it: it fired on turn count alone and offered
+`finalize()`, which ends the session, first. Turn count alone no longer fires it; past
+`MAX_TURNS_SINCE_ROTATION` the session file also has to be above `ROTATION_TURNS_MIN_SIZE_BYTES`, which
+`grep -nE 'MAX_TURNS_SINCE_ROTATION =|ROTATION_TURNS_MIN_SIZE_BYTES =|MAX_SESSION_SIZE_BYTES =' packages/core/src/extensions/memory/context-manager/handlers/rotation.ts` prints as the turn bound, the size floor and the ceiling it is a tenth of. The offered actions are now `context_compress(action="archive")`, then `memory_store`, then `finalize()`.
+
+Advisory strings name only instruments the agent can call. Cold tools are registered deferred, so "inspect
+with `context_inspect`" asks for a call that needs `tool_search` first; every compress advisory that names
+the tool carries that path in the same message, and the structured `nextStep` hints that named it bare are
+gone. The arm is `grep -nE 'CONTEXT_LIFECYCLE_ADVISORY_REPEAT_TURNS =' packages/core/src/lib/detection/context-thresholds.ts` beside `grep -nE 'ACT_ARM_TOKEN_CEILING =' packages/core/src/lib/detection/context-usage.ts`. `node --test packages/core/test/runtime/lib/test-context-lifecycle-advisory-arm.mjs` holds the arm gate and the pacing window against the real handler set, `test-rotation-notice-actions.mjs` beside it holds the notice's trigger and action order against a real session file, and `test-context-advisory-reachability.mjs` derives its cold set from the tool declarations rather than restating it.
+
 ## Contrib — 0.1.4 (2026-11-04: the cold rehearsal measures what it boots)
 
 - **The spawn is timed where it happens.** It sat outside the timed check, so a
