@@ -138,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 139 of the core suite's 379 fixtures already use `node:test` - so the
+file uses - 142 of the core suite's 382 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -169,6 +169,46 @@ names its own cases and sets the exit code). A declared module must be none of
 those, because a declaration that names a real fixture keeps a test out of the
 run. A new helper therefore fails the gate until it is declared, and a declared
 helper that grows a case fails it until it is taken back into the count.
+
+### One suite at a time
+
+The runner takes the repository's suite lock before it starts a file, so a second
+full suite waits for the first and then refuses instead of running beside it.
+The lock is one file, `<git-common-dir>/pi-braid/suite.lock`, shared by every
+worktree of the checkout - two worktrees of one repository contend for the same
+file - and its record carries the holding pid, host, start time, command line,
+working directory and git revision. `lib/suite-lock.mjs` holds the policy.
+
+A run that finds the lock held prints the holder's fields and gives up after
+`PI_SUITE_LOCK_WAIT_MS` (30s by default); `PI_SUITE_LOCK_MODE=refuse` refuses at
+once, and a refusal exits 75 with the same fields plus the command that opens the
+file. A lock whose pid is gone, or whose age is past
+`PI_SUITE_LOCK_CEILING_MS` (2h by default), is reclaimed with a line saying which
+rule fired; a lock taken on another host is never reclaimed, it is reported. The
+lock is released on exit, on a failing file, on a thrown error and on
+SIGINT/SIGTERM, so a crashed run does not wedge the checkout - and a SIGKILL,
+which no hook can catch, is what the reclaim rule is for.
+
+`npm test -w packages/core` reaches the same lock through the runner: the
+workspace's test script is `node scripts/run-tests.mjs --build`, and `--build`
+runs `npm run build` after the lock is taken, because the build begins with
+`rm -rf dist` and a second suite's clean would delete the dist a live suite's
+fixtures import. To see what is holding it:
+
+```bash
+# who holds it: pid, host, start, command line, cwd, revision
+cat "$(git rev-parse --git-common-dir)/pi-braid/suite.lock"
+# queue for the holder instead of giving up at the default bound
+PI_SUITE_LOCK_WAIT_MS=600000 npm test
+```
+
+A lock left behind by a SIGKILL needs no hand: the next run reclaims it by the
+dead-pid rule. A lock from another host is the one case a person releases.
+
+A run inside the holder - a fixture that spawns the runner over a bench - is not
+contention: it inherits `PI_SUITE_LOCK_TOKEN` and proceeds. `PI_TEST_ROOT` runs a
+bench tree rather than the suite and takes no lock at all. `PI_SUITE_LOCK_FILE`
+points the device at another file, which is how the tests exercise it.
 
 ## Two install modes
 

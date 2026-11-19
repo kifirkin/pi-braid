@@ -32,7 +32,7 @@
       "claim": "the loader fixture's child drivers, as its runner allowance reason states them",
       "stated": {
         "file": "scripts/run-tests.mjs",
-        "line": 177,
+        "line": 195,
         "pattern": "(\\w+) child drivers"
       },
       "derived": {
@@ -45,7 +45,7 @@
       "claim": "how many of those drivers run at a time, as the same reason states it",
       "stated": {
         "file": "scripts/run-tests.mjs",
-        "line": 177,
+        "line": 195,
         "pattern": "drivers, (\\S+) at a time"
       },
       "derived": {

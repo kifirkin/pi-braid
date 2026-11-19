@@ -59,6 +59,22 @@
  *     Relative paths are resolved from the working directory; the child is
  *     spawned with an absolute path either way.
  *
+ * One suite at a time:
+ *   - the run takes the repository's suite lock before it starts a file, so a
+ *     second suite waits for this one and then refuses instead of running
+ *     beside it (see lib/suite-lock.mjs for the record, the policy and the
+ *     knobs). A refusal exits 75 and names the holder; a lock whose pid is gone
+ *     or whose age is past the ceiling is reclaimed with a line saying which
+ *   - the lock covers the build too: `--build` runs `npm run build` after the
+ *     lock is taken, because the workspace's own `npm test` builds before it
+ *     tests and the build's `rm -rf dist` would otherwise delete a live suite's
+ *     dist out from under it
+ *   - the same run spawned by one of this run's own fixtures is inside the
+ *     suite rather than beside it: it inherits the holder's token and does not
+ *     contend. PI_TEST_ROOT is a bench, not the suite, and takes no lock
+ *   - `--list` runs nothing, so it takes no lock: the population gates read it
+ *     while a suite is live
+ *
  * Population:
  *   - the walk counts every `.mjs` it finds as a passed fixture, so a module
  *     that registers no case and asserts nothing is a pass that cannot fail.
@@ -73,6 +89,8 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { availableParallelism, tmpdir } from "node:os";
 import { resolve, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { acquireSuiteLock, SuiteLockBusy, REFUSED_EXIT_CODE } from "./lib/suite-lock.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -635,6 +653,59 @@ for (const [signal, code] of [
     console.log(`\n  ${signal}: killed ${live.length} running file group${live.length === 1 ? "" : "s"}`);
     process.exit(code);
   });
+}
+
+/**
+ * The workspace's `npm test` builds inside the lock, and `--build` is what
+ * routes it there: this script is the entrance, so the lock has to be taken
+ * before the command that would otherwise run beside another suite. A bench has
+ * no build, which is why the default is still "run the files".
+ *
+ * The child gets its own process group so the signal path above reaps it like a
+ * file's group: a signal that killed the runner mid-build must not leave tsc
+ * writing into `dist` with nobody waiting for it.
+ */
+async function buildBeforeSuite() {
+  const child = spawn("npm", ["run", "build"], { cwd: root, stdio: "inherit", detached: true });
+  if (typeof child.pid === "number") liveGroups.add(child.pid);
+  const status = await new Promise((settle) => {
+    child.on("error", () => settle(null));
+    child.on("close", (code, signal) => settle(code ?? (signal ? 1 : 0)));
+  });
+  if (typeof child.pid === "number") liveGroups.delete(child.pid);
+  return status;
+}
+
+/**
+ * Take the repository's suite lock, or say why this run does not need one.
+ *
+ * A bench is not the suite: PI_TEST_ROOT runs a different tree, usually from
+ * inside a fixture of the suite that is already holding the lock, and the two
+ * cases that reach this line are "a child of the holder" and "a tree with no
+ * repository", which the lock module answers itself.
+ */
+async function takeSuiteLock() {
+  if (process.env.PI_TEST_ROOT) {
+    console.log(`  Suite lock: none taken - PI_TEST_ROOT runs a bench tree (${testDir}), not the suite`);
+    return null;
+  }
+  return acquireSuiteLock({ root, log: (line) => console.log(line) });
+}
+
+try {
+  await takeSuiteLock();
+} catch (error) {
+  if (!(error instanceof SuiteLockBusy)) throw error;
+  console.error(error.message);
+  process.exit(error.exitCode ?? REFUSED_EXIT_CODE);
+}
+
+if (flagOn("build")) {
+  const status = await buildBeforeSuite();
+  if (status !== 0) {
+    console.error(`\n  The build failed (${status ?? "spawn failed"}), so the suite did not run.`);
+    process.exit(status ?? 1);
+  }
 }
 
 console.log(

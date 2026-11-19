@@ -111,10 +111,17 @@ function makeBench() {
   const core = join(dir, "packages", "core");
   const tree = join(core, "test", "runtime");
   mkdirSync(join(core, "scripts"), { recursive: true });
+  mkdirSync(join(core, "scripts", "lib"), { recursive: true });
   mkdirSync(tree, { recursive: true });
   for (const name of ["run-tests.mjs", "check-suite-coverage.mjs"]) {
     writeFileSync(join(core, "scripts", name), readFileSync(join(scriptsDir, name), "utf-8"));
   }
+  // The runner imports its lock module from its own directory: a bench that
+  // copies the runner copies what the runner loads.
+  writeFileSync(
+    join(core, "scripts", "lib", "suite-lock.mjs"),
+    readFileSync(join(scriptsDir, "lib", "suite-lock.mjs"), "utf-8"),
+  );
   symlinkSync(join(repoRoot, "node_modules"), join(dir, "node_modules"), "dir");
   writeFileSync(
     join(dir, "package.json"),

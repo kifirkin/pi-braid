@@ -71,9 +71,15 @@ try {
   const benchScripts = join(bench, "scripts");
   const benchTests = join(bench, "test", "runtime");
   mkdirSync(benchTmp, { recursive: true });
-  mkdirSync(benchScripts, { recursive: true });
+  mkdirSync(join(benchScripts, "lib"), { recursive: true });
   mkdirSync(benchTests, { recursive: true });
   writeFileSync(join(benchScripts, "run-tests.mjs"), readFileSync(scriptUnderTest, "utf-8"));
+  // The runner imports its lock module from its own directory, so a copy of the
+  // runner is only a copy of the runner once that module sits beside it.
+  writeFileSync(
+    join(benchScripts, "lib", "suite-lock.mjs"),
+    readFileSync(join(dirname(scriptUnderTest), "lib", "suite-lock.mjs"), "utf-8"),
+  );
   writeFileSync(join(benchTests, "tmpdir-leak-probe.mjs"), PROBE);
   assertFixtureParses(join(benchScripts, "run-tests.mjs"));
   assertFixtureParses(join(benchTests, "tmpdir-leak-probe.mjs"));
