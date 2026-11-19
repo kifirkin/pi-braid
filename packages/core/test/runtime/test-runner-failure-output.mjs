@@ -46,13 +46,19 @@ function check(name, fn) {
 /**
  * A bench package: the runner under test, plus the files it will walk. The
  * runner resolves its tree from its own location, so copying it into
- * `<bench>/scripts` is what makes the bench the suite it runs.
+ * `<bench>/scripts` is what makes the bench the suite it runs. The module the
+ * runner imports from beside itself is copied with it: a bench that copies the
+ * runner copies what the runner loads, or the copy does not load at all.
  */
 function bench(files) {
   const dir = mkdtempSync(join(tmpdir(), "runner-failure-output-"));
-  mkdirSync(join(dir, "scripts"), { recursive: true });
+  mkdirSync(join(dir, "scripts/lib"), { recursive: true });
   mkdirSync(join(dir, "test/runtime"), { recursive: true });
   writeFileSync(join(dir, "scripts/run-tests.mjs"), readFileSync(RUNNER, "utf8"));
+  writeFileSync(
+    join(dir, "scripts/lib/suite-lock.mjs"),
+    readFileSync(resolve(dirname(RUNNER), "lib/suite-lock.mjs"), "utf8"),
+  );
   for (const [name, source] of Object.entries(files)) {
     writeFileSync(join(dir, "test/runtime", name), source);
   }
