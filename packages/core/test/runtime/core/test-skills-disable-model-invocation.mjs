@@ -21,12 +21,23 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installRanker, rankerRegistry } from "../../helpers/skill-ranker-stub.mjs";
 
 const FAKE_HOME = mkdtempSync(join(tmpdir(), "skills-flag-pin-"));
 process.env.HOME = FAKE_HOME;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
+
+// The whisper asks the utility model which skills apply. The stub is the model,
+// and it answers from the visible catalog the way a real one does: a flagged
+// skill is not in the rows it was given, so it cannot be named.
+await installRanker(join(ROOT, "dist"), (prompt) => {
+  if (prompt.includes("alpha-topic")) {
+    return [{ name: "alpha-topic", why: "the task names alpha-topic's own subject" }];
+  }
+  return [];
+});
 
 const skillsToolModule = await import(
   join(ROOT, "dist", "extensions", "core", "skills-tool", "index.js")
@@ -125,9 +136,10 @@ await test("auto-inject never suggests a flagged skill", async () => {
       getSessionId: () => "flag-pin-session",
       getSessionFile: () => join(FAKE_HOME, "sessions", "flag-pin-session.jsonl"),
     },
+    modelRegistry: rankerRegistry(),
   };
   await pi.handlers["before_agent_start"](
-    { prompt: "hidden-topic alpha-topic work", systemPromptOptions: { skills: [] } },
+    { prompt: "hidden-topic alpha-topic work, then continue the same task", systemPromptOptions: { skills: [] } },
     ctx,
   );
 

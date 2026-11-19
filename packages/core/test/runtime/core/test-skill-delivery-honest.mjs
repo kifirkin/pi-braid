@@ -35,12 +35,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installRanker, rankerRegistry } from "../../helpers/skill-ranker-stub.mjs";
 
 const FAKE_HOME = mkdtempSync(join(tmpdir(), "skill-delivery-"));
 process.env.HOME = FAKE_HOME;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
+const DIST = join(ROOT, "dist");
+
+// The whisper asks the utility model which skills apply. The stub is the model;
+// the ranker code path (prompt, parse, cache, counters) runs for real.
+await installRanker(DIST, () => [{ name: "pane-topology", why: "the task works a pane" }]);
 
 const { registerAutoInject, getSkillStats, formatWhisper } = await import(
   join(ROOT, "dist", "extensions", "core", "skills-tool", "auto-inject.js")
@@ -122,6 +128,7 @@ function fakePi() {
 const ctxFor = (sessionId) => ({
   sessionManager: { getSessionId: () => sessionId },
   cwd: join(FAKE_HOME, "ws"),
+  modelRegistry: rankerRegistry(),
 });
 
 /** Open a turn with fresh cross-call (reprime) state, as session.prompt() does. */

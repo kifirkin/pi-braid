@@ -46,8 +46,9 @@ const DIST = join(CORE, "dist", "extensions", "core", "skills-tool");
 const {
   extractKeywords,
   matchSkill,
-  selectSuggestions,
+  compareScored,
   corpusKeywordFrequency,
+  MAX_INJECTED,
 } = await import(join(DIST, "auto-inject.js"));
 const { readSkillTriggers } = await import(join(DIST, "skill-triggers.js"));
 
@@ -98,14 +99,17 @@ const byName = new Map(skills.map((s) => [s.name, s]));
 const DESIGN_SKILLS = ["visual-creator", "visual-validator", "design-system", "landing-page"];
 const DESIGN = new Set(DESIGN_SKILLS);
 
-/** Run one prompt through the production path: extract → score → select top 2. */
+/** Run one prompt through the production path: extract → score → order, top 2. */
 function rank(prompt, catalog = skills) {
   const keywords = extractKeywords(prompt);
   const df = corpusKeywordFrequency(keywords, catalog);
   const scored = catalog
     .map((s) => ({ skill: s, ...matchSkill(s, keywords, prompt, df) }))
     .filter((s) => s.score > 0);
-  return selectSuggestions(scored, [], 1).map((s) => s.skill.name);
+  return [...scored]
+    .sort(compareScored)
+    .slice(0, MAX_INJECTED)
+    .map((s) => s.skill.name);
 }
 
 /** The design skills among a selection. */

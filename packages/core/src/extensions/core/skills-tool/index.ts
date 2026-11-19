@@ -22,12 +22,13 @@
  * auto-inject.ts owns the ranking, and this handler owns only what needs the
  * extension context — the task text (from the session branch) and the
  * `braid.skills.ranking` policy, which is read and echoed rather than acted on
- * while no model tier exists.
+ * while this read has no model tier of its own.
  *
- * Skills discovery (list_skills tool) plus the scoring-based auto-inject
- * whisper supersede an LLM top-N recommender: a second relevance engine
- * would duplicate scoreSkill at the cost of an extra model call, against
- * the lean-prompt constraint.
+ * The whisper's relevance judgement is a different surface and a different
+ * engine: it asks the utility model (see ranker.ts). This read keeps the scorer
+ * because a tool call the model made on purpose is not the automatic delivery
+ * the whisper is, and reordering a catalog the caller can already see does not
+ * justify a model call inside a tool result.
  *
  * Also registers `skill_stats` — the adoption counter surface.
  */
@@ -49,6 +50,7 @@ import {
 } from "./auto-inject.js";
 import type { DeterministicRanking, RankedSkill, RelevanceReason } from "./auto-inject.js";
 import { readSkillFrontmatter } from "./skill-triggers.js";
+import { getRankerStats } from "./ranker.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import { readGovernedFamilies } from "./skill-families.js";
 import {
@@ -520,6 +522,11 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
       const informMode = getSkillsInformMode();
       const inform =
         informMode !== "off" || informRate ? { mode: informMode, ...informRate } : undefined;
+      // The ranker's own counters: the call rate, the cache's hit rate and the
+      // failure rate, which is what separates "nothing applied" from "nothing
+      // ran" without reading a log. Always present, so a session with no call
+      // reads as zeros rather than as a missing field.
+      const ranker = getRankerStats(ctx);
       return {
         content: [
           {
@@ -544,6 +551,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
                 ...(obligations ? { obligations } : {}),
                 ...(obligationRate ? { obligationRate } : {}),
                 ...(inform ? { inform } : {}),
+                ranker,
                 discovery: {
                   // Whether the stock skill catalog sits in the persisted
                   // transcript (it re-enters via pi's post-compaction
@@ -586,6 +594,7 @@ export default function skillsToolExtension(pi: ExtensionAPI): void {
                 },
               }
             : {}),
+          ranker,
         },
       };
     },

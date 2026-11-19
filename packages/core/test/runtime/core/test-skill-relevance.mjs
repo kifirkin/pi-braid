@@ -55,7 +55,7 @@ const {
   extractKeywords,
   matchSkill,
   scoreSkill,
-  selectSuggestions,
+  compareScored,
   corpusKeywordFrequency,
   skillCorpusDocument,
   COMMON_KEYWORD_DF,
@@ -309,42 +309,31 @@ test("equal scores: more distinct matched signals wins, not the alphabet", () =>
   // two. The alphabet would take aaa-alpha first.
   const alpha = mkSkill("aaa-alpha", "unrelated text");
   const zulu = mkSkill("zzz-zulu", "unrelated text");
-  const picked = selectSuggestions(
-    [
-      { skill: alpha, score: 2, signals: 1, evidenceDf: 2 },
-      { skill: zulu, score: 2, signals: 2, evidenceDf: 2 },
-    ],
-    [],
-    1,
-  ).slice(0, 1);
+  const picked = [
+    { skill: alpha, score: 2, signals: 1, evidenceDf: 2 },
+    { skill: zulu, score: 2, signals: 2, evidenceDf: 2 },
+  ]
+    .sort(compareScored)
+    .slice(0, 1);
   assert.equal(picked[0].skill.name, "zzz-zulu", "signals outrank the alphabet");
 });
 
 test("equal scores and signals: rarer evidence wins", () => {
   const common = mkSkill("aaa-common", "text");
   const rare = mkSkill("zzz-rare", "text");
-  const picked = selectSuggestions(
-    [
-      { skill: common, score: 2, signals: 2, evidenceDf: 8 },
-      { skill: rare, score: 2, signals: 2, evidenceDf: 2 },
-    ],
-    [],
-    1,
-  ).slice(0, 1);
+  const picked = [
+    { skill: common, score: 2, signals: 2, evidenceDf: 8 },
+    { skill: rare, score: 2, signals: 2, evidenceDf: 2 },
+  ]
+    .sort(compareScored)
+    .slice(0, 1);
   assert.equal(picked[0].skill.name, "zzz-rare", "lower summed document frequency outranks the alphabet");
 });
 
 test("a score-only caller keeps the name tie-break", () => {
   const a = mkSkill("aaa", "text");
   const b = mkSkill("zzz", "text");
-  const picked = selectSuggestions(
-    [
-      { skill: b, score: 2 },
-      { skill: a, score: 2 },
-    ],
-    [],
-    1,
-  );
+  const picked = [{ skill: b, score: 2 }, { skill: a, score: 2 }].sort(compareScored);
   assert.deepEqual(
     picked.map((s) => s.skill.name),
     ["aaa", "zzz"],
@@ -367,7 +356,7 @@ test("real corpus: the verify-worker prompt is decided for the verification skil
   const scored = skills
     .map((s) => ({ skill: s, ...matchSkill(s, keywords, prompt, df) }))
     .filter((s) => s.score > 0);
-  const picks = selectSuggestions(scored, [], 1).map((s) => s.skill.name);
+  const picks = [...scored].sort(compareScored).map((s) => s.skill.name);
   assert.equal(picks[0], "subagent-verification", `picked ${picks.join(", ")}`);
 });
 
@@ -554,7 +543,7 @@ function rank(prompt) {
     .filter((s) => s.score > 0);
   return {
     admitted: scored.length,
-    picks: selectSuggestions(scored, [], 1).map((s) => s.skill.name),
+    picks: [...scored].sort(compareScored).map((s) => s.skill.name),
   };
 }
 

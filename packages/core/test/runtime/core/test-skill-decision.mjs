@@ -1,25 +1,25 @@
 /**
- * Test: skills-tool/auto-inject.ts — decision path + adoption counters (E2/E3).
+ * Test: skills-tool/auto-inject.ts — the catalog scorer, the whisper render,
+ * and the adoption counters.
  *
- * The excerpt half is covered by test-skill-excerpt.mjs; this suite pins the
- * DECISION half of the auto-inject whisper:
- *   1. extractKeywords — stop-word/short-word filtering, dedup, one-rule
- *      trailing-s/es stemming ("skills" → "skill" matches singular name
- *      tokens; stemmed noise like "task" from "tasks" stays out).
- *   2. scoreSkill — +3 name exact, +2 name substring, +2 trigger phrase,
- *      +1 desc/path; a match that never touches the identity part of the name
- *      or a trigger qualifies only at MIN_NON_NAME_SIGNALS (2), and the whole
- *      final token of a compound name (the class noun) is ranked but never
- *      counted as evidence.
- *   3. selectSuggestions — mock prompt + mock cache flowing through
- *      extract → score → cooldown (global floor + per-skill loaded
- *      extension) → slot budget over active slots → relevance eviction
- *      (held slots re-scored; a newcomer must outscore the weakest held
- *      skill by EVICT_MARGIN to take its slot).
- *   4. formatWhisper — the read pointer with the reply ritual retired.
- *   5. Adoption counters — recordSkillSuggestion / recordSkillLoad (detected
- *      read) / recordSkillClaim (retired honor-system claim) / getSkillStats
- *      increment and surface per-skill suggested/claimed/actual/loaded.
+ *  1. extractKeywords — stop-word/short-word filtering, dedup, one-rule
+ *     trailing-s/es stemming ("skills" → "skill" matches singular name
+ *     tokens; stemmed noise like "task" from "tasks" stays out).
+ *  2. scoreSkill — +3 name exact, +2 name substring, +2 trigger phrase,
+ *     +1 desc/path; a match that never touches the identity part of the name
+ *     or a trigger qualifies only at MIN_NON_NAME_SIGNALS (2), and the whole
+ *     final token of a compound name (the class noun) is ranked but never
+ *     counted as evidence.
+ *  3. formatWhisper — the read pointer with the reply ritual retired.
+ *  4. Adoption counters — recordSkillSuggestion / recordSkillLoad (detected
+ *     read) / recordSkillClaim (retired honor-system claim) / getSkillStats
+ *     increment and surface per-skill suggested/claimed/actual/loaded.
+ *  5. The throttle constants the delivery path reads (MAX_INJECTED,
+ *     COOLDOWN_TURNS, LOADED_COOLDOWN_TURNS).
+ *
+ * The whisper's own decision is a utility-model call and is pinned by
+ * test-skill-ranker.mjs; the scorer below answers the `list_skills` catalog
+ * read only.
  *
  * Fully deterministic: mock skills + mock ctx; no environment dependence.
  */
@@ -37,7 +37,6 @@ const {
   extractKeywords,
   stemKeyword,
   scoreSkill,
-  selectSuggestions,
   formatWhisper,
   MAX_INJECTED,
   COOLDOWN_TURNS,
@@ -79,7 +78,6 @@ const softwareEngineer = mk("software-engineer", "Use when writing, reviewing, o
 const toneQuality = mk("tone-quality", "Read this skill before writing any text.");
 const meme = mk("meme", "Generate memes programmatically.");
 
-const scored = (skill, score) => ({ skill, score });
 
 console.log("skill-decision test\n");
 
@@ -165,7 +163,7 @@ test("scoreSkill: 0 on no match", () => {
   assert.equal(scoreSkill(meme, ["research"]), 0);
 });
 
-// ── decision path: selectSuggestions ────────────────────────────────────────
+// ── the throttle the delivery path reads ───────────────────────────────────
 
 test("pins constants (MAX_INJECTED=2, COOLDOWN_TURNS=10 floor, loaded extension)", () => {
   assert.equal(MAX_INJECTED, 2);
@@ -175,277 +173,6 @@ test("pins constants (MAX_INJECTED=2, COOLDOWN_TURNS=10 floor, loaded extension)
 
 test("pins the non-name qualification bar (MIN_NON_NAME_SIGNALS=2)", () => {
   assert.equal(MIN_NON_NAME_SIGNALS, 2);
-});
-
-test("selects top-N by score with deterministic name tie-break", () => {
-  const out = selectSuggestions(
-    [scored(research, 1), scored(softwareEngineer, 3), scored(toneQuality, 3)],
-    [],
-    1,
-  );
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["software-engineer", "tone-quality"],
-  );
-});
-
-test("cooldown: a skill injected within COOLDOWN_TURNS is excluded", () => {
-  const injected = [
-    { name: "software-engineer", turnNumber: 3, filePath: softwareEngineer.filePath },
-  ];
-  const out = selectSuggestions(
-    [scored(research, 1), scored(softwareEngineer, 3), scored(toneQuality, 3)],
-    injected,
-    6, // turn 6 − turn 3 = 3 < 10 → on cooldown
-  );
-  // software-engineer has the top score but is on cooldown → excluded;
-  // 1 occupied slot → budget 1 → only the top available skill injects.
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["tone-quality"],
-  );
-  assert.ok(!out.some((s) => s.skill.name === "software-engineer"));
-});
-
-test("cooldown expired: a skill injected ≥ COOLDOWN_TURNS ago is eligible again", () => {
-  const injected = [
-    { name: "software-engineer", turnNumber: 3, filePath: softwareEngineer.filePath },
-  ];
-  const out = selectSuggestions(
-    [scored(research, 1), scored(softwareEngineer, 3)],
-    injected,
-    14, // turn 14 − turn 3 = 11 ≥ 10 → eligible
-  );
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["software-engineer"],
-  );
-});
-
-// ── per-skill cooldown: the loaded extension ────────────────────────────────
-
-test("a loaded skill stays on cooldown after the global floor expires", () => {
-  const injected = [
-    {
-      name: "software-engineer",
-      turnNumber: 3,
-      filePath: softwareEngineer.filePath,
-      loadedTurn: 5, // loaded 2 turns after injection
-    },
-  ];
-  // Floor expired (turn 14), but only 9 turns since the load (< 30) → blocked.
-  const out = selectSuggestions(
-    [scored(research, 1), scored(softwareEngineer, 3)],
-    injected,
-    14,
-  );
-  assert.ok(!out.some((s) => s.skill.name === "software-engineer"));
-});
-
-test("a loaded skill is eligible again once LOADED_COOLDOWN_TURNS have passed", () => {
-  const injected = [
-    {
-      name: "software-engineer",
-      turnNumber: 3,
-      filePath: softwareEngineer.filePath,
-      loadedTurn: 5,
-    },
-  ];
-  const out = selectSuggestions(
-    [scored(research, 1), scored(softwareEngineer, 3)],
-    injected,
-    36, // 31 turns since the load ≥ 30 → eligible
-  );
-  // The loaded entry released its slot at load time, so both slots are free.
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["software-engineer", "research"],
-  );
-});
-
-// ── slot budget over ACTIVE slots (loaded slots are released) ─────────────
-
-test("2 occupied slots → no injection", () => {
-  const injected = [
-    { name: "research", turnNumber: 1, filePath: research.filePath },
-    { name: "dox", turnNumber: 2, filePath: "/skills/dox/SKILL.md" },
-  ];
-  const out = selectSuggestions(
-    [scored(softwareEngineer, 5), scored(research, 4)],
-    injected,
-    5,
-  );
-  assert.deepEqual(out, []);
-});
-
-test("1 occupied slot → injects only the top 1", () => {
-  const injected = [{ name: "research", turnNumber: 1, filePath: research.filePath }];
-  const out = selectSuggestions(
-    [scored(softwareEngineer, 5), scored(toneQuality, 4)],
-    injected,
-    5,
-  );
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["software-engineer"],
-  );
-});
-
-test("over-full active slots → no injection (defensive)", () => {
-  const injected = [
-    { name: "a", turnNumber: 1, filePath: "/skills/a/SKILL.md" },
-    { name: "b", turnNumber: 2, filePath: "/skills/b/SKILL.md" },
-    { name: "c", turnNumber: 3, filePath: "/skills/c/SKILL.md" },
-  ];
-  const out = selectSuggestions([scored(softwareEngineer, 5)], injected, 5);
-  assert.deepEqual(out, []);
-});
-
-test("a loaded skill no longer occupies a slot (release on load)", () => {
-  const injected = [
-    { name: "a", turnNumber: 1, filePath: "/skills/a/SKILL.md", loadedTurn: 2 },
-    { name: "b", turnNumber: 2, filePath: "/skills/b/SKILL.md" },
-  ];
-  // One active slot (b) — a was loaded and released its slot.
-  const out = selectSuggestions(
-    [scored(softwareEngineer, 5), scored(toneQuality, 4)],
-    injected,
-    5,
-  );
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["software-engineer"],
-  );
-});
-
-
-test("empty scored → no injection", () => {
-  assert.deepEqual(selectSuggestions([], [], 1), []);
-});
-
-// ── end-to-end: mock prompt + mock cache ───────────────────────────────────
-
-test("mock prompt + mock cache: full decision path picks the top-2", () => {
-  const cache = [research, softwareEngineer, toneQuality, meme];
-  const prompt = "research the tone";
-  const keywords = extractKeywords(prompt);
-  const scored = cache
-    .map((s) => ({ skill: s, score: scoreSkill(s, keywords) }))
-    .filter((s) => s.score > 0);
-  const out = selectSuggestions(scored, [], 1);
-  // research (+3 exact name) and tone-quality (+3 differentia "tone") tie on
-  // score; the name tie-break puts research first.
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["research", "tone-quality"],
-  );
-});
-
-test("a compound name's class noun buys neither a slot nor a qualification", () => {
-  // tone-quality's class noun is "quality": a prompt about code quality carries
-  // the word the class shares, not the skill's differentia. It scores, so the
-  // catalog read still ranks the skill, but it never qualifies it.
-  const prompt = "run a quality pass over the code";
-  assert.equal(scoreSkill(toneQuality, extractKeywords(prompt)), 0);
-  const out = selectSuggestions(
-    [toneQuality, softwareEngineer, meme].map((s) => ({
-      skill: s,
-      score: scoreSkill(s, extractKeywords(prompt)),
-    })).filter((s) => s.score > 0),
-    [],
-    1,
-  );
-  assert.deepEqual(out, []);
-});
-
-// ── scoring retune: name matches dominate, generic hits de-fire ─────────────
-
-const visualCreator = mk(
-  "visual-creator",
-  "Generate visual assets, illustrations, and images for posts.",
-);
-
-test("query naming a skill yields it in slot 1; shared description keywords do not rescue generics", () => {
-  const cache = [visualCreator, meme, research];
-  const keywords = extractKeywords("generate a meme for the thread");
-  const scoredAll = cache
-    .map((s) => ({ skill: s, score: scoreSkill(s, keywords) }))
-    .filter((s) => s.score > 0);
-  const out = selectSuggestions(scoredAll, [], 1);
-  // meme: name hit (+3) + desc "generate" (+1) → qualifies in slot 1;
-  // visual-creator: desc-only "generate" (+1) → below the bar → dropped.
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["meme"],
-  );
-});
-
-test("single-keyword generic match de-fires instead of consuming a slot", () => {
-  // Before the qualification bar, a lone "generate" hit in the description
-  // suggested visual-creator on nearly any creative prompt.
-  const scoredAll = [visualCreator]
-    .map((s) => ({ skill: s, score: scoreSkill(s, ["generate"]) }))
-    .filter((s) => s.score > 0);
-  assert.deepEqual(scoredAll, [], "desc-only single hit must not qualify");
-});
-
-test("generic-keyword-only match cannot take the slot of a cooldown-protected name match", () => {
-  const injected = [{ name: "meme", turnNumber: 5, filePath: meme.filePath }];
-  // visual-creator scores from a lone description keyword → below the bar;
-  // meme holds a slot and is still cooling down (7 − 5 < COOLDOWN_TURNS).
-  const scoredAll = [visualCreator]
-    .map((s) => ({ skill: s, score: scoreSkill(s, ["generate"]) }))
-    .filter((s) => s.score > 0);
-  const out = selectSuggestions(scoredAll, injected, 7);
-  assert.deepEqual(out, []);
-});
-
-// ── frontmatter triggers ──────────────────────────────────────────────
-
-const paneTopology = mk("pane-topology", "Terminal topology guidance.");
-
-test("a trigger phrase hit scores +2 and qualifies like a name hit", () => {
-  const skill = { ...paneTopology, triggers: ["pane topology"] };
-  assert.equal(scoreSkill(skill, [], "split a pane topology for two agents"), 2);
-});
-
-test("a trigger hit rescues a skill whose description stays under the bar", () => {
-  const skill = { ...paneTopology, triggers: ["terminal topology"] };
-  // description never matches; without the trigger the skill would score 0
-  assert.equal(scoreSkill(skill, [], "fix my terminal topology mess"), 2);
-});
-
-test("trigger matching is word-bounded (no substring bleed)", () => {
-  const skill = { ...meme, triggers: ["mem"] };
-  assert.equal(scoreSkill(skill, [], "a member of the crew"), 0);
-  assert.equal(scoreSkill(skill, [], "post a mem"), 2);
-});
-
-test("multiple trigger hits accumulate", () => {
-  const skill = { ...paneTopology, triggers: ["pane", "topology"] };
-  assert.equal(scoreSkill(skill, [], "pane layout and topology"), 4);
-});
-
-test("without a prompt, triggers cannot match (keyword-only callers unchanged)", () => {
-  const skill = { ...paneTopology, triggers: ["pane topology"] };
-  // `guidance` is description-only for this fixture: the name tokens are
-  // `pane` and `topology`, so a lone weak hit stays under the qualification
-  // bar whether or not a trigger phrase would have matched a prompt.
-  assert.equal(scoreSkill(skill, ["guidance"]), 0, "desc-only lone keyword stays below the bar");
-});
-
-test("trigger-qualified skill flows through the full selection", () => {
-  const cache = [{ ...paneTopology, triggers: ["terminal topology"] }, meme];
-  const prompt = "help me with terminal topology";
-  const keywords = extractKeywords(prompt);
-  const scoredAll = cache
-    .map((s) => ({ skill: s, score: scoreSkill(s, keywords, prompt) }))
-    .filter((s) => s.score > 0);
-  const out = selectSuggestions(scoredAll, [], 1);
-  assert.deepEqual(
-    out.map((s) => s.skill.name),
-    ["pane-topology"],
-  );
 });
 
 // ── the read pointer (reply ritual retired) ─────────────────────────────

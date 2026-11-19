@@ -58,8 +58,6 @@ import {
   resolveSessionProfileForCwd,
   type ResolvedSessionProfile,
 } from "../../../lib/config/session-profiles.js";
-import { MAX_APPLICABILITY_EVIDENCE } from "./applicability.js";
-import type { ApplicabilityEvidence, SkillApplicabilityVerdict } from "./applicability.js";
 
 const log = createLogger("skills-tool");
 
@@ -281,6 +279,26 @@ export function recordSessionSkillLoad(ctx: ExtensionContext, storePath?: string
 }
 
 // Applicability records (the verdict kind)
+
+/**
+ * One phrase a verdict stood on, with the section of the skill's file that
+ * declared it. Historical rows keep this shape; the field is named after what
+ * the writers put here, and a later writer may record any quoted clause.
+ */
+export interface ApplicabilityEvidence {
+  phrase: string;
+  source?: "frontmatter" | "heading" | "description";
+}
+
+/** One skill's verdict after folding its rows. */
+export interface SkillApplicabilityVerdict {
+  name: string;
+  verdict: "read" | "ignored";
+  evidence: ApplicabilityEvidence[];
+}
+
+/** Evidence rows kept per skill: enough to review, bounded like every other surface. */
+export const MAX_APPLICABILITY_EVIDENCE = 4;
 
 /**
  * One skill's applicability verdict for one session.

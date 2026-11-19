@@ -30,12 +30,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installRanker, rankerRegistry } from "../../helpers/skill-ranker-stub.mjs";
 
 const FAKE_HOME = mkdtempSync(join(tmpdir(), "skill-full-body-"));
 process.env.HOME = FAKE_HOME;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..", "..");
+const DIST = join(ROOT, "dist");
+
+// The whisper asks the utility model which skills apply. The stub is the model;
+// the ranker code path (prompt, parse, cache, counters) runs for real.
+await installRanker(DIST, (prompt) => {
+  if (prompt.includes("big-match")) return [{ name: "big-match", why: "the task names its rules" }];
+  if (prompt.includes("pane")) return [{ name: "pane-topology", why: "the task works a pane" }];
+  return [];
+});
 
 const {
   registerAutoInject,
@@ -168,6 +178,7 @@ function fakePi() {
 const ctxFor = (sessionId) => ({
   sessionManager: { getSessionId: () => sessionId },
   cwd: join(FAKE_HOME, "ws"),
+  modelRegistry: rankerRegistry(),
 });
 
 function openTurn() {
@@ -272,7 +283,7 @@ test("(a2) the handler's own delivery carries the 8,000-character body whole", a
   registerAutoInject(pi);
   const ctx = ctxFor("full-body-wired");
   openTurn();
-  await pi.handlers.before_agent_start({ prompt: "match the big-match rules for panes" }, ctx);
+  await pi.handlers.before_agent_start({ prompt: "match the big-match rules for panes in this repo" }, ctx);
   assert.equal(suggestionsIn(pi).length, 1, "the skill matched");
   const message = suggestionsIn(pi)[0];
   assert.ok(textOf(message).includes(BIG_BODY), "the delivered message carries the whole body");
@@ -387,12 +398,12 @@ test("(e2) a suppressed whisper moves neither counter", async () => {
 // ── (f) the added payload, measured ────────────────────────────────────────
 
 test("(f) the added payload at the cap is measured, not estimated", () => {
-  // Measured in the delivered shape: the pick's evidence clause rides the same
-  // message, so the framing below is what a reader would actually pay.
-  const evidence = [{ term: "big-match rules", field: "trigger", process: false }];
+  // Measured in the delivered shape: the ranker's clause rides the same message,
+  // so the framing below is what a reader would actually pay.
+  const why = "the task names this skill's own rules";
   const pointerText = formatWhisper([LONG]);
-  const wholeText = formatWhisperContent([BIG], BIG.name, evidence).text;
-  const cappedText = formatWhisperContent([LONG], LONG.name, evidence).text;
+  const wholeText = formatWhisperContent([BIG], BIG.name, why).text;
+  const cappedText = formatWhisperContent([LONG], LONG.name, why).text;
   // The pointer row already carries MAX_EXCERPT_CHARS of the body, so the added
   // bytes are the body minus that excerpt plus the body section's own framing.
   const wholeAdded = wholeText.length - formatWhisper([BIG]).length;

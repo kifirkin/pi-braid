@@ -48,6 +48,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { installRanker, rankerRegistry } from "../../helpers/skill-ranker-stub.mjs";
 
 // Isolate braid storage: temp home. MUST precede dist imports.
 const FAKE_HOME = mkdtempSync(join(tmpdir(), "skill-stats-test-"));
@@ -97,8 +99,17 @@ async function test(name, fn) {
   }
 }
 
+const DIST = join(fileURLToPath(new URL("../../../dist", import.meta.url)));
+
+// The whisper asks the utility model which skills apply. The stub is the model;
+// the ranker code path (prompt, parse, cache, counters) runs for real.
+await installRanker(DIST, (prompt) => {
+  const named = prompt.match(/follow the ([\w-]+) instructions/);
+  return named ? [{ name: named[1], why: "the task names this skill" }] : [];
+});
+
 /** Fresh fake ctx per test: getExtensionState falls back to a per-object WeakMap bucket. */
-const fakeCtx = () => ({});
+const fakeCtx = () => ({ modelRegistry: rankerRegistry() });
 
 /** Import the auto-inject module again under a fresh URL query → fresh module state. */
 async function freshAutoInject(tag) {
@@ -442,9 +453,10 @@ await test("before_agent_start suggestion increments the durable counter end-to-
   ]);
 
   const before = getDurableSkillStats()["handler-skill"]?.suggested ?? 0;
+  const dbgCtx = fakeCtx();
   await pi.handlers.before_agent_start(
     { prompt: "please follow the handler-skill instructions for this task" },
-    fakeCtx(),
+    dbgCtx,
   );
   const after = getDurableSkillStats()["handler-skill"]?.suggested ?? 0;
   const delivered = pi.sent.filter((m) => m.params.customType === "skills-suggestion");
@@ -537,12 +549,18 @@ await test("a detected load releases the skill's slot and extends its cooldown",
   const beta = mkSkill("beta", "beta instructions");
   const gamma = mkSkill("gamma", "gamma instructions");
   const delta = mkSkill("delta", "delta instructions");
-  const promptFor = (s) => `please follow the ${s} instructions now`;
+  // Past the ranker's short-prompt floor: a task this short names no work, so
+  // the ranker would (correctly) never ask the model about it.
+  const promptFor = (s) => `please follow the ${s} instructions now, carefully`;
 
   const pi = fakePi();
   registerAutoInject(pi);
   updateSkillCache([alpha, beta, gamma, delta]);
-  const ctx = { sessionManager: { getSessionId: () => "slot-release" }, cwd: "/tmp" };
+  const ctx = {
+    sessionManager: { getSessionId: () => "slot-release" },
+    cwd: "/tmp",
+    modelRegistry: rankerRegistry(),
+  };
   const suggestions = () => pi.sent.filter((m) => m.params.customType === "skills-suggestion");
   const suggestedNames = () => suggestions().flatMap((m) => m.params.details.skills);
 

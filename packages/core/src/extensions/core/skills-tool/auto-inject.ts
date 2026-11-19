@@ -7,32 +7,21 @@
  *   a suggestion via the steer whisper pattern.
  *
  * Design:
- *   1. Relevance detection: keyword match of skill name/description plus
- *      curated trigger phrases against the user's current prompt.
- *      Qualification bar: a skill whose match never touches the IDENTITY part
- *      of its name (a differentia token, the start of one, a one-word name, or
- *      a curated trigger phrase) must reach MIN_NON_NAME_SIGNALS distinct
- *      signals — a lone description/path keyword hit is too weak a signal: it
- *      fires broad skills on almost any prompt. The final token of a compound
- *      name is the class the skill belongs to ("improvement" for any
- *      name ending -improvement), the word a prompt about that class carries,
- *      so it is ranked and never counted as evidence.
- *      Keywords are stemmed with one suffix rule (trailing s/es) so plural
- *      prompts hit singular name tokens ("skills" → "skill").
- *      Corpus-common words are gated out of the weak legs AND out of the
- *      name leg's prefix hits: a word present in COMMON_KEYWORD_DF or more of
- *      the cached skills' documents cannot tell skills apart, so
- *      description/path hits from it score nothing. A name hit is word-shaped
- *      by construction — a whole name token, or the start of one — so a word
- *      buried inside a coined token ("line" in placement-disc**line**) is not
- *      a name hit at all. A differentia token and a trigger hit are never
- *      gated: the skill's own identity vocabulary is what a prompt naming it
- *      looks like, and a curated phrase is the author's signal.
- *   1b. Ranking: equal scores compare by more distinct matched signals, then
- *      by rarer evidence (lower summed document frequency), then by name.
- *      Alphabetical order alone decided which of two equally-scored skills
- *      took a slot, which is how a broadly-matching skill outranked the one
- *      whose evidence was the prompt's actual subject.
+ *   1. Relevance detection is a utility-model call (see ranker.ts), not a
+ *      phrase match: the prompt is ranked against `name — first sentence` rows
+ *      of the visible catalog, and the answer names at most three skills with
+ *      one clause each. A table of authored phrases cannot decide relevance
+ *      for a prompt written in a script the table does not carry, so nothing
+ *      here consults a phrase, and no phrase match is kept as a fallback: with
+ *      no model, or no usable answer, the whisper is silent and one line names
+ *      the reason. One call per turn at most, none for a prompt too short to
+ *      name work, and the session's own answer for a repeated prompt.
+ *   1b. Delivery state, not relevance: the ranker's order is kept as answered.
+ *      What this module adds is what a model cannot know — the per-skill
+ *      cooldown below and the slot budget — never a second scoring pass.
+ *      The scorer that ranks the `list_skills` catalog read (matchSkill,
+ *      scoreSkill, rankSkillsDeterministic) lives here too and is read by that
+ *      tool only; nothing in the whisper path reaches it.
  *   2. Session-scoped state: track which skills were injected on which turn.
  *      Cooldown is per-skill on top of the global floor: an injected skill
  *      cools down at least COOLDOWN_TURNS, and once it was actually loaded
@@ -148,15 +137,13 @@ import { getSkillsUsageFilePath } from "../../../lib/config/braid-paths.js";
 import { SESSION_COMPACT, AGENT_SETTLED } from "../../../lib/core/event-names.js";
 import {
   getSessionProfile,
-  recordApplicabilityCensus,
-  recordApplicabilityVerdict,
   recordObligationLegs,
   recordSessionSkillLoad,
   recordSessionStart,
 } from "./session-records.js";
 import type { ObligationLegs } from "./session-records.js";
-import { evaluateApplicability } from "./applicability.js";
-import type { SkillApplicabilityVerdict } from "./applicability.js";
+import { rankSkills } from "./ranker.js";
+import type { RankedEntry } from "./ranker.js";
 import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import { toolFamilyToken } from "./skill-families.js";
@@ -356,14 +343,6 @@ const KEYWORD_STOP_WORDS = new Set([
 
 export { PROCESS_VOCABULARY, isProcessPhrase };
 
-/**
- * What one skill row may offer the whisper: the top rank once it has earned the
- * claim. The margin is on the scorer's own scale, where one description keyword
- * is one point (see RANK_MARGIN_THRESHOLD, which reads the same distance for
- * the catalog's verdict): a lead a single weak hit could erase is not a lead.
- */
-export const SUGGESTION_MARGIN = 2;
-
 // State
 
 export interface InjectedSkill {
@@ -383,8 +362,6 @@ interface AutoInjectState {
   hintSent: boolean;
   /** Where the work is going, for the drift trigger (loading-guidance.ts). */
   drift: DriftTracker;
-  /** Which skills' own declared conditions held this session (applicability.ts). */
-  applicability: ApplicabilityState;
   /** What the session did with each skill body it met (see ObligationState). */
   obligations: ObligationState;
   /** Bodies that reached the transcript, and which of them were re-announced. */
@@ -401,12 +378,6 @@ interface AutoInjectState {
    * profile does, so a tool_result never reads and parses settings.json.
    */
   informMode?: SkillsInformMode;
-  /**
-   * Row sets already reported by a notice (no best match). A notice spends no
-   * slot and no cooldown, so without this a session whose task text keeps
-   * missing the catalog would be told the same thing every turn.
-   */
-  notices: Set<string>;
 }
 
 /**
@@ -446,28 +417,6 @@ function initialObligations(): ObligationState {
   return { legs: new Map(), called: new Set(), written: new Map() };
 }
 
-/**
- * The session's applicability bookkeeping. Cumulative by design: once a task
- * text met a skill's declared condition, the skill applied to that session, and
- * a read that lands on a later turn is still a read of a skill that applied.
- */
-interface ApplicabilityState {
-  /** True once the session's census row landed on disk. */
-  censusWritten: boolean;
-  /** Verdicts by skill name; only ever grows, and an entry only ever upgrades. */
-  verdicts: Map<string, SkillApplicabilityVerdict>;
-  /** Skills declaring a condition, from the latest evaluation. */
-  evaluated: number;
-  /** Skills declaring none, from the latest evaluation. */
-  undeclared: string[];
-  /** Task-text length the latest evaluation read. */
-  taskChars: number;
-}
-
-function initialApplicability(): ApplicabilityState {
-  return { censusWritten: false, verdicts: new Map(), evaluated: 0, undeclared: [], taskChars: 0 };
-}
-
 const STATE_KEY = "skills-auto-inject";
 
 function getState(ctx: ExtensionContext): AutoInjectState {
@@ -476,11 +425,9 @@ function getState(ctx: ExtensionContext): AutoInjectState {
     currentTurn: 0,
     hintSent: false,
     drift: initialDrift(),
-    applicability: initialApplicability(),
     obligations: initialObligations(),
     reload: initialReload(),
     fullBodies: new Set<string>(),
-    notices: new Set<string>(),
   }));
 }
 
@@ -563,8 +510,8 @@ const ABSOLUTE_PATH = /(?:^|[\s`'"([])(?:~?\/)[^\s`'"()[\],;:]*/g;
  * trailing plurals; the stem result must still pass the length and stop-word
  * bar (stemming "tasks" lands on the noise word "task", which stays out).
  *
- * This is the one place that decides what the matcher scores, so the whisper,
- * the catalog read and the applicability pass cannot disagree about the text.
+ * This is the one place that decides what the catalog read scores, so the
+ * ordering and the evidence beside it cannot disagree about the text.
  */
 export function extractKeywords(text: string): string[] {
   const words = text
@@ -632,22 +579,21 @@ export interface SkillMatch {
   /**
    * What the row stands on, one entry per term the row was awarded: the term
    * itself, the field it was found in, and whether it is dispatch vocabulary
-   * (see PROCESS_VOCABULARY). The whisper prints this, so a delivered row can
-   * never be read as more than the terms it actually matched.
+   * (see PROCESS_VOCABULARY). The catalog read reports the row's strongest
+   * term, so a row can never be read as more than the terms it matched.
    */
   terms: MatchTerm[];
   /**
    * True when the row matched on the dispatch's own vocabulary and nothing
    * else: a prompt saying `braid docs` reached braid-reference's phrase, which
-   * is a fact about the dispatch, not about the task. Such a row is reported
-   * and never picked (see decideSuggestion).
+   * is a fact about the dispatch, not about the task. The catalog read reports
+   * it as such and never treats it as the row's reason.
    */
   processOnly: boolean;
   /**
    * True when the best evidence is the author's own relevance signal — an
    * authored phrase naming the work, or a keyword in the identity part of the
-   * skill's name (never the class noun, never the weak legs). Only an identity
-   * match may be called a best match or carry a body (see decideSuggestion).
+   * skill's name (never the class noun, never the weak legs).
    */
   identity: boolean;
 }
@@ -889,11 +835,9 @@ export function scoreSkill(
 }
 
 /**
- * A skill with its match evidence, as the selection step consumes it. The
- * evidence fields are optional so a caller holding only a score still selects;
- * they then default to zero and the name stays the tie-breaker, and the row
- * cannot be picked (decideSuggestion requires the identity flag a score-only
- * caller never set).
+ * A skill with its match evidence, as the catalog ranking consumes it. The
+ * evidence fields are optional so a caller holding only a score still ranks;
+ * they then default to zero and the name stays the tie-breaker.
  */
 export interface ScoredSkill {
   skill: CachedSkill;
@@ -909,11 +853,11 @@ export interface ScoredSkill {
 }
 
 /**
- * The ranking comparator, shared by the whisper's selection and the catalog
- * read: score, then breadth of match (distinct signals), then rarity of the
- * evidence (summed document frequency), then name. Pure.
+ * The catalog read's comparator: score, then breadth of match (distinct
+ * signals), then rarity of the evidence (summed document frequency), then
+ * name. Pure.
  */
-function compareScored(a: ScoredSkill, b: ScoredSkill): number {
+export function compareScored(a: ScoredSkill, b: ScoredSkill): number {
   return (
     b.score - a.score ||
     (b.signals ?? 0) - (a.signals ?? 0) ||
@@ -923,107 +867,37 @@ function compareScored(a: ScoredSkill, b: ScoredSkill): number {
 }
 
 /**
- * Decide which scored skills to suggest given the session injection state.
+ * Apply the session's delivery state to the ranker's rows. Pure.
  *
- * Pure — mirrors the handler's decision path so it can be unit-tested:
- *   sort (score desc, distinct signals desc, evidence df asc, name asc) →
- *   cooldown filter (global floor + per-skill loaded extension) → slot budget
- *   over ACTIVE held slots (a loaded skill released its slot) → top-N slice.
+ * The order is the model's, not a score's: the ranker answered which skills
+ * apply and in what order, and re-sorting that answer here would be a second
+ * relevance judgement with no evidence behind it. What delivery state adds is
+ * only what the model cannot know: a skill suggested within COOLDOWN_TURNS is
+ * still in context, and a slot held by an unloaded suggestion bounds how many
+ * bodies one turn may carry.
  *
- * The rank order is the fix for alphabetical slot allocation: two skills with
- * equal points used to be ordered by name, so a broadly-matching skill took
- * the slot from one whose evidence was the prompt's actual subject. Distinct
- * signals separate breadth of match; evidence df separates a match on the
- * prompt's distinctive words from one on its filler.
- *
- * Returns the chosen scored items (empty when nothing qualifies). The
- * caller is responsible for recording the picks in session state.
+ * A loaded skill releases its slot (its body is in the agent's context) and
+ * keeps its longer cooldown, unchanged from the rule the matcher obeyed.
  */
-export function selectSuggestions(
-  scored: ScoredSkill[],
+export function filterRanked(
+  entries: readonly RankedEntry[],
+  byName: ReadonlyMap<string, CachedSkill>,
   injected: InjectedSkill[],
   currentTurn: number,
-): ScoredSkill[] {
-  if (!scored.length) return [];
-
-  const sorted = [...scored].sort(compareScored);
-
-  const available = sorted.filter((s) => !onCooldown(s.skill.name, injected, currentTurn));
+): { skill: CachedSkill; why: string }[] {
+  if (!entries.length) return [];
+  const available: { skill: CachedSkill; why: string }[] = [];
+  for (const entry of entries) {
+    const skill = byName.get(entry.name);
+    if (!skill) continue;
+    if (onCooldown(skill.name, injected, currentTurn)) continue;
+    available.push({ skill, why: entry.why });
+  }
   if (!available.length) return [];
-
-  // Active slots: not-yet-loaded injections. A loaded skill sits in the
-  // agent's context — its slot is released for the next match.
   const active = injected.filter((i) => i.loadedTurn === undefined);
   const slotBudget = MAX_INJECTED - active.length;
   if (slotBudget <= 0) return [];
-
   return available.slice(0, slotBudget);
-}
-
-/**
- * What the whisper may do with the turn's best rows.
- *
- *   pick       one skill leads the field by SUGGESTION_MARGIN and stands on
- *              identity-grade evidence about the work. Only this answer may say
- *              "best match" and only this answer carries a body.
- *   candidates no skill earned the claim: the rows share their evidence with a
- *              neighbour, rest on the weak legs, or matched the dispatch's own
- *              vocabulary. The message names them, prints what they matched, and
- *              points at the catalog in the prompt instead of inlining a body.
- *   none       nothing qualified, every row is on cooldown, or both slots are
- *              held. Nothing is sent.
- */
-export type SuggestionBasis =
-  | "margin"
-  | "close-field"
-  | "weak-evidence"
-  | "process-only"
-  | "no-slot";
-
-export interface SuggestionDecision {
-  kind: "pick" | "candidates" | "none";
-  /** Rows the message may name, best first (at most the slot budget of them). */
-  rows: ScoredSkill[];
-  /** Why the decision is what it is; printed in the log, never in the message. */
-  basis: SuggestionBasis;
-  /** The pick's lead over the runner-up (its own score when it ran alone). */
-  margin: number;
-}
-
-/**
- * Decide what the whisper may claim for this turn. Pure.
- *
- * The defect this replaces: the handler took `selectSuggestions`'s first row and
- * called it the best match with its whole body inlined, so a dispatch — whose
- * text is braid's own vocabulary — handed the top slot to whichever skill's
- * description shared that vocabulary, and the agent received a body it had not
- * asked for and could not use.
- *
- * Two conditions guard the claim, and both are read off the evidence rather
- * than off the score:
- *   margin     the top must lead the runner-up by SUGGESTION_MARGIN, because a
- *              lead one weak keyword can erase is not a lead.
- *   identity   the top must stand on the author's own relevance signal (a
- *              phrase naming the work, or the identity part of the name), never
- *              on the weak legs alone and never on dispatch vocabulary.
- * A row that fails either condition is still reported — naming what it matched
- * is the honest answer, and silence would hide that the catalog was searched.
- */
-export function decideSuggestion(
-  scored: ScoredSkill[],
-  injected: InjectedSkill[],
-  currentTurn: number,
-): SuggestionDecision {
-  const rows = selectSuggestions(scored, injected, currentTurn);
-  if (!rows.length) return { kind: "none", rows: [], basis: "no-slot", margin: 0 };
-  const top = rows[0];
-  const margin = top.score - (rows[1]?.score ?? 0);
-  if (top.processOnly || !(top.terms ?? []).some((t) => !t.process)) {
-    return { kind: "candidates", rows, basis: "process-only", margin };
-  }
-  if (margin < SUGGESTION_MARGIN) return { kind: "candidates", rows, basis: "close-field", margin };
-  if (!top.identity) return { kind: "candidates", rows, basis: "weak-evidence", margin };
-  return { kind: "pick", rows, basis: "margin", margin };
 }
 
 // Deterministic ranking for the catalog read
@@ -1269,44 +1143,18 @@ export interface WhisperContent {
   body?: DeliveredBody;
 }
 
-/** What the message calls a matched term's field. */
-const FIELD_LABEL: Record<MatchTerm["field"], string> = {
-  trigger: "trigger phrase",
-  heading: "trigger heading",
-  name: "name",
-  description: "description",
-  path: "catalog path",
-};
-
-/** Terms printed per row: the row is a pointer to the evidence, not the case. */
-const MAX_PRINTED_TERMS = 4;
-
-/**
- * The evidence clause: the terms a row was awarded, each with the field that
- * carried it. This is what makes the message checkable — a reader can see that
- * a row stands on a phrase it wrote itself, or on four words of prose, and
- * judge the row accordingly. Pure.
- */
-export function formatMatchTerms(terms: MatchTerm[]): string {
-  return terms
-    .slice(0, MAX_PRINTED_TERMS)
-    .map((t) => `\`${t.term}\` (${FIELD_LABEL[t.field]})`)
-    .join(", ");
-}
-
 /**
  * Format the steer whisper for a recommendation, in two tiers.
  *
  * `fullBodySkill` names the one skill whose SKILL.md body the message carries
  * first-class. The caller decides it from the session's already-delivered set
- * (see pickFullBodySkill) and hands a skill here only when decideSuggestion
- * returned a pick, so a re-match, an unreadable file or a skill this session
- * already received leaves the message on the pointer tier.
+ * (see pickFullBodySkill), so a re-match, an unreadable file or a skill this
+ * session already received leaves the message on the pointer tier.
  *
- * `evidence` is the pick's own term list; when present the opening line names
- * it, because "best match" is a claim and a claim without its evidence is what
- * this message used to be. The clause is printed on the body tier only: the
- * pointer tier's header makes no best-match claim to back.
+ * `why` is the ranker's own clause for the leading row; when present the
+ * opening line carries it, because "best match" is a claim and a claim without
+ * its evidence is what this message used to be. The clause is printed on the
+ * body tier only: the pointer tier's header makes no best-match claim to back.
  *
  * A body inside the cap is delivered whole and the message says so, which is
  * what makes the read call unnecessary for that skill; a body past it is cut
@@ -1320,7 +1168,7 @@ export function formatMatchTerms(terms: MatchTerm[]): string {
 export function formatWhisperContent(
   skills: CachedSkill[],
   fullBodySkill?: string,
-  evidence?: MatchTerm[],
+  why?: string,
 ): WhisperContent {
   const lead = fullBodySkill ? skills.find((s) => s.name === fullBodySkill) : undefined;
   const body = lead ? readSkillBody(lead.filePath) : undefined;
@@ -1328,7 +1176,7 @@ export function formatWhisperContent(
     return { text: `${WHISPER_HEADER}\n${skills.map(pointerRow).join("\n")}\n${WHISPER_TRAILER}` };
   }
   const rows = skills.filter((s) => s.name !== lead.name).map(pointerRow);
-  const on = evidence?.length ? `; it matched ${formatMatchTerms(evidence)}` : "";
+  const on = why ? `; ${why.replace(/[.;,\s]+$/, "")}` : "";
   const parts = [
     body.truncated
       ? `[SKILL SUGGESTION] ${lead.name} is the best match for this task${on}; its text is included below up to ${FULL_BODY_MAX_CHARS} characters.`
@@ -1376,36 +1224,6 @@ export function pickFullBodySkill(
   const top = ranked[0];
   if (!top) return undefined;
   return delivered.has(top.name) ? undefined : top.name;
-}
-
-/**
- * The message a turn gets when no skill earned the best-match claim.
- *
- * It names the closest rows and prints what each one matched, because the two
- * answers a weak turn can honestly give are "here is what came closest, and
- * why it is not the work" and nothing at all. It carries no body, no excerpt
- * and no claim: the catalog in the prompt already lists every skill, and a body
- * delivered on this evidence is a body the agent must first disprove.
- *
- * A row whose every term is dispatch vocabulary says so in its own clause: that
- * is the difference between "the matcher read the dispatch" and "the matcher
- * read the task", and it is the whole defect this message exists to report.
- *
- * `rows` is best-first and already bounded by the slot budget. Pure.
- */
-export function formatSkillNotice(rows: ScoredSkill[]): string {
-  const lines = rows.map((row) => {
-    const terms = row.terms ?? [];
-    const printed = terms.length ? formatMatchTerms(terms) : `${row.score} points`;
-    const only = row.processOnly || terms.every((t) => t.process);
-    return `- ${row.skill.name}: ${printed}${only ? " — braid's own vocabulary, not this task's subject" : ""}`;
-  });
-  return [
-    "[SKILL SUGGESTION] No skill's own declaration names this work, so none is suggested.",
-    "Closest rows by shared vocabulary, with what each one matched:",
-    ...lines,
-    "The catalog in the prompt lists every skill with its description; read a SKILL.md only when a catalog row applies.",
-  ].join("\n");
 }
 
 // Adoption counters
@@ -1933,90 +1751,6 @@ function stepCompactionReload(pi: ExtensionAPI, ctx: ExtensionContext): void {
   }
 }
 
-// Applicability verdict (recorded, never enforced)
-
-/**
- * Classify the catalog against this turn's task text and record what changed.
- *
- * Two writes, both append-only:
- *   - the session's census row, once, retried until it lands. It is what makes
- *     "not-applicable" derivable (evaluated minus the verdict rows) and what
- *     names the skills whose files state no condition at all.
- *   - one verdict row per skill whose declared condition held, and never twice
- *     for the same (session, skill): the set only grows because the verdict is
- *     per-session — a skill whose condition held on any turn applied to the
- *     session.
- *
- * The row shape is the joint the sibling compliance record expects: it joins on
- * (sessionId, skill) and adds its own `suggested`/`listed`/`read`/`applied`
- * beside this verdict, so `ignored / (read + ignored)` becomes computable. This
- * module writes no `applied` leg: a tool belong to a skill's family only once
- * the skill declares that family, and no skill does yet.
- *
- * Reads only — it never touches `injected`, a counter or a send. That is the
- * whole point of the ordering in before_agent_start: this step cannot move the
- * suggestion, and the suggestion cannot move the verdict.
- */
-function stepApplicability(
-  ctx: ExtensionContext,
-  state: AutoInjectState,
-  skills: CachedSkill[],
-  prompt: string,
-): void {
-  const evaluation = evaluateApplicability(skills, prompt);
-  const app = state.applicability;
-  const fresh = evaluation.applicable.filter((verdict) => !app.verdicts.has(verdict.name));
-  for (const verdict of fresh) app.verdicts.set(verdict.name, verdict);
-  app.evaluated = evaluation.evaluated;
-  app.undeclared = evaluation.undeclared;
-  app.taskChars = prompt.length;
-
-  if (!app.censusWritten) {
-    const wrote = recordApplicabilityCensus(ctx, {
-      taskChars: app.taskChars,
-      evaluated: app.evaluated,
-      undeclared: app.undeclared,
-    });
-    // A session without an id, or a refused store: retry on the next turn.
-    if (wrote) app.censusWritten = true;
-  }
-  if (!fresh.length) return;
-  log.debug(
-    `[skills-auto-inject] applicability: ${fresh.length} newly applicable, ` +
-      `${evaluation.evaluated} evaluated, ${evaluation.undeclared.length} undeclared`,
-  );
-  for (const verdict of fresh) {
-    recordApplicabilityVerdict(ctx, {
-      skill: verdict.name,
-      applicability: verdict.verdict,
-      evidence: verdict.evidence,
-    });
-    // The obligation row lands with the verdict, not with the first leg: a
-    // session that is merely told which body it owes, and then does nothing,
-    // is the population the rate exists to count. Without this row that
-    // session would be mistaken for one the instrument never saw.
-    legsFor(state, verdict.name);
-    appendObligationRow(ctx, state, verdict.name);
-  }
-}
-
-/**
- * Upgrade an applicable skill to `read` and append its verdict row. A read of a
- * skill whose declared condition never held gets no row: the three classes are
- * about skills that applied, and a read is not a fourth one.
- */
-function markApplicabilityRead(ctx: ExtensionContext, state: AutoInjectState, name: string): void {
-  const app = state.applicability;
-  const held = app.verdicts.get(name);
-  if (!held || held.verdict === "read") return;
-  app.verdicts.set(name, { ...held, verdict: "read" });
-  recordApplicabilityVerdict(ctx, {
-    skill: name,
-    applicability: "read",
-    evidence: held.evidence,
-  });
-}
-
 // Obligation rows (the applied leg)
 
 /**
@@ -2138,9 +1872,6 @@ function detectSkillLoad(
   // The body is in the transcript now; the compaction check is what notices
   // when it is not.
   noteBodyLanded(ctx, state, name, ev.input?.path);
-  // The load counters say a read happened; this says whether the session was
-  // one where the skill applied. Independent writes, independent failures.
-  markApplicabilityRead(ctx, state, name);
   noteObligationLeg(ctx, state, name, "read");
   log.debug(`[skills-auto-inject] counted actual load of "${name}" via read`);
   return name;
@@ -2407,18 +2138,7 @@ export function registerAutoInject(pi: ExtensionAPI): void {
       };
       const prompt = ev.prompt ?? "";
       if (!prompt.trim()) {
-        return; // No user input to match against
-      }
-
-      // Applicability is recorded BEFORE every scoring early-return below.
-      // Most sessions match no skill, and those are exactly the sessions the
-      // adoption counters cannot explain: the returns would erase them. The
-      // step reads the catalog and the prompt only, so the suggestion decision
-      // below is untouched by it (and its failure cannot cost a suggestion).
-      try {
-        stepApplicability(ctx, state, skills, prompt);
-      } catch (err) {
-        log.debug(`[skills-auto-inject] applicability step failed (best-effort): ${err}`);
+        return; // No user input to rank against
       }
 
       // One-shot profile hint: the first non-empty prompt of a session whose
@@ -2454,90 +2174,33 @@ export function registerAutoInject(pi: ExtensionAPI): void {
         return; // No skills loaded yet — nothing to suggest
       }
 
-      const keywords = extractKeywords(prompt);
-      if (!keywords.length) {
-        return; // No significant keywords to match
-      }
+      // The relevance judgement is the ranker's, not this handler's: one
+      // utility-model call per turn at most, answered from the session's memory
+      // for a repeated prompt, silent with a recorded reason when no model or no
+      // usable answer is available. A phrase match is never a fallback here.
+      const answer = await rankSkills(ctx, prompt, skills);
+      if (!answer.rows.length) return;
 
-      // Corpus-common words cannot tell skills apart. Their document frequency
-      // is measured once per turn from the same cache the scorer reads.
-      const keywordDf = corpusKeywordFrequency(keywords, skills);
+      // Delivery state is all this handler adds to the answer: cooldowns and the
+      // slot budget, in the ranker's order.
+      const rows = filterRanked(
+        answer.rows,
+        new Map(skills.map((s) => [s.name, s])),
+        state.injected,
+        state.currentTurn,
+      );
+      if (!rows.length) return;
 
-      // Score each skill. The raw prompt rides along for trigger matching.
-      // A match returned with processOnly set is kept: it is evidence the
-      // catalog was searched, and the notice prints what it matched instead of
-      // letting the row look like a pick.
-      const scored = skills
-        .map((s) => ({ skill: s, ...matchSkill(s, keywords, prompt, keywordDf) }))
-        .filter((s) => s.score > 0);
-
-      if (!scored.length) {
-        return; // No relevant skills found
-      }
-
-      // Cooldown + slot budget + the best-match claim (pure decision,
-      // exported for tests).
-      const decision = decideSuggestion(scored, state.injected, state.currentTurn);
-
-      if (decision.kind === "none") {
-        return;
-      }
-
-      const rows = decision.rows;
-      const names = rows.map((s) => s.skill.name);
-
-      // No row earned the claim: the message reports what came closest and
-      // what it matched, carrying no body and no excerpt. It spends no slot
-      // and no cooldown — it delivered nothing to cool down — and it fires at
-      // most once per session for the same row set, so a task text that misses
-      // the catalog is not re-reported every turn.
-      if (decision.kind !== "pick") {
-        const signature = names.join(",");
-        if (state.notices.has(signature)) return;
-        const notice = formatSkillNotice(rows);
-        const deliveredNotice = sendTrackedMessage(
-          pi,
-          {
-            customType: "skills-notice",
-            content: [{ type: "text" as const, text: notice }],
-            display: true,
-            details: {
-              [BRAID_INJECTED]: true,
-              [BRAID_SOURCE]: "skills-auto-inject",
-              skills: names,
-              basis: decision.basis,
-            },
-          },
-          { delivery: "park", deliverAs: "steer" },
-          { type: "context", source: "skills-auto-inject" },
-          { bypassFloodCap: true },
-        );
-        if (!deliveredNotice) {
-          log.debug("[skills-auto-inject] notice suppressed before delivery; not counted");
-          return;
-        }
-        state.notices.add(signature);
-        log.info(
-          `[skills-auto-inject] no best match (${decision.basis}, margin ${decision.margin}); ` +
-            `closest ${names.join(", ")}`,
-        );
-        // A delivered message that names the catalog is a skill surface: the
-        // drift line exists to supply that pointer, so its window opens here.
-        noteDriftSurface(state.drift);
-        recordSkillSuggestion(ctx, names);
-        noteObligationSuggested(ctx, names);
-        return;
-      }
-
+      const names = rows.map((r) => r.skill.name);
       const pick = rows[0];
-      const skillsToInject = rows.map((s) => s.skill);
+      const skillsToInject = rows.map((r) => r.skill);
       // The body tier is the pick's, and only while this session has not
       // already received that body: the decision is the session's, the render
       // is the formatter's.
       const content = formatWhisperContent(
         skillsToInject,
         pickFullBodySkill(skillsToInject, state.fullBodies),
-        pick.terms,
+        pick.why,
       );
       const text = content.text;
 
@@ -2555,7 +2218,7 @@ export function registerAutoInject(pi: ExtensionAPI): void {
             [BRAID_SOURCE]: "skills-auto-inject",
             skills: names,
             pick: pick.skill.name,
-            basis: decision.basis,
+            basis: answer.basis,
             ...(content.body ? { fullBody: content.body.name } : {}),
           },
         },
@@ -2571,7 +2234,7 @@ export function registerAutoInject(pi: ExtensionAPI): void {
 
       log.info(
         `[skills-auto-inject] Suggesting ${names.join(", ")} ` +
-          `(turn ${state.currentTurn}, margin ${decision.margin}, keywords: ${keywords.slice(0, 5).join(", ")})`,
+          `(turn ${state.currentTurn}, ${answer.basis})`,
       );
 
       // A delivered suggestion is a skill surface: the drift trigger stays
