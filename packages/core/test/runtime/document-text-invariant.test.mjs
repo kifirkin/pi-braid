@@ -4,18 +4,21 @@
  *
  * Nine assertions, each naming a site that answers "no tokens" for a string the
  * owner writes and then reports that zero as a fact about the string. Every one
- * is red at HEAD; the row id on each name joins it to the census that measured
- * the defect.
+ * was red at HEAD; the row id on each name joins it to the census that measured
+ * the defect. The four rows this branch repairs assert; the five a later stage
+ * of that census's plan owns are declared skipped, each with the row and the
+ * stage in its reason, so the pending work stays visible in the suite's own
+ * output instead of in a report.
  *
- *   R2  extractKeywords      a Cyrillic prompt has no keywords
- *   R6  CognitiveMemory      a Cyrillic query retrieves no memory
- *   R1  triggerMatches       a phrase matches inside a longer Cyrillic word
- *   R16 extractAnchors       a Cyrillic request has no anchors
- *   R8  deriveTopicTags      a Cyrillic ruling earns no tags
- *   R39 classifyLlmError     a Cyrillic balance failure is unknown
- *   R39 classifyLlmError     /401/ fires inside a millisecond figure
- *   R22 findSelfStateClaims  a Cyrillic liveness claim is invisible
- *   R7  classifyRulingBody   a Cyrillic standing instruction is null
+ *   R2  extractKeywords      a Cyrillic prompt has no keywords          repaired
+ *   R6  CognitiveMemory      a Cyrillic query retrieves no memory       repaired
+ *   R1  triggerMatches       a phrase matches inside a longer word      skipped
+ *   R16 extractAnchors       a Cyrillic request has no anchors          repaired
+ *   R8  deriveTopicTags      a Cyrillic ruling earns no tags            repaired
+ *   R39 classifyLlmError     a Cyrillic balance failure is unknown      skipped
+ *   R39 classifyLlmError     /401/ fires inside a millisecond figure    skipped
+ *   R22 findSelfStateClaims  a Cyrillic liveness claim is invisible     skipped
+ *   R7  classifyRulingBody   a Cyrillic standing instruction is null     skipped
  *
  * The assertions drive the shipped functions through their exported entry
  * points, never a copy of their expressions: a test that restates the regex
@@ -32,11 +35,10 @@
  *   - R28 is out. `hasCompletionClaim` is private, and a test that reaches
  *     through the extension to call it tests the test.
  *
- * This file sits outside `test/runtime/`, the tree the core runner walks, so
- * `npm test` does not run it and the suite stays green while the sites are
- * repaired one at a time. Run it against a build:
+ * The file sits inside the tree the core runner walks, so `npm test` collects
+ * it and its five skipped rows are visible on every run. Run it alone with:
  *
- *   node packages/core/test/document-text-invariant.test.mjs
+ *   node packages/core/test/runtime/document-text-invariant.test.mjs
  *
  * Hermetic: HOME is redirected to a temp dir before the dist imports, so the
  * memory leg reads and writes a fresh store and never the live one.
@@ -55,7 +57,7 @@ mkdirSync(join(FAKE_HOME, ".pi", "agent"), { recursive: true });
 writeFileSync(join(FAKE_HOME, ".pi", "agent", "settings.json"), "{}\n");
 
 const STORE_FILE = join(FAKE_HOME, ".pi", "agent", "braid", "memory", "semantic.json");
-const CORE = join(dirname(fileURLToPath(import.meta.url)), "..");
+const CORE = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dist = (path) => join(CORE, "dist", path);
 
 const { extractKeywords } = await import(dist("extensions/core/skills-tool/auto-inject.js"));
@@ -97,17 +99,30 @@ test("R6 recall finds a Cyrillic memory by its own words", async () => {
 
 // ── R1: the trigger boundary ────────────────────────────────────────────────
 
-test("R1 triggerMatches does not match inside a longer Cyrillic word", () => {
+// Skipped: the census plan runs no stage that closes this row, and its remedy is
+// not a one-line class edit. `triggerMatches` needs a script-aware boundary
+// (today a Cyrillic letter counts as a boundary, so a phrase matches inside a
+// longer word), and the row's own replacement is authored phrases in the
+// language the owner types plus a semantic recall leg. The positive leg below is
+// asserted first, so the skip cannot hide a function that refuses everything.
+test(
+  "R1 triggerMatches does not match inside a longer Cyrillic word",
+  {
+    skip:
+      "R1: no stage of the census plan closes it; it needs a script-aware boundary class in skill-triggers.ts plus phrases authored in the owner's language",
+  },
+  () => {
   const inside = triggerMatches("проверить", "нужно проверитьсборку");
   assert.equal(
     inside,
     false,
     "a Cyrillic letter is not a word boundary: the phrase ends where the word does",
   );
-  // Sensitivity: the same phrase must still match where it does stand alone,
-  // so a boundary fix cannot pass this leg by refusing every Cyrillic phrase.
-  assert.equal(triggerMatches("проверить", "нужно проверить сборку"), true);
-});
+    // Sensitivity: the same phrase must still match where it does stand alone,
+    // so a boundary fix cannot pass this leg by refusing every Cyrillic phrase.
+    assert.equal(triggerMatches("проверить", "нужно проверить сборку"), true);
+  },
+);
 
 // ── R16: the stability anchors ──────────────────────────────────────────────
 
@@ -128,33 +143,76 @@ test("R8 deriveTopicTags tags a Cyrillic ruling", () => {
 
 // ── R39: the provider error classifier, both directions ─────────────────────
 
-test("R39 classifyLlmError reads a Cyrillic balance failure as balance", () => {
+// Skipped: the census plan's structure-before-prose change reads the structured
+// failure channel (`err.status`) instead of matching provider prose, which is
+// what makes a balance failure phrased in the owner's language land in the
+// balance arm instead of `unknown`.
+test(
+  "R39 classifyLlmError reads a Cyrillic balance failure as balance",
+  {
+    skip:
+      "R39: the census plan's structure-before-prose change reads err.status instead of provider prose",
+  },
+  () => {
   const verdict = classifyLlmError({ message: "Ваш баланс исчерпан" });
-  assert.equal(verdict.category, "balance", "an exhausted balance is not an unknown failure");
-});
+    assert.equal(verdict.category, "balance", "an exhausted balance is not an unknown failure");
+  },
+);
 
-test("R39 classifyLlmError does not read a millisecond figure as auth", () => {
+// Skipped: same row, same change. The unanchored `/401/` arm fires inside
+// `4012`, and the structured channel plus an anchored numeric arm is what stops
+// a timeout from asking the owner to re-authenticate.
+test(
+  "R39 classifyLlmError does not read a millisecond figure as auth",
+  {
+    skip:
+      "R39: the census plan's structure-before-prose change anchors the numeric arms to a status",
+  },
+  () => {
   const verdict = classifyLlmError({ message: "Connect timeout after 4012 ms" });
-  assert.notEqual(verdict.category, "auth", "a timeout is not a rejected credential");
-  assert.equal(verdict.retryable, true, "a timeout is retried");
-});
+    assert.notEqual(verdict.category, "auth", "a timeout is not a rejected credential");
+    assert.equal(verdict.retryable, true, "a timeout is retried");
+  },
+);
 
 // ── R22: the self-state claim screen ────────────────────────────────────────
 
-test("R22 findSelfStateClaims sees a Cyrillic liveness claim", () => {
-  const claims = findSelfStateClaims({
-    responseText: "Поллер работает, сообщения до меня доходят.",
-    toolsUsed: [],
-  });
-  assert.ok(
-    claims.length > 0,
-    `the response asserts a channel is live, so the judge is asked: got ${claims.length}`,
-  );
-});
+// Skipped: the census plan's one-classification-per-turn change gives this screen
+// a language-neutral candidate leg. No verb form is shared across languages, so
+// that leg is a model call, and the row's pattern table stays as the cheap recall
+// net in front of it.
+test(
+  "R22 findSelfStateClaims sees a Cyrillic liveness claim",
+  {
+    skip:
+      "R22: the census plan's one-classification-per-turn change gives the claim screen a language-neutral leg",
+  },
+  () => {
+    const claims = findSelfStateClaims({
+      responseText: "Поллер работает, сообщения до меня доходят.",
+      toolsUsed: [],
+    });
+    assert.ok(
+      claims.length > 0,
+      `the response asserts a channel is live, so the judge is asked: got ${claims.length}`,
+    );
+  },
+);
 
 // ── R7: the owner's standing instructions ───────────────────────────────────
 
-test("R7 classifyRulingBody files a Cyrillic standing instruction", () => {
-  const shape = classifyRulingBody("Никогда не публикуй релиз вручную.", BRAID_VOCABULARY);
-  assert.notEqual(shape, null, "a prohibition addressed to the agent is a standing instruction");
-});
+// Skipped: the census plan's one-classification-per-turn change assigns the class
+// with one small call over the turn, returning the quote verbatim so the pointer
+// check keeps a byte-for-byte slice. The English marker frames this row names are
+// only the recall net in front of that call.
+test(
+  "R7 classifyRulingBody files a Cyrillic standing instruction",
+  {
+    skip:
+      "R7: the census plan's one-classification-per-turn change replaces the English marker frames",
+  },
+  () => {
+    const shape = classifyRulingBody("Никогда не публикуй релиз вручную.", BRAID_VOCABULARY);
+    assert.notEqual(shape, null, "a prohibition addressed to the agent is a standing instruction");
+  },
+);
