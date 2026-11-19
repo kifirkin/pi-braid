@@ -13,12 +13,38 @@
  * Workers can be spawned via herdr (recommended) or manual instructions.
  *
  * This is the implementation counterpart to skills/orchestrator/SKILL.md.
+ *
+ * Two lifecycle invariants live beside the tool, because both are about the
+ * fleet and both need the registry this module owns:
+ *
+ *   - A session that settles while a worker it owns is live must leave
+ *     something scheduled to wake it. The seat arms that timer itself after a
+ *     dispatch, and a turn that ends on the dispatch arms nothing at all, so
+ *     the arm is taken here at the turn end, where the failing state is
+ *     already visible, instead of being asked of the seat again.
+ *   - A worker's terminal transition must not leave its pane standing. The
+ *     registry knows the pane and the close; the renderer will not close a
+ *     pane when an interactive agent stops, so the close path does it.
  */
 
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
 import { Type } from "typebox";
 import { createLogger } from "../../lib/core/logger.js";
+import { TURN_END } from "../../lib/core/event-names.js";
+import { readSettingsFileOutcome } from "../../lib/config/per-tool-settings.js";
+import { getExtensionState, getSessionIdSafe } from "../../lib/state/extension-state.js";
+import { getTimerExtensionFactoryState } from "../../lib/state/global-state.js";
+import {
+  paneIsClear,
+  reapWorkerPane,
+  type PaneReapOutcome,
+} from "../../lib/orchestrator/pane-lifecycle.js";
+import { cancelTimersByTag, listTimers, scheduleTimer } from "../scheduling/timer/index.js";
 import {
   acquireLock,
   releaseLock,
@@ -612,6 +638,30 @@ function effectEvidenceGaps(evidence: WorkerEffectEvidence): string {
 }
 
 /**
+ * End the pane of the worker just closed: the row's own handle, or the caller's
+ * argument when the row records none.
+ *
+ * A row and an argument that name different panes is a contradiction, and the
+ * entries are reported rather than resolved by preference: the pane step is
+ * destructive, and a wrong close kills a run.
+ */
+function closeClosedWorkerPane(closed: WorkerEntry, requested: string): PaneReapOutcome {
+  const recorded = typeof closed.pane === "string" ? closed.pane.trim() : "";
+  if (recorded && requested && recorded !== requested) {
+    return {
+      result: "refused",
+      detail:
+        `the row records pane ${recorded} and the argument names ${requested}, so neither was ` +
+        `closed; the row is closed, and a re-close with the row's own handle ends its pane`,
+    };
+  }
+  return reapWorkerPane({
+    pane: recorded || requested || null,
+    workerSession: closed.workerSession,
+  });
+}
+
+/**
  * What a reused admission reports: the live entry's own facts, so the caller
  * resumes the worker that already exists instead of the one it thought it was
  * creating. Reuse is read-only — no branch, no lock, no second row.
@@ -628,6 +678,189 @@ Output: ${entry.outputFile ?? "-"}
 Checkpoint: ${checkpoint}
 
 Resume the worker from its checkpoint, or close it (orchestrate action=close-worker) to admit a fresh attempt.`;
+}
+
+// Settle-time arm
+//
+// The device that removes a per-turn choice: at the turn end, every live worker
+// this session owns and no pending timer names gets one. The facts it needs are
+// both public — the registry (this module's own) and the scheduling module's
+// timer API — so nothing here reads another module's store, and nothing polls:
+// the failing state (a session settling with an unwatched worker) becomes true
+// at exactly this event.
+
+/** The knobs, all read at the turn end so a change lands without a rebuild. */
+interface SettleArmConfig {
+  /** "off" makes the turn end byte-identical to the pre-device one. */
+  mode: "on" | "off";
+  /** Delay before the first fire: inside the window a seat checks a dispatch anyway. */
+  delayMs: number;
+  /** Recurrence after that, so the fleet stays watched without a second cadence. */
+  intervalMs: number;
+}
+
+/**
+ * Code-constant defaults, in the watchdog's shape: the settings block overrides
+ * them field by field and an invalid field falls back on its own, so one typo
+ * cannot disarm the device or set a zero delay. The delay sits inside the
+ * measured gap a seat leaves between a dispatch and its next input; the
+ * recurrence keeps one watcher on the fleet rather than one per worker.
+ */
+const SETTLE_ARM_DEFAULTS: SettleArmConfig = {
+  mode: "on",
+  delayMs: 240_000,
+  intervalMs: 300_000,
+};
+
+/** Positive finite number or undefined. */
+function positiveFinite(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+/**
+ * Read `broker.orchestrator` from settings.json, fresh on every turn end.
+ *
+ * The block sits in the `broker` namespace the watchdog already established
+ * rather than under `braid.*`: those keys are mirrored into a generated schema
+ * and a config reference, and a device knob belongs to the module that owns the
+ * invariant. Absent or non-object block means defaults.
+ *
+ * Example:
+ *   "broker": { "orchestrator": { "settleArm": "off", "settleDelayMs": 120000 } }
+ */
+function loadSettleArmConfig(): SettleArmConfig {
+  const config: SettleArmConfig = { ...SETTLE_ARM_DEFAULTS };
+  try {
+    const broker = readSettingsFileOutcome().settings.broker as
+      | { orchestrator?: unknown }
+      | undefined;
+    const block = broker?.orchestrator;
+    if (!block || typeof block !== "object" || Array.isArray(block)) return config;
+    const b = block as Record<string, unknown>;
+    if (b.settleArm === "on" || b.settleArm === "off") config.mode = b.settleArm;
+    const delayMs = positiveFinite(b.settleDelayMs);
+    const intervalMs = positiveFinite(b.settleIntervalMs);
+    if (delayMs !== undefined) config.delayMs = delayMs;
+    if (intervalMs !== undefined) config.intervalMs = intervalMs;
+  } catch {
+    // An unreadable settings file is not a reason to leave the fleet unwatched:
+    // the defaults are the device.
+  }
+  return config;
+}
+
+/**
+ * Per-session record of the project keys this session has orchestrated in.
+ *
+ * The registry is keyed by project, and a seat usually runs in its own
+ * directory while the rows it writes live under the repositories it works in,
+ * so the session's own cwd is not where its fleet is. `Set` of keys rather than
+ * one key, because a seat can drive two repositories in one working set.
+ */
+interface SettleState {
+  projectKeys: Set<string>;
+}
+
+/** The session's settle state, or null when there is no session to key it on. */
+function settleState(ctx: unknown): SettleState | null {
+  if (!ctx) return null;
+  try {
+    return getExtensionState<SettleState>(ctx as ExtensionContext, "orchestrator.settle", () => ({
+      projectKeys: new Set<string>(),
+    }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Note that this session orchestrated in `key`. Called from every tool call that
+ * resolved a project, which is the harness's own statement that the session owns
+ * that fleet; armed timers are then scoped to those registries instead of to
+ * every registry on the box.
+ */
+function noteProjectKey(ctx: unknown, key: string | undefined): void {
+  if (!key) return;
+  try {
+    settleState(ctx)?.projectKeys.add(key);
+  } catch {
+    // Recording where the session worked is bookkeeping; it never fails a call.
+  }
+}
+
+/** Tag on every timer this device arms, so a cadence that watches nothing can be withdrawn. */
+const BABYSIT_TAG = "orchestrator-babysit";
+
+/** Tokens of a timer reason, for worker-id matching that cannot match a prefix. */
+function reasonNamesWorker(reason: string, workerId: string): boolean {
+  return reason.split(/[^A-Za-z0-9_-]+/).includes(workerId);
+}
+
+/** The reason a babysit timer carries: every worker it watches is named in it. */
+function babysitReason(workerIds: string[]): string {
+  return `babysit ${workerIds.join(", ")}: live worker(s) this session owns with no timer naming them`;
+}
+
+/**
+ * Arm one babysit timer for the live workers nothing names, and withdraw the
+ * cadence when the fleet empties. Returns a line for the log, or null when the
+ * turn end needed no change.
+ *
+ * Guards, each one a state this must not act on: an off switch; a session id the
+ * fire could not be attributed to; no project this session orchestrated in; no
+ * live row; every live row already named by a pending timer. One timer per
+ * settle naming all uncovered workers, rather than one per worker: the invariant
+ * is that something wakes the seat, and a per-worker arm would multiply wakes by
+ * the fleet size for no extra information.
+ */
+function armMissingWorkerTimers(ctx: unknown): string | null {
+  const config = loadSettleArmConfig();
+  if (config.mode === "off") return null;
+
+  // The scheduling module owns the timer store and the poller that fires it.
+  // Its factory counter is the one lib-level fact that says it is registered in
+  // this process: arming into a store nothing polls would write a timer that
+  // never fires, which looks installed and wakes nobody.
+  if (getTimerExtensionFactoryState().callCount === 0) return null;
+
+  const sessionId = getSessionIdSafe(ctx as ExtensionContext | undefined);
+  if (!sessionId || sessionId === "?") return null;
+
+  const state = settleState(ctx);
+  const keys = state ? [...state.projectKeys] : [];
+  if (keys.length === 0) return null;
+
+  // A `Set`: the same id can be live in two project registries, and a reason
+  // that names it twice reads as two workers.
+  const live = new Set<string>();
+  for (const key of keys) {
+    for (const entry of Object.values(readWorkers(key).workers)) {
+      if (!entry.closedAt) live.add(entry.workerId);
+    }
+  }
+
+  if (live.size === 0) {
+    const cancelled = cancelTimersByTag(sessionId, BABYSIT_TAG);
+    return cancelled > 0 ? `withdrew ${cancelled} babysit timer(s): no live worker left` : null;
+  }
+
+  const pending = listTimers(sessionId).map((timer) => timer.reason);
+  const uncovered = [...live].filter(
+    (id) => !pending.some((reason) => reasonNamesWorker(reason, id)),
+  );
+  if (uncovered.length === 0) return null;
+
+  const id = scheduleTimer(
+    sessionId,
+    config.delayMs,
+    babysitReason(uncovered),
+    BABYSIT_TAG,
+    true,
+    config.intervalMs,
+  );
+  return `armed ${id} for ${uncovered.join(", ")} (first fire in ${Math.round(
+    config.delayMs / 1000,
+  )}s, then every ${Math.round(config.intervalMs / 1000)}s)`;
 }
 
 // Tool Definition
@@ -647,7 +880,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
   label: "Orchestrate",
   promptSnippet: "Coordinate parallel agent workers (spawn/check/merge, locks)",
   description:
-    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. A close's stamped `files` row is compared against the census of the revision it names, and a number below that census refuses the merge before any ref moves. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. " +
+    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. A close's stamped `files` row is compared against the census of the revision it names, and a number below that census refuses the merge before any ref moves. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. close-worker also ends the pane its row names (or the `pane` it is given for a row that records none), and leaves alone a pane herdr reports as working or blocked, a pane holding a different agent session, and this process's own pane. " +
     `Worker lifecycle speaks in four vocabularies: ${renderStatusLayers()}.`,
   parameters: Type.Object({
     action: Type.Union(
@@ -715,7 +948,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
     pane: Type.Optional(
       Type.String({
         description:
-          "Worker pane ID (register-worker/update-worker). Recorded as a handle only: check-worker does not read it as liveness.",
+          "Worker pane ID (register-worker/update-worker/close-worker). Recorded as a handle only: check-worker does not read it as liveness. close-worker writes it onto a row that records none and closes that pane once the row is closed.",
       }),
     ),
     workspace: Type.Optional(Type.String({ description: "Worker workspace ID (update-worker)." })),
@@ -843,7 +1076,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
     },
     _signal: AbortSignal,
     _onUpdate: unknown,
-    _ctx: unknown,
+    ctx: unknown,
   ) => {
     const {
       action,
@@ -872,6 +1105,12 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
     } = params;
 
     const repoRoot = resolveCwd(explicitCwd, files);
+
+    // Every action says where this session orchestrated, which is what the
+    // settle-time arm reads: a seat usually runs in its own directory while the
+    // rows it writes live under the repositories it works in, so the session's
+    // cwd is not where its fleet is.
+    noteProjectKey(ctx, repoRoot ?? process.cwd());
 
     switch (action) {
       case "spawn-worker": {
@@ -1183,29 +1422,57 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
           throw new Error("close-worker requires workerId and outcome");
         }
 
+        // The pane handle is settled on the row the close returned, which is
+        // the authoritative one (a row can live under a project other than the
+        // caller's). A row that records no pane is a row no later reader can
+        // pair, so a handle the caller supplies is written onto it: a seat that
+        // closes fourteen workers in one turn otherwise leaves fourteen panes
+        // nothing can name. A row that already records one is never overwritten.
+        const requestedPane = typeof pane === "string" ? pane.trim() : "";
+
         const closed = closeWorker(workerId, parseWorkerOutcome(outcome), gates, repoRoot);
         if (!closed) {
           return textResult(`No registry entry for worker ${workerId}.`);
         }
+        const entry =
+          requestedPane && !closed.pane
+            ? (updateWorker(workerId, { pane: requestedPane }, repoRoot) ?? closed)
+            : closed;
 
         // A terminal completion carries its effect evidence on the close
         // result: a completed close whose row shows none of the three kinds
         // is flagged in the report. The flag is advisory — the close itself
         // stands, and the parent decides what the missing evidence means.
         const effectEvidence =
-          closed.closedAt && closed.status === "completed"
-            ? workerEffectEvidenceForEntry(closed, { cwd: repoRoot })
+          entry.closedAt && entry.status === "completed"
+            ? workerEffectEvidenceForEntry(entry, { cwd: repoRoot })
             : null;
         const flagNote =
           effectEvidence && effectEvidence.none
             ? `\n${WORKER_EFFECT_EVIDENCE_FLAG}: ${effectEvidenceGaps(effectEvidence)}`
             : "";
 
+        // The other half of the terminal transition: the pane the worker ran in
+        // does not close itself, and the row that named it has just become
+        // terminal. The step runs after the row is closed so a refused close
+        // (gate evidence, production preflight) never touches a pane, and it
+        // reports its own outcome beside the registry one.
+        const paneStep = closeClosedWorkerPane(entry, requestedPane);
+
         return textResult(
-          `Worker ${workerId} closed: ${closed.status}.${flagNote}\n${JSON.stringify(closed, null, 2)}`,
+          `Worker ${workerId} closed: ${entry.status}.${flagNote}\nPane: ${paneStep.detail}.\n${JSON.stringify(
+            entry,
+            null,
+            2,
+          )}`,
           {
-            entry: closed,
+            entry,
             effectEvidence,
+            pane: {
+              result: paneStep.result,
+              detail: paneStep.detail,
+              cleared: paneIsClear(paneStep),
+            },
           },
         );
       }
@@ -1388,4 +1655,20 @@ Register the worker (orchestrate action=register-worker) for a structured verdic
 export default function orchestratorExtension(pi: ExtensionAPI): void {
   pi.registerTool(orchestrateTool);
   log.info("[orchestrator] registered orchestrate tool");
+
+  // The settle-time arm. It rides the harness event rather than a polling
+  // loop: the state it looks for (a session settling with a live worker no
+  // timer names) becomes true exactly here, so there is no delay to tune and no
+  // second opinion about when the session is idle. A throw from this handler
+  // would follow the turn end out, so the body is caught whole: an arm that
+  // cannot be taken is a log line, never a broken turn.
+  pi.on(TURN_END, (_event: unknown, ctx: unknown) => {
+    try {
+      const note = armMissingWorkerTimers(ctx);
+      if (note) log.info(`[orchestrator] settle: ${note}`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log.warn(`[orchestrator] settle-time arm failed (the turn end stands): ${reason}`);
+    }
+  });
 }

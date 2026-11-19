@@ -84,6 +84,9 @@ const ALLOWED_BOUNDARY_OVERRIDES = [
   "ext/core → ext/scheduling",
   // context-compress → enforcement: compress handler reads autoResumeAfterCompaction
   "ext/memory → ext/enforcement",
+  // orchestrator → timer: a settled turn arms one babysit timer for the live
+  // workers no pending timer names, through the scheduling module's public API
+  "ext/orchestrator → ext/scheduling",
 ];
 
 // ── File collection ────────────────────────────────────────────────────────
