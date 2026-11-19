@@ -1,13 +1,20 @@
 // Offload recovery (offload_recover).
 //
 // The capture-time toolResult size cap flushes oversized results losslessly
-// to disk and stubs them. For images the stub carries no pixels, and the
-// obvious recovery — reading the image back — produces another oversized
-// result that the same cap stubs again: a closed loop where a large render
-// never reaches the model. This tool is the recovery seam the stub names:
+// to disk. A result carrying images is downscaled and kept as an image; when
+// the resize cannot fit (corrupt bytes, no image backend, a budget too small
+// to matter) the result becomes a stub that carries no pixels, and the obvious
+// recovery — reading the image back — produces another oversized result that
+// the same cap handles again. This tool is the recovery seam the stub names:
 // it reads a flush file and returns its image blocks, downscaled when needed
-// to a budget derived from the same cap, so the recovered view passes the
-// cap instead of looping into another stub.
+// to the same budget the cap downscales to, so a recovered view is a view and
+// not another stub.
+//
+// The tool is registered deferred, so a session that never sees a stub never
+// pays for it in the tool list. Producing a stub activates it additively
+// (ensureOffloadRecoverTool): a stub whose recovery is one discovery step
+// away is a recovery the model does not perform, which was measured on the
+// incident the stub family exists for.
 //
 // The budget arithmetic keeps that promise: maxBytes in pi-core's resizeImage
 // is compared against the base64 string length (the same unit
@@ -24,12 +31,12 @@ import { resizeImage } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getToolResultSizeCapConfig } from "../../../../../lib/config/braid-settings.js";
 import { offloadDir } from "../../../../../lib/config/braid-paths.js";
-
-/** Chars held back from the image budget for the note block that leads the result. */
-const NOTE_MARGIN_CHARS = 1024;
-
-/** The recovery budget is this fraction of the capture cap. */
-const RECOVERY_BUDGET_DIVISOR = 2;
+import {
+  IMAGE_NOTE_MARGIN_CHARS,
+  imageBudgetChars,
+  recordImageRecovered,
+} from "../image-policy.js";
+import { log } from "../shared.js";
 
 /** Longest flush path a note quotes before truncation. */
 const MAX_NOTE_PATH_CHARS = 300;
@@ -91,7 +98,9 @@ export const offloadRecoverSchema = Type.Object({
 /**
  * Register offload_recover. Deferred exposure like the other context-manager
  * tools: the stub is the discovery surface, this tool is the affordance it
- * names.
+ * names. The capture cap activates it when it produces a stub
+ * (ensureOffloadRecoverTool), so the affordance is callable in the turn the
+ * stub is read without costing a tool slot in a session that never stubs.
  */
 export function registerOffloadRecover(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -137,8 +146,8 @@ export function registerOffloadRecover(pi: ExtensionAPI): void {
           : undefined;
       // An override above the cap is clamped: a recovery result must never
       // trip the same cap it is recovering from.
-      const effectiveBudget = Math.min(override ?? Math.floor(cap / RECOVERY_BUDGET_DIVISOR), cap);
-      const target = effectiveBudget - NOTE_MARGIN_CHARS;
+      const effectiveBudget = Math.min(override ?? imageBudgetChars(cap), cap);
+      const target = effectiveBudget - IMAGE_NOTE_MARGIN_CHARS;
       if (target < 1) {
         return textResult(
           `Budget too small to carry an image (braid.context.toolResultSizeCap.maxChars=${cap}).`,
@@ -213,13 +222,14 @@ export function registerOffloadRecover(pi: ExtensionAPI): void {
         notes.join("; ");
 
       // Never re-offload: the assembled result is measured before it leaves.
-      if (note.length + used > cap - NOTE_MARGIN_CHARS) {
+      if (note.length + used > cap - IMAGE_NOTE_MARGIN_CHARS) {
         return textResult(
           `Recovery would exceed the cap; refusing. Original stays at ${clampPath(path)}.`,
           true,
         );
       }
 
+      if (delivered > 0) recordImageRecovered(path);
       return {
         content: [{ type: "text" as const, text: note }, ...deliveredBlocks],
         details: {
@@ -231,4 +241,43 @@ export function registerOffloadRecover(pi: ExtensionAPI): void {
       };
     },
   });
+}
+
+/** The tool a stub names; the name the activation below adds to the active set. */
+const RECOVERY_TOOL_NAME = "offload_recover";
+
+/**
+ * Make the recovery callable in the turn its stub is read.
+ *
+ * Deferred exposure keeps the tool out of every request's tool list until it
+ * is needed; a model that has to discover a tool mid-incident does not (the
+ * reporting session called neither tool_search nor offload_recover). So the
+ * production of the stub is the request for the recovery: this adds the tool
+ * to the active set ONCE, additively, and returns whether it did.
+ *
+ * Additive by construction: the current set is the input, so whatever a tool
+ * profile, the operator's `/tools` list or a sibling extension activated stays
+ * active. Nothing is written when the runtime does not hold the tool, when the
+ * active set is unreadable (an empty read must not replace the set), or when
+ * the call throws (a failed activation must not take the tool_result down).
+ */
+export function ensureOffloadRecoverTool(pi: ExtensionAPI): boolean {
+  try {
+    if (typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") {
+      return false;
+    }
+    const active = pi.getActiveTools();
+    if (!Array.isArray(active) || active.includes(RECOVERY_TOOL_NAME)) return false;
+    const registered =
+      typeof pi.getAllTools === "function"
+        ? pi.getAllTools().some((tool) => tool?.name === RECOVERY_TOOL_NAME)
+        : true;
+    if (!registered) return false;
+    pi.setActiveTools([...active, RECOVERY_TOOL_NAME]);
+    log.info(`[offload-recover] activated "${RECOVERY_TOOL_NAME}" (an image stub is in context)`);
+    return true;
+  } catch (err) {
+    log.warn("[offload-recover] recovery activation failed - the stub still names the tool", err);
+    return false;
+  }
 }

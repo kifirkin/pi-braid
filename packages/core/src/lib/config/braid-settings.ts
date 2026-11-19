@@ -265,12 +265,26 @@ interface BraidConfig {
      * Capture-time cap on toolResult size. When a tool result
      * exceeds maxChars at capture time (tool_result event), the full content
      * is flushed to disk (same offload dir as the stale offloader) and the
-     * stored session entry carries a stub + the first 500 chars. Screenshots
-     * and base64 blobs never enter context in the first place. Default ON.
-     * Resolver: resolveToolResultSizeCapConfig; defaults in
+     * stored session entry carries a stub + the first 500 chars. A result
+     * carrying images is downscaled to fit instead, and the model keeps a
+     * picture. Screenshots and base64 blobs never enter context in the first
+     * place. Default ON. Resolver: resolveToolResultSizeCapConfig; defaults in
      * TOOL_RESULT_SIZE_CAP_DEFAULTS.
      */
     toolResultSizeCap?: ToolResultSizeCapSettings;
+    /**
+     * Age-out of image blocks in the per-request context. After `turns` tool
+     * results, an image block is replaced by one text block naming the file it
+     * came from and the tool that re-reads it; the replacement happens only
+     * when the file's bytes are on disk, so it is lossless and an image with
+     * no recoverable path is never touched. Default ON: an image under the
+     * cap otherwise rides in every request for the rest of the session.
+     * Resolver: resolveImageAgeConfig; defaults in IMAGE_AGE_DEFAULTS.
+     *
+     * Example:
+     *   "braid": { "context": { "imageAge": { "turns": 20 } } }
+     */
+    imageAge?: ImageAgeSettings;
     /**
      * Usage-driven auto-arm of a deterministic slide compaction. When live
      * usage sits at or above armPercent for confirmTicks consecutive
@@ -316,6 +330,14 @@ export interface ToolResultSizeCapSettings {
   enabled?: boolean;
   /** Size threshold (chars) above which a toolResult is flushed + stubbed. */
   maxChars?: number;
+}
+
+/** Raw (unvalidated) owner settings for braid.context.imageAge. */
+export interface ImageAgeSettings {
+  /** Master gate. Default true — an image that fits otherwise rides forever. */
+  enabled?: boolean;
+  /** Tool results after which an image block becomes a pointer to its file. */
+  turns?: number;
 }
 
 /**
@@ -1021,6 +1043,84 @@ export function resolveToolResultSizeCapConfig(raw: unknown): ResolvedToolResult
  */
 export function getToolResultSizeCapConfig(): ResolvedToolResultSizeCapConfig {
   return resolveToolResultSizeCapConfig(readSettings().braid?.context?.toolResultSizeCap);
+}
+
+// ── image age-out (braid.context.imageAge) ──────────────────────────
+
+/**
+ * Defaults for the image age-out. Default ON: the measured failure is an image
+ * that fits the cap and therefore rides in every request for the rest of the
+ * session (22 image blocks at 514,977 chars were still in the prompt at the
+ * last turn of a seven-hour one, every screenshot already a file on disk).
+ * turns=20 is the conservative band: a picture stays through the work it was
+ * read for, well short of a session, and the way back is one `read` of the file
+ * the pointer names.
+ */
+export const IMAGE_AGE_DEFAULTS = {
+  enabled: true,
+  turns: 20,
+} as const;
+
+/** The validated, effective imageAge config. */
+export interface ResolvedImageAgeConfig {
+  enabled: boolean;
+  turns: number;
+}
+
+/** Warned once per process about an invalid braid.context.imageAge. */
+let _warnedInvalidImageAge = false;
+
+function _warnInvalidImageAge(value: unknown): void {
+  if (_warnedInvalidImageAge) return;
+  _warnedInvalidImageAge = true;
+  _log.warn(
+    "Invalid braid.context.imageAge in settings.json - ignoring " +
+      "invalid fields and using defaults (age-out stays ON unless " +
+      "enabled is explicitly false).",
+    { value },
+  );
+}
+
+/**
+ * Pure resolver for the braid.context.imageAge block.
+ * Absent → all defaults (enabled: true). Non-object shape, or any field
+ * violating its type/range, falls back to that field's default with a
+ * once-per-process warning. Kept pure for unit-testability.
+ */
+export function resolveImageAgeConfig(raw: unknown): ResolvedImageAgeConfig {
+  const defaults: ResolvedImageAgeConfig = IMAGE_AGE_DEFAULTS;
+  if (raw === undefined) {
+    return { ...defaults };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    _warnInvalidImageAge(raw);
+    return { ...defaults };
+  }
+  const r = raw as ImageAgeSettings;
+  const d: ResolvedImageAgeConfig = IMAGE_AGE_DEFAULTS;
+  let invalid = false;
+  let enabled = d.enabled;
+  if (typeof r.enabled === "boolean") {
+    enabled = r.enabled;
+  } else if (r.enabled !== undefined) {
+    invalid = true;
+  }
+  let turns = d.turns;
+  if (typeof r.turns === "number" && Number.isInteger(r.turns) && r.turns >= 1) {
+    turns = r.turns;
+  } else if (r.turns !== undefined) {
+    invalid = true;
+  }
+  if (invalid) _warnInvalidImageAge(raw);
+  return { enabled, turns };
+}
+
+/**
+ * Read the effective imageAge config from settings.json, fresh on every call
+ * (no caching), like the other readers. Default: enabled=true, turns=20.
+ */
+export function getImageAgeConfig(): ResolvedImageAgeConfig {
+  return resolveImageAgeConfig(readSettings().braid?.context?.imageAge);
 }
 
 // ── usage-driven auto-arm of a slide compaction (braid.context.contextAutoCompact) ─
