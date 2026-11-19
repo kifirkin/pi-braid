@@ -25,6 +25,7 @@ import { classify as textClassifier } from "../ai/text-classifier.js";
 import { pushBounded } from "./bounded.js";
 import { getExtensionState } from "../state/extension-state.js";
 import { STOP_WORDS } from "../ai/critic-registry.js";
+import { isStopWord, tokenize } from "./tokenize.js";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Episode } from "../types/episode-types.js";
 
@@ -138,6 +139,12 @@ async function classifyTaskKeywords(text: string, _ctx?: any): Promise<string[]>
  * Uses the centralized STOP_WORDS list (replaces a 100-word
  * inline list that duplicated most of the centralized set plus a few
  * conversation openers). Returns meaningful identifiers.
+ *
+ * The words come from the shared tokenizer, so a message written in Cyrillic,
+ * Greek or Hebrew carries keywords here instead of none. The pleasantry strip
+ * above them stays English: it removes politeness, and a message that keeps a
+ * Russian "пожалуйста" as one keyword still ranks against the episode it
+ * belongs to.
  */
 function extractKeywords(text: string): string[] {
   if (!text || text.length < 5) return [];
@@ -145,15 +152,9 @@ function extractKeywords(text: string): string[] {
   const clean = text
     .replace(/^(hello|hi|hey|thanks|thank you|please|can you|could you|would you)/i, "")
     .replace(/(thanks|thank you|please|btw|by the way)$/i, "")
-    .replace(/[^a-z0-9_-]+/gi, " ")
     .trim();
 
-  if (!clean) return [];
-
-  const words = clean
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+  const words = tokenize(clean).filter((w) => w.length > 2 && !isStopWord(w, STOP_WORDS));
 
   const seen = new Set<string>();
   return words.filter((w) => {
@@ -166,6 +167,10 @@ function extractKeywords(text: string): string[] {
 /**
  * Extract project-specific keywords from a path string.
  * Returns directory names, filenames (without extension), framework names.
+ *
+ * Paths stay a literal read: a path is a path in any language. The identifier
+ * leg is the shared tokenizer, so a task written in Cyrillic contributes its
+ * words instead of a fragment of whichever Latin run the old class matched.
  */
 function extractProjectKeywords(text: string): string[] {
   const keywords: string[] = [];
@@ -180,9 +185,8 @@ function extractProjectKeywords(text: string): string[] {
     if (name.length > 2) keywords.push(name.toLowerCase());
   }
 
-  const identifiers = text.match(/[a-z][a-zA-Z0-9]{2,}|[A-Z][a-z]{2,}[a-zA-Z0-9]*/g) || [];
-  for (const id of identifiers) {
-    if (id.length > 2) keywords.push(id.toLowerCase());
+  for (const id of tokenize(text)) {
+    if (id.length > 2) keywords.push(id);
   }
 
   return [...new Set(keywords)];
@@ -200,11 +204,10 @@ function computeSimilarity(
 ): number {
   if (queryKeywords.length === 0 || !episodeTask) return 0;
 
-  const episodeWords = episodeTask
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
+  // The episode side is tokenized by the same function as the query side, for
+  // the same reason: one side of a comparison reading Latin only turns every
+  // pair into a zero and reads as "no similar episode".
+  const episodeWords = tokenize(episodeTask).filter((w) => w.length > 2);
 
   const episodeSet = new Set(episodeWords);
   let matches = 0;

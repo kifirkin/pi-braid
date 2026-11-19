@@ -28,6 +28,7 @@
  */
 
 import { QUERY_STOP_WORDS } from "./constants.js";
+import { isStopWord, tokenize } from "../utils/tokenize.js";
 
 /** The closed set of ruling shapes the classifier can name. */
 export type RulingClass = "prohibition" | "preference" | "requirement" | "policy";
@@ -345,15 +346,15 @@ export const TAG_LIMIT = 3;
 /** Shortest token a tag may be cut from. */
 const TAG_TOKEN_MIN_LENGTH = 4;
 
+/** A tag is a word, so it starts at a letter: a run's leading hyphens are punctuation. */
+const STARTS_WITH_LETTER = /^\p{L}/u;
+
 /**
  * The share of the population past which a token names nothing. A word a
  * quarter of the store already carries is the store's background, not a topic:
  * it would fire on every query and add nothing a reader could act on.
  */
 const TAG_POPULATION_SHARE = 0.25;
-
-/** Tokens a tag may be cut from: letters, then letters/digits/hyphens. */
-const TAG_TOKEN = /[a-z][a-z0-9-]{3,}/g;
 
 /**
  * The population a quote is filed into, as the frequency test sees it:
@@ -373,6 +374,11 @@ export interface TagPopulation {
  * words, drop any token more than a quarter of the population carries, and keep
  * the three the population carries most, ties by first occurrence.
  *
+ * The tokens are the shared tokenizer's, so a ruling written in Cyrillic, Greek
+ * or Hebrew carries the words of its subject instead of none: the old class was
+ * `[a-z][a-z0-9-]{3,}`, which for such a quote matched nothing, filed the entry
+ * with no tags, and left it findable only by its class.
+ *
  * The ranking is by frequency and not by rarity, and the reason is the read
  * path's own arithmetic: a tag's bonus is a flat constant however rare the
  * token is, so rarity buys nothing a later query will say. Two tokens of equal
@@ -389,11 +395,13 @@ export function deriveTopicTags(
   const ceiling = population.total * TAG_POPULATION_SHARE;
   const seen = new Set<string>();
   const candidates: Array<{ token: string; count: number; first: number }> = [];
-  for (const token of String(text ?? "")
-    .toLowerCase()
-    .match(TAG_TOKEN) ?? []) {
+  for (const run of tokenize(String(text ?? ""), { innerHyphen: true })) {
+    // Leading hyphens are punctuation around the word, not part of it, which is
+    // the shape the old expression had (its match started at a letter).
+    const token = run.replace(/^-+/, "");
     if (token.length < TAG_TOKEN_MIN_LENGTH) continue;
-    if (QUERY_STOP_WORDS.has(token)) continue;
+    if (!STARTS_WITH_LETTER.test(token)) continue;
+    if (isStopWord(token, QUERY_STOP_WORDS)) continue;
     if (seen.has(token)) continue;
     seen.add(token);
     const count = population.count(token);

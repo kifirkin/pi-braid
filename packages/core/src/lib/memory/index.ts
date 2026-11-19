@@ -23,6 +23,7 @@ import {
 } from "./constants.js";
 import { loadMemory, saveMemory } from "./storage.js";
 import { generateAutoTags, generateId } from "./utils.js";
+import { isStopWord, tokenize } from "../utils/tokenize.js";
 
 // MAX_ENTRIES, MIN_UTILITY_THRESHOLD, CATEGORY_BASE_UTILITY are
 // re-exported from ./lifecycle.ts (the lifecycle module owns them).
@@ -67,9 +68,14 @@ import { shouldStore, calculateUtility, pruneMemories, consolidate } from "./lif
  * token "apis" instead of carrying "apis?" to a substring test that can never
  * match it. The same split runs over content, so a phrase test compares tokens
  * with tokens instead of punctuation with punctuation.
+ *
+ * The split is the shared tokenizer's, so a query written in Cyrillic, Greek or
+ * Hebrew yields words here instead of nothing. It used to be `[a-z0-9-]`, and
+ * on such a query the store had no words to compare with any entry: recall
+ * returned an empty list and read as "nothing stored is relevant".
  */
 function matchTokens(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z0-9-]+/g) ?? []).filter(
+  return tokenize(text, { innerHyphen: true }).filter(
     (token) => token.length >= QUERY_MIN_TOKEN_LENGTH,
   );
 }
@@ -362,7 +368,9 @@ export class CognitiveMemory {
     },
   ): Promise<Array<{ memory: CognitiveMemoryEntry; relevance: number }>> {
     const lowerQuery = query.toLowerCase();
-    const queryWords = matchTokens(lowerQuery).filter((word) => !QUERY_STOP_WORDS.has(word));
+    const queryWords = matchTokens(lowerQuery).filter(
+      (word) => !isStopWord(word, QUERY_STOP_WORDS),
+    );
     const phrase = queryWords.join(" ");
     const limit = options?.limit ?? 5;
 

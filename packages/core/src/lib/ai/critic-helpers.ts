@@ -20,6 +20,13 @@ export const ENTITY_VERBS =
  * and sop-suggestion.ts to filter out non-content words before
  * similarity computation - the one centralized list.
  *
+ * Scope: Latin script. This set is the English list a matcher passes to
+ * `isStopWord` (lib/utils/tokenize), which answers for the token's own script:
+ * a Cyrillic token is tested against the tokenizer's Russian list, and a token
+ * in any other script is not a stop word. Ask through that function, not
+ * through `has`, because `has` on a Cyrillic token is false for every entry
+ * here and that false reads as "carries content".
+ *
  * STOP_WORDS_LEGACY remains a deprecated alias for back-compat.
  */
 export const STOP_WORDS = new Set([

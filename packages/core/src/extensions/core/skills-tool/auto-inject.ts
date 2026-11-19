@@ -148,6 +148,7 @@ import { triggerMatches } from "./skill-triggers.js";
 import type { TriggerSource } from "./skill-triggers.js";
 import { toolFamilyToken } from "./skill-families.js";
 import { getSkillsInformMode } from "../../../lib/config/braid-settings.js";
+import { isStopWord, tokenize } from "../../../lib/utils/tokenize.js";
 import { PROCESS_VOCABULARY, isProcessPhrase } from "./process-vocabulary.js";
 import type { SkillsInformMode } from "../../../lib/config/braid-settings.js";
 import {
@@ -193,6 +194,13 @@ export const LOADED_COOLDOWN_TURNS = 30;
 
 /** Minimum keyword length to consider significant. */
 const MIN_KEYWORD_LENGTH = 4;
+
+/**
+ * A keyword names something, so it carries a letter. A run of digits is a
+ * number, and a number is evidence of nothing; the test is over `\p{L}` and not
+ * `[a-z]` because that letter may be Cyrillic, Greek or Hebrew.
+ */
+const NAMES_SOMETHING = /\p{L}/u;
 
 /**
  * Max characters of SKILL.md body content carried in a POINTER row, per
@@ -504,25 +512,34 @@ const ABSOLUTE_PATH = /(?:^|[\s`'"([])(?:~?\/)[^\s`'"()[\],;:]*/g;
 /**
  * Extract the significant keywords of the WORK a text describes.
  *
- * Filters out stop words, short words, non-alphabetic tokens and PROCESS_VOCABULARY
+ * Filters out stop words, short words, letterless tokens and PROCESS_VOCABULARY
  * (the dispatch's own words, which every dispatch carries and which therefore
  * cannot tell one piece of work from another), drops absolute paths, then stems
  * trailing plurals; the stem result must still pass the length and stop-word
  * bar (stemming "tasks" lands on the noise word "task", which stays out).
  *
+ * The split is the shared tokenizer's, so the words of a Cyrillic, Greek or
+ * Hebrew prompt are words here instead of nothing: the old class `[a-z]`
+ * dropped every token the owner types in his own language, and the empty
+ * keyword list was then read as a prompt that names no work.
+ *
  * This is the one place that decides what the catalog read scores, so the
  * ordering and the evidence beside it cannot disagree about the text.
  */
 export function extractKeywords(text: string): string[] {
-  const words = text
-    .replace(ABSOLUTE_PATH, " ")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= MIN_KEYWORD_LENGTH && !KEYWORD_STOP_WORDS.has(w) && /[a-z]/.test(w))
+  const words = tokenize(text.replace(ABSOLUTE_PATH, " "))
+    .filter(
+      (w) =>
+        w.length >= MIN_KEYWORD_LENGTH &&
+        !isStopWord(w, KEYWORD_STOP_WORDS) &&
+        NAMES_SOMETHING.test(w),
+    )
     .map(stemKeyword)
     .filter(
       (w) =>
-        w.length >= MIN_KEYWORD_LENGTH && !KEYWORD_STOP_WORDS.has(w) && !PROCESS_VOCABULARY.has(w),
+        w.length >= MIN_KEYWORD_LENGTH &&
+        !isStopWord(w, KEYWORD_STOP_WORDS) &&
+        !PROCESS_VOCABULARY.has(w),
     );
 
   return [...new Set(words)];
@@ -728,7 +745,7 @@ export function matchSkill(
     if (!reason || REASON_STRENGTH[candidate] > REASON_STRENGTH[reason]) reason = candidate;
   };
   const name = skill.name.toLowerCase();
-  const nameTokens = name.split(/[^a-z0-9]+/).filter(Boolean);
+  const nameTokens = tokenize(name);
   // The class the name belongs to: the final token of a compound name.
   const classToken = nameTokens.length > 1 ? nameTokens.length - 1 : -1;
   const desc = skill.description.toLowerCase();

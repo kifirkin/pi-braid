@@ -32,7 +32,17 @@
  * Entries are the stemmed forms the keyword extractor produces, so membership
  * is a token test, not a prefix test: `commit` covers `commits` (the stemmer
  * strips the plural) and does not cover `committed`.
+ *
+ * Coverage. The list above is written in English, so a phrase in another script
+ * has no entry to match and `isProcessPhrase` answers false for it. That false
+ * is not the vocabulary's judgement: it is the vocabulary saying nothing about
+ * a language it does not carry, and the caller reads it correctly, because a
+ * phrase authored in the owner's own script is task evidence rather than the
+ * loop's own vocabulary. The gap is stated here instead of being papered over
+ * with a third answer no caller would read.
  */
+
+import { isStopWord, tokenize } from "../../../lib/utils/tokenize.js";
 
 /** Minimum keyword length the extractor applies; shorter words carry no evidence. */
 const MIN_WORD_LENGTH = 4;
@@ -171,10 +181,9 @@ export const PROCESS_VOCABULARY: ReadonlySet<string> = new Set([
  * short or stop words) is not vocabulary — it says nothing either way. Pure.
  */
 export function isProcessPhrase(phrase: string): boolean {
-  const words = phrase
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= MIN_WORD_LENGTH && !PHRASE_STOP_WORDS.has(w));
+  const words = tokenize(phrase).filter(
+    (w) => w.length >= MIN_WORD_LENGTH && !isStopWord(w, PHRASE_STOP_WORDS),
+  );
   // A word counts in its own spelling or its stemmed one, so a phrase's plural
   // is read as its singular while a stemmed stub that loses its meaning
   // (`docs` -> three letters) keeps the spelling that says what it is.

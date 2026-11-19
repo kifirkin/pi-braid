@@ -16,6 +16,8 @@
  * ```
  */
 
+import { isStopWord, tokenize } from "../utils/tokenize.js";
+
 /** Reasons a response can fail the stability check. Source of truth for downstream consumers. */
 export type StabilityReason = "ok" | "repetitive" | "topic_drift" | "self_contradiction";
 
@@ -55,82 +57,98 @@ export interface StabilityMetrics {
   contradictions: number;
 }
 
-/** Extract topic anchors (significant words) from text */
-export function extractAnchors(text: string): Set<string> {
-  const STOP = new Set([
-    "the",
-    "and",
-    "that",
-    "this",
-    "with",
-    "from",
-    "your",
-    "have",
-    "more",
-    "are",
-    "was",
-    "will",
-    "can",
-    "for",
-    "not",
-    "but",
-    "they",
-    "you",
-    "all",
-    "get",
-    "has",
-    "how",
-    "its",
-    "may",
-    "new",
-    "now",
-    "see",
-    "who",
-    "did",
-    "she",
-    "use",
-    "our",
-    "out",
-    "any",
-    "just",
-    "like",
-    "then",
-    "also",
-    "into",
-    "very",
-    "what",
-    "when",
-    "where",
-    "which",
-    "would",
-    "could",
-    "should",
-    "about",
-    "been",
-    "being",
-    "some",
-    "than",
-    "them",
-    "there",
-    "these",
-    "those",
-    "want",
-    "make",
-    "made",
-    "after",
-    "before",
-    "between",
-    "each",
-  ]);
+/**
+ * The words an anchor is not: the request's own function words. Membership is
+ * this list's own (it is not the memory read path's list), and the length floor
+ * of four characters below is what makes most of them moot.
+ *
+ * Scope: Latin script. This set is the English list passed to `isStopWord`
+ * (lib/utils/tokenize), which answers for the token's own script.
+ */
+const ANCHOR_STOP_WORDS: ReadonlySet<string> = new Set([
+  "the",
+  "and",
+  "that",
+  "this",
+  "with",
+  "from",
+  "your",
+  "have",
+  "more",
+  "are",
+  "was",
+  "will",
+  "can",
+  "for",
+  "not",
+  "but",
+  "they",
+  "you",
+  "all",
+  "get",
+  "has",
+  "how",
+  "its",
+  "may",
+  "new",
+  "now",
+  "see",
+  "who",
+  "did",
+  "she",
+  "use",
+  "our",
+  "out",
+  "any",
+  "just",
+  "like",
+  "then",
+  "also",
+  "into",
+  "very",
+  "what",
+  "when",
+  "where",
+  "which",
+  "would",
+  "could",
+  "should",
+  "about",
+  "been",
+  "being",
+  "some",
+  "than",
+  "them",
+  "there",
+  "these",
+  "those",
+  "want",
+  "make",
+  "made",
+  "after",
+  "before",
+  "between",
+  "each",
+]);
 
-  const tokens = text.toLowerCase().split(/\W+/);
-  return new Set(tokens.filter((t) => t.length > 3 && !STOP.has(t)));
+/**
+ * Extract topic anchors (significant words) from text.
+ *
+ * The split is the shared tokenizer's, and the three functions below all take
+ * it together: they are one comparison. While `extractAnchors` split on `\W`
+ * and `measureOverlap` did too, a non-Latin request and a non-Latin response
+ * both produced no tokens, so the overlap of two empty sets was reported as a
+ * stable answer instead of an unmeasurable one.
+ */
+export function extractAnchors(text: string): Set<string> {
+  const tokens = tokenize(text);
+  return new Set(tokens.filter((t) => t.length > 3 && !isStopWord(t, ANCHOR_STOP_WORDS)));
 }
 
 /** Measure word overlap between text and anchors */
 export function measureOverlap(text: string, anchors: Set<string>): number {
   if (anchors.size === 0) return 1.0;
-  const tokens = new Set(text.toLowerCase().split(/\W+/));
+  const tokens = new Set(tokenize(text));
   let matches = 0;
   for (const a of anchors) {
     if (tokens.has(a)) matches++;
@@ -140,10 +158,7 @@ export function measureOverlap(text: string, anchors: Set<string>): number {
 
 /** Measure bigram entropy (diversity) of text */
 export function measureBigramEntropy(text: string): number {
-  const words = text
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((w) => w.length > 0);
+  const words = tokenize(text);
   if (words.length < 2) return 1.0;
 
   const bigrams: string[] = [];

@@ -38,6 +38,13 @@ export const QUERY_MIN_TOKEN_LENGTH = 3;
  *
  * Generic vocabulary only. A word that names anything about this deployment,
  * its files, or its roles belongs to that owner, not in a shared matcher.
+ *
+ * Scope: Latin script. This set is the English list a matcher passes to
+ * `isStopWord` (lib/utils/tokenize), which answers for the token's own script:
+ * a Cyrillic query token is tested against the tokenizer's Russian list, and a
+ * token in any other script is not a stop word. Ask through that function, not
+ * through `has`, because `has` on a Cyrillic token is false for every entry
+ * here and that false reads as "carries content".
  */
 export const QUERY_STOP_WORDS: ReadonlySet<string> = new Set([
   "a",
