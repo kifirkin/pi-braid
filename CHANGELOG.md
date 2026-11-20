@@ -53,6 +53,78 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.48.0: a dead route says so once, a suite remembers what passed, and a provider can be emulated (2026-11-20)
+
+When every key for a route was spent, the failure surfaced as a provider error and the next attempt discovered the same
+spent keys in the same silence. `7e42826` publishes the exhausted route from `packages/providers` into a process-global
+slot (`ROUTE_EXHAUSTION_SLOT_KEY` in `lib/state/global-state.ts`, the cross-bundle slot pattern the file documents at
+length) and `packages/core/src/extensions/self/auto-recovery/index.ts` raises exactly one whisper per episode naming
+the route and its counts, so a rotation is visible once instead of inferred from a stack of 429s.
+`node providers/test/ring-health.test.mjs` and `node packages/core/test/runtime/lib/test-degradation-recovery.mjs`
+carry the legs.
+
+A wave could pass every fixture it touched and still break a fixture elsewhere in the suite, and nobody noticed for a
+full afternoon. `aabbd54` adds `packages/core/scripts/check-regressions.mjs`: `--baseline` snapshots each fixture's
+outcome together with the revision it was taken at, `--check` refuses any fixture that used to pass and now fails or
+disappeared, and `--exempt` demands a written `why` so an exception is a decision rather than a habit. On this tree the
+baseline enumerated 390 fixtures, 390 passed, none timed out — the instrument's first real measurement, taken at the
+merge that introduced it. `1777e1a` keeps its own label vocabulary out of the fixture and `d099558` keeps a timeout
+distinguishable from a failure.
+
+Testing anything through a real provider means a key, a bill and a network that decides whether today is a good day.
+`7cca9b3` adds `packages/core/scripts/emulated-provider.mjs`, a local OpenAI-shaped endpoint that can answer whole, cut
+a stream before `[DONE]`, or return 429, plus `GET /v1/models` (`35fda44`) because pi asks for the catalog before it
+sends anything: a session pointed at the mock without that route exits `Unknown provider "emulated"` and makes zero
+requests, which is the failure the first version had. `node --test
+packages/core/test/runtime/loader/test-emulated-provider.mjs` runs the three behaviours, and `LOCAL_DEV.md` names the
+`models.json` requirement, since a provider declared in `settings.json` is never read.
+
+Providers 1.1.0 carries the exhaustion publishing; the export is additive.
+
+## Core 0.47.0: the window reaches the model that runs, the arm is repaid before it re-fires, and a null cwd is not a directory (2026-11-20)
+
+`braid.context.contextLimitTokens` was written onto a virtual model entry while pi's threshold checks the model the
+route actually resolves, so a session could believe it held 384k and be compacted at a tenth of that. `3ae356b`
+reaches the routed physical model through `ctx.modelRegistry.find(provider, id)`, writes the configured window onto it
+and re-applies at `turn_end`; the bound is named in the commit: a custom provider declared in `models.json` returns a
+fresh object per read, so the value is re-applied rather than assumed to stick.
+
+A compaction that fired because usage rose was re-arming on the next tick even when the reclaim had already dropped
+usage, which produced the repeated compactions the owner felt as a loop. `c84e7ee` records, per fire,
+`firedPercent`, `firedKept` and `firedDropped`, and arms again only when usage has grown since the last fire or entries
+were dropped; the explicit tool path stays ungated because a person asking is not a threshold.
+
+`bash-cwd` turned `cwd: null` into `<current dir>/null` because the handler tested `params.cwd !== undefined` and then
+resolved it; `5a22346` makes a cwd that names no directory absent, refuses one that names a file in a single line, and
+keeps the string `"null"` reachable as `./null`, with the schema declaring `anyOf: [string, null]`.
+
+Two reads got sharper. `d9f050e` reads a provider failure's HTTP status before its prose, anchored to numeric arms, so a
+429 body that also says "context length" is classified by what happened; the replay over 1,109 recorded error turns is
+in the commit, and 403 deliberately stays on the wording path because five pinned rows depend on that distinction.
+`b9aed29` feeds modules the live task text and tool names (`toolCallsSinceLastTick` was `[]` at the scheduler's call
+site) and makes a path miss prefer the errno token pi returns instead of reporting a miss as an absence.
+
+The replay probe now records what a gateway does with a stripped reasoning field, empty string included (`56fe7d8`),
+measured live at 200/200/200 across the three shapes.
+
+Providers 1.0.9 carries the failure-status read.
+
+## Core 0.46.0: an image policy, a citation that must be a run, and a pointer that honors supersession (2026-11-20)
+
+Images were the last artifact class with no policy: any wave could add a screenshot to the tree and nothing said which
+ones belong in a release. The image-policy commit makes the decision explicit, with the fixture that keeps it from
+drifting.
+
+A claim that cites a run had to be a recorded run (`7cc8cca`): the result gate now refuses a claim whose `verified_by`
+names something the session never executed, which is the failure mode where a green block is assembled from a grep that
+happens to match.
+
+The session-start pointer followed supersession edges (`1063f68`), so a reader arriving cold lands on the newest
+statement of an intent rather than the first one written. The thinking replay probe learned to record what a gateway
+accepts (`62ae341`) and to send the gateway's session header (`917b136`), and `LOCAL_DEV.md` gained the rule that the
+fixture count it states moves with the population (`b461b46`), after a fixture-adding merge left the documentation's
+integers stale and reddened `check:source-claims`.
+
 ## Core 0.45.12: relevance is a judgement call, and the turn end leaves nothing unwatched (2026-11-19)
 
 The suggestion whisper decided relevance by testing authored trigger phrases as word-bounded occurrences in
