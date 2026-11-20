@@ -16,6 +16,13 @@
  *      fail; an arm that only ever ran against the wrapper would pass with no
  *      persistence at all.
  *
+ * A `cwd` that names no directory is the argument's own failure, so it is
+ * pinned separately: a null, a blank string and the spellings a constrained
+ * generator emits when it means either (`"null"`, `"undefined"`) run the call
+ * in the directory it would have inherited and leave the note saying so, while
+ * a `cwd` naming a file is answered in one line, naming the argument and the
+ * path it resolved to, without reaching the shell.
+ *
  * The parser's refusals are asserted separately: every shape where the text no
  * longer says where the shell ended up (subshell, pipeline, heredoc, control
  * body, expansion, quoted text that looks like a `cd`) parses to nothing, and
@@ -28,7 +35,7 @@
 
 import { after, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -157,6 +164,25 @@ describe("bash: the working directory carries across calls", () => {
     assert.equal(printedDir(next), sub, "the override did not change what the next call inherits");
   });
 
+  it("a relative cwd resolves against the directory the call would have inherited", async () => {
+    const { dir, ctx } = session("relative-cwd");
+    const sub = join(dir, "sub");
+    const inner = join(sub, "inner");
+    mkdirSync(inner, { recursive: true });
+    // The same relative name exists under the session start, so a cwd resolved
+    // there would succeed and print the other path instead of failing.
+    mkdirSync(join(dir, "inner"));
+
+    await call(ctx, { command: `cd ${sub} && pwd` });
+
+    const overridden = await call(ctx, { command: "pwd", cwd: "inner" });
+    assert.equal(printedDir(overridden), inner, "relative to the directory the session is in");
+    assert.notEqual(printedDir(overridden), join(dir, "inner"));
+
+    const next = await call(ctx, { command: "pwd" });
+    assert.equal(printedDir(next), sub, "the override did not change what the next call inherits");
+  });
+
   it("a relative cd resolves against the directory the call ran in", async () => {
     const { dir, ctx } = session("relative");
     const sub = join(dir, "sub");
@@ -233,6 +259,81 @@ describe("bash: the working directory carries across calls", () => {
     for (const key of Object.keys(base.properties)) {
       assert.deepEqual(ours.properties[key], base.properties[key], `\`${key}\` is pi's own`);
     }
+  });
+
+  it("admits a null cwd, so a provider that sends one is validated rather than stringified", () => {
+    const cwd = tool.parameters.properties.cwd;
+    const branches = Array.isArray(cwd.anyOf)
+      ? cwd.anyOf
+      : Array.isArray(cwd.type)
+        ? cwd.type.map((type) => ({ type }))
+        : [];
+    const types = branches.map((branch) => branch.type);
+    assert.ok(types.includes("null"), `the schema names null among ${JSON.stringify(types)}`);
+    assert.ok(types.includes("string"), "and a string beside it");
+  });
+});
+
+describe("bash: a cwd that names no directory", () => {
+  /** A session already sitting in `sub`, so the inherited directory and the start directory differ. */
+  async function parkedInSub(name) {
+    const { dir, ctx } = session(name);
+    const sub = join(dir, "sub");
+    mkdirSync(sub);
+    await call(ctx, { command: `cd ${sub} && pwd` });
+    return { ctx, sub };
+  }
+
+  it("cwd: null runs in the inherited directory and is not reported as an override", async () => {
+    const { ctx, sub } = await parkedInSub("cwd-null");
+    const result = await call(ctx, { command: "pwd", cwd: null });
+    assert.equal(printedDir(result), sub, "the call runs where it would have run without a cwd");
+    assert.equal(
+      cwdLine(result),
+      `[cwd ${sub}]`,
+      "the note names the session directory, not a one-call override",
+    );
+    assert.ok(!result.isError, "nothing failed");
+  });
+
+  for (const value of ["null", "undefined", "NULL", "", "   "]) {
+    it(`cwd: ${JSON.stringify(value)} is absent, not an override`, async () => {
+      const { ctx, sub } = await parkedInSub("cwd-absent");
+      const result = await call(ctx, { command: "pwd", cwd: value });
+      assert.equal(printedDir(result), sub);
+      assert.equal(cwdLine(result), `[cwd ${sub}]`);
+      assert.ok(!result.isError);
+    });
+  }
+
+  it("a directory named after one of those words is still reachable as a path", async () => {
+    const { dir, ctx } = session("cwd-word-directory");
+    const word = join(dir, "null");
+    mkdirSync(word);
+
+    // The rule reads the bare word, not the path: `./null` names the directory.
+    const result = await call(ctx, { command: "pwd", cwd: "./null" });
+    assert.equal(printedDir(result), word);
+  });
+
+  it("cwd naming a file answers one line and never reaches the shell", async () => {
+    const { dir, ctx } = session("cwd-file");
+    const file = join(dir, "notes.txt");
+    writeFileSync(file, "not a directory\n");
+    const marker = join(dir, "reached-shell");
+
+    // A relative argument, so the answer has to carry two different texts: the
+    // argument as written and the path it resolved to.
+    const result = await call(ctx, { command: `touch ${marker}`, cwd: "notes.txt" });
+
+    assert.equal(result.isError, true, "the call failed");
+    const lines = textOf(result)
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    assert.equal(lines.length, 1, `one line, got ${JSON.stringify(lines)}`);
+    assert.ok(lines[0].includes(JSON.stringify("notes.txt")), `names the argument: ${lines[0]}`);
+    assert.ok(lines[0].includes(file), `names the resolved path: ${lines[0]}`);
+    assert.equal(existsSync(marker), false, "the command never reached the shell");
   });
 });
 
