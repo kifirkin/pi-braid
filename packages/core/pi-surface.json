@@ -1,0 +1,1618 @@
+{
+  "version": 1,
+  "packages": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0"
+  },
+  "surfaces": {
+    "extension-api": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/extensions/types.d.ts",
+      "why": "every extension module is a function of these: pi.on, the register* calls, pi.exec, pi.getSettings, and the context members handlers read (ui, modelRegistry, sessionManager, compact, getContextUsage).",
+      "symbols": {
+        "ExtensionAPI": {
+          "kind": "interface",
+          "signature": "export interface ExtensionAPI {",
+          "members": {
+            "on": [
+              "on(event: \"project_trust\", handler: ProjectTrustHandler): () => void",
+              "on(event: \"resources_discover\", handler: ExtensionHandler<ResourcesDiscoverEvent, ResourcesDiscoverResult>): () => void",
+              "on(event: \"session_start\", handler: ExtensionHandler<SessionStartEvent>): () => void",
+              "on(event: \"session_info_changed\", handler: ExtensionHandler<SessionInfoChangedEvent>): () => void",
+              "on(event: \"session_before_switch\", handler: ExtensionHandler<SessionBeforeSwitchEvent, SessionBeforeSwitchResult>): () => void",
+              "on(event: \"session_before_fork\", handler: ExtensionHandler<SessionBeforeForkEvent, SessionBeforeForkResult>): () => void",
+              "on(event: \"session_before_compact\", handler: ExtensionHandler<SessionBeforeCompactEvent, SessionBeforeCompactResult>): () => void",
+              "on(event: \"session_compact\", handler: ExtensionHandler<SessionCompactEvent>): () => void",
+              "on(event: \"session_compact_failed\", handler: ExtensionHandler<SessionCompactFailedEvent>): () => void",
+              "on(event: \"session_shutdown\", handler: ExtensionHandler<SessionShutdownEvent>): () => void",
+              "on(event: \"mcp_servers_change\", handler: ExtensionHandler<McpServersChangeEvent>): () => void",
+              "on(event: \"session_before_tree\", handler: ExtensionHandler<SessionBeforeTreeEvent, SessionBeforeTreeResult>): () => void",
+              "on(event: \"session_tree\", handler: ExtensionHandler<SessionTreeEvent>): () => void",
+              "on(event: \"context\", handler: ExtensionHandler<ContextEvent, ContextEventResult>): () => void",
+              "on(event: \"context_with_system\", handler: ExtensionHandler<ContextWithSystemEvent, ContextEventResult>): () => void",
+              "on(event: \"cache_warming_decision\", handler: ExtensionHandler<CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult>): () => void",
+              "on(event: \"before_provider_request\", handler: ExtensionHandler<BeforeProviderRequestEvent, BeforeProviderRequestEventResult>): () => void",
+              "on(event: \"before_provider_headers\", handler: ExtensionHandler<BeforeProviderHeadersEvent>): () => void",
+              "on(event: \"after_provider_response\", handler: ExtensionHandler<AfterProviderResponseEvent>): () => void",
+              "on(event: \"provider_stream_event\", handler: ExtensionHandler<ProviderStreamEvent>): () => void",
+              "on(event: \"before_agent_start\", handler: ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>): () => void",
+              "on(event: \"agent_start\", handler: ExtensionHandler<AgentStartEvent>): () => void",
+              "on(event: \"agent_end\", handler: ExtensionHandler<AgentEndEvent>): () => void",
+              "on(event: \"agent_before_settle\", handler: ExtensionHandler<AgentBeforeSettleEvent, AgentBeforeSettleEventResult>): () => void",
+              "on(event: \"agent_settled\", handler: ExtensionHandler<AgentSettledEvent>): () => void",
+              "on(event: \"ui_prompt_start\", handler: ExtensionHandler<UIPromptStartEvent>): () => void",
+              "on(event: \"ui_prompt_end\", handler: ExtensionHandler<UIPromptEndEvent>): () => void",
+              "on(event: \"turn_start\", handler: ExtensionHandler<TurnStartEvent>): () => void",
+              "on(event: \"turn_end\", handler: ExtensionHandler<TurnEndEvent, TurnEndEventResult>): () => void",
+              "on(event: \"message_start\", handler: ExtensionHandler<MessageStartEvent>): () => void",
+              "on(event: \"message_update\", handler: ExtensionHandler<MessageUpdateEvent>): () => void",
+              "on(event: \"message_end\", handler: ExtensionHandler<MessageEndEvent, MessageEndEventResult>): () => void",
+              "on(event: \"tool_execution_start\", handler: ExtensionHandler<ToolExecutionStartEvent>): () => void",
+              "on(event: \"tool_execution_update\", handler: ExtensionHandler<ToolExecutionUpdateEvent>): () => void",
+              "on(event: \"tool_execution_end\", handler: ExtensionHandler<ToolExecutionEndEvent>): () => void",
+              "on(event: \"model_select\", handler: ExtensionHandler<ModelSelectEvent>): () => void",
+              "on(event: \"thinking_level_select\", handler: ExtensionHandler<ThinkingLevelSelectEvent>): () => void",
+              "on(event: \"tool_call\", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): () => void",
+              "on(event: \"tool_result\", handler: ExtensionHandler<ToolResultEvent, ToolResultEventResult>): () => void",
+              "on(event: \"user_bash\", handler: ExtensionHandler<UserBashEvent, UserBashEventResult>): () => void",
+              "on(event: \"input\", handler: ExtensionHandler<InputEvent, InputEventResult>): () => void"
+            ],
+            "registerTool": [
+              "registerTool<TParams extends TSchema = TSchema, TDetails = unknown, TState = any>(tool: ToolDefinition<TParams, TDetails, TState>): void"
+            ],
+            "registerCommand": [
+              "registerCommand(name: string, options: Omit<RegisteredCommand, \"name\" | \"sourceInfo\">): void"
+            ],
+            "registerShortcut": [
+              "registerShortcut(shortcut: KeyId, options: { description?: string; handler: (ctx: ExtensionContext) => Promise<void> | void; }): void"
+            ],
+            "registerFlag": [
+              "registerFlag(name: string, options: { description?: string; type: \"boolean\"; default?: boolean; } | { description?: string; type: \"string\"; default?: string; }): void"
+            ],
+            "getFlag": ["getFlag(name: string): boolean | string | undefined"],
+            "registerMessageRenderer": [
+              "registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void"
+            ],
+            "registerMarkdownTransformer": [
+              "registerMarkdownTransformer(transformer: MarkdownTransformer): void"
+            ],
+            "registerEntryRenderer": [
+              "registerEntryRenderer<T = unknown>(customType: string, renderer: EntryRenderer<T>): void"
+            ],
+            "registerToolRenderer": ["registerToolRenderer(resolver: ToolRendererResolver): void"],
+            "sendMessage": [
+              "sendMessage<T = unknown>(message: Pick<CustomMessage<T>, \"customType\" | \"content\" | \"display\" | \"details\">, options?: { triggerTurn?: boolean; deliverAs?: \"steer\" | \"followUp\" | \"nextTurn\"; }): void"
+            ],
+            "sendUserMessage": [
+              "sendUserMessage(content: string | (TextContent | ImageContent)[], options?: { deliverAs?: \"steer\" | \"followUp\"; expandPromptTemplates?: boolean; }): void"
+            ],
+            "appendEntry": ["appendEntry<T = unknown>(customType: string, data?: T): void"],
+            "setSessionName": ["setSessionName(name: string): void"],
+            "getSessionName": ["getSessionName(): string | undefined"],
+            "setLabel": ["setLabel(entryId: string, label: string | undefined): void"],
+            "exec": [
+              "exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>"
+            ],
+            "getActiveTools": ["getActiveTools(): string[]"],
+            "getAllTools": ["getAllTools(): ToolInfo[]"],
+            "getSettings": ["getSettings(): Settings"],
+            "setActiveTools": ["setActiveTools(toolNames: string[]): void"],
+            "getCommands": ["getCommands(): SlashCommandInfo[]"],
+            "setModel": ["setModel(model: Model<any>): Promise<boolean>"],
+            "getThinkingLevel": ["getThinkingLevel(): ThinkingLevel"],
+            "setThinkingLevel": ["setThinkingLevel(level: ThinkingLevel): void"],
+            "registerProvider": [
+              "registerProvider(provider: Provider): void",
+              "registerProvider(name: string, config: ProviderConfig): void"
+            ],
+            "unregisterProvider": ["unregisterProvider(name: string): void"],
+            "registerMcpServer": ["registerMcpServer(name: string, config: McpServerConfig): void"],
+            "unregisterMcpServer": ["unregisterMcpServer(name: string): void"],
+            "getMcpServers": ["getMcpServers(): RegisteredMcpServer[]"],
+            "registerVirtualModel": [
+              "registerVirtualModel<TState = unknown>(model: ExtensionVirtualModel<TState>): void"
+            ],
+            "unregisterVirtualModel": [
+              "unregisterVirtualModel(provider: string, id: string): void"
+            ],
+            "events": ["events: EventBus"]
+          }
+        },
+        "ExtensionContext": {
+          "kind": "interface",
+          "signature": "export interface ExtensionContext {",
+          "members": {
+            "ui": ["ui: ExtensionUIContext"],
+            "mode": ["mode: ExtensionMode"],
+            "hasUI": ["hasUI: boolean"],
+            "cwd": ["cwd: string"],
+            "sessionManager": ["sessionManager: ReadonlySessionManager"],
+            "modelRegistry": ["modelRegistry: ModelRegistry"],
+            "model": ["model: Model<any> | undefined"],
+            "scopedModels": ["scopedModels: readonly ScopedModel[]"],
+            "thinkingLevel": ["thinkingLevel?: ThinkingLevel"],
+            "isIdle": ["isIdle(): boolean"],
+            "isProjectTrusted": ["isProjectTrusted(): boolean"],
+            "signal": ["signal: AbortSignal | undefined"],
+            "abort": ["abort(): void"],
+            "hasPendingMessages": ["hasPendingMessages(): boolean"],
+            "shutdown": ["shutdown(): void"],
+            "getContextUsage": ["getContextUsage(): ContextUsage | undefined"],
+            "compact": ["compact(options?: CompactOptions): void"],
+            "getSystemPrompt": ["getSystemPrompt(): string"]
+          }
+        },
+        "ExtensionCommandContext": {
+          "kind": "interface",
+          "signature": "export interface ExtensionCommandContext extends ExtensionContext {",
+          "members": {
+            "getSystemPromptOptions": ["getSystemPromptOptions(): BuildSystemPromptOptions"],
+            "waitForIdle": ["waitForIdle(): Promise<void>"],
+            "newSession": [
+              "newSession(options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void>; withSession?: (ctx: ReplacedSessionContext) => Promise<void>; }): Promise<{ cancelled: boolean; }>"
+            ],
+            "fork": [
+              "fork(entryId: string, options?: { position?: \"before\" | \"at\"; withSession?: (ctx: ReplacedSessionContext) => Promise<void>; }): Promise<{ cancelled: boolean; }>"
+            ],
+            "navigateTree": [
+              "navigateTree(targetId: string, options?: { summarize?: boolean; customInstructions?: string; replaceInstructions?: boolean; label?: string; }): Promise<{ cancelled: boolean; }>"
+            ],
+            "switchSession": [
+              "switchSession(sessionPath: string, options?: { withSession?: (ctx: ReplacedSessionContext) => Promise<void>; }): Promise<{ cancelled: boolean; }>"
+            ],
+            "reload": ["reload(): Promise<void>"]
+          }
+        },
+        "ExtensionUIContext": {
+          "kind": "interface",
+          "signature": "export interface ExtensionUIContext {",
+          "members": {
+            "select": [
+              "select(title: string, options: string[], opts?: ExtensionUIDialogOptions): Promise<string | undefined>"
+            ],
+            "confirm": [
+              "confirm(title: string, message: string, opts?: ExtensionUIDialogOptions): Promise<boolean>"
+            ],
+            "input": [
+              "input(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined>"
+            ],
+            "notify": ["notify(message: string, type?: \"info\" | \"warning\" | \"error\"): void"],
+            "onTerminalInput": ["onTerminalInput(handler: TerminalInputHandler): () => void"],
+            "setStatus": ["setStatus(key: string, text: string | undefined): void"],
+            "setWorkingMessage": ["setWorkingMessage(message?: string): void"],
+            "setWorkingVisible": ["setWorkingVisible(visible: boolean): void"],
+            "setWorkingIndicator": ["setWorkingIndicator(options?: WorkingIndicatorOptions): void"],
+            "setHiddenThinkingLabel": ["setHiddenThinkingLabel(label?: string): void"],
+            "setWidget": [
+              "setWidget(key: string, content: string[] | undefined, options?: ExtensionWidgetOptions): void",
+              "setWidget(key: string, content: ((tui: TUI, theme: Theme) => Component & { dispose?(): void; }) | undefined, options?: ExtensionWidgetOptions): void"
+            ],
+            "setFooter": [
+              "setFooter(factory: ((tui: TUI, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component & { dispose?(): void; }) | undefined): void"
+            ],
+            "setHeader": [
+              "setHeader(factory: ((tui: TUI, theme: Theme) => Component & { dispose?(): void; }) | undefined): void"
+            ],
+            "setTitle": ["setTitle(title: string): void"],
+            "custom": [
+              "custom<T>(factory: (tui: TUI, theme: Theme, keybindings: KeybindingsManager, done: (result: T) => void) => (Component & { dispose?(): void; }) | Promise<Component & { dispose?(): void; }>, options?: { overlay?: boolean; overlayOptions?: OverlayOptions | (() => OverlayOptions); onHandle?: (handle: OverlayHandle) => void; blocked?: { kind: NonNullable<ProgramStatus[\"kind\"]>; message: string; }; }): Promise<T>"
+            ],
+            "pasteToEditor": ["pasteToEditor(text: string): void"],
+            "setEditorText": ["setEditorText(text: string): void"],
+            "getEditorText": ["getEditorText(): string"],
+            "editor": ["editor(title: string, prefill?: string): Promise<string | undefined>"],
+            "addAutocompleteProvider": [
+              "addAutocompleteProvider(factory: AutocompleteProviderFactory): void"
+            ],
+            "setEditorComponent": ["setEditorComponent(factory: EditorFactory | undefined): void"],
+            "getEditorComponent": ["getEditorComponent(): EditorFactory | undefined"],
+            "theme": ["readonly theme: Theme"],
+            "getAllThemes": ["getAllThemes(): { name: string; path: string | undefined; }[]"],
+            "getTheme": ["getTheme(name: string): Theme | undefined"],
+            "setTheme": ["setTheme(theme: string | Theme): { success: boolean; error?: string; }"],
+            "getToolsExpanded": ["getToolsExpanded(): boolean"],
+            "setToolsExpanded": ["setToolsExpanded(expanded: boolean): void"]
+          }
+        },
+        "ExtensionToolContext": {
+          "kind": "interface",
+          "signature": "export interface ExtensionToolContext extends ExtensionContext {",
+          "members": {
+            "tools": ["readonly tools: readonly AgentTool[]"],
+            "executeTool": [
+              "executeTool(name: string, args: unknown, options?: ExecuteToolOptions): Promise<AgentToolCallOutcome>"
+            ]
+          }
+        },
+        "ToolDefinition": {
+          "kind": "interface",
+          "signature": "export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = unknown, TState = any> {",
+          "members": {
+            "name": ["name: string"],
+            "label": ["label: string"],
+            "description": ["description: string"],
+            "promptSnippet": ["promptSnippet?: string"],
+            "promptGuidelines": ["promptGuidelines?: string[]"],
+            "parameters": ["parameters: TParams"],
+            "constrainedSampling": ["constrainedSampling?: false | ConstrainedSamplingConfig"],
+            "renderShell": ["renderShell?: \"default\" | \"self\""],
+            "prepareArguments": ["prepareArguments?: (args: unknown) => Static<TParams>"],
+            "outputSchema": ["outputSchema?: TSchema"],
+            "exposure": ["exposure?: ToolExposure"],
+            "namespace": ["namespace?: ToolNamespace"],
+            "reachesTools": [
+              "reachesTools?: (input: Record<string, unknown>) => \"all\" | readonly string[]"
+            ],
+            "annotations": ["annotations?: ToolAnnotations"],
+            "defaultActive": ["defaultActive?: boolean"],
+            "prepareLoadout": [
+              "prepareLoadout?: (loadout: ToolLoadout) => ToolLoadoutChanges | undefined"
+            ],
+            "executionMode": ["executionMode?: ToolExecutionMode"],
+            "execute": [
+              "execute(toolCallId: string, params: Static<TParams>, signal: AbortSignal | undefined, onUpdate: AgentToolUpdateCallback<TDetails> | undefined, ctx: ExtensionToolContext): Promise<AgentToolResult<TDetails>>"
+            ],
+            "renderCall": [
+              "renderCall?: (args: Static<TParams>, theme: Theme, context: ToolRenderContext<TState, Static<TParams>>) => Component"
+            ],
+            "renderResult": [
+              "renderResult?: (result: AgentToolResult<TDetails>, options: ToolRenderResultOptions, theme: Theme, context: ToolRenderContext<TState, Static<TParams>>) => Component"
+            ]
+          }
+        },
+        "ToolInfo": {
+          "kind": "type",
+          "signature": "export type ToolInfo = Pick<ToolDefinition, \"name\" | \"description\" | \"parameters\" | \"promptGuidelines\" | \"reachesTools\"> & {",
+          "members": {
+            "exposure": ["exposure: ToolExposure"],
+            "namespace": ["namespace?: ToolNamespace"],
+            "annotations": ["annotations?: ToolAnnotations"],
+            "sourceInfo": ["sourceInfo: SourceInfo"]
+          }
+        },
+        "CompactOptions": {
+          "kind": "interface",
+          "signature": "export interface CompactOptions {",
+          "members": {
+            "customInstructions": ["customInstructions?: string"],
+            "onComplete": ["onComplete?: (result: CompactionResult) => void"],
+            "onError": ["onError?: (error: Error) => void"]
+          }
+        },
+        "ContextUsage": {
+          "kind": "interface",
+          "signature": "export interface ContextUsage {",
+          "members": {
+            "tokens": ["tokens: number | null"],
+            "contextWindow": ["contextWindow: number"],
+            "percent": ["percent: number | null"]
+          }
+        }
+      }
+    },
+    "extension-events": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/extensions/types.d.ts",
+      "why": "one symbol per event braid registers a handler on: each carries the literal pi dispatches on and the payload fields the handler reads (event.command, event.messages, event.result, event.toolName).",
+      "symbols": {
+        "SessionStartEvent": {
+          "kind": "interface",
+          "signature": "export interface SessionStartEvent {",
+          "members": {
+            "type": ["type: \"session_start\""],
+            "reason": ["reason: \"startup\" | \"reload\" | \"new\" | \"resume\" | \"fork\""],
+            "previousSessionFile": ["previousSessionFile?: string"]
+          }
+        },
+        "SessionShutdownEvent": {
+          "kind": "interface",
+          "signature": "export interface SessionShutdownEvent {",
+          "members": {
+            "type": ["type: \"session_shutdown\""],
+            "reason": ["reason: \"quit\" | \"reload\" | \"new\" | \"resume\" | \"fork\""],
+            "targetSessionFile": ["targetSessionFile?: string"]
+          }
+        },
+        "SessionBeforeCompactEvent": {
+          "kind": "interface",
+          "signature": "export interface SessionBeforeCompactEvent {",
+          "members": {
+            "type": ["type: \"session_before_compact\""],
+            "preparation": ["preparation: CompactionPreparation"],
+            "branchEntries": ["branchEntries: SessionEntry[]"],
+            "customInstructions": ["customInstructions?: string"],
+            "reason": ["reason: \"manual\" | \"threshold\" | \"overflow\""],
+            "willRetry": ["willRetry: boolean"],
+            "signal": ["signal: AbortSignal"]
+          }
+        },
+        "SessionCompactEvent": {
+          "kind": "interface",
+          "signature": "export interface SessionCompactEvent {",
+          "members": {
+            "type": ["type: \"session_compact\""],
+            "compactionEntry": ["compactionEntry: CompactionEntry"],
+            "fromExtension": ["fromExtension: boolean"],
+            "reason": ["reason: \"manual\" | \"threshold\" | \"overflow\""],
+            "willRetry": ["willRetry: boolean"]
+          }
+        },
+        "SessionBeforeTreeEvent": {
+          "kind": "interface",
+          "signature": "export interface SessionBeforeTreeEvent {",
+          "members": {
+            "type": ["type: \"session_before_tree\""],
+            "preparation": ["preparation: TreePreparation"],
+            "signal": ["signal: AbortSignal"]
+          }
+        },
+        "TurnStartEvent": {
+          "kind": "interface",
+          "signature": "export interface TurnStartEvent {",
+          "members": {
+            "type": ["type: \"turn_start\""],
+            "turnIndex": ["turnIndex: number"],
+            "timestamp": ["timestamp: number"]
+          }
+        },
+        "TurnEndEvent": {
+          "kind": "interface",
+          "signature": "export interface TurnEndEvent extends BoundaryState {",
+          "members": {
+            "type": ["type: \"turn_end\""],
+            "turnIndex": ["turnIndex: number"],
+            "message": ["message: AgentMessage"],
+            "toolResults": ["toolResults: ToolResultMessage[]"],
+            "messageEntryId": ["messageEntryId: string"],
+            "toolResultEntryIds": ["toolResultEntryIds: string[]"]
+          }
+        },
+        "AgentStartEvent": {
+          "kind": "interface",
+          "signature": "export interface AgentStartEvent {",
+          "members": {
+            "type": ["type: \"agent_start\""]
+          }
+        },
+        "AgentEndEvent": {
+          "kind": "interface",
+          "signature": "export interface AgentEndEvent {",
+          "members": {
+            "type": ["type: \"agent_end\""],
+            "messages": ["messages: AgentMessage[]"]
+          }
+        },
+        "AgentSettledEvent": {
+          "kind": "interface",
+          "signature": "export interface AgentSettledEvent {",
+          "members": {
+            "type": ["type: \"agent_settled\""],
+            "aborted": ["aborted: boolean"]
+          }
+        },
+        "ModelSelectEvent": {
+          "kind": "interface",
+          "signature": "export interface ModelSelectEvent {",
+          "members": {
+            "type": ["type: \"model_select\""],
+            "model": ["model: Model<any>"],
+            "previousModel": ["previousModel: Model<any> | undefined"],
+            "source": ["source: ModelSelectSource"]
+          }
+        },
+        "MessageUpdateEvent": {
+          "kind": "interface",
+          "signature": "export interface MessageUpdateEvent {",
+          "members": {
+            "type": ["type: \"message_update\""],
+            "message": ["message: AgentMessage"],
+            "assistantMessageEvent": ["assistantMessageEvent: AssistantMessageEvent"]
+          }
+        },
+        "MessageEndEvent": {
+          "kind": "interface",
+          "signature": "export interface MessageEndEvent {",
+          "members": {
+            "type": ["type: \"message_end\""],
+            "message": ["message: AgentMessage"]
+          }
+        },
+        "ToolCallEvent": {
+          "kind": "type",
+          "signature": "export type ToolCallEvent = BashToolCallEvent | PowerShellToolCallEvent | ReadToolCallEvent | EditToolCallEvent | WriteToolCallEvent | GrepToolCallEvent | FindToolCallEvent | LsToolCallEvent | CustomToolCallEvent"
+        },
+        "ToolResultEvent": {
+          "kind": "type",
+          "signature": "export type ToolResultEvent = BashToolResultEvent | PowerShellToolResultEvent | ReadToolResultEvent | EditToolResultEvent | WriteToolResultEvent | GrepToolResultEvent | FindToolResultEvent | LsToolResultEvent | CustomToolResultEvent"
+        },
+        "ToolExecutionStartEvent": {
+          "kind": "interface",
+          "signature": "export interface ToolExecutionStartEvent {",
+          "members": {
+            "type": ["type: \"tool_execution_start\""],
+            "toolCallId": ["toolCallId: string"],
+            "toolName": ["toolName: string"],
+            "args": ["args: any"],
+            "parentToolCallId": ["parentToolCallId?: string"]
+          }
+        },
+        "ToolExecutionEndEvent": {
+          "kind": "interface",
+          "signature": "export interface ToolExecutionEndEvent {",
+          "members": {
+            "type": ["type: \"tool_execution_end\""],
+            "toolCallId": ["toolCallId: string"],
+            "toolName": ["toolName: string"],
+            "result": ["result: any"],
+            "isError": ["isError: boolean"],
+            "durationMs": ["durationMs?: number"],
+            "parentToolCallId": ["parentToolCallId?: string"]
+          }
+        },
+        "InputEvent": {
+          "kind": "interface",
+          "signature": "export interface InputEvent {",
+          "members": {
+            "type": ["type: \"input\""],
+            "text": ["text: string"],
+            "images": ["images?: ImageContent[]"],
+            "source": ["source: InputSource"],
+            "streamingBehavior": ["streamingBehavior?: \"steer\" | \"followUp\""]
+          }
+        },
+        "ResourcesDiscoverEvent": {
+          "kind": "interface",
+          "signature": "export interface ResourcesDiscoverEvent {",
+          "members": {
+            "type": ["type: \"resources_discover\""],
+            "cwd": ["cwd: string"],
+            "reason": ["reason: \"startup\" | \"reload\""]
+          }
+        },
+        "BeforeAgentStartEvent": {
+          "kind": "type",
+          "signature": "export type BeforeAgentStartEvent = BeforeAgentStartUserEvent | BeforeAgentStartCustomEvent"
+        },
+        "BeforeProviderRequestEvent": {
+          "kind": "interface",
+          "signature": "export interface BeforeProviderRequestEvent {",
+          "members": {
+            "type": ["type: \"before_provider_request\""],
+            "payload": ["payload: unknown"]
+          }
+        },
+        "ContextEvent": {
+          "kind": "interface",
+          "signature": "export interface ContextEvent {",
+          "members": {
+            "type": ["type: \"context\""],
+            "messages": ["messages: AgentMessage[]"]
+          }
+        }
+      }
+    },
+    "provider-models": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/extensions/types.d.ts",
+      "why": "the Venice catalog is typed against pi's provider model union, and the fields braid fills (contextWindow, maxTokens, thinkingLevelMap, compat) are that union's.",
+      "symbols": {
+        "ProviderModelConfig": {
+          "kind": "type",
+          "signature": "export type ProviderModelConfig = ProviderChatModelConfig | ProviderImageModelConfig | ProviderClassifierModelConfig"
+        }
+      }
+    },
+    "session": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/session-manager.d.ts",
+      "why": "ctx.sessionManager is the readonly view, and braid reads the entries it returns: getBranch, getEntries, getSessionId, getSessionFile, appendMessage, appendCustomEntry.",
+      "symbols": {
+        "ReadonlySessionManager": {
+          "kind": "type",
+          "signature": "export type ReadonlySessionManager = Pick<SessionManager, \"getCwd\" | \"getSessionDir\" | \"getSessionId\" | \"getSessionFile\" | \"getLeafId\" | \"getLeafEntry\" | \"getEntry\" | \"getLabel\" | \"getBranch\" | \"buildContextEntries\" | \"buildSessionProjection\" | \"getHeader\" | \"getEntries\" | \"getTree\" | \"getSessionName\">"
+        },
+        "SessionEntry": {
+          "kind": "type",
+          "signature": "export type SessionEntry = SessionMessageEntry | ThinkingLevelChangeEntry | ModelChangeEntry | UsageEntry | CompactionEntry | BranchSummaryEntry | CustomEntry | CustomMessageEntry | ContextEditEntry | LabelEntry | SessionInfoEntry"
+        }
+      }
+    },
+    "settings": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/settings-manager.d.ts",
+      "why": "the turn-end hygiene handler asks pi whether compaction is on, through SettingsManager.create(cwd, getAgentDir()).getCompactionEnabled().",
+      "symbols": {
+        "SettingsManager": {
+          "kind": "class",
+          "signature": "export declare class SettingsManager {",
+          "members": {
+            "storage": ["private storage"],
+            "globalSettings": ["private globalSettings"],
+            "projectSettings": ["private projectSettings"],
+            "settings": ["private settings"],
+            "projectTrusted": ["private projectTrusted"],
+            "modifiedFields": ["private modifiedFields"],
+            "modifiedNestedFields": ["private modifiedNestedFields"],
+            "modifiedProjectFields": ["private modifiedProjectFields"],
+            "modifiedProjectNestedFields": ["private modifiedProjectNestedFields"],
+            "globalSettingsLoadError": ["private globalSettingsLoadError"],
+            "projectSettingsLoadError": ["private projectSettingsLoadError"],
+            "writeQueue": ["private writeQueue"],
+            "errors": ["private errors"],
+            "settingsPaths": ["private settingsPaths"],
+            "constructor": ["private constructor()"],
+            "create": [
+              "static create(cwd: string, agentDir?: string, options?: SettingsManagerCreateOptions): SettingsManager"
+            ],
+            "fromStorage": [
+              "static fromStorage(storage: SettingsStorage, options?: SettingsManagerCreateOptions): SettingsManager"
+            ],
+            "fromStorageWithPaths": ["private static fromStorageWithPaths"],
+            "inMemory": [
+              "static inMemory(settings?: Partial<Settings>, options?: SettingsManagerCreateOptions): SettingsManager"
+            ],
+            "loadFromStorage": ["private static loadFromStorage"],
+            "tryLoadFromStorage": ["private static tryLoadFromStorage"],
+            "migrateSettings": ["private static migrateSettings"],
+            "getSettings": ["getSettings(): Settings"],
+            "getGlobalSettings": ["getGlobalSettings(): Settings"],
+            "getProjectSettings": ["getProjectSettings(): Settings"],
+            "isProjectTrusted": ["isProjectTrusted(): boolean"],
+            "setProjectTrusted": ["setProjectTrusted(trusted: boolean): void"],
+            "reload": ["reload(): Promise<void>"],
+            "applyOverrides": ["applyOverrides(overrides: Partial<Settings>): void"],
+            "markModified": ["private markModified"],
+            "markProjectModified": ["private markProjectModified"],
+            "assertProjectTrustedForWrite": ["private assertProjectTrustedForWrite"],
+            "recordError": ["private recordError"],
+            "clearModifiedScope": ["private clearModifiedScope"],
+            "enqueueWrite": ["private enqueueWrite"],
+            "cloneModifiedNestedFields": ["private cloneModifiedNestedFields"],
+            "persistScopedSettings": ["private persistScopedSettings"],
+            "save": ["private save"],
+            "saveProjectSettings": ["private saveProjectSettings"],
+            "updateProjectSettings": ["private updateProjectSettings"],
+            "flush": ["flush(): Promise<void>"],
+            "drainErrors": ["drainErrors(): SettingsError[]"],
+            "getLastChangelogVersion": ["getLastChangelogVersion(): string | undefined"],
+            "setLastChangelogVersion": ["setLastChangelogVersion(version: string): void"],
+            "getExtensionChangelogVersion": [
+              "getExtensionChangelogVersion(key: string): string | undefined"
+            ],
+            "setExtensionChangelogVersion": [
+              "setExtensionChangelogVersion(key: string, version: string): void"
+            ],
+            "getSessionDir": ["getSessionDir(): string | undefined"],
+            "getDefaultProvider": ["getDefaultProvider(): string | undefined"],
+            "getDefaultModel": ["getDefaultModel(): string | undefined"],
+            "setDefaultProvider": ["setDefaultProvider(provider: string): void"],
+            "setDefaultModel": ["setDefaultModel(modelId: string): void"],
+            "setDefaultModelAndProvider": [
+              "setDefaultModelAndProvider(provider: string, modelId: string): void"
+            ],
+            "getSteeringMode": ["getSteeringMode(): \"all\" | \"one-at-a-time\""],
+            "setSteeringMode": ["setSteeringMode(mode: \"all\" | \"one-at-a-time\"): void"],
+            "getFollowUpMode": ["getFollowUpMode(): \"all\" | \"one-at-a-time\""],
+            "setFollowUpMode": ["setFollowUpMode(mode: \"all\" | \"one-at-a-time\"): void"],
+            "getThemeSetting": ["getThemeSetting(): string | undefined"],
+            "getTheme": ["getTheme(): string | undefined"],
+            "setTheme": ["setTheme(theme: string): void"],
+            "getDefaultThinkingLevel": ["getDefaultThinkingLevel(): ThinkingLevel | undefined"],
+            "setDefaultThinkingLevel": ["setDefaultThinkingLevel(level: ThinkingLevel): void"],
+            "getModelThinkingLevel": [
+              "getModelThinkingLevel(provider: string, modelId: string): ThinkingLevel | undefined"
+            ],
+            "getAllModelThinkingLevels": [
+              "getAllModelThinkingLevels(): Record<string, ThinkingLevel>"
+            ],
+            "setModelThinkingLevel": [
+              "setModelThinkingLevel(provider: string, modelId: string, level: ThinkingLevel): void"
+            ],
+            "removeModelThinkingLevel": [
+              "removeModelThinkingLevel(provider: string, modelId: string): void"
+            ],
+            "getTransport": ["getTransport(): TransportSetting"],
+            "setTransport": ["setTransport(transport: TransportSetting): void"],
+            "getSessionShareDestination": ["getSessionShareDestination(): SessionShareDestination"],
+            "setSessionShareDestination": [
+              "setSessionShareDestination(destination: SessionShareDestination): void"
+            ],
+            "getCompactionEnabled": ["getCompactionEnabled(): boolean"],
+            "setCompactionEnabled": ["setCompactionEnabled(enabled: boolean): void"],
+            "getCompactionTokenSetting": ["private getCompactionTokenSetting"],
+            "getCompactionReserveTokens": [
+              "getCompactionReserveTokens(model?: Pick<Model<string>, \"provider\" | \"id\">): number"
+            ],
+            "getCompactionKeepRecentTokens": [
+              "getCompactionKeepRecentTokens(model?: Pick<Model<string>, \"provider\" | \"id\">): number"
+            ],
+            "getCompactionSettings": [
+              "getCompactionSettings(model?: Pick<Model<string>, \"provider\" | \"id\">): { enabled: boolean; reserveTokens: number; keepRecentTokens: number; }"
+            ],
+            "getBranchSummarySettings": [
+              "getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean; }"
+            ],
+            "getBranchSummarySkipPrompt": ["getBranchSummarySkipPrompt(): boolean"],
+            "getRetryEnabled": ["getRetryEnabled(): boolean"],
+            "setRetryEnabled": ["setRetryEnabled(enabled: boolean): void"],
+            "getRetrySettings": [
+              "getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number; }"
+            ],
+            "getHttpIdleTimeoutMs": ["getHttpIdleTimeoutMs(): number"],
+            "setHttpIdleTimeoutMs": ["setHttpIdleTimeoutMs(timeoutMs: number): void"],
+            "getCacheWarmingMode": ["getCacheWarmingMode(): CacheWarmingMode"],
+            "setCacheWarmingMode": ["setCacheWarmingMode(mode: CacheWarmingMode): void"],
+            "getProviderRetrySettings": [
+              "getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number; }"
+            ],
+            "getWebSocketConnectTimeoutMs": ["getWebSocketConnectTimeoutMs(): number | undefined"],
+            "getHideThinkingBlock": ["getHideThinkingBlock(): boolean"],
+            "getShowCacheMissNotices": ["getShowCacheMissNotices(): boolean"],
+            "getExternalEditorCommand": ["getExternalEditorCommand(): string"],
+            "setHideThinkingBlock": ["setHideThinkingBlock(hide: boolean): void"],
+            "setShowCacheMissNotices": ["setShowCacheMissNotices(show: boolean): void"],
+            "getShellPath": ["getShellPath(): string | undefined"],
+            "setShellPath": ["setShellPath(path: string | undefined): void"],
+            "getQuietStartup": ["getQuietStartup(): QuietStartup"],
+            "setQuietStartup": ["setQuietStartup(quiet: QuietStartup): void"],
+            "getDefaultProjectTrust": ["getDefaultProjectTrust(): DefaultProjectTrust"],
+            "setDefaultProjectTrust": [
+              "setDefaultProjectTrust(defaultProjectTrust: DefaultProjectTrust): void"
+            ],
+            "getShellCommandPrefix": ["getShellCommandPrefix(): string | undefined"],
+            "setShellCommandPrefix": ["setShellCommandPrefix(prefix: string | undefined): void"],
+            "getNpmCommand": ["getNpmCommand(): string[] | undefined"],
+            "setNpmCommand": ["setNpmCommand(command: string[] | undefined): void"],
+            "getCollapseChangelog": ["getCollapseChangelog(): boolean"],
+            "setCollapseChangelog": ["setCollapseChangelog(collapse: boolean): void"],
+            "getEnableInstallTelemetry": ["getEnableInstallTelemetry(): boolean"],
+            "setEnableInstallTelemetry": ["setEnableInstallTelemetry(enabled: boolean): void"],
+            "getEnableAnalytics": ["getEnableAnalytics(): boolean"],
+            "getTrackingId": ["getTrackingId(): string | undefined"],
+            "setEnableAnalytics": ["setEnableAnalytics(enabled: boolean): void"],
+            "getOrCreateDeviceId": ["getOrCreateDeviceId(): string"],
+            "getPackages": ["getPackages(): PackageSource[]"],
+            "setPackages": ["setPackages(packages: PackageSource[]): void"],
+            "setProjectPackages": ["setProjectPackages(packages: PackageSource[]): void"],
+            "getExtensionPaths": ["getExtensionPaths(): string[]"],
+            "setExtensionPaths": ["setExtensionPaths(paths: string[]): void"],
+            "setProjectExtensionPaths": ["setProjectExtensionPaths(paths: string[]): void"],
+            "getSkillPaths": ["getSkillPaths(): string[]"],
+            "setSkillPaths": ["setSkillPaths(paths: string[]): void"],
+            "setProjectSkillPaths": ["setProjectSkillPaths(paths: string[]): void"],
+            "getPromptTemplatePaths": ["getPromptTemplatePaths(): string[]"],
+            "setPromptTemplatePaths": ["setPromptTemplatePaths(paths: string[]): void"],
+            "setProjectPromptTemplatePaths": [
+              "setProjectPromptTemplatePaths(paths: string[]): void"
+            ],
+            "getThemePaths": ["getThemePaths(): string[]"],
+            "setThemePaths": ["setThemePaths(paths: string[]): void"],
+            "setProjectThemePaths": ["setProjectThemePaths(paths: string[]): void"],
+            "getEnableSkillCommands": ["getEnableSkillCommands(): boolean"],
+            "setEnableSkillCommands": ["setEnableSkillCommands(enabled: boolean): void"],
+            "getThinkingBudgets": ["getThinkingBudgets(): ThinkingBudgetsSettings | undefined"],
+            "getTerminalCapabilityOverrides": [
+              "getTerminalCapabilityOverrides(): Partial<TerminalCapabilities>"
+            ],
+            "getShowImages": ["getShowImages(): boolean"],
+            "setShowImages": ["setShowImages(show: boolean): void"],
+            "getImageWidthCells": ["getImageWidthCells(): number"],
+            "setImageWidthCells": ["setImageWidthCells(width: number): void"],
+            "getClearOnShrink": ["getClearOnShrink(): boolean"],
+            "setClearOnShrink": ["setClearOnShrink(enabled: boolean): void"],
+            "getShowTerminalProgress": ["getShowTerminalProgress(): boolean"],
+            "setShowTerminalProgress": ["setShowTerminalProgress(enabled: boolean): void"],
+            "getTuiMode": ["getTuiMode(): TuiMode"],
+            "setTuiMode": ["setTuiMode(mode: TuiMode): void"],
+            "getFullscreenExitOutput": ["getFullscreenExitOutput(): FullscreenExitOutput"],
+            "setFullscreenExitOutput": [
+              "setFullscreenExitOutput(output: FullscreenExitOutput): void"
+            ],
+            "getFullscreenScrollbar": ["getFullscreenScrollbar(): ScrollViewScrollbar"],
+            "setFullscreenScrollbar": ["setFullscreenScrollbar(mode: ScrollViewScrollbar): void"],
+            "getFullscreenCopyOnSelect": ["getFullscreenCopyOnSelect(): boolean"],
+            "setFullscreenCopyOnSelect": ["setFullscreenCopyOnSelect(enabled: boolean): void"],
+            "getFullscreenWheelScrollLines": ["getFullscreenWheelScrollLines(): WheelScrollLines"],
+            "setFullscreenWheelScrollLines": [
+              "setFullscreenWheelScrollLines(lines: WheelScrollLines): void"
+            ],
+            "getImageAutoResize": ["getImageAutoResize(): boolean"],
+            "setImageAutoResize": ["setImageAutoResize(enabled: boolean): void"],
+            "getBlockImages": ["getBlockImages(): boolean"],
+            "setBlockImages": ["setBlockImages(blocked: boolean): void"],
+            "getEnabledModels": ["getEnabledModels(): string[] | undefined"],
+            "getDefaultTools": ["getDefaultTools(): string[] | undefined"],
+            "setEnabledModels": ["setEnabledModels(patterns: string[] | undefined): void"],
+            "getDoubleEscapeAction": ["getDoubleEscapeAction(): \"fork\" | \"tree\" | \"none\""],
+            "setDoubleEscapeAction": [
+              "setDoubleEscapeAction(action: \"fork\" | \"tree\" | \"none\"): void"
+            ],
+            "getTreeFilterMode": [
+              "getTreeFilterMode(): \"default\" | \"no-tools\" | \"user-only\" | \"labeled-only\" | \"all\""
+            ],
+            "setTreeFilterMode": [
+              "setTreeFilterMode(mode: \"default\" | \"no-tools\" | \"user-only\" | \"labeled-only\" | \"all\"): void"
+            ],
+            "getShowHardwareCursor": ["getShowHardwareCursor(): boolean"],
+            "setShowHardwareCursor": ["setShowHardwareCursor(enabled: boolean): void"],
+            "getEditorPaddingX": ["getEditorPaddingX(): number"],
+            "setEditorPaddingX": ["setEditorPaddingX(padding: number): void"],
+            "getOutputPad": ["getOutputPad(): 0 | 1"],
+            "setOutputPad": ["setOutputPad(padding: 0 | 1): void"],
+            "getAutocompleteMaxVisible": ["getAutocompleteMaxVisible(): number"],
+            "setAutocompleteMaxVisible": ["setAutocompleteMaxVisible(maxVisible: number): void"],
+            "getCodeBlockIndent": ["getCodeBlockIndent(): string"],
+            "getMermaidRenderingMode": ["getMermaidRenderingMode(): MermaidRenderingMode"],
+            "setMermaidRenderingMode": [
+              "setMermaidRenderingMode(mode: MermaidRenderingMode): void"
+            ],
+            "getWarnings": ["getWarnings(): WarningSettings"],
+            "setWarnings": ["setWarnings(warnings: WarningSettings): void"]
+          }
+        }
+      }
+    },
+    "model-registry": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/model-registry.d.ts",
+      "why": "ctx.modelRegistry drives model choice and the judge: getAvailable, getAll, find, getApiKeyForProvider.",
+      "symbols": {
+        "ModelRegistry": {
+          "kind": "class",
+          "signature": "export declare class ModelRegistry {",
+          "members": {
+            "runtime": ["private readonly runtime"],
+            "constructor": ["constructor(runtime: ModelRuntime)"],
+            "refresh": ["refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>"],
+            "getError": ["getError(): string | undefined"],
+            "getAll": ["getAll(): Model<Api>[]"],
+            "getAvailable": ["getAvailable(): Model<Api>[]"],
+            "find": ["find(provider: string, modelId: string): Model<Api> | undefined"],
+            "findOfType": [
+              "findOfType<TType extends ModelType>(type: TType, provider: string, modelId: string): ModelTypeMap[TType] | undefined"
+            ],
+            "hasConfiguredAuth": ["hasConfiguredAuth(model: Model<Api>): boolean"],
+            "getApiKeyAndHeaders": [
+              "getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth>"
+            ],
+            "getProviderAuthStatus": ["getProviderAuthStatus(provider: string): AuthStatus"],
+            "getProvider": ["getProvider(provider: string): Provider | undefined"],
+            "stream": [
+              "stream<TApi extends Api>(model: Model<TApi>, context: Context, options?: ModelsApiStreamOptions<TApi>): AssistantMessageEventStream"
+            ],
+            "streamSimple": [
+              "streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream"
+            ],
+            "complete": [
+              "complete<TApi extends Api>(model: Model<TApi>, context: Context, options?: ModelsApiStreamOptions<TApi>): Promise<AssistantMessage>"
+            ],
+            "getModelsOfType": [
+              "getModelsOfType<TType extends ModelType>(type: TType, provider?: string): readonly ModelTypeMap[TType][]"
+            ],
+            "getAvailableOfType": [
+              "getAvailableOfType<TType extends ModelType>(type: TType, provider?: string, options?: AuthOperationOptions): Promise<readonly ModelTypeMap[TType][]>"
+            ],
+            "getModelOfType": [
+              "getModelOfType<TType extends ModelType>(type: TType, provider: string, modelId: string): ModelTypeMap[TType] | undefined"
+            ],
+            "classify": [
+              "classify(model: ClassifierModel<ClassifierApi>, context: ClassifierContext, options?: ModelsClassifierOptions): Promise<ClassifierResult>"
+            ],
+            "generateImages": [
+              "generateImages(model: ImageModel<ImageApi>, context: ImagesContext, options?: ModelsImagesOptions): Promise<AssistantImages>"
+            ],
+            "getProviderDisplayName": ["getProviderDisplayName(provider: string): string"],
+            "getProviderAuth": [
+              "getProviderAuth(provider: string): Promise<AuthResult | undefined>"
+            ],
+            "getApiKeyForProvider": [
+              "getApiKeyForProvider(provider: string): Promise<string | undefined>"
+            ],
+            "isUsingOAuth": ["isUsingOAuth(model: Model<Api>): boolean"],
+            "registerProvider": [
+              "registerProvider(provider: Provider): void",
+              "registerProvider(providerName: string, config: ProviderConfigInput): void"
+            ],
+            "unregisterProvider": ["unregisterProvider(providerName: string): void"],
+            "registerVirtualModel": [
+              "registerVirtualModel(definition: VirtualModelDefinition): void"
+            ],
+            "unregisterVirtualModel": [
+              "unregisterVirtualModel(providerName: string, id: string): void"
+            ],
+            "getRegisteredProviderConfig": [
+              "getRegisteredProviderConfig(providerName: string): ProviderConfigInput | undefined"
+            ],
+            "getRegisteredNativeProvider": [
+              "getRegisteredNativeProvider(providerName: string): Provider | undefined"
+            ],
+            "getRegisteredProviderIds": ["getRegisteredProviderIds(): readonly string[]"]
+          }
+        }
+      }
+    },
+    "model-runtime": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/model-runtime.d.ts",
+      "why": "the polyfill reads the model registry's runtime to drive its own picker: the transport a selected model will stream through, and the write path that persists the choice.",
+      "symbols": {
+        "ModelRuntime": {
+          "kind": "class",
+          "signature": "export declare class ModelRuntime implements Models {",
+          "members": {
+            "models": ["private readonly models"],
+            "credentials": ["private readonly credentials"],
+            "defaultBuiltins": ["private readonly defaultBuiltins"],
+            "builtins": ["private readonly builtins"],
+            "nativeExtensionProviders": ["private readonly nativeExtensionProviders"],
+            "extensionProviders": ["private readonly extensionProviders"],
+            "virtualModels": ["private readonly virtualModels"],
+            "compositionErrors": ["private readonly compositionErrors"],
+            "modelsPath": ["private readonly modelsPath"],
+            "modelNetworkEnabled": ["private readonly modelNetworkEnabled"],
+            "config": ["private config"],
+            "snapshot": ["private snapshot"],
+            "availabilityRefreshSeq": ["private availabilityRefreshSeq"],
+            "availabilityErrorSeq": ["private availabilityErrorSeq"],
+            "providerAvailabilitySeq": ["private readonly providerAvailabilitySeq"],
+            "availabilityError": ["private availabilityError"],
+            "credentialOperations": ["private readonly credentialOperations"],
+            "constructor": ["private constructor()"],
+            "create": ["static create(options?: CreateModelRuntimeOptions): Promise<ModelRuntime>"],
+            "configureRadiusProviders": ["private configureRadiusProviders"],
+            "providerIds": ["private providerIds"],
+            "recomposeProvider": ["private recomposeProvider"],
+            "composeProvider": ["private composeProvider"],
+            "rebuildProviders": ["private rebuildProviders"],
+            "updateModelSnapshot": ["private updateModelSnapshot"],
+            "runAvailabilityRefresh": ["private runAvailabilityRefresh"],
+            "queueAvailabilityRefresh": ["private queueAvailabilityRefresh"],
+            "refreshProviderAvailability": ["private refreshProviderAvailability"],
+            "getProviders": ["getProviders(): readonly Provider[]"],
+            "getProvider": ["getProvider(providerId: string): Provider | undefined"],
+            "getModels": ["getModels(providerId?: string): readonly Model<Api>[]"],
+            "getModel": ["getModel(providerId: string, modelId: string): Model<Api> | undefined"],
+            "getModelsOfType": [
+              "getModelsOfType<TType extends ModelType>(type: TType, providerId?: string): readonly ModelTypeMap[TType][]"
+            ],
+            "getModelOfType": [
+              "getModelOfType<TType extends ModelType>(type: TType, providerId: string, modelId: string): ModelTypeMap[TType] | undefined"
+            ],
+            "getAllModels": ["getAllModels(providerId?: string): readonly AnyModel[]"],
+            "getAvailableOfType": [
+              "getAvailableOfType<TType extends ModelType>(type: TType, providerId?: string, options?: AuthOperationOptions): Promise<readonly ModelTypeMap[TType][]>"
+            ],
+            "getAllAvailable": [
+              "getAllAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly AnyModel[]>"
+            ],
+            "checkAuth": [
+              "checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined>"
+            ],
+            "getAvailable": [
+              "getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]>"
+            ],
+            "getAvailableSnapshot": ["getAvailableSnapshot(): readonly Model<Api>[]"],
+            "getError": ["getError(): string | undefined"],
+            "getRegisteredProviderConfig": [
+              "getRegisteredProviderConfig(providerId: string): ProviderConfigInput | undefined"
+            ],
+            "getRegisteredProviderIds": ["getRegisteredProviderIds(): readonly string[]"],
+            "getRegisteredNativeProvider": [
+              "getRegisteredNativeProvider(providerId: string): Provider | undefined"
+            ],
+            "getCompatibilityRequestConfig": [
+              "getCompatibilityRequestConfig(model: Model<Api>): CompatibilityRequestConfig"
+            ],
+            "isUsingOAuth": ["isUsingOAuth(providerId: string): boolean"],
+            "isUsingSubscription": ["isUsingSubscription(providerId: string): boolean"],
+            "hasConfiguredAuth": ["hasConfiguredAuth(providerId: string): boolean"],
+            "getAuth": [
+              "getAuth(providerId: string, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined>",
+              "getAuth(model: AnyModel, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined>"
+            ],
+            "enqueueCredentialOperation": ["private enqueueCredentialOperation"],
+            "synchronizeCredentialState": ["private synchronizeCredentialState"],
+            "setRuntimeApiKey": [
+              "setRuntimeApiKey(providerId: string, apiKey: string, options?: AuthOperationOptions): Promise<void>"
+            ],
+            "removeRuntimeApiKey": [
+              "removeRuntimeApiKey(providerId: string, options?: AuthOperationOptions): Promise<void>"
+            ],
+            "listCredentials": [
+              "listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]>"
+            ],
+            "getProviderAuthStatus": ["getProviderAuthStatus(providerId: string): AuthStatus"],
+            "prepareRequest": ["private prepareRequest"],
+            "stream": [
+              "stream<TApi extends Api>(model: Model<TApi>, context: Context, options?: ModelsApiStreamOptions<TApi>): AssistantMessageEventStream"
+            ],
+            "complete": [
+              "complete<TApi extends Api>(model: Model<TApi>, context: Context, options?: ModelsApiStreamOptions<TApi>): Promise<AssistantMessage>"
+            ],
+            "streamSimple": [
+              "streamSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): AssistantMessageEventStream"
+            ],
+            "completeSimple": [
+              "completeSimple(model: Model<Api>, context: Context, options?: ModelsSimpleStreamOptions): Promise<AssistantMessage>"
+            ],
+            "streamDeferred": [
+              "streamDeferred(model: Model<Api>, handle: DeferredHandle, options?: ModelsDeferredFetchOptions): AssistantMessageEventStream"
+            ],
+            "fetchDeferred": [
+              "fetchDeferred(model: Model<Api>, handle: DeferredHandle, options?: ModelsDeferredFetchOptions): Promise<AssistantMessage>"
+            ],
+            "cancelDeferred": [
+              "cancelDeferred(model: Model<Api>, handle: DeferredHandle, options?: ModelsDeferredCancelOptions): Promise<void>"
+            ],
+            "generateImages": [
+              "generateImages(model: ImageModel<ImageApi>, context: ImagesContext, options?: ModelsImagesOptions): Promise<AssistantImages>"
+            ],
+            "classify": [
+              "classify(model: ClassifierModel<ClassifierApi>, context: ClassifierContext, options?: ModelsClassifierOptions): Promise<ClassifierResult>"
+            ],
+            "login": [
+              "login(providerId: string, type: AuthType, interaction: AuthInteraction, options?: LoginOptions): Promise<Credential>"
+            ],
+            "logout": ["logout(providerId: string, options?: AuthOperationOptions): Promise<void>"],
+            "refresh": ["refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>"],
+            "registerNativeProvider": ["registerNativeProvider(provider: Provider): void"],
+            "markProvisionallyConfigured": ["private markProvisionallyConfigured"],
+            "registerProvider": [
+              "registerProvider(providerId: string, config: ProviderConfigInput): void"
+            ],
+            "unregisterProvider": ["unregisterProvider(providerId: string): void"],
+            "registerVirtualModel": [
+              "registerVirtualModel(definition: VirtualModelDefinition): void"
+            ],
+            "unregisterVirtualModel": [
+              "unregisterVirtualModel(providerId: string, id: string): void"
+            ],
+            "resolveModel": [
+              "resolveModel(model: Model<Api>, messages: readonly Message[], options: { reason: ModelRouteReason; thinkingLevel: ModelThinkingLevel; signal?: AbortSignal; failed?: AssistantMessage; state?: unknown; }): Promise<ModelRoute>"
+            ],
+            "getPhysicalModel": [
+              "getPhysicalModel(providerId: string, modelId: string): Model<Api> | undefined"
+            ]
+          }
+        }
+      }
+    },
+    "system-prompt": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/system-prompt.d.ts",
+      "why": "pi hands the prompt builder a normalized, mutable options object and reads it back; braid writes contextFiles, skills and its own sections into it.",
+      "symbols": {
+        "NormalizedBuildSystemPromptOptions": {
+          "kind": "type",
+          "signature": "export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {",
+          "members": {
+            "selectedTools": ["selectedTools: string[]"],
+            "hiddenTools": ["hiddenTools: string[]"],
+            "toolSnippets": ["toolSnippets: Record<string, string>"],
+            "toolGuidelines": ["toolGuidelines: Record<string, string[]>"],
+            "promptGuidelines": ["promptGuidelines: string[]"],
+            "appendSystemPrompt": ["appendSystemPrompt: string"],
+            "sections": ["sections: Record<string, string>"],
+            "contextFiles": ["contextFiles: Array<{ path: string; content: string; }>"],
+            "skills": ["skills: Skill[]"]
+          }
+        }
+      }
+    },
+    "truncation": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/tools/truncate.d.ts",
+      "why": "the run tool's byte budget and the browser tool's page capture are held to pi's truncation constants and its head truncator.",
+      "symbols": {
+        "DEFAULT_MAX_BYTES": {
+          "kind": "const",
+          "signature": "export declare const DEFAULT_MAX_BYTES: number"
+        },
+        "truncateHead": {
+          "kind": "function",
+          "signature": "export declare function truncateHead(content: string, options?: TruncationOptions): TruncationResult"
+        }
+      }
+    },
+    "bash-tool": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/tools/bash.d.ts",
+      "why": "the bash-cwd extension wraps pi's bash tool definition and reads the details type it returns.",
+      "symbols": {
+        "createBashToolDefinition": {
+          "kind": "function",
+          "signature": "export declare function createBashToolDefinition(cwd: string, options?: BashToolOptions): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState>"
+        },
+        "BashToolDetails": {
+          "kind": "interface",
+          "signature": "export interface BashToolDetails {",
+          "members": {
+            "truncation": ["truncation?: TruncationResult"],
+            "fullOutputPath": ["fullOutputPath?: string"]
+          }
+        }
+      }
+    },
+    "host-config": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/config.d.ts",
+      "why": "braid resolves its state next to pi's agent directory and records the pi version a session runs under.",
+      "symbols": {
+        "getAgentDir": {
+          "kind": "function",
+          "signature": "export declare function getAgentDir(): string"
+        },
+        "VERSION": {
+          "kind": "const",
+          "signature": "export declare const VERSION: string"
+        }
+      }
+    },
+    "frontmatter": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/utils/frontmatter.d.ts",
+      "why": "the skills loader parses SKILL.md with pi's parser and reads the frontmatter and body it returns; braid owns the triggers, not the format.",
+      "symbols": {
+        "parseFrontmatter": {
+          "kind": "const",
+          "signature": "export declare const parseFrontmatter: <T extends Record<string, unknown> = Record<string, unknown>>(content: string) => ParsedFrontmatter<T>"
+        },
+        "ParsedFrontmatter": {
+          "kind": "type",
+          "signature": "type ParsedFrontmatter<T extends Record<string, unknown>> = {",
+          "members": {
+            "frontmatter": ["frontmatter: T"],
+            "body": ["body: string"]
+          }
+        }
+      }
+    },
+    "image-resize": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/utils/image-resize.d.ts",
+      "why": "the capture cap and offload recovery resize oversized images with pi's resizer and reuse its dimension note.",
+      "symbols": {
+        "resizeImage": {
+          "kind": "function",
+          "signature": "export declare function resizeImage(inputBytes: Uint8Array, mimeType: string, options?: ImageResizeOptions): Promise<ResizedImage | null>"
+        },
+        "formatDimensionNote": {
+          "kind": "function",
+          "signature": "export declare function formatDimensionNote(result: ResizedImage): string | undefined"
+        }
+      }
+    },
+    "resize-result": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/utils/image-resize-core.d.ts",
+      "why": "the resize result is read field by field (data, mimeType, width, height, originalWidth, originalHeight) to decide whether the coordinate mapping moved.",
+      "symbols": {
+        "ResizedImage": {
+          "kind": "interface",
+          "signature": "export interface ResizedImage {",
+          "members": {
+            "data": ["data: string"],
+            "mimeType": ["mimeType: string"],
+            "originalWidth": ["originalWidth: number"],
+            "originalHeight": ["originalHeight: number"],
+            "width": ["width: number"],
+            "height": ["height: number"],
+            "wasResized": ["wasResized: boolean"]
+          }
+        }
+      }
+    },
+    "resource-loader": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/core/resource-loader.d.ts",
+      "why": "the prompt builder's project-docs section loads AGENTS.md files through pi's loader rather than reimplementing its walk.",
+      "symbols": {
+        "loadProjectContextFiles": {
+          "kind": "function",
+          "signature": "export declare function loadProjectContextFiles(options: { cwd: string; agentDir: string; }): Array<{",
+          "members": {
+            "path": ["path: string"],
+            "content": ["content: string"]
+          }
+        }
+      }
+    },
+    "settings-ui": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/modes/interactive/theme/theme.d.ts",
+      "why": "the /module settings list and the browser tool's selector run pi-tui's lists, which need pi's own theme callbacks to render.",
+      "symbols": {
+        "getSettingsListTheme": {
+          "kind": "function",
+          "signature": "export declare function getSettingsListTheme(): SettingsListTheme"
+        },
+        "getSelectListTheme": {
+          "kind": "function",
+          "signature": "export declare function getSelectListTheme(): SelectListTheme"
+        }
+      }
+    },
+    "model-selector": {
+      "package": "@earendil-works/pi-coding-agent",
+      "file": "dist/modes/interactive/components/model-selector.d.ts",
+      "why": "the polyfill's model picker mounts pi's own selector component inside a custom UI slot.",
+      "symbols": {
+        "ModelSelectorComponent": {
+          "kind": "class",
+          "signature": "export declare class ModelSelectorComponent extends Container implements Focusable {",
+          "members": {
+            "capturesViewportInput": ["readonly capturesViewportInput: boolean"],
+            "searchInput": ["private searchInput"],
+            "_focused": ["private _focused"],
+            "(unnamed 1)": ["get focused(): boolean"],
+            "(unnamed 2)": ["set focused(value: boolean)"],
+            "listContainer": ["private listContainer"],
+            "allModels": ["private allModels"],
+            "scopedModelItems": ["private scopedModelItems"],
+            "activeModels": ["private activeModels"],
+            "filteredModels": ["private filteredModels"],
+            "selectedIndex": ["private selectedIndex"],
+            "currentModel": ["private currentModel?"],
+            "modelRuntime": ["private modelRuntime"],
+            "onSelectCallback": ["private onSelectCallback"],
+            "onSelectAsDefaultCallback": ["private onSelectAsDefaultCallback?"],
+            "onCancelCallback": ["private onCancelCallback"],
+            "errorMessage": ["private errorMessage?"],
+            "refreshStatusMessage": ["private refreshStatusMessage"],
+            "refreshStatusSuccess": ["private refreshStatusSuccess"],
+            "tui": ["private tui"],
+            "scopedModels": ["private scopedModels"],
+            "defaultModel": ["private defaultModel?"],
+            "scope": ["private scope"],
+            "scopeText": ["private scopeText?"],
+            "scopeHintText": ["private scopeHintText?"],
+            "refreshAbortController": ["private readonly refreshAbortController"],
+            "refreshTimeout": ["private refreshTimeout?"],
+            "closed": ["private closed"],
+            "constructor": [
+              "constructor(tui: TUI, currentModel: Model<any> | undefined, modelRuntime: ModelRuntime, scopedModels: ReadonlyArray<ScopedModelItem>, onSelect: (model: Model<any>) => void, onCancel: () => void, initialSearchInput?: string, onSelectAsDefault?: (model: Model<any>) => void, defaultModel?: DefaultModelReference)"
+            ],
+            "loadModelsFromSnapshot": ["private loadModelsFromSnapshot"],
+            "refreshModels": ["private refreshModels"],
+            "dispose": ["dispose(): void"],
+            "sortModels": ["private sortModels"],
+            "getScopeText": ["private getScopeText"],
+            "getScopeHintText": ["private getScopeHintText"],
+            "isDefaultModel": ["private isDefaultModel"],
+            "isDefaultSearch": ["private isDefaultSearch"],
+            "setScope": ["private setScope"],
+            "filterModels": ["private filterModels"],
+            "updateList": ["private updateList"],
+            "handleInput": ["handleInput(keyData: string): void"],
+            "handleSelect": ["private handleSelect"],
+            "getSearchInput": ["getSearchInput(): Input"]
+          }
+        }
+      }
+    },
+    "ai-models": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/models.d.ts",
+      "why": "braid builds its provider registry on pi-ai's constructors: createModels at startup, createProvider for the Venice route, Provider as the registered shape.",
+      "symbols": {
+        "Provider": {
+          "kind": "interface",
+          "signature": "export interface Provider<TApi extends Api = Api> {",
+          "members": {
+            "id": ["readonly id: string"],
+            "name": ["readonly name: string"],
+            "baseUrl": ["readonly baseUrl?: string"],
+            "headers": ["readonly headers?: ProviderHeaders"],
+            "auth": ["readonly auth: ProviderAuth"],
+            "getModels": ["getModels(): readonly Model<TApi>[]"],
+            "getAllModels": ["getAllModels?(): readonly ProviderModel<TApi>[]"],
+            "refreshModels": ["refreshModels?(context: RefreshModelsContext): Promise<void>"],
+            "filterModels": [
+              "filterModels?(models: readonly Model<TApi>[], credential: Credential | undefined): readonly Model<TApi>[]"
+            ],
+            "filterAllModels": [
+              "filterAllModels?(models: readonly ProviderModel<TApi>[], credential: Credential | undefined): readonly ProviderModel<TApi>[]"
+            ],
+            "stream": [
+              "stream<T extends TApi>(model: Model<T>, context: TranscriptContext, options?: ApiStreamOptions<T>): AssistantMessageEventStream"
+            ],
+            "streamSimple": [
+              "streamSimple(model: Model<TApi>, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream"
+            ],
+            "fetchDeferred": [
+              "fetchDeferred?(model: Model<TApi>, handle: DeferredHandle, options?: DeferredFetchOptions): AssistantMessageEventStream"
+            ],
+            "cancelDeferred": [
+              "cancelDeferred?(model: Model<TApi>, handle: DeferredHandle, options?: DeferredCancelOptions): Promise<void>"
+            ],
+            "generateImages": [
+              "generateImages?(model: ImageModel<ImageApi>, context: ImagesContext, options?: ImagesOptions): Promise<AssistantImages>"
+            ],
+            "classify": [
+              "classify?(model: ClassifierModel<ClassifierApi>, context: ClassifierContext, options?: ClassifierOptions): Promise<ClassifierResult>"
+            ]
+          }
+        },
+        "ModelsSimpleStreamOptions": {
+          "kind": "type",
+          "signature": "export type ModelsSimpleStreamOptions = SimpleStreamOptions & ModelsRequestTransforms"
+        },
+        "createModels": {
+          "kind": "function",
+          "signature": "export declare function createModels(options?: CreateModelsOptions): MutableModels"
+        },
+        "createProvider": {
+          "kind": "function",
+          "signature": "export declare function createProvider<TApi extends Api = Api>(input: CreateProviderOptions<TApi>): Provider<TApi>"
+        }
+      }
+    },
+    "ai-types": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/types.d.ts",
+      "why": "the model and message shapes braid reads while resolving routes and pricing (model.provider, model.contextWindow, model.maxTokens) and while filtering content parts.",
+      "symbols": {
+        "Model": {
+          "kind": "interface",
+          "signature": "export interface Model<TApi extends Api> extends BaseModel<TApi> {",
+          "members": {
+            "type": ["type?: \"chat\""],
+            "reasoning": ["reasoning: boolean"],
+            "thinkingLevelMap": ["thinkingLevelMap?: ThinkingLevelMap"],
+            "promptCache": ["promptCache?: ModelPromptCache"],
+            "contextWindow": ["contextWindow: number"],
+            "maxTokens": ["maxTokens: number"],
+            "samplingParams": ["samplingParams?: SamplingParams"],
+            "samplingParamsByThinkingLevel": [
+              "samplingParamsByThinkingLevel?: SamplingParamsByThinkingLevel"
+            ],
+            "compat": [
+              "compat?: TApi extends \"openai-completions\" ? OpenAICompletionsCompat : TApi extends \"openai-responses\" | \"azure-openai-responses\" | \"openai-codex-responses\" ? OpenAIResponsesCompat : TApi extends \"anthropic-messages\" ? AnthropicMessagesCompat : TApi extends \"bedrock-converse-stream\" ? BedrockCompat : TApi extends \"mistral-conversations\" ? MistralConversationsCompat : never"
+            ]
+          }
+        },
+        "Api": {
+          "kind": "type",
+          "signature": "export type Api = KnownApi | (string & {})"
+        },
+        "Context": {
+          "kind": "interface",
+          "signature": "export interface Context {",
+          "members": {
+            "systemPrompt": ["systemPrompt?: string"],
+            "messages": ["messages: Message[]"],
+            "tools": ["tools?: Tool[]"]
+          }
+        },
+        "Message": {
+          "kind": "type",
+          "signature": "export type Message = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage"
+        },
+        "AssistantMessage": {
+          "kind": "interface",
+          "signature": "export interface AssistantMessage {",
+          "members": {
+            "role": ["role: \"assistant\""],
+            "content": ["content: (TextContent | ThinkingContent | ToolCall)[]"],
+            "api": ["api: Api"],
+            "provider": ["provider: ProviderId"],
+            "model": ["model: string"],
+            "responseModel": ["responseModel?: string"],
+            "responseId": ["responseId?: string"],
+            "providerThinkingLevel": ["providerThinkingLevel?: string"],
+            "thinkingLevel": ["thinkingLevel?: ModelThinkingLevel"],
+            "diagnostics": ["diagnostics?: AssistantMessageDiagnostic[]"],
+            "usage": ["usage: Usage"],
+            "stopReason": ["stopReason: StopReason"],
+            "deferred": ["deferred?: DeferredHandle"],
+            "errorMessage": ["errorMessage?: string"],
+            "rawStopReason": ["rawStopReason?: string"],
+            "endTurn": ["endTurn?: boolean"],
+            "timestamp": ["timestamp: number"],
+            "durationMs": ["durationMs?: number"]
+          }
+        },
+        "Usage": {
+          "kind": "interface",
+          "signature": "export interface Usage {",
+          "members": {
+            "input": ["input: number"],
+            "output": ["output: number"],
+            "cacheRead": ["cacheRead: number"],
+            "cacheWrite": ["cacheWrite: number"],
+            "cacheWrite1h": ["cacheWrite1h?: number"],
+            "reasoning": ["reasoning?: number"],
+            "totalTokens": ["totalTokens: number"],
+            "cost": [
+              "cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; totalFromProvider?: boolean; }"
+            ]
+          }
+        },
+        "StopReason": {
+          "kind": "type",
+          "signature": "export type StopReason = \"pending\" | \"stop\" | \"length\" | \"toolUse\" | \"error\" | \"aborted\" | \"deferred\""
+        },
+        "ImageContent": {
+          "kind": "interface",
+          "signature": "export interface ImageContent {",
+          "members": {
+            "type": ["type: \"image\""],
+            "data": ["data: string"],
+            "mimeType": ["mimeType: string"]
+          }
+        },
+        "TextContent": {
+          "kind": "interface",
+          "signature": "export interface TextContent {",
+          "members": {
+            "type": ["type: \"text\""],
+            "text": ["text: string"],
+            "textSignature": ["textSignature?: string"]
+          }
+        }
+      }
+    },
+    "ai-thinking": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/providers/model-schema.d.ts",
+      "why": "the auxiliary-call options carry a ModelThinkingLevel and pi's ThinkingLevel crosses into the registry's stream options, so the vocabulary is pi-ai's.",
+      "symbols": {
+        "ThinkingLevel": {
+          "kind": "type",
+          "signature": "export type ThinkingLevel = Static<typeof ThinkingLevelSchema>"
+        },
+        "ModelThinkingLevel": {
+          "kind": "type",
+          "signature": "export type ModelThinkingLevel = Static<typeof ModelThinkingLevelSchema>"
+        }
+      }
+    },
+    "ai-schema-enum": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/utils/string-enum.d.ts",
+      "why": "tool schemas register their enum parameters through StringEnum, so the JSON schema pi receives is pi-ai's.",
+      "symbols": {
+        "StringEnum": {
+          "kind": "function",
+          "signature": "export declare function StringEnum<T extends readonly string[]>(values: T, options?: { description?: string; default?: T[number]; }): Schema<T[number]>"
+        }
+      }
+    },
+    "ai-compat": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/compat.d.ts",
+      "why": "auxiliary completions go through pi-ai's compat entry point instead of a client of braid's own.",
+      "symbols": {
+        "completeSimple": {
+          "kind": "function",
+          "signature": "export declare function completeSimple<TApi extends Api>(model: Model<TApi>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessage>"
+        }
+      }
+    },
+    "ai-openai-api": {
+      "package": "@earendil-works/pi-ai",
+      "file": "dist/api/openai-completions.lazy.d.ts",
+      "why": "the Venice provider is registered with pi-ai's own OpenAI-completions transport, so the api it names is pi-ai's.",
+      "symbols": {
+        "openAICompletionsApi": {
+          "kind": "const",
+          "signature": "export declare const openAICompletionsApi: () => ProviderStreams"
+        }
+      }
+    },
+    "agent-core": {
+      "package": "@earendil-works/pi-agent-core",
+      "file": "dist/types.d.ts",
+      "why": "every tool braid defines returns AgentToolResult, streams partials through AgentToolUpdateCallback, and the context manager prunes AgentMessage arrays.",
+      "symbols": {
+        "AgentToolResult": {
+          "kind": "interface",
+          "signature": "export interface AgentToolResult<T = JsonValue | undefined> {",
+          "members": {
+            "content": ["content: (TextContent | ImageContent)[]"],
+            "details": ["details: T"],
+            "structuredContent": ["structuredContent?: JsonValue"],
+            "usage": ["usage?: Usage"],
+            "isError": ["isError?: boolean"],
+            "terminate": ["terminate?: boolean"]
+          }
+        },
+        "AgentToolUpdateCallback": {
+          "kind": "type",
+          "signature": "export type AgentToolUpdateCallback<T = any> = (partialResult: AgentToolResult<T>) => void"
+        },
+        "AgentMessage": {
+          "kind": "type",
+          "signature": "export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages]"
+        }
+      }
+    },
+    "tui-autocomplete": {
+      "package": "@earendil-works/pi-tui",
+      "file": "dist/autocomplete.d.ts",
+      "why": "/module autocompletion returns pi-tui's AutocompleteItem rows to pi's own completion renderer.",
+      "symbols": {
+        "AutocompleteItem": {
+          "kind": "interface",
+          "signature": "export interface AutocompleteItem {",
+          "members": {
+            "value": ["value: string"],
+            "label": ["label: string"],
+            "description": ["description?: string"]
+          }
+        }
+      }
+    },
+    "tui-select": {
+      "package": "@earendil-works/pi-tui",
+      "file": "dist/components/select-list.d.ts",
+      "why": "the browser tool mounts pi-tui's SelectList and answers with its SelectItem rows.",
+      "symbols": {
+        "SelectList": {
+          "kind": "class",
+          "signature": "export declare class SelectList implements Component {",
+          "members": {
+            "capturesViewportInput": ["readonly capturesViewportInput: boolean"],
+            "items": ["private items"],
+            "filteredItems": ["private filteredItems"],
+            "selectedIndex": ["private selectedIndex"],
+            "mousePressedIndex": ["private mousePressedIndex"],
+            "maxVisible": ["private maxVisible"],
+            "theme": ["private theme"],
+            "layout": ["private layout"],
+            "onSelect": ["onSelect?: (item: SelectItem) => void"],
+            "onCancel": ["onCancel?: () => void"],
+            "onSelectionChange": ["onSelectionChange?: (item: SelectItem) => void"],
+            "constructor": [
+              "constructor(items: SelectItem[], maxVisible: number, theme: SelectListTheme, layout?: SelectListLayoutOptions)"
+            ],
+            "setFilter": ["setFilter(filter: string): void"],
+            "setSelectedIndex": ["setSelectedIndex(index: number): void"],
+            "invalidate": ["invalidate(): void"],
+            "render": ["render(width: number): string[]"],
+            "handleMouse": ["handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined"],
+            "handleInput": ["handleInput(keyData: string): void"],
+            "getVisibleRange": ["private getVisibleRange"],
+            "renderItem": ["private renderItem"],
+            "getPrimaryColumnWidth": ["private getPrimaryColumnWidth"],
+            "getPrimaryColumnBounds": ["private getPrimaryColumnBounds"],
+            "truncatePrimary": ["private truncatePrimary"],
+            "getDisplayValue": ["private getDisplayValue"],
+            "notifySelectionChange": ["private notifySelectionChange"],
+            "getSelectedItem": ["getSelectedItem(): SelectItem | null"]
+          }
+        },
+        "SelectItem": {
+          "kind": "interface",
+          "signature": "export interface SelectItem {",
+          "members": {
+            "value": ["value: string"],
+            "label": ["label: string"],
+            "description": ["description?: string"]
+          }
+        }
+      }
+    },
+    "tui-settings": {
+      "package": "@earendil-works/pi-tui",
+      "file": "dist/components/settings-list.d.ts",
+      "why": "the /module list is a pi-tui SettingsList fed SettingItem rows and pi's own SettingsListTheme.",
+      "symbols": {
+        "SettingsList": {
+          "kind": "class",
+          "signature": "export declare class SettingsList implements Component {",
+          "members": {
+            "capturesViewportInput": ["readonly capturesViewportInput: boolean"],
+            "items": ["private items"],
+            "filteredItems": ["private filteredItems"],
+            "theme": ["private theme"],
+            "selectedIndex": ["private selectedIndex"],
+            "mousePressedIndex": ["private mousePressedIndex"],
+            "maxVisible": ["private maxVisible"],
+            "onChange": ["private onChange"],
+            "onCancel": ["private onCancel"],
+            "searchInput": ["private searchInput?"],
+            "searchEnabled": ["private searchEnabled"],
+            "submenuComponent": ["private submenuComponent"],
+            "submenuItemIndex": ["private submenuItemIndex"],
+            "navigateAfterClose": ["private navigateAfterClose"],
+            "constructor": [
+              "constructor(items: SettingItem[], maxVisible: number, theme: SettingsListTheme, onChange: (id: string, newValue: string) => void, onCancel: () => void, options?: SettingsListOptions)"
+            ],
+            "updateValue": ["updateValue(id: string, newValue: string): void"],
+            "selectItem": ["selectItem(id: string): void"],
+            "invalidate": ["invalidate(): void"],
+            "render": ["render(width: number): string[]"],
+            "renderMainList": ["private renderMainList"],
+            "handleMouse": ["handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined"],
+            "handleInput": ["handleInput(data: string): void"],
+            "getDisplayItems": ["private getDisplayItems"],
+            "getVisibleRange": ["private getVisibleRange"],
+            "activateItem": ["private activateItem"],
+            "closeSubmenu": ["private closeSubmenu"],
+            "applyFilter": ["private applyFilter"],
+            "addHintLine": ["private addHintLine"]
+          }
+        },
+        "SettingItem": {
+          "kind": "interface",
+          "signature": "export interface SettingItem {",
+          "members": {
+            "id": ["id: string"],
+            "label": ["label: string"],
+            "description": ["description?: string"],
+            "currentValue": ["currentValue: string"],
+            "values": ["values?: string[]"],
+            "submenu": [
+              "submenu?: (currentValue: string, done: (selectedValue?: string, options?: { navigateTo?: string; }) => void) => Component"
+            ]
+          }
+        },
+        "SettingsListTheme": {
+          "kind": "interface",
+          "signature": "export interface SettingsListTheme {",
+          "members": {
+            "label": ["label: (text: string, selected: boolean) => string"],
+            "value": ["value: (text: string, selected: boolean) => string"],
+            "description": ["description: (text: string) => string"],
+            "cursor": ["cursor: string"],
+            "hint": ["hint: (text: string) => string"]
+          }
+        }
+      }
+    },
+    "tui-text": {
+      "package": "@earendil-works/pi-tui",
+      "file": "dist/components/text.d.ts",
+      "why": "the browser tool renders its page listings as pi-tui Text nodes so the host's theme and wrapping apply to them.",
+      "symbols": {
+        "Text": {
+          "kind": "class",
+          "signature": "export declare class Text implements Component {",
+          "members": {
+            "text": ["private text"],
+            "paddingX": ["private paddingX"],
+            "paddingY": ["private paddingY"],
+            "customBgFn": ["private customBgFn?"],
+            "cachedText": ["private cachedText?"],
+            "cachedWidth": ["private cachedWidth?"],
+            "cachedLines": ["private cachedLines?"],
+            "constructor": [
+              "constructor(text?: string, paddingX?: number, paddingY?: number, customBgFn?: (text: string) => string)"
+            ],
+            "setText": ["setText(text: string): void"],
+            "setCustomBgFn": ["setCustomBgFn(customBgFn?: (text: string) => string): void"],
+            "setPaddingX": ["setPaddingX(paddingX: number): void"],
+            "invalidate": ["invalidate(): void"],
+            "render": ["render(width: number): string[]"]
+          }
+        }
+      }
+    },
+    "tui-container": {
+      "package": "@earendil-works/pi-tui",
+      "file": "dist/tui.d.ts",
+      "why": "the module command and the browser tool compose their panes as pi-tui Containers.",
+      "symbols": {
+        "Container": {
+          "kind": "class",
+          "signature": "export declare class Container implements Component {",
+          "members": {
+            "children": ["children: Component[]"],
+            "mouseLayout": ["private mouseLayout?"],
+            "addChild": ["addChild(component: Component): void"],
+            "removeChild": ["removeChild(component: Component): void"],
+            "clear": ["clear(): void"],
+            "invalidate": ["invalidate(): void"],
+            "handleMouse": [
+              "handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined"
+            ],
+            "render": ["render(width: number): string[]"]
+          }
+        }
+      }
+    }
+  }
+}
