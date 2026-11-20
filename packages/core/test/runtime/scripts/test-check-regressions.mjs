@@ -12,7 +12,7 @@
 // to record as red rather than as a pass, and it is what proves a case reports
 // the fixture that moved instead of every fixture that is not green.
 //
-// Ten cases, one mechanism each. A re-run against its own baseline finds
+// Eleven cases, one mechanism each. A re-run against its own baseline finds
 // nothing; a fixture flipped to failing is caught and named; a fixture deleted
 // from the tree is caught; an exemption with a reason silences its row; an
 // exemption with no reason is refused; a baseline taken on another line of
@@ -20,8 +20,9 @@
 // and prints the distance, which is the merge shape the instrument exists for;
 // an exemption that silenced nothing is reported as stale; a run from inside a
 // suite refuses the default root rather than re-entering the suite it is
-// already in; and a baseline whose revision field is present but unreadable is
-// refused rather than read as "no revision".
+// already in; a baseline whose revision field is present but unreadable is
+// refused rather than read as "no revision"; and a fixture that passed in the
+// baseline and now times out is named as timing out rather than as failing.
 //
 // The gate under test defaults to the script three directories up;
 // CHECK_REGRESSIONS=<path> overrides it, which is how a RED run is recorded
@@ -255,6 +256,24 @@ test("a baseline whose revision is unreadable is refused rather than read as no 
     const checked = gate(["--check", spot.baseline, "--root", spot.tree]);
     assert.equal(checked.status, 2, checked.out);
     assert.match(checked.out, /records a revision that is not one/);
+  } finally {
+    rmSync(spot.home, { recursive: true, force: true });
+  }
+});
+
+test("a fixture that passed in the baseline and now times out is caught", () => {
+  // A file that never finishes and a file that fails are different findings
+  // with different fixes, so the comparison keeps them apart. The cap comes from
+  // the runner's own PI_TEST_TIMEOUT_MS so the case costs a second, not a
+  // minute.
+  const spot = harness();
+  try {
+    snapshot(spot);
+    writeFileSync(join(spot.tree, "green.mjs"), "setTimeout(() => {}, 8000);\n");
+
+    const checked = gate(["--check", spot.baseline, "--root", spot.tree], { PI_TEST_TIMEOUT_MS: "800" });
+    assert.equal(checked.status, 1, checked.out);
+    assert.match(checked.out, /FAIL green\.mjs: passed in the baseline and times out now\./);
   } finally {
     rmSync(spot.home, { recursive: true, force: true });
   }
