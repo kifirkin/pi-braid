@@ -7,7 +7,7 @@
  * type so a reader can inspect the census without importing the write path,
  * and so the checker's legacy list has one declared home.
  *
- * The table lives on `Symbol.for("pi-braid.slot.registry")`, not in module
+ * The table lives on `Symbol.for("pi-braid:slot-registry")`, not in module
  * scope: the source tree and the compiled dist can both be evaluated in one
  * process, and the census must count a slot once, not once per module
  * instance. A second definition of a key increments `definitions` and keeps
@@ -168,7 +168,7 @@ interface Registration {
   definitions: number;
 }
 
-const REGISTRY = Symbol.for("pi-braid.slot.registry");
+const REGISTRY = Symbol.for("pi-braid:slot-registry");
 const processGlobals = globalThis as unknown as Record<symbol, unknown>;
 
 function registrations(): Map<string, Registration> {

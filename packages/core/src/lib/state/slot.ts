@@ -84,8 +84,8 @@ export interface Slot<T> {
 
 type AnySubscriber = (value: unknown) => void;
 
-const SUBSCRIBERS = Symbol.for("pi-braid.slot.subscribers");
-const ADVISED = Symbol.for("pi-braid.slot.advisories");
+const SUBSCRIBERS = Symbol.for("pi-braid:slot-subscribers");
+const ADVISED = Symbol.for("pi-braid:slot-advisories");
 const processGlobals = globalThis as Record<string, unknown>;
 const processSymbols = globalThis as unknown as Record<symbol, unknown>;
 
