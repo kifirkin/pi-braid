@@ -255,6 +255,77 @@ width. That is how the file's own fixture drives it over a bench instead of the
 suite: a run from inside a suite refuses the default root rather than starting a
 second full suite inside the first.
 
+## Standing preferences
+
+A standing preference is a rule that has to fire at a moment, not when an incoming
+message happens to resemble it. The store is `<braid home>/preferences.json`: one
+entry per rule, and each entry names the surface that has to be in play for the
+rule to apply.
+
+```json
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "telegram-buttons-single-word",
+      "surface": "telegram",
+      "rule": "Button labels carry a single word, never a description.",
+      "since": "<YYYY-MM-DD>",
+      "source": "owner message",
+      "contradicts": ["telegram-buttons-with-descriptions"],
+      "examples": ["A", "B", "C"]
+    },
+    {
+      "id": "reply-language-english",
+      "surface": "reply",
+      "rule": "Write every reply in English.",
+      "since": "<YYYY-MM-DD>",
+      "source": "owner message"
+    },
+    {
+      "id": "unbound-no-flattery",
+      "surface": null,
+      "unbound": true,
+      "rule": "Answer without flattery.",
+      "since": "<YYYY-MM-DD>",
+      "source": "owner message"
+    }
+  ]
+}
+```
+
+Fields: `id`, `surface` (`null` plus `"unbound": true` when the rule is bound to
+nothing), `rule`, `since` (a date, or a timestamp whose date part is kept),
+`source`, and optional `contradicts` (ids) and `examples`. A store version this
+build does not read is refused whole rather than read halfway, and an entry that
+does not parse is counted with its reason.
+
+Presence is decided by the tool set, never by reading the conversation. The
+surfaces are `telegram`, rendered when `telegram_send` is enabled, and `reply`,
+in play whenever a turn is, because a prompt is only built for a turn that is
+about to be written. A rule naming any other surface is not rendered: the
+section logs it once. Adding a surface means adding it to `SURFACE_BINDINGS` in
+`packages/core/src/extensions/core/prompt-builder/preferences-section.ts`, with
+the tools that carry it.
+
+The markdown file is a projection of the store, and the gate keeps the two equal:
+
+```bash
+node packages/core/scripts/check-preferences.mjs            # hold the store and the projection together
+node packages/core/scripts/check-preferences.mjs --render   # write <braid home>/preferences.md from the store
+```
+
+The gate refuses a rule with no surface and no `unbound` mark, two rules on one
+surface that contradict (declared in either direction), a `contradicts` id that
+is not in the store, an entry the reader cannot use, a store version it does not
+read, and a projection that carries a rule the store lacks or misses one it has.
+It reads the entry contract from the built module, so `npm run build` has to run
+before it. The store library is `packages/core/src/lib/preferences/store.ts`.
+
+This instrument does not read or migrate memory entries. A preference may also
+live in the memory stores; those are retrieved by association and are a separate
+surface with its own path.
+
 ## Provider failures on demand
 
 Three provider behaviours decide how a turn ends, and none of them can be
