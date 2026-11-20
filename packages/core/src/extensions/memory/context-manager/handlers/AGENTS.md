@@ -27,6 +27,7 @@ distinction.
 | `shared.ts`                 | State, helpers, retry logic, navigation primitives. 400L.                                             |
 | `tool-batch-boundary.ts`    | Tool-batch-safe boundary snapping (`snapBoundaryOutsideToolBatch`) shared by every boundary supplier. |
 | `compaction.ts`             | Compaction events + retry + smart instructions. 619L.                                                 |
+| `compaction-curator.ts`     | What a landed compaction returns: instruction files from the read record, whole or named by path.     |
 | `compaction-retry.ts`       | Failure routing (threshold/overflow/summary-cap) + turn-end retry reset. 381L.                        |
 | `compaction-chunked.ts`     | Bounded chunked summarization (range archives, summary-cap recovery).                                 |
 | `events.ts`                 | agent_end API-error guidance, context pruning. 367L.                                                  |

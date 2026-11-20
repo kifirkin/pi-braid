@@ -55,6 +55,7 @@ import {
   COMPACTION_NO_PROGRESS_LIMIT,
 } from "./shared.js";
 import { snapBoundaryOutsideToolBatch } from "./tool-batch-boundary.js";
+import { reinjectCuratedContext } from "./compaction-curator.js";
 import type { AgentMessage as CoreAgentMessage } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentMessage as FilterMessage } from "../../../../lib/utils/filter-safe-to-remove.js";
@@ -1974,6 +1975,14 @@ export function registerSessionCompactHandler(pi: ExtensionAPI): void {
       // message_end events, never reaches sessionManager.appendMessage(), and is
       // invisible in both the TUI and session tree. Adding it would only add noise
       // to agent context without any user-visible benefit.
+
+      // The instruction text this compaction summarized away goes back to the
+      // agent as its own bytes: a summary of a contract is not the contract,
+      // and a re-read invitation spends a turn the harness can spend itself.
+      // The entry carries the session's read record, so the curated set is what
+      // this session actually read, not every instruction file on disk. Silent
+      // when the session read none of them, and when the send is suppressed.
+      reinjectCuratedContext(pi, ctx, entry as { details?: { readFiles?: string[] } } | undefined);
 
       // Clear overflow notification flag and retry guards on success.
       const cmState = getCmState(ctx);

@@ -1259,12 +1259,16 @@ export interface SkillStats {
   fullBody: number;
   /** Bodies of this skill a compaction took out of the transcript (see stepCompactionReload). */
   reloads: number;
+  /** Bodies this harness put back after a compaction dropped them, rather than
+   *  asking for a re-read. The pair (returned, reloads) is the two outcomes of
+   *  the same loss. */
+  returned: number;
 }
 
 /** A zeroed session counter row: one literal, so a new counter cannot land in
  *  one write path and be missed in another. */
 function emptySkillStats(): SkillStats {
-  return { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0, reloads: 0 };
+  return { suggested: 0, loaded: 0, claimed: 0, actual: 0, fullBody: 0, reloads: 0, returned: 0 };
 }
 
 const STATS_KEY = "skills-usage-stats";
@@ -1352,6 +1356,25 @@ export function recordSkillReload(ctx: ExtensionContext, name: string): void {
   const s = (stats[name] ??= emptySkillStats());
   s.reloads++;
   recordDurable(name, "reload");
+}
+
+/**
+ * Record a body the harness put BACK after a compaction dropped it.
+ *
+ * The other outcome of the same loss: `reloads` means the agent was sent back to
+ * the file, `returned` means the bytes arrived in the transcript without a turn
+ * spent. Both move only on an accepted send, so neither can claim a delivery the
+ * agent never saw.
+ *
+ * Session-scoped on purpose: the durable store's schema, its gate and its
+ * documented reply are a wider change than this counter needs, and a rescue is a
+ * property of one session's compaction rather than of the skill's adoption.
+ */
+export function recordSkillReturned(ctx: ExtensionContext, name: string): void {
+  if (!name) return;
+  const stats = getStats(ctx);
+  const s = (stats[name] ??= emptySkillStats());
+  s.returned++;
 }
 
 // Durable adoption counters (cross-session)
@@ -1650,6 +1673,21 @@ export function formatReloadPayload(name: string, filePath: string): string {
   );
 }
 
+/**
+ * The message that returns a body whole instead of asking for a re-read.
+ *
+ * The header keeps the three facts a reader needs (which skill, why the body is
+ * here, which file it came from) in one line, and the body follows unchanged: a
+ * compaction summary is a paraphrase of a rule, and the point of this path is
+ * that the rule arrives as it was written.
+ */
+export function formatReturnedBody(name: string, filePath: string, body: string): string {
+  return (
+    `[SKILL RETURNED] skill "${name}" arrived earlier this session and a compaction left its body ` +
+    `out of context. The body from \`${filePath}\` follows in full.\n\n${body}`
+  );
+}
+
 /** The text blocks of one message, joined. Non-text blocks carry no body text. */
 function messageText(message: unknown): string {
   const content = (message as { content?: unknown })?.content;
@@ -1715,8 +1753,15 @@ function noteBodyLanded(
  * no line; a skill already named is not named again, because a second
  * compaction that finds the same body absent describes the same loss.
  *
- * The line and the counter move together and only on an accepted send, so the
- * store never claims a reload the agent was not told about.
+ * Two outcomes, and the counter that moves names which one happened. A body that
+ * fits the delivery cap arrives WHOLE, because a body the harness has in hand is
+ * cheaper to return than a turn spent re-reading it, and a summarized rule is
+ * not the rule. A body past the cap is NAMED instead of cut: a truncated skill
+ * file is a paraphrase with extra steps, so the pointer line stays for that case
+ * and for a file that vanished between the read and this check.
+ *
+ * The message and the counter move together and only on an accepted send, so the
+ * store never claims a return or a reload the agent was not told about.
  */
 function stepCompactionReload(pi: ExtensionAPI, ctx: ExtensionContext): void {
   const state = getState(ctx);
@@ -1737,23 +1782,33 @@ function stepCompactionReload(pi: ExtensionAPI, ctx: ExtensionContext): void {
     const signature = bodySignature(body);
     if (signature.length < RELOAD_SIGNATURE_MIN_CHARS) continue;
     if (context.includes(signature)) continue;
+    const trimmed = body.trim();
+    const whole = trimmed.length > 0 && trimmed.length <= FULL_BODY_MAX_CHARS;
     const delivered = sendTrackedMessage(
       pi,
       {
         customType: "skills-reload",
-        content: [{ type: "text" as const, text: formatReloadPayload(name, filePath) }],
+        content: [
+          {
+            type: "text" as const,
+            text: whole
+              ? formatReturnedBody(name, filePath, trimmed)
+              : formatReloadPayload(name, filePath),
+          },
+        ],
         display: true,
         details: {
           [BRAID_INJECTED]: true,
           [BRAID_SOURCE]: "skills-auto-inject",
           skill: name,
+          returned: whole,
         },
       },
       { delivery: "park", deliverAs: "steer" },
       { type: "context", source: "skills-auto-inject" },
-      // The session guard is the bound (one line per skill), and the line is
-      // for the run that follows this compaction: a per-turn cap must not drop
-      // it there.
+      // The session guard is the bound (one delivery per skill), and the message
+      // is for the run that follows this compaction: a per-turn cap must not
+      // drop it there.
       { bypassFloodCap: true },
     );
     if (!delivered) {
@@ -1763,8 +1818,17 @@ function stepCompactionReload(pi: ExtensionAPI, ctx: ExtensionContext): void {
       continue;
     }
     state.reload.announced.add(name);
-    recordSkillReload(ctx, name);
-    log.info(`[skills-auto-inject] reload line for "${name}" after a compaction left its body out`);
+    if (whole) {
+      recordSkillReturned(ctx, name);
+      log.info(
+        `[skills-auto-inject] body for "${name}" returned whole after compaction dropped it`,
+      );
+    } else {
+      recordSkillReload(ctx, name);
+      log.info(
+        `[skills-auto-inject] reload line for "${name}" after a compaction left its body out`,
+      );
+    }
   }
 }
 

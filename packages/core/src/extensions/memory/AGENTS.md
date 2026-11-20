@@ -30,6 +30,33 @@ contract (`context-manager/handlers/`):
   the cut armed; a dispatched retry owns the next cycle and consumes it there.
   Fixture: `packages/core/test/runtime/memory/test-compaction-failsafe.mjs`.
 
+## A landed compaction returns what it dropped
+
+A summary of a rule is a paraphrase, so a compaction that leaves the session's
+instruction text out of context hands it back as its own bytes. The population is
+the intersection of "an instruction file" and "this session read it", never a scan
+for every instruction file on disk: `readFiles` on the landed entry
+(`CompactionDetails`) is the record, and `AGENTS.md`, `CLAUDE.md`, `DESIGN.md` are
+the curated basenames. The same cycle returns the skill bodies the session
+delivered, by the owner of that record (`skills-tool`); this module owns the
+instruction half.
+
+- **Whole or named, never cut.** A section is the file's own bytes with the path as
+  its heading. `CURATED_CONTEXT_MAX_CHARS` takes sections in read order as a prefix:
+  a file past the budget is omitted and named in one trailing pointer line, and so
+  is every later file. Instruction text truncated mid-file is the paraphrase this
+  path exists to replace.
+- **Silent by default.** No entry, no details, no instruction file in the read
+  record, or a send a suppression dropped: the cycle says nothing and counts
+  nothing. There is no whisper, no counter and no log line per returned file; the
+  message is its own record (`customType: "context-reinject"`).
+- **One sender per class.** The curator delivers the instruction files from
+  `registerSessionCompactHandler`; `skills-tool` delivers the bodies it tracks, so
+  neither delivery depends on the other module being loaded or on the registration
+  order of two `session_compact` handlers.
+
+Fixture: `packages/core/test/runtime/lib/test-compaction-reinject.mjs`.
+
 ## Compaction paths and stale-timer cleanup
 
 All three code paths cancel stale compaction-resume timers to prevent misplaced `[timer]` whispers on later TURN_END events. The timer itself was **removed in 2026-07-11** because pi-core's internal `_runAutoCompaction()` continues the agent on its own - but only on `willRetry` (overflow recovery) or when queued messages exist (`agent.hasQueuedMessages()` → `agent.continue()`). That auto-continue does **NOT** cover the manual `ctx.compact()` path that the agent-initiated `context_compress` tool uses: manual compaction calls `_disconnectFromAgent() + abort()` (killing the loop) and never resumes it. For that path the resume is the enforcement `session_compact` re-orientation whisper (`enforcement/handlers/register-session-compact.ts`) gated on `autoResumeAfterCompaction`, delivered with `triggerTurn: true`. The 3-minute fallback timer was removed as spurious noise for the auto path, but the agent-initiated manual path depends on the whisper wake - verified 2026-08-02 after the whisper's `triggerTurn` was found defeated by a `deliverAs: "nextTurn"` default; see `enforcement/whisper.ts`.
