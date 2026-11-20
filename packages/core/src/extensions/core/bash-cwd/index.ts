@@ -12,8 +12,14 @@
  *
  * What changes is only the directory:
  *
- *   - this call runs in an explicit `cwd`, else the session's persisted
- *     directory, else the session's start directory;
+ *   - this call runs in an explicit `cwd` that names a directory, else the
+ *     session's persisted directory, else the session's start directory;
+ *   - a `cwd` that names no directory at all is absent, not an override: a
+ *     null, a blank string, and the two words a constrained generator emits when
+ *     it means either, run the call where it would have run anyway;
+ *   - a `cwd` that names a file is answered here in one line, naming the
+ *     argument and what it resolved to, because the argument is this tool's own
+ *     and the spawn it would reach reports ENOTDIR, a code that names neither;
  *   - a call that exited 0 leaves its last `cd` behind as the persisted
  *     directory, resolved against where the call ran;
  *   - a call that exited non-zero moves nothing, and a directory that no longer
@@ -64,9 +70,13 @@ const bashCwdParameters = Type.Object({
     Type.Number({ description: "Timeout in seconds (optional, no default timeout)" }),
   ),
   cwd: Type.Optional(
-    Type.String({
+    // `{ anyOf: [{ type: "string" }, { type: "null" }] }` written as its own
+    // keywords: the builder's named constructors have no null literal, and the
+    // schema this hand-built object emits is plain JSON Schema.
+    Type.Unsafe<string | null>({
+      anyOf: [{ type: "string" }, { type: "null" }],
       description:
-        "Working directory for this call only, relative to the session's current directory. It does not change the directory the next call inherits.",
+        "Working directory for this call only, relative to the session's current directory. It does not change the directory the next call inherits; null means the same as omitting it.",
     }),
   ),
 });
@@ -85,6 +95,44 @@ function isDirectoryOnDisk(path: string): boolean {
     return statSync(path).isDirectory();
   } catch {
     // A path that cannot be stat'd is not a directory this call can run in.
+    return false;
+  }
+}
+
+/**
+ * The directory a `cwd` argument names, or undefined when it names none.
+ *
+ * The argument exists only because this tool adds it: pi's shell tool takes
+ * `command` and `timeout`, so a value of the wrong shape is dropped there
+ * without consequence and is acted on only here. That is what makes this the
+ * one place that can tell a caller's directory from a value that means "no
+ * directory": a null that reached the handler despite the schema, a string of
+ * whitespace, and the two words a constrained generator emits when it means
+ * either, in any capitalization. They run the call where it would have run
+ * anyway rather than resolving a directory named after the word. Anything else
+ * is passed through byte for byte, so a directory genuinely named `null` stays
+ * reachable as `./null`.
+ */
+function requestedCwd(value: string | null | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const word = value.trim();
+  if (word === "" || /^(?:null|undefined)$/i.test(word)) return undefined;
+  return value;
+}
+
+/**
+ * A path that exists and is not a directory.
+ *
+ * This is the one `cwd` failure this tool owes its caller: the argument is
+ * resolved here, so the resolved path can be named here, while the spawn it
+ * would otherwise reach fails with `ENOTDIR` - a code carrying neither the
+ * argument nor the path - for a process that never started. A path that does
+ * not exist keeps pi's own answer, which already names it.
+ */
+function existsButIsNotDirectory(path: string): boolean {
+  try {
+    return !statSync(path).isDirectory();
+  } catch {
     return false;
   }
 }
@@ -119,8 +167,22 @@ export function createBashCwdTool(
       rebase(state, sessionCwd);
 
       const { dir, stale } = resolveRunDirectory(state, isDirectory);
-      const overridden = params.cwd !== undefined;
-      const ranIn = overridden ? resolve(dir, params.cwd!) : dir;
+      const requested = requestedCwd(params.cwd);
+      const overridden = requested !== undefined;
+      const ranIn = overridden ? resolve(dir, requested) : dir;
+
+      // Nothing has run yet, so a directory this call cannot enter is answerable
+      // here, in the terms the caller gave: the argument as written and the path
+      // it resolved to.
+      if (overridden && existsButIsNotDirectory(ranIn)) {
+        return {
+          content: [
+            { type: "text", text: `cwd ${JSON.stringify(requested)} is not a directory: ${ranIn}` },
+          ],
+          details: undefined,
+          isError: true,
+        };
+      }
 
       // pi's definition owns the shell, the timeout, the output accumulator, the
       // offload and the renderers. The hook is the whole override: it pins the
