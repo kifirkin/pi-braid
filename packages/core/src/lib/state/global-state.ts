@@ -11,6 +11,8 @@
  * cross-bundle hazard.
  */
 
+import { defineSlot, describeValue, type SlotRefusal } from "./slot.js";
+
 // globalThis (not a module-level let/const) because the polyfill extension is
 // loaded from the TS SOURCE tree (src/extensions/core/polyfill/index.ts →
 // src/lib/state/global-state.ts) while contrib's model-resolver imports the
@@ -21,7 +23,14 @@
 // away from it (first-available is where the MiniMax 429 lived). Same
 // cross-bundle hazard as KEY_RING_FEEDBACK_KEY above; the slot must also
 // survive /reload.
-export const CUSTOM_MODEL_KEYS_KEY = "__braid_custom_model_keys";
+const customModelKeysSlot = defineSlot<Map<string, CustomModelKeyValue>>({
+  key: "__braid_custom_model_keys",
+  version: 1,
+  owner: "packages/core/src/extensions/core/polyfill/index.ts",
+  parse: parseCustomModelKeys,
+});
+
+export const CUSTOM_MODEL_KEYS_KEY = customModelKeysSlot.key;
 
 /**
  * A custom model key value: one model pattern, or an ordered list of them tried
@@ -31,16 +40,42 @@ export const CUSTOM_MODEL_KEYS_KEY = "__braid_custom_model_keys";
 export type CustomModelKeyValue = string | string[];
 
 /**
+ * The slot's shape contract: a Map keyed by role name. Entry values are the
+ * resolver's to sanitise (it trims and drops non-strings, by design); the slot
+ * only refuses a value that is not the map at all, or a role key that is not a
+ * name.
+ */
+function parseCustomModelKeys(value: unknown): Map<string, CustomModelKeyValue> | SlotRefusal {
+  if (!(value instanceof Map)) {
+    return {
+      refuse: `expected a Map<string, string | string[]>, found ${describeValue(value)}`,
+    };
+  }
+  for (const role of value.keys()) {
+    if (typeof role !== "string" || role.length === 0) {
+      return {
+        refuse: `expected a non-empty string role key, found ${describeValue(role)}`,
+      };
+    }
+  }
+  return value as Map<string, CustomModelKeyValue>;
+}
+
+/**
  * Get the shared custom model keys map.
  * polyfill writes to it (/utility-model command).
  * model-resolver reads from it (model resolution).
+ *
+ * Absent is a legitimate state (no writer has run yet): a fresh empty map is
+ * installed as the slot value. Mutating the returned map in place does not
+ * move the slot's stamp; setCustomModelKey() re-stamps a validated write.
  */
 export function getCustomModelKeys(): Map<string, CustomModelKeyValue> {
-  const slot = globalThis as Record<string, unknown>;
-  if (!slot[CUSTOM_MODEL_KEYS_KEY]) {
-    slot[CUSTOM_MODEL_KEYS_KEY] = new Map<string, CustomModelKeyValue>();
-  }
-  return slot[CUSTOM_MODEL_KEYS_KEY] as Map<string, CustomModelKeyValue>;
+  const current = customModelKeysSlot.tryGet();
+  if (current) return current;
+  const created = new Map<string, CustomModelKeyValue>();
+  customModelKeysSlot.set(created);
+  return created;
 }
 
 /**
@@ -56,7 +91,9 @@ export function getCustomModelKey(key: string): CustomModelKeyValue | undefined 
  * /utility-model.
  */
 export function setCustomModelKey(key: string, value: CustomModelKeyValue): void {
-  getCustomModelKeys().set(key, value);
+  const keys = getCustomModelKeys();
+  keys.set(key, value);
+  customModelKeysSlot.set(keys);
 }
 
 // The auxiliary role's key. Both the polyfill (which writes it) and the
@@ -334,7 +371,14 @@ export function resetKeyRingFeedbackHandler(): void {
 // latch, no sentence, so the layer that owns the speaking owns all three. The
 // literal MUST stay in sync with packages/providers/ring-health.ts
 // ROUTE_EXHAUSTION_SLOT_KEY.
-export const ROUTE_EXHAUSTION_SLOT_KEY = "__braid_route_exhaustion";
+const routeExhaustionSlot = defineSlot<Map<string, ExhaustedRoute>>({
+  key: "__braid_route_exhaustion",
+  version: 1,
+  owner: "packages/providers/ring-health.ts",
+  parse: parseExhaustedRoutes,
+});
+
+export const ROUTE_EXHAUSTION_SLOT_KEY = routeExhaustionSlot.key;
 
 /** One route out of usable keys, as the ring last reported it. */
 export interface ExhaustedRoute {
@@ -351,17 +395,18 @@ export interface ExhaustedRoute {
 }
 
 /**
- * The routes out of usable keys, as the publishing process last observed them.
- * Empty when no publisher ran in this process (providers not loaded) or when
- * no route is spent. Every field is validated: the slot is a bare global, and
- * a record this module cannot read is not a route it may report. Copies are
- * returned, so a reader cannot edit the publisher's records in place.
+ * The publisher's Map shape, validated record by record. A record this module
+ * cannot read is not a route it may report, so it is skipped; a value that is
+ * not a Map at all is refused, because the reader cannot tell what it is.
  */
-export function readExhaustedRoutes(): ExhaustedRoute[] {
-  const slot = (globalThis as Record<string, unknown>)[ROUTE_EXHAUSTION_SLOT_KEY];
-  if (!(slot instanceof Map)) return [];
-  const routes: ExhaustedRoute[] = [];
-  for (const raw of slot.values()) {
+function parseExhaustedRoutes(value: unknown): Map<string, ExhaustedRoute> | SlotRefusal {
+  if (!(value instanceof Map)) {
+    return {
+      refuse: `expected a Map<string, ExhaustedRoute>, found ${describeValue(value)}`,
+    };
+  }
+  const routes = new Map<string, ExhaustedRoute>();
+  for (const raw of value.values()) {
     if (!raw || typeof raw !== "object") continue;
     const record = raw as Record<string, unknown>;
     const { routeId, usable, total, nextRetryAt, observedAt } = record;
@@ -369,7 +414,7 @@ export function readExhaustedRoutes(): ExhaustedRoute[] {
     if (typeof usable !== "number" || !Number.isFinite(usable)) continue;
     if (typeof total !== "number" || !Number.isFinite(total)) continue;
     if (typeof observedAt !== "number" || !Number.isFinite(observedAt)) continue;
-    routes.push({
+    routes.set(routeId, {
       routeId,
       usable,
       total,
@@ -379,6 +424,28 @@ export function readExhaustedRoutes(): ExhaustedRoute[] {
     });
   }
   return routes;
+}
+
+/**
+ * The routes out of usable keys, as the publishing process last observed them.
+ * Empty when no publisher ran in this process (providers not loaded) or when
+ * no route is spent. The slot refuses a value it cannot parse; this reader is
+ * on a turn-start path, so it reports no routes and names the refusal rather
+ * than throwing into the turn. Copies are returned, so a reader cannot edit
+ * the publisher's records in place.
+ */
+export function readExhaustedRoutes(): ExhaustedRoute[] {
+  let routes: Map<string, ExhaustedRoute> | undefined;
+  try {
+    routes = routeExhaustionSlot.tryGet();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[braid] route exhaustion slot unreadable; reporting no exhausted routes: ${reason}`,
+    );
+    return [];
+  }
+  return routes ? [...routes.values()] : [];
 }
 
 // The telegram package owns the poller's consecutive getUpdates-failure counter
