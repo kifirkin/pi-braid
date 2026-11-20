@@ -24,6 +24,8 @@
  *   4. A stream that stops before `[DONE]`: content arrives, no finish_reason
  *      and no terminal sentinel, and the turn is an error carrying the partial
  *      text. End of body is not end of answer.
+ *   5. The discovery route: `GET …/models` answers the dialect's list shape with
+ *      the one id the completions route serves.
  *
  * WHAT IS NOT COVERED:
  *   Braid's extensions are not loaded. With `-e dist/index.js` a nested RPC
@@ -286,4 +288,32 @@ test("a stream that stops before [DONE] is never a completed answer", async () =
     (turn.assistant?.errorMessage ?? "").length > 0,
     "the failure is named rather than left empty",
   );
+});
+// A direct fetch, not a pi turn: pi never asks this route for a provider
+// declared in `models.json` (the catalog is the config file, and a network
+// refresh belongs to an extension's `refreshModels`). The arm that proves pi
+// made no such call is the normal one above, which asserts exactly one request
+// reached the server. What is left to pin is the route itself, and a listing
+// client is the reader it serves.
+test("the discovery route lists the one model the completions route serves", async () => {
+  const emulated = await startEmulatedProvider({ mode: "normal" });
+
+  try {
+    const response = await fetch(`${emulated.baseUrl}/models`);
+    assert.equal(response.status, 200, "the route answers rather than falling through to 404");
+    const body = await response.json();
+    assert.equal(body.object, "list", "the dialect's list object, not a bare array");
+    assert.deepEqual(
+      body.data.map((entry) => entry.id),
+      [emulated.model],
+      "the id a listing client reads is the id the completion answers for",
+    );
+    assert.equal(
+      emulated.requests.at(-1)?.path,
+      "/v1/models",
+      "the route is recorded like every other request, so a caller can assert what was asked",
+    );
+  } finally {
+    await emulated.stop();
+  }
 });

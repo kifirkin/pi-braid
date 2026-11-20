@@ -231,6 +231,32 @@ export async function startEmulatedProvider(options = {}) {
       return;
     }
 
+    // `GET …/models` is the discovery half of the dialect. pi does not call it
+    // for a provider declared in `models.json` (the catalog is the config, and a
+    // network refresh is an extension's `refreshModels`), so this route serves a
+    // human with curl and any client that lists before it streams.
+    if (req.method === "GET" && typeof req.url === "string" && req.url.endsWith("/models")) {
+      const body = JSON.stringify(
+        {
+          object: "list",
+          data: [
+            {
+              id: model,
+              object: "model",
+              created: Math.floor(Date.now() / 1000),
+              owned_by: "emulated",
+            },
+          ],
+        },
+        null,
+        2,
+      );
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(body);
+      record({ ...started, status: 200, body: null });
+      return;
+    }
+
     const chunks = [];
     req.on("data", (piece) => chunks.push(piece));
     req.on("end", () => {
@@ -447,7 +473,9 @@ async function main() {
   console.log("3. reach it:");
   console.log(`  pi --provider emulated --model ${emulated.model} "say hello"`);
   console.log("");
-  console.log("Press Ctrl-C to stop. GET /__status shows the counters.");
+  console.log(
+    "Press Ctrl-C to stop. GET /__status shows the counters; GET /v1/models lists the one model.",
+  );
 
   const stop = () => {
     emulated.stop().then(
