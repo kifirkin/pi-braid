@@ -24,6 +24,12 @@
  *    healthy mode → agent-degradation whisper (unchanged).
  * 5. Feed honesty: the verdict is driven by the trailing window (deltas),
  *    never by the asymptotically decaying cumulative share.
+ * 6. Route exhaustion: a route whose every key is spent is named once per
+ *    episode with the ring's own counts and the earliest key's return (the one
+ *    clock formatter), never twice for the same episode, again after a real
+ *    recovery, and never at all while a key remains or once its named return
+ *    time has passed. The record is read from the process-global slot the
+ *    providers package publishes, through the reader's own validation.
  *
  * Fixture style: HOME redirect BEFORE the first dist import (braid-paths
  * resolves DEGRADATION_FILE from os.homedir() at module-eval), mirroring
@@ -47,9 +53,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const { isDegraded, getDegradationReasons, recordTurnMetrics, resetMetrics } = await import(
   join(ROOT, "dist/lib/detection/degradation-detector.js")
 );
-const { buildDegradationWhisper } = await import(
-  join(ROOT, "dist/extensions/self/auto-recovery/index.js")
+const { buildDegradationWhisper, buildRouteExhaustionWhisper, default: autoRecoveryExtension } =
+  await import(join(ROOT, "dist/extensions/self/auto-recovery/index.js"));
+const { ROUTE_EXHAUSTION_SLOT_KEY, readExhaustedRoutes } = await import(
+  join(ROOT, "dist/lib/state/global-state.js")
 );
+const { formatLocalTime } = await import(join(ROOT, "dist/lib/utils/local-time.js"));
+const { beginTurn } = await import(join(ROOT, "dist/lib/enforcement/turn-dedup.js"));
+const { clearAllBuckets } = await import(join(ROOT, "dist/lib/utils/injection-tracker.js"));
 
 function makeCtx(sessionId) {
   return {
@@ -165,6 +176,184 @@ test("attribution: provider session-health mode names the external cause", () =>
   assert.match(agent, /re-plan|different approach/i, "agent whisper keeps the re-plan advice");
 });
 
+// Route-exhaustion reporting
+//
+// The record core reads is published by the providers package into a
+// process-global slot (ring-health.ts publishRouteExhaustion). These cases
+// write that slot the way the publisher does and drive the real extension's
+// turn_start, so what is asserted is the whisper a session actually gets and
+// when it is allowed to exist.
+
+/** Minimal ExtensionAPI double: captures handlers and every delivered message. */
+function fakePi() {
+  const handlers = new Map();
+  const sent = [];
+  return {
+    sent,
+    on(event, handler) {
+      const list = handlers.get(event) ?? [];
+      list.push(handler);
+      handlers.set(event, list);
+    },
+    handlersFor: (event) => handlers.get(event) ?? [],
+    registerTool() {},
+    getAllTools: () => [],
+    getActiveTools: () => [],
+    sendMessage(params, options) {
+      sent.push({ params, options });
+    },
+    sendUserMessage() {},
+    appendEntry() {},
+  };
+}
+
+/** A route out of keys, in the shape the publisher writes. */
+function exhaustedRoute(over = {}) {
+  const now = Date.now();
+  return {
+    routeId: "route-a",
+    usable: 0,
+    total: 3,
+    nextRetryAt: now + 5 * 60_000,
+    observedAt: now,
+    ...over,
+  };
+}
+
+/** Write the slot exactly as one publisher process would. */
+function publishRoutes(routes) {
+  globalThis[ROUTE_EXHAUSTION_SLOT_KEY] = new Map(
+    routes.map((route) => [route.routeId, route]),
+  );
+}
+
+test("route-exhaustion whisper names the route, the counts and the return time", () => {
+  const retryAt = Date.UTC(2026, 10, 20, 15, 4);
+  const text = buildRouteExhaustionWhisper(exhaustedRoute({ nextRetryAt: retryAt }));
+  assert.match(text, /route-a/, "the route is named");
+  assert.match(text, /\*\*0 of 3\*\*/, "the counts are the ring's own");
+  assert.ok(
+    text.includes(formatLocalTime(new Date(retryAt), true)),
+    `the return time is the one clock formatter, with the date: ${text}`,
+  );
+  assert.doesNotMatch(
+    text,
+    new RegExp(String(retryAt)),
+    "a raw epoch is not a time a person can act on",
+  );
+  assert.match(text, /wait for|run the work on another configured route/i, "the choice left is stated");
+  assert.match(
+    text,
+    /retrying before that time cannot change it/i,
+    "a retry after the named return is the one that works, so the sentence bounds the wait",
+  );
+  assert.doesNotMatch(text, /health_maintenance|consider re-planning/i, "a spent key is not a matter for self-review");
+});
+
+test("route-exhaustion whisper with no known return says so instead of inventing a time", () => {
+  const text = buildRouteExhaustionWhisper(exhaustedRoute({ nextRetryAt: null }));
+  assert.match(text, /no key is due back on a known schedule/i);
+  assert.doesNotMatch(text, /Invalid Date|NaN|undefined/);
+});
+
+test("one whisper per episode: the same record on the next turn is silent", async () => {
+  clearAllBuckets();
+  publishRoutes([exhaustedRoute()]);
+  const pi = fakePi();
+  autoRecoveryExtension(pi);
+  const turnStart = pi.handlersFor("turn_start")[0];
+  const ctx = makeCtx("route-exhaustion-once");
+
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 1, "the first turn names the route once");
+  assert.match(pi.sent[0].params.content[0].text, /route-a/);
+
+  // The platform's own suppressors are cleared so a second send WOULD have
+  // been delivered: only that makes "no second whisper" evidence about the
+  // episode latch rather than about the flood cap or the re-prime window. The
+  // re-prime window matters here specifically: it collapses standalone digits,
+  // so two episodes of one route share a body key even when the counts and the
+  // return time differ.
+  clearAllBuckets();
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 1, "the same episode is not whispered again");
+});
+
+test("recovery closes the episode: a fresh exhaustion speaks again", async () => {
+  clearAllBuckets();
+  publishRoutes([exhaustedRoute()]);
+  const pi = fakePi();
+  autoRecoveryExtension(pi);
+  const turnStart = pi.handlersFor("turn_start")[0];
+  const ctx = makeCtx("route-exhaustion-episodes");
+
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 1, "episode one speaks");
+
+  // The provider observed a usable key: the record is withdrawn, and the turn
+  // that sees the withdrawal says nothing.
+  publishRoutes([]);
+  clearAllBuckets();
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 1, "a recovered route is not reported");
+
+  // A later ring, spent again, is a new episode: it speaks with its own counts.
+  publishRoutes([
+    exhaustedRoute({ total: 4, nextRetryAt: Date.now() + 9 * 60_000 }),
+  ]);
+  clearAllBuckets();
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 2, "the next exhaustion of the same route is news again");
+  assert.match(pi.sent[1].params.content[0].text, /\*\*0 of 4\*\*/);
+});
+
+test("control: no whisper while a key remains, and none for a record already out of date", async () => {
+  clearAllBuckets();
+  publishRoutes([exhaustedRoute({ usable: 1 })]);
+  const pi = fakePi();
+  autoRecoveryExtension(pi);
+  const turnStart = pi.handlersFor("turn_start")[0];
+  const ctx = makeCtx("route-exhaustion-control");
+
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(pi.sent.length, 0, "a route with a usable key is not out of keys");
+
+  clearAllBuckets();
+  publishRoutes([exhaustedRoute({ nextRetryAt: Date.now() - 60_000 })]);
+  beginTurn();
+  await turnStart({}, ctx);
+  assert.equal(
+    pi.sent.length,
+    0,
+    "a record whose named return time has passed is a claim the ring no longer stands behind",
+  );
+});
+
+test("the slot read fails open: a stranger's value is empty, an unreadable record is skipped", () => {
+  globalThis[ROUTE_EXHAUSTION_SLOT_KEY] = "not a map";
+  assert.deepEqual(readExhaustedRoutes(), [], "an unexpected slot value reads as no routes");
+  globalThis[ROUTE_EXHAUSTION_SLOT_KEY] = new Map([
+    ["bad", { routeId: "" }],
+    ["good", exhaustedRoute()],
+  ]);
+  const routes = readExhaustedRoutes();
+  assert.equal(routes.length, 1, "an unreadable record is skipped, the readable one survives");
+  assert.equal(routes[0].routeId, "route-a");
+  routes[0].total = 99;
+  assert.equal(
+    readExhaustedRoutes()[0].total,
+    3,
+    "the reader returns copies, so a consumer cannot edit the publisher's state",
+  );
+});
+
 test("cleanup", () => {
+  delete globalThis[ROUTE_EXHAUSTION_SLOT_KEY];
   rmSync(tmpBase, { recursive: true, force: true });
 });

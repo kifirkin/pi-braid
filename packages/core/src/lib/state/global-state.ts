@@ -322,6 +322,67 @@ export function resetKeyRingFeedbackHandler(): void {
   (globalThis as Record<string, unknown>)[KEY_RING_FEEDBACK_KEY] = null;
 }
 
+// The other half of the ring's story crosses here too. Only the providers
+// package can answer "does this route have a usable key left"; core is where
+// the agent is told. providers publishes the routes whose every key is spent
+// into a process-global Map (providers/ring-health.ts publishRouteExhaustion)
+// and core reads it where it speaks (the turn-start whisper in
+// extensions/self/auto-recovery). Same crossing as KEY_RING_FEEDBACK_KEY
+// above with the direction reversed: providers writes, core reads.
+//
+// The record is counts and two clocks. No policy lives here: no throttle, no
+// latch, no sentence, so the layer that owns the speaking owns all three. The
+// literal MUST stay in sync with packages/providers/ring-health.ts
+// ROUTE_EXHAUSTION_SLOT_KEY.
+export const ROUTE_EXHAUSTION_SLOT_KEY = "__braid_route_exhaustion";
+
+/** One route out of usable keys, as the ring last reported it. */
+export interface ExhaustedRoute {
+  /** The route's configured id, as the request that spent it named it. */
+  routeId: string;
+  /** Usable keys at the observation that wrote the record. */
+  usable: number;
+  /** Keys the ring holds. */
+  total: number;
+  /** Epoch ms the earliest spent key returns, or null when none is timed. */
+  nextRetryAt: number | null;
+  /** Epoch ms of the observation that wrote the record. */
+  observedAt: number;
+}
+
+/**
+ * The routes out of usable keys, as the publishing process last observed them.
+ * Empty when no publisher ran in this process (providers not loaded) or when
+ * no route is spent. Every field is validated: the slot is a bare global, and
+ * a record this module cannot read is not a route it may report. Copies are
+ * returned, so a reader cannot edit the publisher's records in place.
+ */
+export function readExhaustedRoutes(): ExhaustedRoute[] {
+  const slot = (globalThis as Record<string, unknown>)[ROUTE_EXHAUSTION_SLOT_KEY];
+  if (!(slot instanceof Map)) return [];
+  const routes: ExhaustedRoute[] = [];
+  for (const raw of slot.values()) {
+    if (!raw || typeof raw !== "object") continue;
+    const record = raw as Record<string, unknown>;
+    const { routeId, usable, total, nextRetryAt, observedAt } = record;
+    if (typeof routeId !== "string" || !routeId) continue;
+    if (typeof usable !== "number" || !Number.isFinite(usable)) continue;
+    if (typeof total !== "number" || !Number.isFinite(total)) continue;
+    if (typeof observedAt !== "number" || !Number.isFinite(observedAt)) continue;
+    routes.push({
+      routeId,
+      usable,
+      total,
+      nextRetryAt:
+        typeof nextRetryAt === "number" && Number.isFinite(nextRetryAt)
+          ? nextRetryAt
+          : null,
+      observedAt,
+    });
+  }
+  return routes;
+}
+
 // The telegram package owns the poller's consecutive getUpdates-failure counter
 // and emits tunnel-down/up transitions through a process-global hub; the core
 // watchdog subscribes here and surfaces the down/recovery whispers. Same

@@ -50,6 +50,12 @@
  *      "none configured" for an empty one, and never an order derived from
  *      the report's own route list.
  *
+ *  11. Exhausted-route publication: the record core reads says nothing while
+ *      a route has a usable key, carries the ring's own counts and the
+ *      earliest key's return (as a clock) once every key is spent, is
+ *      withdrawn when a key returns, and never exists for a ring with no keys
+ *      at all. Records are per route, hash-free and copied out.
+ *
  * Harness: the REAL modules (ring-health, route-state, key-ring, log) are
  * compiled with the package's local tsc (CJS emit) into
  * <repoRoot>/.ring-health-build/ (removed again on the way out). Cases
@@ -1048,6 +1054,164 @@ function run() {
           ),
         noneFirst,
       );
+    }
+
+    // ── 11. Exhausted-route publication ─────────────────────────────────
+    // The live ring is the only thing that knows a route has nothing left to
+    // serve, and core cannot import this package. The fact therefore crosses
+    // as a record in a process-global slot. These cases drive the REAL ring and
+    // pin what the record says (the counts and the earliest key's return) and
+    // when it exists at all: only while every configured key is spent.
+    {
+      const {
+        publishRouteExhaustion,
+        readRouteExhaustion,
+        clearRouteExhaustion,
+      } = mods.ringHealth;
+      const dir = caseDir("exhaustion-publish");
+      mkdirSync(join(dir, ".pi", "agent"), { recursive: true });
+      const prefix = "RH_EXHAUST_KEY";
+      const keyA = ["sk", "ring", "exhaust", "aaaaaaaaaaaaaaaa"].join("-");
+      const keyB = ["sk", "ring", "exhaust", "bbbbbbbbbbbbbbbb"].join("-");
+      const T = 1_700_000_000_000;
+      const prevHome = process.env.HOME;
+      process.env.HOME = dir;
+      process.env[`${prefix}_P0`] = keyA;
+      process.env[`${prefix}_P1`] = keyB;
+      try {
+        clearRouteExhaustion();
+        const ring = keyRing.createKeyRing({
+          prefix,
+          stateFile: "route-exhaust",
+          initialBackoffMs: 1000,
+          now: () => T,
+        });
+
+        // Control: one key still usable. A route with a key in hand is not a
+        // route out of keys, and the record must say nothing about it.
+        ring.exhaustActiveKey();
+        const oneLeft = ring.getStatus();
+        const controlPublish = publishRouteExhaustion(
+          "route-exhaust",
+          oneLeft,
+          T,
+        );
+        check(
+          "one usable key left ⇒ nothing published, nothing readable",
+          oneLeft.usable === 1 &&
+            oneLeft.total === 2 &&
+            controlPublish === null &&
+            readRouteExhaustion().length === 0,
+          JSON.stringify({ oneLeft, controlPublish, read: readRouteExhaustion() }),
+        );
+
+        // The last key goes too: the ring reports no usable key and the
+        // earliest return as a remaining wait, which the record resolves to a
+        // clock so a reader never has to know when it was written.
+        ring.getActiveKey(); // advance past the spent key
+        ring.exhaustActiveKey();
+        const spent = ring.getStatus();
+        const published = publishRouteExhaustion("route-exhaust", spent, T);
+        const readBack = readRouteExhaustion();
+        check(
+          "every key spent ⇒ one record: the ring's counts, the earliest return on the clock",
+          spent.usable === 0 &&
+            spent.total === 2 &&
+            spent.nextRetryMs === 2000 &&
+            published !== null &&
+            published.routeId === "route-exhaust" &&
+            published.usable === 0 &&
+            published.total === 2 &&
+            published.nextRetryAt === T + 2000 &&
+            published.observedAt === T &&
+            readBack.length === 1 &&
+            readBack[0].nextRetryAt === T + 2000,
+          JSON.stringify({ spent, published, readBack }),
+        );
+
+        // Secret discipline: counts and clocks, never a key.
+        const serialized = JSON.stringify(readRouteExhaustion());
+        check(
+          "the published record carries no key value",
+          !serialized.includes(keyA) && !serialized.includes(keyB),
+          serialized,
+        );
+
+        // A record is a copy: a reader editing what it got cannot edit the
+        // publisher's state.
+        readBack[0].total = 99;
+        check(
+          "a reader's copy is its own",
+          readRouteExhaustion()[0].total === 2,
+          JSON.stringify(readRouteExhaustion()),
+        );
+
+        // Recovery: a key succeeds, so the route is serving again and the
+        // record must be withdrawn rather than left standing as history.
+        ring.markSuccess();
+        const healed = ring.getStatus();
+        const afterHeal = publishRouteExhaustion("route-exhaust", healed, T + 1);
+        check(
+          "a usable key again ⇒ the record is withdrawn, not left standing",
+          healed.usable === 1 &&
+            afterHeal === null &&
+            readRouteExhaustion().length === 0,
+          JSON.stringify({ healed, afterHeal, read: readRouteExhaustion() }),
+        );
+
+        // Unconfigured is not exhausted: no keys at all is a configuration
+        // state, and a record describing it would be a false alarm.
+        const emptyRing = keyRing.createKeyRing({
+          prefix: "RH_EXHAUST_EMPTY",
+          now: () => T,
+        });
+        const emptyStatus = emptyRing.getStatus();
+        const emptyPublish = publishRouteExhaustion("route-empty", emptyStatus, T);
+        check(
+          "no configured key ⇒ no record (unconfigured is not exhausted)",
+          emptyStatus.total === 0 &&
+            emptyPublish === null &&
+            readRouteExhaustion().length === 0,
+          JSON.stringify({ emptyStatus, emptyPublish }),
+        );
+
+        // Records are per route: one route's recovery leaves the others alone,
+        // and a ring that reports no remaining wait keeps a null return time
+        // rather than inventing one.
+        publishRouteExhaustion(
+          "route-a",
+          { usable: 0, total: 3, nextRetryMs: 5000 },
+          T,
+        );
+        publishRouteExhaustion(
+          "route-b",
+          { usable: 0, total: 1, nextRetryMs: null },
+          T,
+        );
+        const both = readRouteExhaustion();
+        publishRouteExhaustion(
+          "route-a",
+          { usable: 2, total: 3, nextRetryMs: null },
+          T + 10,
+        );
+        const remaining = readRouteExhaustion();
+        check(
+          "records are per route, and one route's recovery leaves the other standing",
+          both.length === 2 &&
+            both.some(
+              (r) => r.routeId === "route-b" && r.nextRetryAt === null,
+            ) &&
+            remaining.length === 1 &&
+            remaining[0].routeId === "route-b" &&
+            remaining[0].total === 1,
+          JSON.stringify({ both, remaining }),
+        );
+        clearRouteExhaustion();
+      } finally {
+        process.env.HOME = prevHome;
+        delete process.env[`${prefix}_P0`];
+        delete process.env[`${prefix}_P1`];
+      }
     }
 
     if (failures > 0) {

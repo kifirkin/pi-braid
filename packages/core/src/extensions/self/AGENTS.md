@@ -12,7 +12,7 @@ because they're specialized tools the user enables when they want them.
 | `health-maintenance/` | `health_maintenance`                     | Health check, checkpoint, rollback, evolution triggers.                 |
 | `error-tracking/`     | `error` (action=list\|get\|clear\|stats) | Auto-captures extension errors, logs to disk, provides query tool.      |
 | `watchdog/`           | (TUI command)                            | Passive session monitor: uptime, idle time, message count. No LLM tool. |
-| `auto-recovery/`      | (whisper-only)                           | On turn_start, checks for system degradation and suggests recovery.     |
+| `auto-recovery/`      | (whisper-only)                           | On turn_start: names any route with no usable key left (once per episode), and suggests recovery when the system looks degraded. |
 | `latent-activator/`   | `behavior`                               | Activates atomic behavior modes (planner, executor, reviewer, etc).     |
 | `path-miss/`          | (whisper-only)                           | On a tool result that missed a path, names the listing that finds it.   |
 

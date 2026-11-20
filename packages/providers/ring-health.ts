@@ -26,6 +26,12 @@
  * file yields `present: false` plus exactly ONE throttled diagnostic, never a
  * throw.
  *
+ * One publication lives here too ("Exhausted-route publication"): the routes
+ * whose every key is spent, as a record in a process-global slot that core
+ * reads. It is not a second writer: no file, no lock, no revision, no key
+ * material, only counts and one clock. The read-only claim above, which is
+ * about the two state files, holds unchanged.
+ *
  * @module
  */
 
@@ -328,6 +334,125 @@ export function routeHealth(opts: RouteHealthOptions = {}): RouteHealth[] {
       warmModels: entry ? [...entry.warmModels] : [],
     };
   });
+}
+
+// Exhausted-route publication
+//
+// A ring that has spent its last usable key keeps answering requests for the
+// life of its backoff: the turn path retries, fails, retries. The ring is the
+// only thing that knows this, and it lives in this package, which core may not
+// import. So the one fact core needs, which routes have nothing left to serve,
+// crosses as a plain record in a process-global slot, the same crossing as
+// core's KEY_RING_FEEDBACK_KEY with the direction reversed: providers writes,
+// core reads (lib/state/global-state.ts readExhaustedRoutes).
+//
+// Placement: the counts and the clock are the ring's facts and stay beside the
+// ring's own reader; deciding when to speak about them is not a fact of the
+// file and does not live here. Nothing in this section throttles, latches or
+// renders: a publisher with an opinion is a second policy, and the sentence
+// belongs to whichever layer talks to the agent.
+//
+// Slot shape: a `Map<routeId, RouteExhaustionState>` holding exactly the routes
+// that are out of keys right now. An entry is written when a route is fully
+// spent and deleted the moment it has a usable key again, so the map's own
+// contents are the answer, with no history a reader has to reconcile. Absent
+// slot (no publisher ran in this process) reads as the empty map: no route is
+// known to be spent, never a fault.
+//
+// Secret discipline: an entry carries the route id, two counts and two clocks.
+// No key, no hash, no provider config.
+
+/**
+ * The process-global slot the exhausted-route records live in. The literal
+ * MUST stay in sync with packages/core/src/lib/state/global-state.ts
+ * ROUTE_EXHAUSTION_SLOT_KEY (which also mirrors the record type).
+ */
+export const ROUTE_EXHAUSTION_SLOT_KEY = "__braid_route_exhaustion";
+
+/** What one route reports while every key it holds is spent. */
+export interface RouteExhaustionState {
+  /** The route's configured id, as the request that spent it named it. */
+  routeId: string;
+  /** Usable keys at the observation that wrote this record. */
+  usable: number;
+  /** Keys the ring holds. */
+  total: number;
+  /**
+   * Epoch ms at which the earliest spent key returns on its own, or null when
+   * no key's backoff is timed to expire. The ring reports the remaining wait;
+   * the record carries it resolved to a clock, so a reader never has to know
+   * when it was written to read the time correctly.
+   */
+  nextRetryAt: number | null;
+  /** Epoch ms of the observation that wrote this record. */
+  observedAt: number;
+}
+
+/** The ring's live counts, as key-ring.ts `getStatus()` reports them. */
+export interface RingStatusCounts {
+  usable: number;
+  total: number;
+  nextRetryMs: number | null;
+}
+
+/** Get-or-create the slot. A non-Map occupant is replaced: the map is the
+ *  only shape this package writes, and a stranger there is not readable. */
+function exhaustionSlot(): Map<string, RouteExhaustionState> {
+  const g = globalThis as Record<string, unknown>;
+  const existing = g[ROUTE_EXHAUSTION_SLOT_KEY];
+  if (existing instanceof Map) return existing;
+  const slot = new Map<string, RouteExhaustionState>();
+  g[ROUTE_EXHAUSTION_SLOT_KEY] = slot;
+  return slot;
+}
+
+/**
+ * Publish what one route's ring reports right now.
+ *
+ * Writes the record when every configured key is spent, deletes it when the
+ * route has a usable key again, and does nothing for a ring with no keys at
+ * all (unconfigured is a configuration state, not an exhaustion). Returns the
+ * record written, or null when the observation left no record standing.
+ *
+ * `now` is the clock the caller's status was read with: the return time is
+ * resolved against it, so a test that pins the ring's clock gets one number
+ * rather than a window.
+ */
+export function publishRouteExhaustion(
+  routeId: string,
+  status: RingStatusCounts,
+  now: number = Date.now(),
+): RouteExhaustionState | null {
+  if (!routeId) return null; // no identity, nothing to report on
+  const slot = exhaustionSlot();
+  if (status.total <= 0 || status.usable > 0) {
+    slot.delete(routeId);
+    return null;
+  }
+  const state: RouteExhaustionState = {
+    routeId,
+    usable: status.usable,
+    total: status.total,
+    nextRetryAt:
+      status.nextRetryMs === null ? null : now + status.nextRetryMs,
+    observedAt: now,
+  };
+  slot.set(routeId, state);
+  return state;
+}
+
+/**
+ * The routes currently out of keys, in publication order. Copies, so a reader
+ * cannot edit the publisher's records in place.
+ */
+export function readRouteExhaustion(): RouteExhaustionState[] {
+  return [...exhaustionSlot().values()].map((state) => ({ ...state }));
+}
+
+/** Drop every record. Session start and tests: a stale record is a claim about
+ *  a ring nobody has observed since. */
+export function clearRouteExhaustion(): void {
+  exhaustionSlot().clear();
 }
 
 // Rendering

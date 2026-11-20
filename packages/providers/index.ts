@@ -56,7 +56,9 @@ import {
 } from "./presend-guard";
 import { probeRoute } from "./probe.js";
 import {
+  clearRouteExhaustion,
   formatRingHealth,
+  publishRouteExhaustion,
   routeHealth,
   summarizeRouteHealth,
 } from "./ring-health.js";
@@ -277,6 +279,25 @@ function rotationMessageEndHooks(
         engine.noteWafBlock(providerId, modelId),
     },
   };
+}
+
+/**
+ * Publish what a route's ring holds after a turn settled, so core can tell the
+ * agent the route is out of keys (ring-health.ts publishes; core's reader is
+ * lib/state/global-state.ts readExhaustedRoutes).
+ *
+ * Called AFTER handleMessageEnd, never before: that handler is what spends the
+ * dead key or heals one, so the counts read before it describe the previous
+ * turn. The label is the provider id the message itself reported, the same id
+ * ring-lifecycle attributes its ring from, so the report names the route the
+ * failed request went to, not one this glue guessed.
+ */
+function noteRouteExhaustion(message: any): void {
+  const providerId = message?.provider;
+  if (typeof providerId !== "string" || !providerId) return;
+  const ring = resolveRingForMessage(providerId, message?.model);
+  if (!ring) return; // a model no configured route serves: nothing to report
+  publishRouteExhaustion(providerId, ring.getStatus());
 }
 
 /** The rotation whisper sink — the engine's ONE owner-visible message channel. */
@@ -831,6 +852,10 @@ export default async function (pi: ExtensionAPI) {
   // log.ts).
   pi.on("session_start", (_event, _ctx) => {
     engine.reset();
+    // A record of an out-of-keys route is a claim about a ring as it stood in
+    // the session that observed it. The new session starts from what it
+    // observes itself, never from the last one's standing claim.
+    clearRouteExhaustion();
     setProvidersLogSink(
       _ctx?.ui?.notify ? _ctx.ui.notify.bind(_ctx.ui) : undefined,
     );
@@ -911,7 +936,21 @@ export default async function (pi: ExtensionAPI) {
     } catch {
       // The feed is observability; the ring path below owns the event.
     }
-    return handleMessageEnd(event, rotationMessageEndHooks(engine, pi, ctx));
+    const handled = handleMessageEnd(
+      event,
+      rotationMessageEndHooks(engine, pi, ctx),
+    );
+    const settled = handled instanceof Promise ? await handled : handled;
+    // Read the ring only once the handler above has finished with it: this
+    // turn either spent the dead key or healed one, and the record must hold
+    // the counts the NEXT request will meet. A failure here costs the record,
+    // never the message the handler produced.
+    try {
+      noteRouteExhaustion(event?.message);
+    } catch {
+      // Observability only: the ring's own path already handled the turn.
+    }
+    return settled;
   });
 
   // Fail-back at the turn boundary (guard G1)
