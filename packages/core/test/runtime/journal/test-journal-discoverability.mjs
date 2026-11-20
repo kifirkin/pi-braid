@@ -28,6 +28,13 @@
  * substring of the old sentence would pass on a pointer that says nothing about
  * what is waiting.
  *
+ * A later line retires an earlier one by naming its `seq` in `supersedes`,
+ * without rewriting it, so the reader has to see the whole file before it names
+ * any line. The supersession cases below come in pairs: the same two lines,
+ * with and without the edge, so a reader that dropped intents for the wrong
+ * reason -- matching subject text, or suppressing every intent in a file that
+ * holds an edge -- fails one half of the pair.
+ *
  * Those cases write their journal lines by hand, which proves the reader and
  * nothing about the writer. One case near the end drives the real writer and
  * reads its line back through the same function the signal calls, so the shape
@@ -290,16 +297,17 @@ function seedJournal(home, project, lines) {
 const hoursAgo = (hours) => new Date(Date.now() - hours * HOUR).toISOString();
 const hoursAhead = (hours) => new Date(Date.now() + hours * HOUR).toISOString();
 
-function intentLine({ subject, ageHours, expiresAt, seq = 1 }) {
+function intentLine({ subject, ageHours, expiresAt, seq = 1, status = "open", supersedes }) {
   return JSON.stringify({
     seq,
     at: hoursAgo(ageHours),
     kind: "intent",
     subject,
-    status: "open",
+    status,
     text: `A pending install that a seat must run or close, keyed ${subject}.`,
     evidence: [],
     seat: null,
+    ...(supersedes === undefined ? {} : { supersedes }),
     ...(expiresAt === undefined ? {} : { expires_at: expiresAt }),
   });
 }
@@ -455,6 +463,98 @@ test("a malformed line and an unusable stamp neither throw nor hide the intent",
     pointer,
     `${introFor(4, file)} ` +
       'One intent is still open: "broken-stamp" 4h old. ' +
+      `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
+  );
+});
+
+// ── Supersession: a later line retires an earlier one ──────────────────────
+//
+// A replacement line names the `seq` it replaces and is written after it, so
+// these cases are the only ones here whose fixture order decides the answer.
+// Each pair holds the same two lines and moves one field, so the assertion
+// pins the edge and not the presence of a second line.
+
+test("an intent a later line names in supersedes is not named", async () => {
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "retired-install", ageHours: 5, seq: 1 }),
+    intentLine({ subject: "retired-install", ageHours: 4, seq: 2, status: "done", supersedes: 1 }),
+  ]);
+  assert.equal(pointer, todayFor(2, file));
+});
+
+test("without the edge the same two lines name the intent: a seq is the only edge read", async () => {
+  // The control for the case above. The closing line carries the same subject
+  // and the same `done` status, so anything that matched on subject text would
+  // suppress the intent here too and fail this half.
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "retired-install", ageHours: 5, seq: 1 }),
+    intentLine({ subject: "retired-install", ageHours: 4, seq: 2, status: "done" }),
+  ]);
+  assert.equal(
+    pointer,
+    `${introFor(2, file)} ` +
+      'One intent is still open: "retired-install" 5h old. ' +
+      `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
+  );
+});
+
+test("an intent no later line names is still named, in a file that holds an edge", async () => {
+  // No over-suppression: a reader that returned nothing once it saw any
+  // `supersedes` field would satisfy the case above and fail this one.
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "retired-install", ageHours: 5, seq: 1 }),
+    intentLine({ subject: "retired-install", ageHours: 4, seq: 2, status: "done", supersedes: 1 }),
+    intentLine({ subject: "waiting-install", ageHours: 3, seq: 3 }),
+  ]);
+  assert.equal(
+    pointer,
+    `${introFor(3, file)} ` +
+      'One intent is still open: "waiting-install" 3h old. ' +
+      `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
+  );
+});
+
+test("a supersession chain names only the line nothing retires", async () => {
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "chain-install", ageHours: 7, seq: 1 }),
+    intentLine({ subject: "chain-install", ageHours: 5, seq: 2, supersedes: 1 }),
+    intentLine({ subject: "chain-install", ageHours: 3, seq: 3, supersedes: 2 }),
+  ]);
+  assert.equal(
+    pointer,
+    `${introFor(3, file)} ` +
+      'One intent is still open: "chain-install" 3h old. ' +
+      `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
+  );
+});
+
+test("an edge that names a different seq leaves the intent alone", async () => {
+  // The control against matching on subject text: the line that carries the
+  // edge repeats this intent's subject and points somewhere else, so a reader
+  // that retired by subject would drop it.
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "pinned-install", ageHours: 5, seq: 1 }),
+    intentLine({ subject: "other-install", ageHours: 4, seq: 2 }),
+    intentLine({ subject: "pinned-install", ageHours: 3, seq: 3, status: "done", supersedes: 2 }),
+  ]);
+  assert.equal(
+    pointer,
+    `${introFor(3, file)} ` +
+      'One intent is still open: "pinned-install" 5h old. ' +
+      `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
+  );
+});
+
+test("an intent whose own edge names a seq this file does not hold is still named", async () => {
+  // The writer refuses a dangling edge; a hand-edited journal can hold one, and
+  // a reader that resolved it by throwing would take the bundle down.
+  const { pointer, file } = await pointerFor([
+    intentLine({ subject: "dangling-edge-install", ageHours: 6, seq: 1, supersedes: 99 }),
+  ]);
+  assert.equal(
+    pointer,
+    `${introFor(1, file)} ` +
+      'One intent is still open: "dangling-edge-install" 6h old. ' +
       `${CLOSE_SINGLE} ${DIGEST_SENTENCE_SHORT}`,
   );
 });
