@@ -24,7 +24,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { createLogger } from "../../../lib/core/logger.js";
 import { INPUT, TOOL_RESULT } from "../../../lib/core/event-names.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
-import { detectPathMiss } from "./detect.js";
+import { detectPathMiss, resetPathMissStats } from "./detect.js";
 
 const log = createLogger("path-miss");
 
@@ -63,6 +63,21 @@ function alreadySteered(session: string, path: string): boolean {
   return steeredPaths.get(session)?.has(path) ?? false;
 }
 
+/** The structured errno of a tool result, when the tool supplies one. */
+function errorCodeFromEvent(event: unknown): string | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const sources = [
+    (event as { structuredContent?: unknown }).structuredContent,
+    (event as { details?: unknown }).details,
+  ];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const code = (source as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) return code;
+  }
+  return undefined;
+}
+
 /** The error text of a tool result, with any non-text parts ignored. */
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -93,6 +108,7 @@ export function pathMissLine(path: string): string {
 export function _resetForTests(): void {
   steeredPaths.clear();
   steeredThisTurn = false;
+  resetPathMissStats();
 }
 
 export default function pathMissExtension(pi: ExtensionAPI): void {
@@ -105,7 +121,12 @@ export default function pathMissExtension(pi: ExtensionAPI): void {
   pi.on(TOOL_RESULT, (event, ctx) => {
     if (steeredThisTurn) return;
     if (!event?.isError) return;
-    const miss = detectPathMiss(event.toolName, event.input, resultText(event.content));
+    const miss = detectPathMiss(
+      event.toolName,
+      event.input,
+      resultText(event.content),
+      errorCodeFromEvent(event),
+    );
     if (!miss) return;
 
     const session = sessionKey(ctx);

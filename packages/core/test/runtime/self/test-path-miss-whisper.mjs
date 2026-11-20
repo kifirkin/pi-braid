@@ -33,6 +33,9 @@ const DIST = join(ROOT, "dist");
 const { default: pathMissExtension, _resetForTests } = await import(
   join(DIST, "extensions", "self", "path-miss", "index.js")
 );
+const { getPathMissStats, detectPathMiss } = await import(
+  join(DIST, "extensions", "self", "path-miss", "detect.js")
+);
 const { beginTurn } = await import(join(DIST, "lib", "enforcement", "turn-dedup.js"));
 const { clearAllBuckets } = await import(join(DIST, "lib", "utils", "injection-tracker.js"));
 
@@ -356,6 +359,88 @@ await test("a missing path outside a tool result produces no line", async () => 
   // on a tool result for a path-bearing tool, not on the text alone.
   await emit({ toolName: "list_skills", content: text(READ_MISS) }, fakeCtx("s-13"));
   assert.equal(pi.sent.length, 0, `not a path-miss result (got ${pi.sent.length})`);
+});
+
+// ── the errno arm ───────────────────────────────────────────────────
+
+await test("a structured errno is preferred when the wording is unreadable", async () => {
+  _resetForTests();
+  const { pi, emit, newTurn } = harness();
+  newTurn();
+  await emit(
+    {
+      toolName: "read",
+      input: { path: "/private/tmp/proj/structured.ts" },
+      content: text("Datei nicht gefunden"),
+      structuredContent: { code: "ENOENT" },
+    },
+    fakeCtx("s-14"),
+  );
+  assert.equal(pi.sent.length, 1, `the code classifies the miss (got ${pi.sent.length})`);
+  assert.ok(
+    steerBody(pi.sent[0]).includes("/private/tmp/proj/structured.ts"),
+    `names the path: ${steerBody(pi.sent[0])}`,
+  );
+  assert.equal(getPathMissStats().unattributed, 0, "a classified miss is not unattributed");
+});
+
+await test("an errno token is read without the English wording", async () => {
+  _resetForTests();
+  const { pi, emit, newTurn } = harness();
+  newTurn();
+  await emit(
+    {
+      toolName: "read",
+      input: { path: "/private/tmp/proj/locale.ts" },
+      content: text("ENOENT: Datei nicht gefunden"),
+    },
+    fakeCtx("s-15"),
+  );
+  assert.equal(pi.sent.length, 1, `the errno token classifies the miss (got ${pi.sent.length})`);
+  assert.ok(
+    steerBody(pi.sent[0]).includes("/private/tmp/proj/locale.ts"),
+    `names the path: ${steerBody(pi.sent[0])}`,
+  );
+  assert.equal(getPathMissStats().unattributed, 0, "a classified miss is not unattributed");
+});
+
+await test("a failure no rule can read is counted, not steered", async () => {
+  _resetForTests();
+  const { pi, emit, newTurn } = harness();
+  newTurn();
+  await emit(
+    {
+      toolName: "read",
+      input: { path: "/private/tmp/proj/opaque.ts" },
+      content: text("Die Datei konnte nicht geöffnet werden"),
+    },
+    fakeCtx("s-16"),
+  );
+  assert.equal(pi.sent.length, 0, `no line without a recognised shape (got ${pi.sent.length})`);
+  assert.equal(
+    getPathMissStats().unattributed,
+    1,
+    `the unreadable failure is counted (got ${getPathMissStats().unattributed})`,
+  );
+});
+
+await test("a recognised non-miss is classified, not counted", async () => {
+  _resetForTests();
+  const { pi, emit, newTurn } = harness();
+  newTurn();
+  await emit(
+    { toolName: "read", input: { path: "/private/tmp/proj/secrets.env" }, content: text(EACCES) },
+    fakeCtx("s-17"),
+  );
+  assert.equal(pi.sent.length, 0, "EACCES is not a path miss");
+  assert.equal(getPathMissStats().unattributed, 0, "EACCES is recognised, so it is not unattributed");
+});
+
+await test("the detector reports the errno that classified the miss", () => {
+  const fromCode = detectPathMiss("read", { path: "/x/y.ts" }, "Datei nicht gefunden", "ENOENT");
+  assert.equal(fromCode?.code, "ENOENT", "a structured code classifies with no prose");
+  const fromText = detectPathMiss("read", { path: "/x/y.ts" }, "ENOENT: Datei nicht gefunden");
+  assert.equal(fromText?.code, "ENOENT", "the errno token classifies with no English prose");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

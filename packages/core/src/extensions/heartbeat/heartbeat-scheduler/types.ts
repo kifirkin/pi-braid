@@ -37,7 +37,19 @@ export interface ModuleContext {
   turnCount: number;
   lastActivation: Map<string, number>;
   sessionAge: number;
+  /**
+   * Tool names observed since the previous heartbeat tick, oldest first.
+   * A module that needs the call's arguments reads the trajectory; this
+   * window is the cheap name-only view the tick can hand out without
+   * copying inputs into every activation.
+   */
   toolCallsSinceLastTick: string[];
+  /**
+   * The most recent user message text, as the message arrived. This is the
+   * task statement a module may match against; it is empty only when the
+   * session has produced no user message this process can see.
+   */
+  recentUserText: string;
   totalToolCalls: number;
   silentTurns: number;
   metadata: Record<string, unknown>;
@@ -78,6 +90,8 @@ export interface HeartbeatState {
   };
   policyEngineReady: boolean;
   policyTurnCount: number;
+  /** Most recent user message text seen by this process. */
+  recentUserText: string;
   policyLastFire: Map<string, number>;
   metaLearning: MetaLearningState;
 }
@@ -115,6 +129,12 @@ export interface ToolTracking {
   lastCodeExecutionTurn: number;
   totalToolsUsed: number;
   lastToolCallTurn: number;
+  /**
+   * Tool names recorded since the last tick. The tick copies the window onto
+   * the module context and clears it, so a module never sees a call twice and
+   * the accumulator stays bounded between ticks.
+   */
+  callsSinceLastTick: string[];
   /** Rich trajectory data from tool_end events */
   trajectory?: Array<{ toolName: string; success: boolean; turn: number }>;
 }

@@ -16,13 +16,31 @@
  * Only a missing path is a path miss. A permission error, an unreadable file
  * or a failed assertion is a different failure with a different next move, and
  * steering toward `ls` there would cost a call without teaching anything.
+ *
+ * A localised runtime can spell the same failure in words these patterns do
+ * not match. Node still prefixes its error with the errno token, so the token
+ * is the locale-independent signal: a structured `code` when the event
+ * carries one, otherwise the code word in the text. A failed call that yields
+ * neither a recognised code nor a path is counted in `unattributed`, because
+ * a detector that silently returns null cannot be told from one that never
+ * ran.
  */
 
 /** Tools whose failure can mean "the path was a guess". */
 const PATH_BEARING_TOOLS = new Set(["read", "edit", "write", "bash"]);
 
-/** The two spellings of "this path is not there" the tools emit. */
-const MISSING_PATH = /ENOENT|no such file or directory/i;
+/** Errnos that mean the path itself is missing. */
+const MISSING_PATH_CODES = new Set(["ENOENT", "ENOTDIR"]);
+
+/**
+ * Errno tokens the platform emits. The set is closed so a command's own
+ * output cannot supply a token that is not an errno.
+ */
+const ERRNO_TOKEN =
+  /\b(ENOENT|ENOTDIR|EACCES|EPERM|EISDIR|ELOOP|ENAMETOOLONG|ENOSPC|EMFILE|ENFILE|EIO)\b/;
+
+/** The English wording a missing path uses when no code is available. */
+const MISSING_PATH_PROSE = /no such file or directory/i;
 
 /** A path quoted by a Node error: `ENOENT: ..., access '/x/y'`. */
 const QUOTED_AFTER_SYSCALL =
@@ -42,6 +60,33 @@ export interface PathMiss {
   tool: string;
   /** The path that was not there, as the tool or the call reported it. */
   path: string;
+  /** The errno that classified the miss, when one was supplied or read. */
+  code?: string;
+}
+
+export interface PathMissStats {
+  /**
+   * Failed calls by a path-bearing tool that produced no path: neither a
+   * missing-path wording, nor a recognised errno, nor a path to name. A
+   * rising count beside zero steers is a message shape this detector has
+   * not learned, usually a localised runtime.
+   */
+  unattributed: number;
+}
+
+// Process-global on purpose: this counts message shapes the detector could
+// not read across the whole process, not per-session state. The value only
+// grows; resetting it at a session boundary would hide a fleet-wide shape.
+let unattributed = 0;
+
+/** The detector's counters, for a fixture or a diagnosis surface. */
+export function getPathMissStats(): PathMissStats {
+  return { unattributed };
+}
+
+/** Test hook: clear the counters. */
+export function resetPathMissStats(): void {
+  unattributed = 0;
 }
 
 /** The path the call itself asked for, when the tool takes one. */
@@ -66,13 +111,39 @@ function pathFromText(text: string): string | undefined {
   return undefined;
 }
 
+/** The errno token in the text, when it carries one. */
+function errnoFromText(text: string): string | undefined {
+  return ERRNO_TOKEN.exec(text)?.[1];
+}
+
 /**
  * The path a failed call missed, or null when this result is not a path miss.
+ *
+ * `code` is the structured errno when the event supplies one; it wins over
+ * the text because a localised message can spell the same failure in words
+ * this detector does not read. With no code, an errno token in the text is
+ * the locale-independent half, and the English prose stays the fallback.
  */
-export function detectPathMiss(toolName: string, input: unknown, text: string): PathMiss | null {
+export function detectPathMiss(
+  toolName: string,
+  input: unknown,
+  text: string,
+  code?: string,
+): PathMiss | null {
   if (!PATH_BEARING_TOOLS.has(toolName)) return null;
-  if (!text || !MISSING_PATH.test(text)) return null;
+
+  const errno = code?.toUpperCase() ?? errnoFromText(text);
+  // A recognised errno that is not a missing path is a different failure.
+  if (errno && !MISSING_PATH_CODES.has(errno)) return null;
+  if (!errno && !MISSING_PATH_PROSE.test(text)) {
+    unattributed++;
+    return null;
+  }
+
   const path = pathFromCall(input) ?? pathFromText(text);
-  if (!path) return null;
-  return { tool: toolName, path };
+  if (!path) {
+    unattributed++;
+    return null;
+  }
+  return { tool: toolName, path, ...(errno ? { code: errno } : {}) };
 }

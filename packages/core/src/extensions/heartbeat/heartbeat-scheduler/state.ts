@@ -40,6 +40,7 @@ export function createHeartbeatState(): HeartbeatState {
     },
     policyEngineReady: false,
     policyTurnCount: 0,
+    recentUserText: "",
     policyLastFire: new Map(),
     metaLearning: {
       tickInterval: DEFAULT_CONFIG.interval,
@@ -56,6 +57,7 @@ export function createHeartbeatState(): HeartbeatState {
         lastCodeExecutionTurn: 0,
         totalToolsUsed: 0,
         lastToolCallTurn: 0,
+        callsSinceLastTick: [],
       },
     },
   };

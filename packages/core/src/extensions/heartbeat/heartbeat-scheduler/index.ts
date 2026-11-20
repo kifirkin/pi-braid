@@ -78,6 +78,20 @@ function getTurnStartPrompt(ctx: ExtensionContext): TurnStartPromptState {
   return getExtensionState(ctx, "turn-start-prompt", () => ({ prompt: "" }));
 }
 
+/** The text of a message's content, ignoring non-text parts. */
+function messageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) =>
+      part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+        ? (part as { text: string }).text
+        : "",
+    )
+    .filter((text) => text.length > 0)
+    .join("\n");
+}
+
 /**
  * Newest user-role text in the live branch, for runs whose prompt this process
  * never saw: a resumed session's first turn has no before_agent_start capture,
@@ -95,16 +109,7 @@ function newestUserText(ctx: ExtensionContext): string {
         message?: { role?: string; content?: unknown };
       };
       if (entry?.type !== "message" || entry.message?.role !== "user") continue;
-      const content = entry.message.content;
-      if (typeof content === "string") return content;
-      if (Array.isArray(content)) {
-        return content
-          .map((part) => part as { type?: string; text?: string })
-          .filter((part) => part?.type === "text" && typeof part.text === "string")
-          .map((part) => part.text as string)
-          .join("\n");
-      }
-      return "";
+      return messageText(entry.message.content);
     }
   } catch {
     // Best-effort: a stale ctx or an absent tree yields no text.
@@ -145,6 +150,13 @@ import {
 export { reflectionConsolidatorModule as dreamerModule };
 
 const log = createLogger("heartbeat");
+
+/**
+ * Tool names kept between ticks. A tick normally sees a handful; the cap is
+ * a backstop for a run that issues hundreds of calls without a turn
+ * boundary, and it drops the oldest so the window stays a window.
+ */
+const MAX_TOOL_CALLS_PER_TICK = 32;
 
 // Delayed Whisper Buffer
 // Per-session buffer for heartbeat whispers. Instead of delivering whispers
@@ -445,6 +457,13 @@ function tick(
   // in-flight call instead of letting it run for its full timeout
   // (10m default) after the session ends.
   const tickController = new AbortController();
+  // The window is the calls this tick is the first to see. Modules read it
+  // during the activation pass below, then the next tick starts empty.
+  const callsSinceLastTick = (state.metaLearning.toolTracking.callsSinceLastTick ??= []);
+  const toolCallsSinceLastTick = callsSinceLastTick.slice();
+  callsSinceLastTick.length = 0;
+  const recentUserText =
+    state.recentUserText || getTurnStartPrompt(ctx).prompt || newestUserText(ctx);
   const abortState = getExtensionState<{ controller: AbortController | null }>(
     ctx,
     "heartbeat-abort",
@@ -458,7 +477,8 @@ function tick(
     turnCount: state.turnCount,
     lastActivation: state.lastActivation,
     sessionAge: state.turnCount,
-    toolCallsSinceLastTick: [],
+    toolCallsSinceLastTick,
+    recentUserText,
     totalToolCalls: state.metaLearning.toolTracking.totalToolsUsed,
     silentTurns:
       state.stats.totalTicks > 0
@@ -638,6 +658,7 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
     const prompt = (event as { prompt?: unknown } | undefined)?.prompt;
     if (typeof prompt === "string" && prompt.length > 0) {
       getTurnStartPrompt(ctx).prompt = prompt;
+      getState(ctx).recentUserText = prompt;
     }
     // The sample is taken here, at delivery: the self-state line and the
     // context family's arm are both rendered from it, so one delivery never
@@ -669,6 +690,12 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
 
     const toolName = event?.toolName as string;
     if (!toolName) return;
+
+    pushBounded(
+      (state.metaLearning.toolTracking.callsSinceLastTick ??= []),
+      toolName,
+      MAX_TOOL_CALLS_PER_TICK,
+    );
 
     // Verification activity is a name set plus bash by its command shape:
     // a search or diff run through bash is the same activity the hint is
@@ -708,6 +735,18 @@ export default function heartbeatExtension(pi: ExtensionAPI) {
       noteAssistantMessageEnd(ctx, event?.message);
     } catch {
       // telemetry never fatal
+    }
+    // A user message is the freshest task statement the scheduler can see.
+    // Capture it here so the tick's module context carries the words the
+    // agent was actually given, not a summary of the scheduler's counters.
+    try {
+      const message = event?.message;
+      if (message?.role === "user") {
+        const text = messageText(message.content);
+        if (text.length > 0) getState(ctx).recentUserText = text;
+      }
+    } catch {
+      // task capture never fatal
     }
   });
 
