@@ -41,6 +41,7 @@ import {
 import { setCachedSkills } from "../skills-tool/index.js";
 import { getCachedVisibleSkills } from "../skills-tool/auto-inject.js";
 import { reconstructMemorySection, resetMemorySectionCache } from "./memory-section.js";
+import { preferenceSections } from "./preferences-section.js";
 import { gatherInstanceData, renderCompactInstance } from "./instance-composition.js";
 import { sendTrackedMessage } from "../../../lib/utils/injection-tracker.js";
 import { formatLocalTime } from "../../../lib/utils/local-time.js";
@@ -524,7 +525,13 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
       surfaceDisciplineSection(),
       simpleSection("identity-core", [EPISTEMIC_STANCE, SELF_AUDIT, PHILOSOPHY].join("\n\n")),
 
-      // 2. Skills floor (before guidelines, before tools).
+      // 2. Standing owner preferences, per surface this session can reach.
+      //    A rule's surface is in play when the tool set says so; a rule filed
+      //    for a surface that is not in play renders nothing. Unbound rules
+      //    render in one labelled block (the section composes that itself).
+      ...preferenceSections(toolNames).sections,
+
+      // 3. Skills floor (before guidelines, before tools).
       //    Owned by the skills-tool module (loading-guidance.ts) and rendered
       //    here: the visible catalog itself, one row per skill, plus the
       //    read rule and the mechanical trigger. Guarded by read AND
@@ -536,16 +543,16 @@ export default function promptBuilderExtension(pi: ExtensionAPI) {
         ? [simpleSection("skills-loading", skillsLoadingText(toolNames, getCachedVisibleSkills()))]
         : []),
 
-      // 3. Guidelines (before tools, pi-core native pattern).
+      // 4. Guidelines (before tools, pi-core native pattern).
       //    Order: file tools → communication → context navigation.
       guidelinesSection(toolNames),
 
-      // 4. Discovery & exploration stance (after guidelines, before tools).
+      // 5. Discovery & exploration stance (after guidelines, before tools).
       ...(discoveryLines.length > 0
         ? [simpleSection("discovery", discoveryLines.join("\n\n"))]
         : []),
 
-      // 5. Tool-usage pipelines (after discovery, before resources/tools).
+      // 6. Tool-usage pipelines (after discovery, before resources/tools).
       //      Per-domain sequences: when to use, the order, the closing outcome.
       //      Context management is intentionally absent — already covered by
       //      contextNavigationGuidelines above (dedup contract).
