@@ -8,16 +8,20 @@
  * of every session, so the whole text keeps a fixed ceiling and gives up detail
  * in a fixed order instead of growing with the journal.
  *
- * Reading is line-level: an entry counts when its `kind` is `intent` and its
- * `status` is `open`. The digest printer derives a subject's status across
- * supersession chains and stays the authority on the full program, so a name
- * here can be an intent a later line retired; against this project's journal
- * when the pointer was written, five of the seven open-status intents were
- * already retired that way. The trade is deliberate and the digest is where a
- * seat confirms what is live: naming work already closed costs a line of
- * attention, while hiding an install nobody was told about is the failure this
- * pointer exists to repair. Honoring the journal's own `supersedes` edges is
- * what would narrow it, and that is one line of selection, not one of wording.
+ * An entry counts when its `kind` is `intent`, its `status` is `open`, and no
+ * line in the file names its `seq` in `supersedes`. The third clause is why the
+ * file is read whole before anything in it is selected: a replacement line
+ * retires an earlier one without rewriting it, so it is written after the line
+ * it retires, and a reader that decided line by line spent its names on work a
+ * later seat had already closed.
+ *
+ * The digest printer derives a subject's status from its newest status-bearing
+ * line and stays the authority on the full program. Two disagreements survive,
+ * both by design: a subject closed by a later `done` line carrying no
+ * `supersedes` edge still shows its earlier `open` line here, because an edge is
+ * the only closure a `seq` can see; and this reader names intents only, while
+ * the printer's open classes also hold constraints and the `waiting` and
+ * `blocked` statuses.
  */
 
 /** Ceiling for the whole pointer text. A line delivered into every session is
@@ -56,7 +60,8 @@ export interface JournalPointerFacts {
   journalFile: string;
 }
 
-/** One intent whose `status` says `open`. */
+/** One intent that is open: its `status` says so, and no line retires its
+ *  `seq`. */
 export interface OpenIntent {
   subject: string;
   /** Whole hours since the entry's own `at`; null when that stamp is unusable,
@@ -71,19 +76,30 @@ export interface OpenIntent {
 /**
  * The journal lines that name open work.
  *
- * Anything unreadable is skipped: a line that is not JSON, a value that is not
- * an object, an entry without a usable `subject`, and an `expires_at` that does
- * not parse (the stamp is dropped, the intent is not). A journal is written by
- * a different process and edited by hand, so a reader that throws on the first
- * malformed line would take the whole session-start bundle down with it.
+ * One parse, two passes over it: the first collects the `seq`s some line
+ * retires, the second selects. Anything unreadable is skipped: a line that is
+ * not JSON, a value that is not an object, an entry without a usable `subject`,
+ * and an `expires_at` that does not parse (the stamp is dropped, the intent is
+ * not). A journal is written by a different process and edited by hand, so a
+ * reader that throws on the first malformed line would take the whole
+ * session-start bundle down with it.
  */
 export function selectOpenIntents(journalText: string, now: Date): OpenIntent[] {
+  const entries = parseEntries(journalText);
+  // Built from the edges this file holds, so one that names a `seq` it does not
+  // hold -- an intent archived out, or a hand edit -- costs nothing and leaves
+  // the entry carrying the edge selected.
+  const retired = new Set<number>();
+  for (const entry of entries) {
+    const target = entry.supersedes;
+    if (typeof target === "number" && Number.isInteger(target)) retired.add(target);
+  }
+
   const open: OpenIntent[] = [];
-  for (const line of journalText.split("\n")) {
-    if (!line.trim()) continue;
-    const entry = parseEntry(line);
-    if (!entry) continue;
+  for (const entry of entries) {
     if (entry.kind !== "intent" || entry.status !== "open") continue;
+    const seq = entry.seq;
+    if (typeof seq === "number" && retired.has(seq)) continue;
     const subject = typeof entry.subject === "string" ? entry.subject.trim() : "";
     if (!subject) continue;
 
@@ -210,6 +226,17 @@ function named(intent: OpenIntent): string {
 
 function clipSubject(subject: string): string {
   return subject.length <= SUBJECT_LIMIT ? subject : `${subject.slice(0, SUBJECT_LIMIT - 1)}…`;
+}
+
+/** The journal's lines, parsed, unreadable ones dropped. */
+function parseEntries(journalText: string): Record<string, unknown>[] {
+  const entries: Record<string, unknown>[] = [];
+  for (const line of journalText.split("\n")) {
+    if (!line.trim()) continue;
+    const entry = parseEntry(line);
+    if (entry) entries.push(entry);
+  }
+  return entries;
 }
 
 function parseEntry(line: string): Record<string, unknown> | null {
