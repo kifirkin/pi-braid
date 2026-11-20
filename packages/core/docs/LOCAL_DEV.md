@@ -275,7 +275,10 @@ pi --provider emulated --model emulated-model "say hello"
 ```
 
 `GET http://127.0.0.1:8787/__status` returns the mode, the requests answered and
-the 429s still owed as JSON.
+the 429s still owed as JSON. `GET http://127.0.0.1:8787/v1/models` answers the
+dialect's list shape with the one id the completions route serves; pi does not
+ask for it on a `models.json` provider, so it is there for a human with curl and
+for any client that lists before it streams.
 
 `test/runtime/providers/test-emulated-provider.mjs` drives that same config
 through the runtime over RPC and pins the three behaviours: one request and a
