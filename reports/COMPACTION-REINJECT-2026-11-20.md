@@ -160,7 +160,7 @@ test/runtime/core/test-skill-stats.mjs test/runtime/core/test-skill-fullbody.mjs
 Full chain, and which run is mine. All three `ci:check` runs below are mine, each alone on the
 machine, the suite lock free before each start:
 
-1. Run 1: `check:source-claims` refused. Not a code defect: `docs/LOCAL_DEV.md` states how many
+1. Run 1: `check:source-claims` refused. Not a code defect: `packages/core/docs/LOCAL_DEV.md` states how many
    fixtures the core runner counts (390) and how many import `node:test` (149), and one new
    fixture moves both. Re-derived from the commands the doc names (391 and 150) and repaired in
    the same commit as the work.
