@@ -17,8 +17,11 @@
  *    re-applied at before_agent_start, and re-applied on model_select — a
  *    mid-session switch (rotation, /model, cycle) installs a fresh catalog
  *    object carrying the PROVIDER window, and before_agent_start alone left
- *    that window in force for the remainder of the current run. All three
- *    points also re-derive the reserve that window implies
+ *    that window in force for the remainder of the current run. On a virtual
+ *    selection (braid/auto) the same call also writes the routed physical
+ *    model, which is the object pi-core's threshold check and footer read;
+ *    turn_end re-applies it so a route switched mid-run is covered from the
+ *    next turn. All points also re-derive the reserve that window implies
  *    (applyCompactionReserveTokens); the derivation cannot be written into
  *    pi-core from an extension, so it surfaces as a once-per-process warning
  *    naming the value to set.
@@ -38,7 +41,7 @@ import {
   applyConfiguredContextWindow,
 } from "../../../lib/config/braid-settings.js";
 import { onEvent } from "../../../lib/events/event-types.js";
-import { SESSION_START, SESSION_SHUTDOWN } from "../../../lib/core/event-names.js";
+import { SESSION_START, SESSION_SHUTDOWN, TURN_END } from "../../../lib/core/event-names.js";
 import { registerSessionCleanup } from "../../../lib/state/extension-state.js";
 import { readSettingsFile, updateSettings } from "../../../lib/config/per-tool-settings.js";
 import { createLogger } from "../../../lib/core/logger.js";
@@ -295,8 +298,10 @@ export default function polyfillExtension(pi: ExtensionAPI) {
 
     // Re-apply the configured window per run so a mid-session model switch
     // (a fresh catalog model object carrying the provider window) is
-    // re-plumbed at the next run start. Idempotent, like the reserve
-    // derivation that pairs with it.
+    // re-plumbed at the next run start. On a virtual selection this also
+    // writes the physical model of the last response, which is the object
+    // the next routed request is checked against. Idempotent, like the
+    // reserve derivation that pairs with it.
     applyConfiguredContextWindow(ctx);
     applyCompactionReserveTokens(ctx);
 
@@ -307,6 +312,17 @@ export default function polyfillExtension(pi: ExtensionAPI) {
     }
 
     return {};
+  });
+
+  // A route can switch inside a run: each request re-resolves the virtual
+  // selection, so the physical model that answers turn N+1 may be one whose
+  // window no hook has written yet. turn_end fires after that response is
+  // persisted, which is the first point the extension can name it; writing
+  // here covers every request from the next turn on. The session model is
+  // untouched by this call (`unchanged`), so the per-run write keeps its
+  // once-per-run cost.
+  pi.on(TURN_END, (_event, ctx) => {
+    applyConfiguredContextWindow(ctx);
   });
 
   // D1: Clean up all extension state on session end.

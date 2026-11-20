@@ -1619,14 +1619,126 @@ export function getConfiguredContextLimitTokens(): number | undefined {
 
 /** Warned once per process when the configured window could not be applied. */
 let _warnedUnapplyableContextWindow = false;
+/** Warned once per process when the routed physical model rejected the write. */
+let _warnedUnapplyableRoutedWindow = false;
+
+/**
+ * The window each model object reported before the plumb wrote over it.
+ *
+ * The precedence rule is `min(cap, true window)`, and the write replaces the
+ * very field that rule reads. Without a memory of the true window a second
+ * application would take the first cap for the model's ceiling, so a cap
+ * raised later could never widen the model back. A catalog object rebuilt by
+ * a provider refresh arrives without an entry, which is correct: it carries
+ * the catalog window again. `null` means the object reported no usable
+ * window (a virtual model declares none on purpose), so the cap applies
+ * alone.
+ */
+const _trueWindowBeforePlumb = new WeakMap<object, number | null>();
+
+/** The positive finite window a model object reports, or null. */
+function reportedWindow(model: { contextWindow?: number }): number | null {
+  const current = model.contextWindow;
+  return typeof current === "number" && Number.isFinite(current) && current > 0 ? current : null;
+}
+
+/** The window a model object carried before the plumb, recorded on first use. */
+function trueWindowOf(model: { contextWindow?: number }): number | null {
+  const remembered = _trueWindowBeforePlumb.get(model);
+  if (remembered !== undefined) return remembered;
+  const current = reportedWindow(model);
+  _trueWindowBeforePlumb.set(model, current);
+  return current;
+}
+
+/** One plumb write: which object, and what it reports afterwards. */
+export interface ConfiguredWindowWrite {
+  /** true = this object now reports the configured window. */
+  applied: boolean;
+  /** The window the object reports after the call. */
+  contextWindow?: number;
+  /** Why nothing was written: unchanged | frozen. */
+  reason?: "unchanged" | "frozen";
+}
 
 export interface ConfiguredWindowApplyResult {
   /** true = the session model now reports the configured window. */
   applied: boolean;
   /** The window pi-core reports for the session model after the call. */
   contextWindow?: number;
-  /** Why nothing changed: unset | no-model | unchanged | frozen. */
+  /** Why nothing was written to the session model: unset | no-model | unchanged | frozen. */
   reason?: "unset" | "no-model" | "unchanged" | "frozen";
+  /**
+   * The routed physical model behind a virtual selection, reported only when
+   * it is a different object from `ctx.model`. This is the object pi-core's
+   * threshold check and its footer's limits model read.
+   */
+  routed?: ConfiguredWindowWrite & { provider: string; modelId: string };
+}
+
+/**
+ * The physical model of the newest successful response, resolved through the
+ * registry facade pi-core hands extensions.
+ *
+ * The scan mirrors pi-core's `findLatestResponse`: the newest assistant entry
+ * that is neither an error nor an abort, because that is the response
+ * `_limitsModel()` derives its model from. `modelRegistry.find` calls the
+ * same `models.getModel(provider, id)` that `getPhysicalModel` calls, so the
+ * returned object IS the routed object, not a copy.
+ */
+function resolveRoutedModel(
+  ctx: unknown,
+): { provider: string; modelId: string; model: { contextWindow?: number } } | undefined {
+  const surface = ctx as
+    | {
+        modelRegistry?: { find?: (provider: string, modelId: string) => unknown };
+        sessionManager?: { getBranch?: () => unknown[] };
+      }
+    | undefined;
+  const registry = surface?.modelRegistry;
+  const find = registry?.find;
+  const sessionManager = surface?.sessionManager;
+  const getBranch = sessionManager?.getBranch;
+  if (typeof find !== "function" || typeof getBranch !== "function") return undefined;
+  let branch: unknown[];
+  try {
+    branch = getBranch.call(sessionManager) ?? [];
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(branch)) return undefined;
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const entry = branch[i] as { type?: string; message?: Record<string, unknown> } | null;
+    if (entry?.type !== "message") continue;
+    const message = entry.message;
+    if (message?.role !== "assistant") continue;
+    if (message.stopReason === "error" || message.stopReason === "aborted") continue;
+    const provider = message.provider;
+    const modelId = message.model;
+    if (typeof provider !== "string" || provider.length === 0) return undefined;
+    if (typeof modelId !== "string" || modelId.length === 0) return undefined;
+    const model = find.call(registry, provider, modelId);
+    if (!model || typeof model !== "object") return undefined;
+    return { provider, modelId, model: model as { contextWindow?: number } };
+  }
+  return undefined;
+}
+
+/** Write the resolver's effective window onto one model object. */
+function writeEffectiveWindow(
+  model: { contextWindow?: number },
+  configured: number,
+): ConfiguredWindowWrite {
+  const target = resolveContextLimitTokens(configured, trueWindowOf(model)) ?? configured;
+  if (model.contextWindow === target) {
+    return { applied: false, reason: "unchanged", contextWindow: target };
+  }
+  try {
+    model.contextWindow = target;
+    return { applied: true, contextWindow: target };
+  } catch {
+    return { applied: false, reason: "frozen", contextWindow: model.contextWindow };
+  }
 }
 
 /**
@@ -1650,32 +1762,62 @@ export interface ConfiguredWindowApplyResult {
  * degrades to a once-per-process warning and provider semantics rather than
  * throwing mid-run.
  *
- * Idempotent: callers may re-apply on every run start (also re-arms after a
- * model switch, since the newly selected model carries the provider window).
+ * On a VIRTUAL selection (`braid/auto`) the session model is not the object
+ * pi-core's window decisions read: `_compactBeforeNextAssistantResponse`
+ * returns early for a virtual model, the routed threshold check runs against
+ * the physical model the router picked, and `_limitsModel()` returns that
+ * same catalog object once a response exists. The registry facade on the
+ * extension context calls the identical `models.getModel(provider, id)` that
+ * pi-core's `getPhysicalModel` calls, so the plumb resolves the physical
+ * model of the newest successful response and writes the same target onto
+ * it. A route taken for the first time inside a run carries the catalog
+ * window for that run's requests; every later application (the next turn
+ * boundary, the next run, a resume) sees the object through the same
+ * registry entry and writes it. Providers that rebuild their model list on
+ * every read (models.json custom providers, extension-registered provider
+ * models) hand back a fresh object each time, so there the write reaches
+ * the instance read here and the next route resolution sees the catalog
+ * window again; for the builtin catalog, including the routed default, the
+ * object is stable and the write holds.
+ *
+ * Idempotent: callers may re-apply on every run start and turn boundary (also
+ * re-arms after a model switch, since the newly selected model carries the
+ * provider window).
  */
 export function applyConfiguredContextWindow(ctx: unknown): ConfiguredWindowApplyResult {
   const configured = getConfiguredContextLimitTokens();
   if (configured === undefined) return { applied: false, reason: "unset" };
   const model = (ctx as { model?: { contextWindow?: number } } | undefined)?.model;
   if (!model || typeof model !== "object") return { applied: false, reason: "no-model" };
-  const target = resolveContextLimitTokens(configured, model.contextWindow) ?? configured;
-  if (model.contextWindow === target) {
-    return { applied: false, reason: "unchanged", contextWindow: target };
+
+  const routed = resolveRoutedModel(ctx);
+  const routedWrite =
+    routed && routed.model !== model ? writeEffectiveWindow(routed.model, configured) : undefined;
+  if (routed && routedWrite?.reason === "frozen" && !_warnedUnapplyableRoutedWindow) {
+    _warnedUnapplyableRoutedWindow = true;
+    _log.warn(
+      `Could not apply braid.context.contextLimitTokens to the routed model ` +
+        `${routed.provider}/${routed.modelId} (read-only catalog object): pi-core's ` +
+        `threshold compaction keeps using that model's provider window.`,
+    );
   }
-  try {
-    model.contextWindow = target;
-    return { applied: true, contextWindow: target };
-  } catch {
-    if (!_warnedUnapplyableContextWindow) {
-      _warnedUnapplyableContextWindow = true;
-      _log.warn(
-        "Could not apply braid.context.contextLimitTokens to the session model " +
-          "(read-only model object): native threshold compaction keeps using the " +
-          "provider window for this model.",
-      );
-    }
-    return { applied: false, reason: "frozen", contextWindow: model.contextWindow };
+
+  const session = writeEffectiveWindow(model, configured);
+  if (session.reason === "frozen" && !_warnedUnapplyableContextWindow) {
+    _warnedUnapplyableContextWindow = true;
+    _log.warn(
+      "Could not apply braid.context.contextLimitTokens to the session model " +
+        "(read-only model object): native threshold compaction keeps using the " +
+        "provider window for this model.",
+    );
   }
+  const result: ConfiguredWindowApplyResult = session.applied
+    ? { applied: true, contextWindow: session.contextWindow }
+    : { applied: false, reason: session.reason, contextWindow: session.contextWindow };
+  if (routed && routedWrite) {
+    result.routed = { provider: routed.provider, modelId: routed.modelId, ...routedWrite };
+  }
+  return result;
 }
 
 // ── compaction reserve coherence with the configured window ────────────
