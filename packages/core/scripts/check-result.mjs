@@ -2,13 +2,15 @@
 // check-result.mjs — validate a worker's final-message result block.
 //
 //   node packages/core/scripts/check-result.mjs <session.jsonl> [--repo <path>]...
-//           [--strict-staleness] [--fail-on-instrument]
+//           [--strict-staleness] [--fail-on-instrument] [--tree <path>]
+//   node packages/core/scripts/check-result.mjs --print-tree-digest [--tree <path>]
 //
 // Reads the worker's pi session JSONL, extracts the LAST fenced ```json block
 // from the FINAL assistant message that carries one, validates the schema fields
 // (including `source_revision`, the revision the evidence was read at, resolved
 // against the repositories named below), and stats the declared output_file.
-// Exit 0 = every check passes; 2 = no result block; 1 = a check failed; 64 = usage.
+// Exit 0 = every check passes; 2 = no result block, or a tree that could not be
+// read; 1 = a check failed; 64 = usage.
 //
 // Contract note: the pane is liveness only; the session record is the attestation;
 // the output_file is the artifact. This validates the attestation against the
@@ -26,6 +28,11 @@
 //     at, and 7-to-40 hex characters are the whole of what a fabricated one has
 //     to get right. `--repo <path>` (repeatable) adds a repository; without it
 //     the search set is `BRAID_GATE_REPOS`, `$PWD` and this file's own checkout.
+//     A tree with no repository has no revision to name, so the same field also
+//     accepts `tree:<64 hex>`: the digest of what the tree holds, recomputed
+//     here and compared, so the block attests content the gate can see. A value
+//     that is neither form is refused with both forms named, because the seat
+//     that wrote `no-vcs` could not learn from this gate what to write instead.
 //   - a `completed` block's figure must name the instrument that produced it, in
 //     `verified_by` or in a `command` field. Under `partial`, `blocked` or
 //     `error` the same claim is a warning: an incomplete result is allowed to
@@ -56,7 +63,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SPECS = ["research", "impl", "verify", "audit", "project"];
 const STATUSES = ["completed", "partial", "blocked", "error"];
@@ -460,10 +467,67 @@ const invokedDirectly = (() => {
   catch { return false; }
 })();
 
+// ── Tree attestation ────────────────────────────────────────────────────────
+// A close that ran in a tree with no repository has no revision to name. The
+// field accepts `tree:<64 hex>` instead: the digest of what the tree holds,
+// recomputed here, so the block attests content the gate can see rather than a
+// sha the worker asserted. The algorithm lives in its own module so the fixture
+// and this gate hash the same bytes instead of two copies of a format.
+const TREE_DIGEST_MODULE = join(import.meta.dirname, "tree-digest.mjs");
+const TREE_REVISION_RE = /^tree:([0-9a-f]{64})$/i;
+
+/** A path a transcript prints, shortened the way the repository labels are. */
+const shortenHome = (p) => resolve(p).replace(homedir(), "~");
+
+/**
+ * The tree's digest, or the reason it could not be read.
+ *
+ * Loaded lazily and reported rather than thrown: this file runs on its own from a
+ * copy outside any checkout, a shape the close-gate fixture exercises, and a
+ * static import of a sibling would kill that copy at load. The revision path
+ * never asks this question, so it never pays for the answer.
+ *
+ * @param {string} root
+ * @returns {Promise<{ digest?: string, files?: number, error?: string }>}
+ */
+async function readTree(root) {
+  if (!existsSync(TREE_DIGEST_MODULE)) {
+    return { error: `the digest module is not beside this script (${shortenHome(TREE_DIGEST_MODULE)})` };
+  }
+  try {
+    const { digestLines, treeEntries } = await import(pathToFileURL(TREE_DIGEST_MODULE).href);
+    const entries = treeEntries(root);
+    return { digest: digestLines(entries), files: entries.length };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 if (invokedDirectly) {
 let INSTRUMENT_ENFORCED = false;
+// The tree flags are read before the session path because the question they
+// answer comes first: a worker needs the digest in order to write one into a
+// block, so --print-tree-digest takes no session. Without --tree the tree in
+// question is the one the gate was run in, which is where a close that ran with
+// the work usually is.
+const treeFlag = process.argv.indexOf("--tree", 2);
+const treeValue = treeFlag === -1 ? null : (process.argv[treeFlag + 1] ?? null);
+if (treeFlag !== -1 && (treeValue === null || treeValue.startsWith("--"))) {
+  console.error("usage: --tree needs a path");
+  process.exit(64);
+}
+const TREE_ROOT = resolve(treeValue ?? process.cwd());
+if (process.argv.includes("--print-tree-digest")) {
+  const read = await readTree(TREE_ROOT);
+  if (read.error !== undefined) {
+    console.error(`FAIL: cannot hash the tree at ${shortenHome(TREE_ROOT)}: ${read.error}`);
+    process.exit(2);
+  }
+  console.log(`tree:${read.digest}`);
+  process.exit(0);
+}
 const sessionPath = process.argv[2];
-if (!sessionPath) { console.error("usage: node check-result.mjs <worker-session.jsonl> [--repo <path>]..."); process.exit(64); }
+if (!sessionPath) { console.error("usage: node check-result.mjs <worker-session.jsonl> [--repo <path>]... [--tree <path>] [--print-tree-digest]"); process.exit(64); }
 // Extra repos to resolve source_revision against, for a close whose work ran
 // outside this machine's own checkouts. Without this a block from another project
 // is accepted on shape alone (a WARN), which is the wrong verdict for a block
@@ -474,6 +538,7 @@ for (let i = 3; i < process.argv.length; i++) {
   if (process.argv[i] === "--repo" && process.argv[i + 1]) EXTRA_REPOS.push(process.argv[++i]);
   else if (process.argv[i] === "--strict-staleness") STRICT_STALENESS = true;
   else if (process.argv[i] === "--fail-on-instrument") INSTRUMENT_ENFORCED = true;
+  else if (process.argv[i] === "--tree" && process.argv[i + 1]) ++i;
   else if (process.argv[i] !== "--repo") { console.error(`usage: unknown argument ${process.argv[i]}`); process.exit(64); }
 }
 
@@ -713,7 +778,6 @@ const SOURCE_REVISION_RE = /^[0-9a-f]{7,40}$/i;
 //   $PWD                     the close usually runs where the work ran
 //   this file's own checkout  so a gate invoked from inside a checkout resolves that
 //                            checkout without being told
-const shortenHome = (p) => resolve(p).replace(homedir(), "~");
 const SOURCE_REPOS = (() => {
   const repos = [];
   const seen = new Set();
@@ -739,11 +803,35 @@ const SOURCE_REPOS = (() => {
 let censusRepoDir = null;
 const rawRevision = schema.source_revision;
 const sourceRevision = typeof rawRevision === "string" ? rawRevision.trim() : "";
-if (!SOURCE_REVISION_RE.test(sourceRevision)) {
+// A tree with no repository has no revision to name, so the content is the
+// attestation: the block carries the digest the tree had when the evidence was
+// read, and the gate recomputes it. A byte written afterwards moves the digest,
+// which is the same staleness read this field exists for, taken on the tree
+// itself rather than on a commit that no longer matches it.
+const treeAttestation = TREE_REVISION_RE.exec(sourceRevision);
+if (treeAttestation !== null) {
+  const attested = treeAttestation[1].toLowerCase();
+  const read = await readTree(TREE_ROOT);
+  const actual = read.digest ?? null;
+  const same = actual !== null && actual === attested;
+  const where = shortenHome(TREE_ROOT);
+  check(
+    "source-revision",
+    same,
+    read.error !== undefined
+      ? `cannot attest the tree at ${where}: ${read.error}`
+      : same
+        ? `tree:${actual} matches ${read.files} file(s) at ${where}`
+        : `the tree at ${where} no longer hashes to the value in the block: the block attests tree:${attested}, ` +
+          `the tree is tree:${actual} (${read.files} file(s)) - the evidence predates the last change, ` +
+          "so re-read it and take the digest again with --print-tree-digest",
+  );
+} else if (!SOURCE_REVISION_RE.test(sourceRevision)) {
   const detail =
     sourceRevision === ""
-      ? "missing or empty"
-      : `not a 7-40 hex sha: ${String(rawRevision).slice(0, 40)}`;
+      ? "missing or empty - expected a 7-40 hex sha or tree:<64 hex> (--print-tree-digest prints the tree's digest)"
+      : `no accepted form: ${String(rawRevision).slice(0, 40)} - expected a 7-40 hex sha that resolves in a repository the gate can see, ` +
+        `or tree:<64 hex> equal to the digest of ${shortenHome(TREE_ROOT)} (--print-tree-digest prints it)`;
   check("source-revision", false, detail);
 } else {
   const tried = [];
