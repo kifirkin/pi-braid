@@ -31,21 +31,30 @@
  *     code alone is never a verdict: a gateway in front of the upstream can return
  *     200 for a request the upstream rejected.
  *
+ * Every request carries `x-opencode-session`, the per-conversation routing header
+ * OpenCode's client fills from `options.sessionId` in
+ * `@earendil-works/pi-ai/dist/providers/opencode-headers.js`: the chat body has no
+ * field for it, so a request built from the body alone is missing a header that
+ * every request sharing this wire carries.
+ *
  * Usage:
  *   node packages/core/scripts/thinking-replay-probe.mjs --provider <name> \
  *     --api openai-completions --model <name> --dry-run
  *   node packages/core/scripts/thinking-replay-probe.mjs --provider <name> \
  *     --api openai-completions --model <name> --base-url <url> --record <path> \
- *     [--api-key-env <VAR>] [--force] [--timeout-ms <n>]
+ *     [--session-id <id>] [--api-key-env <VAR>] [--force] [--timeout-ms <n>]
  *
- * `--dry-run` prints both request bodies and opens no socket, so the crafted
- * conversation can be read before it is spent. `--record` is required for a real
- * run: a verdict with nowhere to land is one the next reader cannot consume. The
- * record file is JSON lines, one record per attempt, appended as each attempt
- * completes. `--api-key-env` names the environment variable holding the bearer
- * token; the token is never printed, and a named variable that is unset is a
- * usage error rather than an unauthenticated request whose 401 would be recorded
- * as `unknown`.
+ * `--dry-run` prints the header it would send and both request bodies, and opens
+ * no socket, so the crafted conversation can be read before it is spent.
+ * `--record` is required for a real run: a verdict with nowhere to land is one
+ * the next reader cannot consume. The record file is JSON lines, one record per
+ * attempt, appended as each attempt completes. `--api-key-env` names the
+ * environment variable holding the bearer token; the token is never printed, and
+ * a named variable that is unset is a usage error rather than an unauthenticated
+ * request whose 401 would be recorded as `unknown`. `--session-id` names the
+ * value of the routing header; when it is omitted one is generated per run, so
+ * the two attempts of one run route to the same conversation and a second run
+ * does not inherit the first one's.
  *
  * A record for the same (provider, api, model, variant) is refused when it would
  * contradict one already in the file, unless `--force` is passed, in which case
@@ -66,6 +75,7 @@
  * existing one and `--force` was not passed, in which case that record is not
  * written; 64 usage.
  */
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -82,6 +92,7 @@ const PRIOR_THINKING = "The tool is the only way to read a weight, so call read_
 const TOOL_RESULT = '{"key":"thinking","weight":"0.42"}';
 const TOOL_CALL_ID = "call_probe_1";
 const REASONING_FIELD = "reasoning_content";
+const SESSION_HEADER = "x-opencode-session";
 
 // The spellings the field travels under in provider error text. This list is the
 // whole of what counts as "names the reasoning field"; a body that names none of
@@ -107,7 +118,7 @@ const USAGE = [
   "  --provider <name> --api openai-completions --model <name> --dry-run",
   "usage: node packages/core/scripts/thinking-replay-probe.mjs \\",
   "  --provider <name> --api openai-completions --model <name> --base-url <url> --record <path> \\",
-  "  [--api-key-env <VAR>] [--force] [--timeout-ms <n>]",
+  "  [--session-id <id>] [--api-key-env <VAR>] [--force] [--timeout-ms <n>]",
 ].join("\n");
 
 function usageExit(message) {
@@ -231,7 +242,7 @@ function conflictFor(records, record) {
  * body could not be read are reported through the same field: both mean "no
  * answer", and the caller reads one shape.
  */
-async function send({ url, apiKey, body, timeoutMs }) {
+async function send({ url, apiKey, sessionId, body, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let httpStatus = null;
@@ -240,6 +251,7 @@ async function send({ url, apiKey, body, timeoutMs }) {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        [SESSION_HEADER]: sessionId,
         ...(apiKey === "" ? {} : { authorization: `Bearer ${apiKey}` }),
       },
       body: JSON.stringify(body),
@@ -270,6 +282,7 @@ function parseArgs(argv) {
     model: "",
     baseUrl: "",
     record: "",
+    sessionId: "",
     apiKeyEnv: "",
     apiKey: "",
     force: false,
@@ -289,7 +302,11 @@ function parseArgs(argv) {
     else if (flag === "--model") options.model = value();
     else if (flag === "--base-url") options.baseUrl = value();
     else if (flag === "--record") options.record = value();
-    else if (flag === "--api-key-env") options.apiKeyEnv = value();
+    else if (flag === "--session-id") {
+      const id = value();
+      if (id.trim() === "") usageExit("--session-id takes a routing id, and an empty one is the header this run is missing");
+      options.sessionId = id;
+    } else if (flag === "--api-key-env") options.apiKeyEnv = value();
     else if (flag === "--timeout-ms") options.timeoutMs = positiveInt(value(), flag);
     else if (flag === "--force") options.force = true;
     else if (flag === "--dry-run") options.dryRun = true;
@@ -317,6 +334,10 @@ function validate(options) {
         "(a record that names an api the request did not use attests nothing)",
     );
   }
+  // Generated here rather than at each request, because the two attempts are one
+  // conversation: a value that differed between them would route them apart.
+  if (options.sessionId === "") options.sessionId = randomUUID();
+
   if (options.dryRun) return;
 
   if (options.baseUrl.trim() === "") {
@@ -353,6 +374,7 @@ async function run(options) {
   const bodies = VARIANTS.map((variant) => ({ variant, body: requestBody(options, variant) }));
 
   if (options.dryRun) {
+    console.log(`${SESSION_HEADER}: ${options.sessionId}`);
     for (const { variant, body } of bodies) {
       console.log(`variant ${variant}:`);
       console.log(JSON.stringify(body, null, 2));
@@ -364,7 +386,13 @@ async function run(options) {
   const url = `${options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
   for (const { variant, body } of bodies) {
-    const attempt = await send({ url, apiKey: options.apiKey, body, timeoutMs: options.timeoutMs });
+    const attempt = await send({
+      url,
+      apiKey: options.apiKey,
+      sessionId: options.sessionId,
+      body,
+      timeoutMs: options.timeoutMs,
+    });
     const verdict = classify(attempt.httpStatus, attempt.bodyText);
     const record = buildRecord({
       provider: options.provider,
