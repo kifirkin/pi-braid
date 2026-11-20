@@ -1,6 +1,7 @@
 /**
  * thinking-replay-probe.mjs contract: the recorder classifies an answer from the
- * status AND the body, prints both request bodies without opening a socket, and
+ * status AND the body, prints both request bodies without opening a socket, puts
+ * the routing header the flag names (or a generated one) on every request, and
  * appends a record per attempt rather than rewriting the file.
  *
  * Every case runs the real script against a loopback HTTP server this file
@@ -111,7 +112,7 @@ async function startRoute(answer) {
         body = null;
       }
       const variant = body?.messages?.[2]?.reasoning_content === undefined ? "stripped" : "pass-back";
-      state.requests.push({ variant, text, url: request.url, method: request.method, headers: request.headers });
+      state.requests.push({ variant, text, url: request.url, method: request.method, headers: request.headers, rawHeaders: request.rawHeaders });
       const reply = answer(variant, { body, text });
       if (reply.destroy === true) {
         request.socket.destroy();
@@ -172,6 +173,15 @@ net.Socket.prototype.connect = function connect(...args) {
 `;
   writeFileSync(path, body);
   return path;
+}
+
+/** The values sent under one header name, read from the wire bytes rather than from the parsed object. */
+function wireHeader(request, name) {
+  const values = [];
+  for (let index = 0; index < request.rawHeaders.length; index += 2) {
+    if (request.rawHeaders[index].toLowerCase() === name) values.push(request.rawHeaders[index + 1]);
+  }
+  return values;
 }
 
 /** The records in `dir`'s record file, in file order. */
@@ -337,6 +347,38 @@ test("--dry-run prints both request bodies and opens no socket", async () => {
   assert.equal(passBack.max_tokens, 64);
 });
 
+test("--dry-run prints the session header it would send and still connects to nothing", async () => {
+  const dir = scratch("dry-run-header");
+  const route = await startRoute(() => ({ status: 200, body: ACCEPTED_BODY }));
+  try {
+    const result = await runProbe([
+      "--provider",
+      ROUTE.provider,
+      "--api",
+      ROUTE.api,
+      "--model",
+      ROUTE.model,
+      "--base-url",
+      route.baseUrl,
+      "--dry-run",
+      "--session-id",
+      "probe-dry-1",
+    ]);
+    assert.equal(result.code, 0, result.stderr);
+    // The header line sits above the bodies, so a reader sees the routing id
+    // before the payload it routes.
+    const printed = result.stdout.split("\n").filter((line) => line.startsWith("x-opencode-session:"));
+    assert.deepEqual(printed, ["x-opencode-session: probe-dry-1"]);
+    assert.deepEqual(Object.keys(printedBodies(result.stdout)), ["pass-back", "stripped"]);
+    // A dry run names an endpoint it does not dial: the count is the claim.
+    assert.equal(route.state.connections, 0, "the dry run opened a connection");
+    assert.equal(route.state.requests.length, 0);
+    assert.deepEqual(readdirSync(dir), []);
+  } finally {
+    await route.close();
+  }
+});
+
 // ── The wire ────────────────────────────────────────────────────────────────
 test("both variants send the same bytes apart from the reasoning field", async () => {
   const dir = scratch("wire");
@@ -373,6 +415,52 @@ test("both variants send the same bytes apart from the reasoning field", async (
     assert.equal(JSON.stringify(copy), stripped.text);
     assert.equal(stripped.text.includes("reasoning_content"), false);
     assert.equal(passBack.text.includes("reasoning_content"), true);
+  } finally {
+    await route.close();
+  }
+});
+
+// ── The routing header ─────────────────────────────────────────────────────
+// A request without `x-opencode-session` is refused before any model reads the
+// payload, so these cases are what keeps the contrast between the two variants
+// measurable: both arms of one run have to reach the same conversation.
+test("both variants carry the --session-id value in x-opencode-session", async () => {
+  const dir = scratch("session-header");
+  const route = await startRoute(() => ({ status: 200, body: ACCEPTED_BODY }));
+  try {
+    const result = await runProbe([...routeArgs(dir, ["--session-id", "probe-fixed-1"]), "--base-url", route.baseUrl]);
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(
+      route.state.requests.map((request) => request.variant),
+      ["pass-back", "stripped"],
+    );
+    for (const request of route.state.requests) {
+      // The wire bytes, not the parsed lookup: a gateway reads what this case reads.
+      assert.deepEqual(wireHeader(request, "x-opencode-session"), ["probe-fixed-1"], request.variant);
+    }
+  } finally {
+    await route.close();
+  }
+});
+
+test("without --session-id one id is generated per run and both variants share it", async () => {
+  const first = scratch("session-generated-1");
+  const second = scratch("session-generated-2");
+  const route = await startRoute(() => ({ status: 200, body: ACCEPTED_BODY }));
+  try {
+    for (const dir of [first, second]) {
+      const result = await runProbe([...routeArgs(dir), "--base-url", route.baseUrl]);
+      assert.equal(result.code, 0, result.stderr);
+    }
+    const ids = route.state.requests.map((request) => request.headers["x-opencode-session"]);
+    assert.equal(ids.length, 4);
+    const [firstPassBack, firstStripped, secondPassBack, secondStripped] = ids;
+    // Generated, so a constant or an empty string fails here rather than passing
+    // as a header the gateway would accept.
+    assert.match(firstPassBack, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.equal(firstPassBack, firstStripped, "the two attempts of one run went to different conversations");
+    assert.equal(secondPassBack, secondStripped);
+    assert.notEqual(firstPassBack, secondPassBack, "a second run reused the first run's id");
   } finally {
     await route.close();
   }
