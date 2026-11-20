@@ -23,6 +23,12 @@
 // CHECK_RESULT=<path> overrides it, which is how a RED run is recorded against a
 // pre-change copy. BRAID_GATE_REPOS defaults to the fixture repo, so the default
 // search path is what most cases exercise.
+//
+// Section (o) covers claim–row parity: a claim that names a runnable file must
+// have a row naming the same file, and a `completed` block's row must exit 0.
+// Its cases build the citation and the row explicitly rather than relying on the
+// baseline block, whose verifier names no file so that every other case isolates
+// one leg.
 
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -107,8 +113,12 @@ function block(extra = {}) {
     claims: [
       {
         claim: "fixture claim holds",
-        verified_by: "node test-check-result.mjs (the fixture's own harness)",
-        predicts: "node test-check-result.mjs exits 0",
+        // Names no runnable file: the cases below isolate one leg each, and a
+        // baseline that cited a test would make every one of them a parity case
+        // too. The parity leg has its own section, where each case builds the
+        // citation and the row it needs.
+        verified_by: "the fixture harness (offline, one assistant message per case)",
+        predicts: "the gate exits 0 for a well-formed block",
       },
     ],
     ...extra,
@@ -612,6 +622,9 @@ r = run(
     "cap-t6-zero-point.jsonl",
     block({
       source_revision: settled,
+      // The claim cites this instrument, so the close records its run: the block
+      // is a zero point for the capability read, not an exemption from parity.
+      gate_evidence: [{ cmd: "node scripts/check-self-review.mjs", exit: 0 }],
       spec: "audit",
       claims: [
         {
@@ -839,12 +852,16 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
   // A named command field is disclosure even when the prose is quiet.
   const fieldCmd = block({
     source_revision: settled,
+    // The command field names a runnable file, so the block also carries the row
+    // that records that run: disclosure and parity are separate reads, and a
+    // block that names a program is asked for both.
+    gate_evidence: [{ cmd: "node check-dossiers.mjs --all", exit: 0 }],
     claims: [
       {
         claim: "72 dossiers were read",
         verified_by: "the dossier set",
         command: "node check-dossiers.mjs --all",
-        predicts: "node test-check-result.mjs exits 0",
+        predicts: "node check-dossiers.mjs --all exits 0",
       },
     ],
   });
@@ -928,6 +945,153 @@ if (censusRun.status === 0 && censusRun.stdout.trim() !== "") {
     `exit=${r.code} fail-lines=${failLines(r.stdout)}`,
   );
 }
+
+// ── (o) claim–row parity: a cited run has to be a recorded run ──────────────
+//
+// A claim may cite a test file while no row records its command or its exit, and
+// then the claim is the only statement that the test passed. These cases pin the
+// pairing and the boundaries that keep it from firing on a read: a git command,
+// a file read and a quoted output naming no file carry no obligation; an
+// `unverified` claim carries none; an artifact is not an exemption; and an
+// incomplete block keeps the row without the exit constraint. Paths are compared
+// as spellings, so the two directions of the absolute/relative pair are separate
+// cases.
+
+const citedFile = "packages/core/test/runtime/gate-x.mjs";
+const parityFail = (stdout) => stdout.split("\n").filter((l) => l.startsWith("FAIL claim-row-parity:"));
+const parityCounter = (stdout) => stdout.split("\n").find((l) => l.startsWith("claim-row-parity:"));
+const paritySession = (name, claims, rows, extra = {}) =>
+  makeSession(name, block({ source_revision: settled, claims, gate_evidence: rows, ...extra }));
+const passingClaim = { claim: "the fixture leg passes", verified_by: `node ${citedFile}` };
+
+r = run(paritySession("parity-matched.jsonl", [passingClaim], [{ cmd: `node ${citedFile}`, exit: 0 }]));
+check(
+  "(o1) a claim citing a test file, with the row that records that run, passes",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    parityFail(r.stdout).length === 0 &&
+    parityCounter(r.stdout) === "claim-row-parity: 1/1 claim(s) citing a runnable file are matched by a gate row",
+  `exit=${r.code} counter=${parityCounter(r.stdout) ?? "absent"}`,
+);
+
+r = run(paritySession("parity-unmatched.jsonl", [passingClaim], [{ cmd: "true", exit: 0 }]));
+check(
+  "(o2) the same claim with no row naming the file is refused, naming the claim, the file and the rows searched",
+  r.code === 1 &&
+    failLines(r.stdout) === 1 &&
+    parityFail(r.stdout).length === 1 &&
+    /claim 0/.test(parityFail(r.stdout)[0]) &&
+    parityFail(r.stdout)[0].includes(citedFile) &&
+    /searched 1 row\(s\): "true"/.test(parityFail(r.stdout)[0]),
+  `exit=${r.code} fail-lines=${failLines(r.stdout)} line=${parityFail(r.stdout)[0]?.slice(0, 90) ?? "absent"}`,
+);
+
+const redRow = [{ cmd: `node ${citedFile}`, exit: 5 }];
+r = run(paritySession("parity-exit-completed.jsonl", [passingClaim], redRow));
+check(
+  "(o3) a matching row that exits non-zero under completed is refused, naming the exit code",
+  r.code === 1 &&
+    failLines(r.stdout) === 1 &&
+    parityFail(r.stdout).length === 1 &&
+    /claim 0/.test(parityFail(r.stdout)[0]) &&
+    /exits 5/.test(parityFail(r.stdout)[0]),
+  `exit=${r.code} line=${parityFail(r.stdout)[0]?.slice(0, 90) ?? "absent"}`,
+);
+
+r = run(paritySession("parity-exit-partial.jsonl", [passingClaim], redRow, { status: "partial" }));
+check(
+  "(o3) the same row under status=partial passes, and the lifted exit is stated",
+  r.code === 0 &&
+    /RESULT: PASS/.test(r.stdout) &&
+    parityFail(r.stdout).length === 0 &&
+    /WARN claim-row-exit: claim 0 cites .*gate-x\.mjs and its row 0 exits 5 — status=partial/.test(r.stdout) &&
+    parityCounter(r.stdout) === "claim-row-parity: 1/1 claim(s) citing a runnable file are matched by a gate row",
+  `exit=${r.code} warn=${/WARN claim-row-exit/.test(r.stdout) ? "present" : "absent"}`,
+);
+
+// Normalisation: the two spellings are one file, in both directions. The file
+// need not exist; the rule compares paths, and the repo argument is what makes a
+// relative spelling absolute.
+const normalRepo = join(root, "parity-repo");
+mkdirSync(normalRepo, { recursive: true });
+const relativeCited = "tests/gate-y.mjs";
+const absoluteCited = join(normalRepo, relativeCited);
+for (const [name, claimSpelling, rowSpelling] of [
+  ["a relative claim matches an absolute row", relativeCited, absoluteCited],
+  ["an absolute claim matches a relative row", absoluteCited, relativeCited],
+]) {
+  const rr = run(
+    paritySession(
+      `parity-normalise-${name.includes("relative claim") ? "rel" : "abs"}.jsonl`,
+      [{ claim: "the fixture leg passes", verified_by: `node ${claimSpelling}` }],
+      [{ cmd: `node ${rowSpelling}`, exit: 0 }],
+    ),
+    ["--repo", normalRepo],
+  );
+  check(
+    `(o4) ${name}, resolved against --repo`,
+    rr.code === 0 &&
+      parityFail(rr.stdout).length === 0 &&
+      parityCounter(rr.stdout) === "claim-row-parity: 1/1 claim(s) citing a runnable file are matched by a gate row",
+    `exit=${rr.code} counter=${parityCounter(rr.stdout) ?? "absent"}`,
+  );
+}
+
+for (const [name, verifiedBy] of [
+  // The git case names the path bare, after the subcommand, so the exemption that
+  // answers it is the instrument word and not the token shape: `git show
+  // <rev>:x.mjs` never reaches the file regex, and a case built on it would pass
+  // whether or not the boundary existed.
+  ["a git command", `git log --oneline -- ${citedFile}`],
+  ["a read of the file", `read ${citedFile}: the file states the invariant`],
+  ["a quoted output naming no file", 'the quoted output: all green, no failures'],
+]) {
+  const rr = run(
+    paritySession(`parity-exempt-${name.replace(/\W+/g, "-")}.jsonl`, [{ claim: "the fixture leg passes", verified_by: verifiedBy }], [
+      { cmd: "true", exit: 0 },
+    ]),
+  );
+  check(
+    `(o5) ${name} carries no parity obligation`,
+    rr.code === 0 && parityFail(rr.stdout).length === 0 && parityCounter(rr.stdout) === undefined,
+    `exit=${rr.code} counter=${parityCounter(rr.stdout) ?? "absent"}`,
+  );
+}
+
+r = run(
+  paritySession("parity-unverified.jsonl", [{ ...passingClaim, verdict: "unverified" }], [{ cmd: "true", exit: 0 }]),
+);
+check(
+  "(o5) a claim whose verdict is unverified carries no obligation",
+  r.code === 0 && parityFail(r.stdout).length === 0 && parityCounter(r.stdout) === undefined,
+  `exit=${r.code} counter=${parityCounter(r.stdout) ?? "absent"}`,
+);
+
+r = run(paritySession("parity-artifact.jsonl", [passingClaim], [{ cmd: "true", exit: 0 }], { artifacts: [citedFile] }));
+check(
+  "(o5) a cited file the block also lists in artifacts is still obliged (an artifact is a product)",
+  r.code === 1 && parityFail(r.stdout).length === 1 && parityFail(r.stdout)[0].includes(citedFile),
+  `exit=${r.code} line=${parityFail(r.stdout)[0]?.slice(0, 80) ?? "absent"}`,
+);
+
+const commandClaim = { claim: "the dossier set was read", verified_by: "the dossier set", command: `node ${citedFile} --all` };
+r = run(paritySession("parity-command.jsonl", [commandClaim], [{ cmd: "true", exit: 0 }]));
+check(
+  "(o6) a command field naming the file is obliged too",
+  r.code === 1 && parityFail(r.stdout).length === 1 && parityFail(r.stdout)[0].includes(citedFile),
+  `exit=${r.code} line=${parityFail(r.stdout)[0]?.slice(0, 80) ?? "absent"}`,
+);
+
+r = run(
+  paritySession("parity-command-row.jsonl", [commandClaim], [{ cmd: `node ${citedFile} --all`, exit_code: 0 }]),
+);
+check(
+  "(o6) the same command field passes when the row records it (exit_code spelling)",
+  r.code === 0 &&
+    parityFail(r.stdout).length === 0 &&
+    parityCounter(r.stdout) === "claim-row-parity: 1/1 claim(s) citing a runnable file are matched by a gate row",
+  `exit=${r.code} counter=${parityCounter(r.stdout) ?? "absent"}`,
+);
 
 // ── Verdict ──────────────────────────────────────────────────────────────────
 
