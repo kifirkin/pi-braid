@@ -1,8 +1,14 @@
 /**
  * thinking-replay-probe.mjs contract: the recorder classifies an answer from the
- * status AND the body, prints both request bodies without opening a socket, puts
- * the routing header the flag names (or a generated one) on every request, and
- * appends a record per attempt rather than rewriting the file.
+ * status AND the body, prints all three request bodies without opening a socket,
+ * puts the routing header the flag names (or a generated one) on every request,
+ * and appends a record per attempt rather than rewriting the file.
+ *
+ * The field under test has three shapes rather than two - present with the prior
+ * thinking, absent, present and empty - because an absent key and an empty value
+ * are different things for a route to validate, and the runtime's serializer fills
+ * the empty one when the route's compat flag asks for the field on every replayed
+ * assistant turn. Every case below that counts records or requests counts three.
  *
  * Every case runs the real script against a loopback HTTP server this file
  * starts, so what is asserted is the record the recorder wrote and the bytes it
@@ -45,6 +51,20 @@ const CODED_PHRASE_BODY = JSON.stringify({
 
 const root = mkdtempSync(join(tmpdir(), "thinking-replay-probe-test-"));
 after(() => rmSync(root, { recursive: true, force: true }));
+
+/** The three shapes of the field under test, in the order the recorder sends them. */
+const VARIANT_ORDER = ["pass-back", "stripped", "empty-string"];
+
+/**
+ * Which shape of the field arrived, read from the bytes rather than from the
+ * order the recorder sent them in: a body sent under the wrong label shows up
+ * here as the label its own bytes carry.
+ */
+function arrivalVariant(body) {
+  const turn = body?.messages?.[2];
+  if (turn === null || typeof turn !== "object" || !("reasoning_content" in turn)) return "stripped";
+  return turn.reasoning_content === "" ? "empty-string" : "pass-back";
+}
 
 let caseCount = 0;
 /** A fresh directory for one case, so a record file or a guard cannot be shared. */
@@ -111,7 +131,7 @@ async function startRoute(answer) {
         // A body that is not JSON names no variant; the request is still recorded.
         body = null;
       }
-      const variant = body?.messages?.[2]?.reasoning_content === undefined ? "stripped" : "pass-back";
+      const variant = arrivalVariant(body);
       state.requests.push({ variant, text, url: request.url, method: request.method, headers: request.headers, rawHeaders: request.rawHeaders });
       const reply = answer(variant, { body, text });
       if (reply.destroy === true) {
@@ -254,7 +274,7 @@ test("a 2xx answer records accepted true", async () => {
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(
     result.records.map((record) => record.variant),
-    ["pass-back", "stripped"],
+    VARIANT_ORDER,
   );
   for (const record of result.records) {
     assert.equal(record.httpStatus, 200);
@@ -287,6 +307,7 @@ test("a 400 whose body names the reasoning field records false and the provider'
     [
       ["pass-back", true, null],
       ["stripped", false, "reasoning_content_missing"],
+      ["empty-string", true, null],
     ],
   );
 });
@@ -324,7 +345,7 @@ test("a 400 that names something unrelated records accepted unknown", async () =
 });
 
 // ── B2: the dry run is silent and the two bodies differ in one field ────────
-test("--dry-run prints both request bodies and opens no socket", async () => {
+test("--dry-run prints all three request bodies and opens no socket", async () => {
   const dir = scratch("dry-run");
   const guard = writeGuard(dir, "");
   const result = await runProbe(
@@ -333,17 +354,32 @@ test("--dry-run prints both request bodies and opens no socket", async () => {
   );
   assert.equal(result.code, 0, result.stderr);
   const bodies = printedBodies(result.stdout);
-  assert.deepEqual(Object.keys(bodies), ["pass-back", "stripped"]);
+  assert.deepEqual(Object.keys(bodies), VARIANT_ORDER);
 
   const passBack = bodies["pass-back"];
   const stripped = bodies.stripped;
+  const emptyString = bodies["empty-string"];
   assert.equal(typeof passBack.messages[2].reasoning_content, "string");
+  assert.equal(passBack.messages[2].reasoning_content.length > 0, true);
   assert.equal("reasoning_content" in stripped.messages[2], false);
-  // Nothing but the field: the parsed pass-back body with that one key removed
-  // is the stripped body, key for key and value for value.
-  const copy = JSON.parse(JSON.stringify(passBack));
-  delete copy.messages[2].reasoning_content;
-  assert.deepEqual(copy, stripped);
+  // The third cell is the key present with no text, never the key omitted: an
+  // omitted key is the stripped body again, which is the plant this reads.
+  assert.equal("reasoning_content" in emptyString.messages[2], true);
+  assert.equal(typeof emptyString.messages[2].reasoning_content, "string");
+  assert.equal(emptyString.messages[2].reasoning_content.length, 0);
+
+  // Nothing but the field: the parsed pass-back body with that one key removed is
+  // the stripped body, and with the key emptied is the empty-string body, key for
+  // key and value for value.
+  const withoutField = JSON.parse(JSON.stringify(passBack));
+  delete withoutField.messages[2].reasoning_content;
+  assert.deepEqual(withoutField, stripped);
+  const asEmpty = JSON.parse(JSON.stringify(passBack));
+  asEmpty.messages[2].reasoning_content = "";
+  assert.deepEqual(asEmpty, emptyString);
+  // Key order is what makes the wire comparison below a comparison of one field.
+  assert.deepEqual(Object.keys(emptyString.messages[2]), Object.keys(passBack.messages[2]));
+  assert.deepEqual(Object.keys(stripped.messages[2]), ["role", "content", "tool_calls"]);
   assert.equal(passBack.max_tokens, 64);
 });
 
@@ -369,7 +405,7 @@ test("--dry-run prints the session header it would send and still connects to no
     // before the payload it routes.
     const printed = result.stdout.split("\n").filter((line) => line.startsWith("x-opencode-session:"));
     assert.deepEqual(printed, ["x-opencode-session: probe-dry-1"]);
-    assert.deepEqual(Object.keys(printedBodies(result.stdout)), ["pass-back", "stripped"]);
+    assert.deepEqual(Object.keys(printedBodies(result.stdout)), VARIANT_ORDER);
     // A dry run names an endpoint it does not dial: the count is the claim.
     assert.equal(route.state.connections, 0, "the dry run opened a connection");
     assert.equal(route.state.requests.length, 0);
@@ -380,7 +416,7 @@ test("--dry-run prints the session header it would send and still connects to no
 });
 
 // ── The wire ────────────────────────────────────────────────────────────────
-test("both variants send the same bytes apart from the reasoning field", async () => {
+test("all three variants send the same bytes apart from the reasoning field", async () => {
   const dir = scratch("wire");
   const route = await startRoute((variant) =>
     variant === "stripped" ? { status: 400, body: REFUSED_BODY } : { status: 200, body: ACCEPTED_BODY },
@@ -393,10 +429,12 @@ test("both variants send the same bytes apart from the reasoning field", async (
       nodeArgs: ["--import", guard],
     });
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(route.state.requests.length, 2);
-    const [passBack, stripped] = route.state.requests;
-    assert.equal(passBack.variant, "pass-back");
-    assert.equal(stripped.variant, "stripped");
+    assert.equal(route.state.requests.length, 3);
+    const [passBack, stripped, emptyString] = route.state.requests;
+    assert.deepEqual(
+      route.state.requests.map((request) => request.variant),
+      VARIANT_ORDER,
+    );
     assert.equal(passBack.method, "POST");
     assert.equal(passBack.url, "/v1/chat/completions");
 
@@ -407,14 +445,18 @@ test("both variants send the same bytes apart from the reasoning field", async (
     assert.equal(parsed.tools[0].function.name, "read_weight");
     assert.equal(parsed.messages.length, 4);
 
-    // Byte equality on the wire: re-serializing the pass-back body after
-    // removing the one field reproduces the stripped body exactly, so no other
-    // byte of the prompt differs.
-    const copy = JSON.parse(passBack.text);
-    delete copy.messages[2].reasoning_content;
-    assert.equal(JSON.stringify(copy), stripped.text);
+    // Byte equality on the wire, one field apart, for both other shapes: removing
+    // the key reproduces the stripped body and emptying it reproduces the
+    // empty-string body, so no other byte of the prompt differs.
+    const withoutField = JSON.parse(passBack.text);
+    delete withoutField.messages[2].reasoning_content;
+    assert.equal(JSON.stringify(withoutField), stripped.text);
+    const asEmpty = JSON.parse(passBack.text);
+    asEmpty.messages[2].reasoning_content = "";
+    assert.equal(JSON.stringify(asEmpty), emptyString.text);
     assert.equal(stripped.text.includes("reasoning_content"), false);
     assert.equal(passBack.text.includes("reasoning_content"), true);
+    assert.equal(emptyString.text.includes('"reasoning_content":""'), true);
   } finally {
     await route.close();
   }
@@ -424,7 +466,7 @@ test("both variants send the same bytes apart from the reasoning field", async (
 // A request without `x-opencode-session` is refused before any model reads the
 // payload, so these cases are what keeps the contrast between the two variants
 // measurable: both arms of one run have to reach the same conversation.
-test("both variants carry the --session-id value in x-opencode-session", async () => {
+test("every variant carries the --session-id value in x-opencode-session", async () => {
   const dir = scratch("session-header");
   const route = await startRoute(() => ({ status: 200, body: ACCEPTED_BODY }));
   try {
@@ -432,7 +474,7 @@ test("both variants carry the --session-id value in x-opencode-session", async (
     assert.equal(result.code, 0, result.stderr);
     assert.deepEqual(
       route.state.requests.map((request) => request.variant),
-      ["pass-back", "stripped"],
+      VARIANT_ORDER,
     );
     for (const request of route.state.requests) {
       // The wire bytes, not the parsed lookup: a gateway reads what this case reads.
@@ -443,7 +485,7 @@ test("both variants carry the --session-id value in x-opencode-session", async (
   }
 });
 
-test("without --session-id one id is generated per run and both variants share it", async () => {
+test("without --session-id one id is generated per run and every variant shares it", async () => {
   const first = scratch("session-generated-1");
   const second = scratch("session-generated-2");
   const route = await startRoute(() => ({ status: 200, body: ACCEPTED_BODY }));
@@ -453,13 +495,13 @@ test("without --session-id one id is generated per run and both variants share i
       assert.equal(result.code, 0, result.stderr);
     }
     const ids = route.state.requests.map((request) => request.headers["x-opencode-session"]);
-    assert.equal(ids.length, 4);
-    const [firstPassBack, firstStripped, secondPassBack, secondStripped] = ids;
+    assert.equal(ids.length, 6);
+    const [firstPassBack, firstStripped, firstEmpty, secondPassBack, secondStripped, secondEmpty] = ids;
     // Generated, so a constant or an empty string fails here rather than passing
     // as a header the gateway would accept.
     assert.match(firstPassBack, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    assert.equal(firstPassBack, firstStripped, "the two attempts of one run went to different conversations");
-    assert.equal(secondPassBack, secondStripped);
+    assert.deepEqual([firstStripped, firstEmpty], [firstPassBack, firstPassBack], "the attempts of one run went to different conversations");
+    assert.deepEqual([secondStripped, secondEmpty], [secondPassBack, secondPassBack]);
     assert.notEqual(firstPassBack, secondPassBack, "a second run reused the first run's id");
   } finally {
     await route.close();
@@ -502,14 +544,60 @@ test("a contradicting record is refused without --force and appended with it", a
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line));
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 4);
   assert.deepEqual(lines[0], planted);
   assert.deepEqual(
     lines.slice(1).map((record) => [record.variant, record.accepted]),
     [
       ["pass-back", true],
       ["stripped", true],
+      ["empty-string", true],
     ],
+  );
+});
+
+// ── B3 again: three shapes of one field on one route ────────────────────────
+// The variant is not part of the route. A recorder that folded it in would treat
+// the second shape as a contradiction of the first, and a refusal that named only
+// the route would leave the reader guessing which of the three it meant.
+test("the three variants coexist for one route, and a refusal names the variant it contradicts", async () => {
+  const dir = scratch("coexist");
+  const agree = () => ({ status: 200, body: ACCEPTED_BODY });
+  const first = await probeWithRoute(dir, agree);
+  assert.equal(first.code, 0, first.stderr);
+  assert.deepEqual(
+    first.records.map((record) => [record.provider, record.api, record.model]),
+    VARIANT_ORDER.map(() => [ROUTE.provider, ROUTE.api, ROUTE.model]),
+  );
+  assert.deepEqual(
+    first.records.map((record) => record.variant),
+    VARIANT_ORDER,
+  );
+  assert.deepEqual(
+    first.records.map((record) => record.accepted),
+    [true, true, true],
+  );
+
+  // Same route, with the empty-string answer refused: the first two verdicts agree
+  // with the file, so the refusal is the third one.
+  const flip = (variant) =>
+    variant === "empty-string" ? { status: 400, body: REFUSED_BODY } : { status: 200, body: ACCEPTED_BODY };
+  const refused = await probeWithRoute(dir, flip);
+  assert.equal(refused.code, 3, refused.stderr);
+  assert.match(refused.stderr, /\(empty-string\)/);
+  // The contradiction is a relation between two verdicts, so the third one had to
+  // be measured before it could be refused.
+  assert.equal(refused.state.requests.length, 3);
+  assert.deepEqual(
+    refused.records.map((record) => record.variant),
+    ["pass-back", "stripped", "empty-string", "pass-back", "stripped"],
+  );
+
+  const forced = await probeWithRoute(dir, flip, { extra: ["--force"] });
+  assert.equal(forced.code, 0, forced.stderr);
+  assert.deepEqual(
+    forced.records.filter((record) => record.variant === "empty-string").map((record) => record.accepted),
+    [true, false],
   );
 });
 
@@ -650,7 +738,7 @@ test("the bearer token comes from the named variable and is never printed", asyn
       { env: { PROBE_FIXTURE_TOKEN: token } },
     );
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(route.state.requests.length, 2);
+    assert.equal(route.state.requests.length, 3);
     for (const request of route.state.requests) assert.equal(request.headers.authorization, `Bearer ${token}`);
     assert.equal(result.stdout.includes(token), false);
     assert.equal(result.stderr.includes(token), false);

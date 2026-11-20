@@ -8,8 +8,19 @@
  * request every previous turn's `reasoning_content` must be passed back, and that
  * failing to do so returns a 400. The gateway braid's traffic goes through
  * publishes nothing about which upstream rule it enforces, so the only instrument
- * is a request. This script makes that request twice - once with the field, once
- * without - and writes down what came back.
+ * is a request.
+ *
+ * The field has three shapes a previous turn can arrive in, and they are not two
+ * ends of one axis: present with the prior thinking, absent, and present with an
+ * empty string. The third is not hypothetical - pi-ai's own serializer fills the
+ * field with `""` when `compat.requiresReasoningContentOnAssistantMessages` is set
+ * and the model is a reasoning model (`dist/api/openai-completions.js`, the branch
+ * that assigns the empty string) - and that flag is auto-detected from the
+ * provider URL, so which of the three shapes a route is sent cannot be read off
+ * this side. It is also the shape a route has something to validate: an empty
+ * string is a value it sees, where a missing key is a value it never sees, so a
+ * route can accept the absent key and still refuse the empty one. This script
+ * sends all three and writes down what came back.
  *
  * Why it records instead of deciding: a policy whose default is `unknown`, and
  * `unknown` never acts, needs exactly one thing from this file, which is a fact.
@@ -24,8 +35,8 @@
  *     provider's own code when the body carries one and the field name it matched
  *     when it does not. The rule keys on the field name and not on a word like
  *     "missing", because the same 400 means "required" for the stripped variant
- *     and "refused" for the pass-back variant: the pair of records is what tells
- *     those apart, so one record alone is not a policy input.
+ *     and "refused" for the two that carry the field: which variant answered is
+ *     what tells those apart, so one record alone is not a policy input.
  *   - everything else - a 5xx, a 3xx, a 4xx naming something unrelated, an
  *     attempt that produced no status at all - `accepted: "unknown"`. A status
  *     code alone is never a verdict: a gateway in front of the upstream can return
@@ -44,8 +55,9 @@
  *     --api openai-completions --model <name> --base-url <url> --record <path> \
  *     [--session-id <id>] [--api-key-env <VAR>] [--force] [--timeout-ms <n>]
  *
- * `--dry-run` prints the header it would send and both request bodies, and opens
- * no socket, so the crafted conversation can be read before it is spent.
+ * `--dry-run` prints the header it would send and all three request bodies, one
+ * under a label naming its variant, and opens no socket, so the crafted
+ * conversation can be read before it is spent.
  * `--record` is required for a real run: a verdict with nowhere to land is one
  * the next reader cannot consume. The record file is JSON lines, one record per
  * attempt, appended as each attempt completes. `--api-key-env` names the
@@ -53,8 +65,8 @@
  * a named variable that is unset is a usage error rather than an unauthenticated
  * request whose 401 would be recorded as `unknown`. `--session-id` names the
  * value of the routing header; when it is omitted one is generated per run, so
- * the two attempts of one run route to the same conversation and a second run
- * does not inherit the first one's.
+ * every attempt of one run routes to the same conversation and a second run does
+ * not inherit the first one's.
  *
  * A record for the same (provider, api, model, variant) is refused when it would
  * contradict one already in the file, unless `--force` is passed, in which case
@@ -64,11 +76,11 @@
  * measurement.
  *
  * Tokens: one short fixed system prompt, a two-turn tool conversation, and
- * `max_tokens` capped at 64. The two bodies carry the same prompt text and differ
- * only in the reasoning field, so a difference between the answers is
- * attributable to that field.
+ * `max_tokens` capped at 64. The three bodies carry the same prompt text and
+ * differ only in the reasoning field's shape, so a difference between the answers
+ * is attributable to that shape.
  *
- * Exit codes: 0 both attempts produced an answer and were recorded (a recorded
+ * Exit codes: 0 every attempt produced an answer and was recorded (a recorded
  * `accepted: false` is an answer, and the caller reads the record rather than the
  * exit code); 2 an attempt produced no answer and the run stopped there, with a
  * record saying `"unknown"` and `httpStatus` null; 3 a record would contradict an
@@ -80,12 +92,15 @@ import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 const SUPPORTED_APIS = ["openai-completions"];
-const VARIANTS = ["pass-back", "stripped"];
+// The three shapes one field can arrive in, and the whole of what this recorder
+// asks a route about. Order is the order the requests go out, which is also the
+// order the records land in the file.
+const VARIANTS = ["pass-back", "stripped", "empty-string"];
 const MAX_OUTPUT_TOKENS = 64;
 const DEFAULT_TIMEOUT_MS = 30000;
 
-// Fixed prompt text. Both variants carry these bytes, so the only difference
-// between the two request bodies is the field under test.
+// Fixed prompt text. Every variant carries these bytes, so the only difference
+// between the three request bodies is the field under test.
 const SYSTEM_PROMPT = "You are a request probe. Use the tool you are given, then answer in one short sentence.";
 const USER_PROMPT = "Look up the weight recorded for the key thinking, then tell me what it was.";
 const PRIOR_THINKING = "The tool is the only way to read a weight, so call read_weight once and answer from its result.";
@@ -130,12 +145,25 @@ function toolCall() {
   return { id: TOOL_CALL_ID, type: "function", function: { name: "read_weight", arguments: '{"key":"thinking"}' } };
 }
 
-/** The conversation both variants send, with the field under test in one of them. */
+/**
+ * The field's shape, keyed by variant: `null` is the absent key, `""` is a key
+ * the route can validate and rejects or accepts on its own terms.
+ */
+const REASONING_BY_VARIANT = new Map([
+  ["pass-back", PRIOR_THINKING],
+  ["stripped", null],
+  ["empty-string", ""],
+]);
+
+/** The conversation one variant sends, with the field under test in its shape. */
 function messagesFor(variant) {
-  const assistant =
-    variant === "pass-back"
-      ? { role: "assistant", content: "", reasoning_content: PRIOR_THINKING, tool_calls: [toolCall()] }
-      : { role: "assistant", content: "", tool_calls: [toolCall()] };
+  if (!REASONING_BY_VARIANT.has(variant)) throw new Error(`messagesFor: unknown variant ${variant}`);
+  const reasoning = REASONING_BY_VARIANT.get(variant);
+  const assistant = { role: "assistant", content: "" };
+  // Key order is fixed here so that the three bodies differ in this field alone
+  // and a byte comparison between them stays a comparison of one thing.
+  if (reasoning !== null) assistant.reasoning_content = reasoning;
+  assistant.tool_calls = [toolCall()];
   return [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: USER_PROMPT },
@@ -334,7 +362,7 @@ function validate(options) {
         "(a record that names an api the request did not use attests nothing)",
     );
   }
-  // Generated here rather than at each request, because the two attempts are one
+  // Generated here rather than at each request, because the attempts are one
   // conversation: a value that differed between them would route them apart.
   if (options.sessionId === "") options.sessionId = randomUUID();
 
