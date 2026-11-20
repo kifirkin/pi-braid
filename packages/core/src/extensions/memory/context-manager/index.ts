@@ -37,9 +37,10 @@ import {
 // registerContextPruningHandler stays disabled: the `context` event fires
 // per-streaming-message, not pre-compaction, so its return value never feeds
 // a compaction prep. handlers/offload.ts ALSO registers a `context` handler —
-// that is NOT a revival of this disabled path: the offloader is a setting-gated
-// (default OFF) per-request substitution whose return value IS applied by the
-// installed pi-core (verified against node_modules 0.82.1 runner.js emitContext
+// that is NOT a revival of this disabled path: that handler carries the two
+// per-request substitution passes (image age-out, default ON; stale text
+// offload, default OFF), and its return value IS applied by the installed
+// pi-core (verified against node_modules 0.82.1 runner.js emitContext
 // + agent-loop.js transformContext).
 import { registerRotationHandlers, registerSessionShutdownHandler } from "./handlers/rotation.js";
 import { registerStaleToolResultOffloader } from "./handlers/offload.js";
@@ -97,7 +98,7 @@ export default function contextManagerExtension(pi: ExtensionAPI): void {
   registerAgentEndApiErrorHandler(pi);
   // [warn] DISABLED: causes session corruption via concurrent file writes during streaming.
   // registerContextPruningHandler(pi); // <- "context" event return value is ignored by pi
-  registerStaleToolResultOffloader(pi); // Setting-gated (default OFF) - no-op unless opted in
+  registerStaleToolResultOffloader(pi); // Ages images (default ON) + offloads stale text (opt-in)
   // Emergency 413 offloader (default ON) — publishes the runner
   // into the process-global slot and registers the per-request stub handler.
   registerContextEmergencyOffloader(pi);

@@ -31,6 +31,7 @@
     "context": {
       "contextLimitTokens": 262000,
       "toolResultSizeCap": { "enabled": true, "maxChars": 262144 },
+      "imageAge": { "enabled": true, "turns": 20 },
       "staleToolResultOffload": {
         "enabled": false,
         "minChars": 4000,

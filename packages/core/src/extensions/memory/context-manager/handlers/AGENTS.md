@@ -32,6 +32,7 @@ distinction.
 | `events.ts`                 | agent_end API-error guidance, context pruning. 367L.                                                  |
 | `navigation.ts`             | Tree navigation + checkout. 98L.                                                                      |
 | `rotation.ts`               | Session rotation + shutdown. 363L.                                                                    |
+| `image-policy.ts`           | What an image may spend (cap share), what it costs over time (age-out), and the counters for both.    |
 | `tools/context-compress.ts` | The `context_compress` tool (registers in index.ts).                                                  |
 | `tools/context-inspect.ts`  | The `context_inspect` tool.                                                                           |
 | `tools/context-navigate.ts` | The `context_navigate` tool.                                                                          |

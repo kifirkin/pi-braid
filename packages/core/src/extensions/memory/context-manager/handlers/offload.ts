@@ -1,24 +1,34 @@
-// Stale toolResult offloader.
+// Per-request context substitutions, applied as an append-only VIEW.
 //
-// Setting-gated (braid.context.staleToolResultOffload, default OFF), fully
-// deterministic (char-count + age, no LLM) offloader for stale large
-// toolResults: the full original text is flushed losslessly to disk BEFORE any
-// substitution, and the per-request context carries a stub pointing at the
-// flush file. Recovery = read the file.
+// Two passes, each with its own owner setting, both inside one `context`
+// handler (pi-core's transformContext path):
 //
-// Mechanism: registered as a `context` event handler — pi-core's
-// transformContext path. The installed pi-core applies a handler's returned
-// { messages } once per LLM call, BEFORE convertToLlm (emitContext
-// structuredClones the live session messages). The session file itself is
-// append-only and is never touched, so the offloader is lossless by
-// construction and naturally idempotent (the substitution is recomputed from
-// the append-only original on every call; the flush is guarded by file
-// existence). This is NOT the disabled registerContextPruningHandler path
-// (see index.ts NOTE): that handler's semantics (per-streaming compaction
-// prep) are unrelated to a per-request substitution.
+//   1. image age-out (braid.context.imageAge, default ON) - an image block
+//      older than the owner's threshold becomes one text block naming the file
+//      it came from and the tool that re-reads it. The replacement happens
+//      only when the file's bytes are on disk, so it is lossless and an image
+//      with no recoverable path is never touched.
+//   2. stale large toolResults (braid.context.staleToolResultOffload, default
+//      OFF) - fully deterministic (char-count + age): eligible text results
+//      are flushed losslessly to disk BEFORE any substitution, and the
+//      per-request context carries a stub pointing at the flush file.
+//      Recovery = read the file.
 //
-// Safety choices (v1): skip isError results, internal-tool results,
-// bashExecution messages, and any result containing non-text (image) blocks.
+// Mechanism: registered as a `context` event handler. The installed pi-core
+// applies a handler's returned { messages } once per LLM call, BEFORE
+// convertToLlm (emitContext structuredClones the live session messages). The
+// session file itself is append-only and is never touched, so both passes are
+// lossless by construction and naturally idempotent (the substitution is
+// recomputed from the append-only original on every call; a text flush is
+// guarded by file existence). This is NOT the disabled
+// registerContextPruningHandler path (see index.ts NOTE): that handler's
+// semantics (per-streaming compaction prep) are unrelated to a per-request
+// substitution.
+//
+// Safety choices (v1): the text pass skips isError results, internal-tool
+// results, bashExecution messages, and any result containing non-text (image)
+// blocks. The image pass replaces image blocks only, keeps every other block,
+// and refuses a path it cannot name back to a file with bytes behind it.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -26,11 +36,13 @@ import { dirname } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  getImageAgeConfig,
   getStaleToolResultOffloadConfig,
   type ResolvedStaleToolResultOffloadConfig,
 } from "../../../../lib/config/braid-settings.js";
 import { getOffloadFilePath } from "../../../../lib/config/braid-paths.js";
 import { getCmState, isInternal, log } from "./shared.js";
+import { ageImageBlocks } from "./image-policy.js";
 
 /** Stub prefix — recognizable marker for already-offloaded entries. */
 export const STALE_OFFLOAD_STUB_PREFIX = "[offloaded:";
@@ -278,53 +290,98 @@ const defaultIo: OffloadIo = {
     getOffloadFilePath(sessionId, toolCallId, toolName),
 };
 
+/** Whether any toolResult in the request carries an image block. */
+function hasImageBlocks(messages: readonly AgentMessage[]): boolean {
+  for (const msg of messages) {
+    const m = msg as { role?: string; content?: unknown } | undefined;
+    if (m?.role !== "toolResult" || !Array.isArray(m.content)) continue;
+    for (const block of m.content) {
+      if ((block as { type?: unknown } | undefined)?.type === "image") return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Register the stale-toolResult offloader on the `context` event
- * (transformContext path). Reads the setting FRESH on every call; when the
- * setting is OFF (the default) the handler returns undefined immediately —
- * provably zero behavior change. Never throws into pi's event pipeline.
+ * Register the two per-request substitutions on the `context` event
+ * (transformContext path). Both settings are read FRESH on every call; each
+ * pass has its own gate, and a pass whose gate is OFF returns without touching
+ * the array. Never throws into pi's event pipeline.
  */
 export function registerStaleToolResultOffloader(pi: ExtensionAPI): void {
   pi.on("context", async (event: any, ctx: any) => {
-    let cfg: ResolvedStaleToolResultOffloadConfig;
+    let messages = event.messages as AgentMessage[];
+    let changed = false;
+
+    // Pass 1: stale large text results (braid.context.staleToolResultOffload,
+    // default OFF). Runs BEFORE the image pass on purpose: the text planner
+    // must see the original content, or it would stub an aged image pointer
+    // (a ~150-char line) into a second stub layer and bury the path it names.
+    let cfg: ResolvedStaleToolResultOffloadConfig | undefined;
     try {
       cfg = getStaleToolResultOffloadConfig();
     } catch {
-      return undefined;
+      cfg = undefined;
     }
-    if (!cfg.enabled) return undefined; // default-off fast path: no-op
+    if (cfg?.enabled) {
+      try {
+        const { plan } = planStaleToolResultOffloads(messages, cfg);
+        if (plan.length > 0) {
+          const cmState = getCmState(ctx);
+          if (!cmState.offloadIsoByToolCallId) cmState.offloadIsoByToolCallId = {};
+          const sessionId =
+            (
+              ctx as { sessionManager?: { getSessionId?: () => string } }
+            )?.sessionManager?.getSessionId?.() ?? "anonymous";
+
+          const result = applyStaleToolResultOffloads(messages, plan, defaultIo, {
+            sessionId,
+            isoByToolCallId: cmState.offloadIsoByToolCallId,
+          });
+          if (result.offloaded > 0) {
+            messages = result.messages;
+            changed = true;
+            // Telemetry: lifetime counters + per-run log line.
+            offloaderHealth.totalRuns++;
+            offloaderHealth.totalOffloaded += result.offloaded;
+            offloaderHealth.totalCharsSaved += result.charsSaved;
+            offloaderHealth.totalStubChars += result.stubChars;
+            offloaderHealth.totalBytesFlushed += result.bytesFlushed;
+            log.info(
+              `[offload] ${result.offloaded} stale toolResult(s) offloaded: ` +
+                `${result.charsSaved} in-context chars freed ` +
+                `(stub overhead ${result.stubChars}), ${result.bytesFlushed} bytes flushed to disk`,
+            );
+          }
+        }
+      } catch (err) {
+        log.warn("[offload] stale toolResult offload failed - text results untouched", err);
+      }
+    }
+
+    // Pass 2: an image past its age becomes a pointer to the file it came from
+    // (braid.context.imageAge, default ON). Independent of the stale gate: this
+    // is the pass that stops a picture under the cap from riding in every
+    // request for the rest of the session. The image scan comes before the
+    // settings read: a default-ON pass must cost no file read in a session that
+    // holds no image.
     try {
-      const { plan } = planStaleToolResultOffloads(event.messages as AgentMessage[], cfg);
-      if (plan.length === 0) return undefined;
-
-      const cmState = getCmState(ctx);
-      if (!cmState.offloadIsoByToolCallId) cmState.offloadIsoByToolCallId = {};
-      const sessionId =
-        (
-          ctx as { sessionManager?: { getSessionId?: () => string } }
-        )?.sessionManager?.getSessionId?.() ?? "anonymous";
-
-      const result = applyStaleToolResultOffloads(event.messages, plan, defaultIo, {
-        sessionId,
-        isoByToolCallId: cmState.offloadIsoByToolCallId,
-      });
-      if (result.offloaded === 0) return undefined;
-
-      // Telemetry: lifetime counters + per-run log line.
-      offloaderHealth.totalRuns++;
-      offloaderHealth.totalOffloaded += result.offloaded;
-      offloaderHealth.totalCharsSaved += result.charsSaved;
-      offloaderHealth.totalStubChars += result.stubChars;
-      offloaderHealth.totalBytesFlushed += result.bytesFlushed;
-      log.info(
-        `[offload] ${result.offloaded} stale toolResult(s) offloaded: ` +
-          `${result.charsSaved} in-context chars freed ` +
-          `(stub overhead ${result.stubChars}), ${result.bytesFlushed} bytes flushed to disk`,
-      );
-      return { messages: result.messages };
+      const aged = hasImageBlocks(messages)
+        ? ageImageBlocks(messages, getImageAgeConfig())
+        : { messages, plan: [] };
+      if (aged.plan.length > 0) {
+        messages = aged.messages;
+        changed = true;
+        const freed = aged.plan.reduce((sum, item) => sum + item.chars, 0);
+        log.info(
+          `[offload] ${aged.plan.length} aged image result(s) replaced by path block(s): ` +
+            `${freed} image chars left the request`,
+        );
+      }
     } catch (err) {
-      log.warn("[offload] stale toolResult offload failed - context untouched", err);
-      return undefined;
+      log.warn("[offload] image age-out failed - images untouched", err);
     }
+
+    return changed ? { messages } : undefined;
   });
 }

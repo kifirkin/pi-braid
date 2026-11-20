@@ -57,6 +57,9 @@ const { INTERNAL_TOOLS } = await import(
 const { registerOffloadRecover } = await import(
   "../../../dist/extensions/memory/context-manager/handlers/tools/offload-recover.js"
 );
+const { getImagePolicyHealth } = await import(
+  "../../../dist/extensions/memory/context-manager/handlers/image-policy.js"
+);
 
 console.log("=== offload_recover: capture-cap image read-back ===\n");
 
@@ -91,9 +94,17 @@ function ensureFlushDir(name) {
 
 function captureHandler() {
   const captured = [];
-  const fakePi = { on: (type, fn) => captured.push({ type, fn }) };
+  const tools = { active: ["read", "bash"], all: [{ name: "offload_recover" }] };
+  const fakePi = {
+    on: (type, fn) => captured.push({ type, fn }),
+    getActiveTools: () => tools.active,
+    getAllTools: () => tools.all,
+    setActiveTools: (names) => {
+      tools.active = names;
+    },
+  };
   registerToolResultCaptureCap(fakePi);
-  return captured.find((h) => h.type === "tool_result").fn;
+  return { handler: captured.find((h) => h.type === "tool_result").fn, tools };
 }
 
 function recoverTool() {
@@ -176,28 +187,34 @@ function imageBlockFrom(png, mime = "image/png") {
 
 // ── A + B. The loop pin ──────────────────────────────────────────────────────
 
-test("loop pin: oversized image -> stub -> offload_recover -> viewable, under budget, never re-capped", async () => {
+test("loop pin: a forced image stub -> offload_recover -> viewable, under budget, never re-capped", async () => {
   writeSettings(null);
-  const handler = captureHandler();
+  const { handler } = captureHandler();
   const tool = recoverTool();
   const { png } = makeOverCapPng();
   const data = png.toString("base64");
   assert.ok(data.length > 262_144, `fixture crosses the cap (${data.length} chars)`);
+  const unrecoveredBefore = getImagePolicyHealth().imagesUnrecovered;
 
+  // A result that is only a picture is downscaled and never stubbed, so the
+  // loop is entered by a result whose text has spent the image share of the
+  // cap before the picture is measured: the resize cannot fit there.
   const event = {
     type: "tool_result",
     toolCallId: "rec_call_1",
     toolName: "read",
     input: { path: "/tmp/render.png" },
-    content: [{ type: "text", text: "decoded render.png" }, imageBlockFrom(png)],
+    content: [{ type: "text", text: "decoded render.png ".repeat(20_000) }, imageBlockFrom(png)],
     isError: false,
   };
   const result = await handler(event, FAKE_CTX);
-  assert.ok(result && result.content, "oversized image is capped");
+  assert.ok(result && result.content, "oversized result is capped");
   const stub = result.content[0].text;
   const m = stub.match(/flushed to disk: (\S+)\]/);
   assert.ok(m, "stub carries the flush path");
   assert.ok(stub.includes(`offload_recover("${m[1]}")`), "stub names the exact recovery");
+  assert.equal(result.details.kind, "image", "the stub is a recorded obligation");
+  assert.equal(getImagePolicyHealth().imagesUnrecovered, unrecoveredBefore + 1, "obligation is counted");
 
   // The defect loop: reading the image back re-capped it. The recovery tool
   // must return pixels that the cap lets through.
@@ -213,6 +230,12 @@ test("loop pin: oversized image -> stub -> offload_recover -> viewable, under bu
   );
   assert.ok(view.data.length <= 262_144 / 2, `view fits the budget (${view.data.length} chars)`);
   assert.ok(note.text.includes("downscaled"), "note says the view is downscaled");
+
+  assert.equal(
+    getImagePolicyHealth().imagesUnrecovered,
+    unrecoveredBefore,
+    "a delivered recovery clears the obligation",
+  );
 
   // The loop is closed: the recovery output passes the capture cap untouched.
   const reCapped = await handler(

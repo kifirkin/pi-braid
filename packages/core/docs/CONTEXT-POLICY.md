@@ -74,16 +74,26 @@ from [`src/extensions/core/polyfill/index.ts`](../src/extensions/core/polyfill/i
 
 ## Caps and offload
 
-| Setting                                                                                               | Default                             | Effect                                                                                                                                     | Read cadence                                                       |
-| ----------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `braid.context.toolResultSizeCap` (`enabled`; `maxChars`: `braid.context.toolResultSizeCap.maxChars`) | `enabled: true`, `maxChars: 262144` | Set `enabled: false` to turn off this cap. Results above `maxChars` are flushed losslessly to disk and replaced by a stub naming the file. | Re-read at use time on each tool result and offload recovery call. |
-| `braid.context.staleToolResultOffload`                                                                | OFF                                 | Age/size offload of stale large results (`minChars` 4000, `stalenessTurns` 40, `keepRecentTurns` 20, 65536/run).                           | Re-read at use time.                                               |
-| `braid.context.contextEmergencyOffload`                                                               | ON                                  | On a context-window (413) error: offload the largest results, then retry once (`minChars` 262144, 1048576/run).                            | Re-read at use time.                                               |
+| Setting                                                                                               | Default                             | Effect                                                                                                                                                                                                                                                                                         | Read cadence                                                       |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `braid.context.toolResultSizeCap` (`enabled`; `maxChars`: `braid.context.toolResultSizeCap.maxChars`) | `enabled: true`, `maxChars: 262144` | Set `enabled: false` to turn off this cap. A result above `maxChars` is flushed losslessly to disk; a result carrying images is downscaled to the image share of the cap (half the cap, less a 1024-char note margin) and stays an image, a text result is replaced by a stub naming the file. | Re-read at use time on each tool result and offload recovery call. |
+| `braid.context.imageAge` (`enabled`; `turns`: `braid.context.imageAge.turns`)                         | `enabled: true`, `turns: 20`        | After `turns` tool results, an image block becomes one text block naming the file it came from and the `read` call that shows it again. The replacement happens only when the file exists with bytes behind it, so it is lossless; an image with no recoverable path is never touched.         | Re-read at use time on every request.                              |
+| `braid.context.staleToolResultOffload`                                                                | OFF                                 | Age/size offload of stale large results (`minChars` 4000, `stalenessTurns` 40, `keepRecentTurns` 20, 65536/run).                                                                                                                                                                               | Re-read at use time.                                               |
+| `braid.context.contextEmergencyOffload`                                                               | ON                                  | On a context-window (413) error: offload the largest results, then retry once (`minChars` 262144, 1048576/run).                                                                                                                                                                                | Re-read at use time.                                               |
 
 Offloaded payloads land at `<braid home>/offload/<sessionId>/<toolName>-<toolCallId>.txt`
 (`offloadDir()` / `getOffloadFilePath` in
 [`src/lib/config/braid-paths.ts`](../src/lib/config/braid-paths.ts)); the stub names
-the path, so retrieval is a plain `read` and the flush is lossless.
+the path, so retrieval is a plain `read` and the flush is lossless. A downscaled
+image names the same flush file in its own note, so the full-resolution original
+stays recoverable through `offload_recover`.
+
+The image policy is one definition in
+[`handlers/image-policy.ts`](../src/extensions/memory/context-manager/handlers/image-policy.ts):
+an image may occupy half a result cap at capture and at recovery, and it ages into
+a path block after the owner's turn count. The counters (`imagesDownscaled`,
+`imagesStubbed`, `imagesAged`, `imagesUnrecovered`) are rendered by
+`context_inspect` once any of them is nonzero.
 
 ## Archiving and compaction tools
 

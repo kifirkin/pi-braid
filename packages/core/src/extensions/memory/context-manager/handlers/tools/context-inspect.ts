@@ -20,6 +20,7 @@ import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/con
 import { formatTokensK } from "../../../../../lib/detection/context-usage.js";
 import { readExtensionState } from "../../../../../lib/state/extension-state.js";
 import { formatPendingCompactionsLine, readPendingCompactions } from "./context-compress.js";
+import { formatImagePolicyLine } from "../image-policy.js";
 
 /** A numeric selector read as absent when it names no positive count. */
 function positiveNumber(v: unknown): number | undefined {
@@ -121,6 +122,12 @@ export function registerContextInspect(pi: ExtensionAPI): void {
         const driftLine = formatDriftLine();
         if (lossLine || driftLine) {
           lines.push(`**Loss:** ${[lossLine, driftLine].filter(Boolean).join(" · ")}`);
+        }
+        // Image policy counters (downscaled / stubbed / aged / unrecovered):
+        // one line, only when this process did any image work.
+        const imageLine = formatImagePolicyLine();
+        if (imageLine) {
+          lines.push(`**Images:** ${imageLine}`);
         }
         // Hygiene ACT counters (turn-end auto-compact): one line, only when nonzero.
         const enfState = readExtensionState<{
