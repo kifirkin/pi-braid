@@ -31,6 +31,13 @@ import { tmpdir } from "node:os";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const D = join(ROOT, "dist");
 
+// The meter resolves its window through braid's settings reader, so a live
+// settings.json carrying contextLimitTokens changes the expected percent. Pin
+// the agent directory before the modules load: this fixture measures the
+// meter's arithmetic, not the operator's configuration.
+const SETTINGS_DIR = mkdtempSync(join(tmpdir(), "heartbeat-self-state-"));
+process.env.PI_CODING_AGENT_DIR = SETTINGS_DIR;
+
 const { buildSelfStateLine, flushWhisperBuffer } = await import(
   "file://" + join(D, "extensions/heartbeat/heartbeat-scheduler/whisper-batcher.js")
 );
