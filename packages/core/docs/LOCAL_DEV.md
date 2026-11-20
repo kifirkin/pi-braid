@@ -138,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 148 of the core suite's 389 fixtures already use `node:test` - so the
+file uses - 149 of the core suite's 390 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -209,6 +209,51 @@ A run inside the holder - a fixture that spawns the runner over a bench - is not
 contention: it inherits `PI_SUITE_LOCK_TOKEN` and proceeds. `PI_TEST_ROOT` runs a
 bench tree rather than the suite and takes no lock at all. `PI_SUITE_LOCK_FILE`
 points the device at another file, which is how the tests exercise it.
+
+### Regressions against a baseline
+
+The suite says whether anything is broken now. A merge needs a second answer:
+whether the change broke something nobody was looking at, and the only honest
+evidence for that is a before-set taken on the tree the change lands onto plus
+the same enumeration run again afterwards.
+
+```bash
+# on the base tree, before the branch lands
+node packages/core/scripts/check-regressions.mjs --baseline /tmp/baseline.json
+# after it lands
+node packages/core/scripts/check-regressions.mjs --check /tmp/baseline.json
+```
+
+`--baseline` runs the suite and writes one row per fixture: its path, the
+outcome the runner judged, and the tally the fixture printed about itself when
+it printed one. `--check` runs the same enumeration and exits 1 when a fixture
+that passed in the baseline failed, timed out, is gone from the tree, or is
+still green while running fewer cases than it did. It exits 2 rather than 1
+when the baseline cannot ground the comparison: unreadable, taken over another
+tree, or taken on a line of history this tree does not descend from.
+
+The baseline records the revision it was taken at. A baseline from an ancestor
+of the current revision is accepted with the distance printed, because that is
+what a merge produces: the baseline on the base branch, the branch landed, the
+comparison over the merged tree. A baseline from any other revision is refused.
+
+A fixture a change means to remove or rename is declared, not silently dropped:
+
+```bash
+printf '%s' '[{"path":"core/test-old.mjs","why":"the case moved into core/test-new.mjs"}]' > /tmp/exempt.json
+node packages/core/scripts/check-regressions.mjs --check /tmp/baseline.json --exempt /tmp/exempt.json
+```
+
+A row with no `why` is refused, and an exemption that silenced nothing is
+reported as stale rather than carried year to year. The run takes the suite
+lock, so it refuses beside another suite instead of sharing the machine with
+one, and it never widens the population it reads: a behaviour with no fixture is
+outside what it compares, and every verdict says so.
+
+`--root <dir>` points both modes at another tree and `--jobs <n>` sets the pool
+width. That is how the file's own fixture drives it over a bench instead of the
+suite: a run from inside a suite refuses the default root rather than starting a
+second full suite inside the first.
 
 ## Provider failures on demand
 
