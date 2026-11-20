@@ -138,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 147 of the core suite's 388 fixtures already use `node:test` - so the
+file uses - 148 of the core suite's 389 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -209,6 +209,83 @@ A run inside the holder - a fixture that spawns the runner over a bench - is not
 contention: it inherits `PI_SUITE_LOCK_TOKEN` and proceeds. `PI_TEST_ROOT` runs a
 bench tree rather than the suite and takes no lock at all. `PI_SUITE_LOCK_FILE`
 points the device at another file, which is how the tests exercise it.
+
+## Provider failures on demand
+
+Three provider behaviours decide how a turn ends, and none of them can be
+summoned from a real endpoint on request: a 429 before the answer, a stream that
+stops before `[DONE]`, and a normal answer assembled from deltas. Testing any of
+the three against a paid provider costs money, needs that provider to fail on
+cue, and reads a different answer on every run.
+`packages/core/scripts/emulated-provider.mjs` is a local `node:http` server that
+speaks the OpenAI chat-completions dialect and plays one of them:
+
+```bash
+node packages/core/scripts/emulated-provider.mjs --mode retry --port 8787
+```
+
+It prints the provider block to paste, the settings line the chosen mode needs,
+and one line per request as it arrives. `--help` lists the flags; `--reply` and
+`--failures` change the answer and how many 429s precede it.
+
+### Which file the config goes in
+
+A provider block pasted into `settings.json` does nothing: `providers` is read
+from `models.json` in the agent directory (`~/.pi/agent/models.json`, beside
+`settings.json`), and a session started with the block in the wrong file exits
+with `Error: Unknown provider "emulated"` and makes no request. `settings.json`
+is where `retry` lives.
+
+```jsonc
+// ~/.pi/agent/models.json
+{
+  "providers": {
+    "emulated": {
+      "baseUrl": "http://127.0.0.1:8787/v1",
+      "api": "openai-completions",
+      "apiKey": "emulated",
+      "models": [{ "id": "emulated-model" }],
+    },
+  },
+}
+```
+
+`apiKey` is required and the server never checks it: it is there so the client
+has a key to send, and the fixture pins that the value arrives as a bearer
+header. Leave it out and a turn reaches no request at all - one probe sat for
+fifteen seconds printing nothing - so paste the block with the key in it.
+
+### What each mode makes reproducible
+
+| `--mode`    | the wire                                                                     | what it makes reproducible                 | `~/.pi/agent/settings.json`                  |
+| ----------- | ---------------------------------------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
+| `normal`    | role chunk, content deltas, `finish_reason: stop`, usage, `[DONE]`           | a whole answer assembled from deltas       | not needed                                   |
+| `retry`     | `--failures` 429s carrying `retry-after-ms`, then a complete answer          | a 429 absorbed inside one turn             | `{"retry": {"provider": {"maxRetries": 2}}}` |
+| `truncated` | content deltas, then the connection ends before `finish_reason` and `[DONE]` | end of body must not read as end of answer | `{"retry": {"enabled": false}}`              |
+
+The `retry` row's setting is load-bearing: `retry.provider.maxRetries` has no
+default, so without it the first 429 is the turn's outcome. The `truncated` row
+turns the turn-level retry off because nothing can complete that turn, and each
+re-attempt is another request.
+
+Reach it like any provider:
+
+```bash
+pi --provider emulated --model emulated-model "say hello"
+```
+
+`GET http://127.0.0.1:8787/__status` returns the mode, the requests answered and
+the 429s still owed as JSON.
+
+`test/runtime/providers/test-emulated-provider.mjs` drives that same config
+through the runtime over RPC and pins the three behaviours: one request and a
+whole answer for `normal`, 429 then 200 and a whole answer for `retry`, one
+request and an error for the same 429 with no retry setting, and content plus an
+error for `truncated`. It runs with `--no-extensions`: on this checkout a nested
+session that loaded the extension pack (`-e dist/index.js`) produced one
+watchdog status event and no provider request in 90 seconds, so an arm that
+loaded it would pin braid's startup instead of this server. To watch braid
+itself, run the `pi` command above from a real session.
 
 ## Two install modes
 
