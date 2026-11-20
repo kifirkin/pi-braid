@@ -433,8 +433,7 @@ export function publishRouteExhaustion(
     routeId,
     usable: status.usable,
     total: status.total,
-    nextRetryAt:
-      status.nextRetryMs === null ? null : now + status.nextRetryMs,
+    nextRetryAt: status.nextRetryMs === null ? null : now + status.nextRetryMs,
     observedAt: now,
   };
   slot.set(routeId, state);

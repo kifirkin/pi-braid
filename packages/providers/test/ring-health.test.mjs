@@ -1102,7 +1102,11 @@ function run() {
             oneLeft.total === 2 &&
             controlPublish === null &&
             readRouteExhaustion().length === 0,
-          JSON.stringify({ oneLeft, controlPublish, read: readRouteExhaustion() }),
+          JSON.stringify({
+            oneLeft,
+            controlPublish,
+            read: readRouteExhaustion(),
+          }),
         );
 
         // The last key goes too: the ring reports no usable key and the
@@ -1150,7 +1154,11 @@ function run() {
         // record must be withdrawn rather than left standing as history.
         ring.markSuccess();
         const healed = ring.getStatus();
-        const afterHeal = publishRouteExhaustion("route-exhaust", healed, T + 1);
+        const afterHeal = publishRouteExhaustion(
+          "route-exhaust",
+          healed,
+          T + 1,
+        );
         check(
           "a usable key again ⇒ the record is withdrawn, not left standing",
           healed.usable === 1 &&
@@ -1166,7 +1174,11 @@ function run() {
           now: () => T,
         });
         const emptyStatus = emptyRing.getStatus();
-        const emptyPublish = publishRouteExhaustion("route-empty", emptyStatus, T);
+        const emptyPublish = publishRouteExhaustion(
+          "route-empty",
+          emptyStatus,
+          T,
+        );
         check(
           "no configured key ⇒ no record (unconfigured is not exhausted)",
           emptyStatus.total === 0 &&

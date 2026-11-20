@@ -374,9 +374,7 @@ export function readExhaustedRoutes(): ExhaustedRoute[] {
       usable,
       total,
       nextRetryAt:
-        typeof nextRetryAt === "number" && Number.isFinite(nextRetryAt)
-          ? nextRetryAt
-          : null,
+        typeof nextRetryAt === "number" && Number.isFinite(nextRetryAt) ? nextRetryAt : null,
       observedAt,
     });
   }
