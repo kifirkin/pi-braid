@@ -23,7 +23,7 @@
  * The rows cover every branch either classifier can take for a raw string:
  * empty, the WAF page and the JSON short-circuit, payload/context window,
  * each key-rotation trigger, the 429 carve-out, shape 4xx, 5xx, network
- * idioms, the status-extraction divergences, and the strings whose two
+ * idioms, the unframed-number rows, and the strings whose two
  * verdicts disagree by design (recorded as findings in the change report, not
  * normalized).
  * Core's numeric-status and abort branches need an error object and are
@@ -481,8 +481,8 @@ const ROWS = [
     text: "1429",
     class: "none",
     status: null,
-    category: "rate_limit",
-    why: "status extraction divergence: core's /429/ matches inside 1429; providers reads a status only where the text frames one, so an unframed run names none",
+    category: "unknown",
+    why: "unframed number: neither classifier reads a status the text does not frame, so the throttle arm cannot fire inside a longer run",
   },
   {
     text: "aborted",

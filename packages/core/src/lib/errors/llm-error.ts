@@ -20,6 +20,12 @@
  *   - auth: 401 / invalid_api_key. Token / credential issue.
  *   - unknown: catch-all. Treated as transient for safety.
  *
+ * Classification is status-first: a status the failure carries (on the error
+ * object, or framed in its text) names the class, and the wording arms are
+ * the fallback for a message that names none. A three-digit run the text does
+ * not frame is not a status: a duration, a port and a buffered count are not
+ * refusals.
+ *
  * The classifier is intentionally tolerant -- it inspects both the error
  * message string AND any status code on the error object. This is
  * necessary because different providers (Anthropic, OpenAI, etc.) format
@@ -58,32 +64,44 @@ export interface ClassifiedLlmError {
   raw: unknown;
 }
 
+/**
+ * Wording that names an exhausted account. Provider error vocabulary, English
+ * and not: `Ваш баланс исчерпан` is a localised billing refusal the session
+ * store records, and the two Cyrillic words are required together so
+ * `балансировка` (load balancing) is not read as an empty account. A refusal
+ * outside this table stays `unknown` rather than guessed at.
+ */
 const BALANCE_PATTERNS = [
-  /402/,
   /insufficient[_ ]balance/i,
   /billing/i,
   /payment[_ ]required/i,
   /quota[_ ]exceeded/i,
+  /баланс[а-яё]*\s+исчерпан/i,
 ];
 
 /**
- * Canonical rate-limit patterns — single source of truth (dedupe merged
- * the drifted substring-list copy that lived in lib/ai/llm-call.ts).
- * Superset semantics:
+ * Wording that names a throttle: the arms `classifyLlmError` reads for a
+ * message that frames no status. The status itself is read separately.
+ */
+const RATE_LIMIT_WORDING_PATTERNS = [/rate[_ ]limit/i, /too[_ ]many[_ ]requests/i, /throttl/i];
+
+/**
+ * Canonical rate-limit patterns for text callers -- single source of truth
+ * (dedupe merged the drifted substring-list copy that lived in
+ * lib/ai/llm-call.ts). The superset semantics are the predicate's published
+ * contract, pinned by test-rate-limit-patterns.mjs:
  *   - /429/ matches anywhere in the text (covers `startsWith("429")` consumers;
- *     "1429" also matches — accepted, that was already llm-error's behavior)
+ *     "1429" also matches -- the legacy behaviour this predicate keeps)
  *   - /rate[_ ]limit/ and /too[_ ]many[_ ]requests/ match the space and
  *     underscore forms ("rate limit", "rate_limit", …)
- *   - /throttl/i matches "throttle" / "throttled" / "throttling" — widened
- *     from the llm-call.ts list (which only had "throttled"); for
- *     classifyLlmError this moves such errors from `unknown` to `rate_limit`
+ *   - /throttl/i matches "throttle" / "throttled" / "throttling" -- widened
+ *     from the llm-call.ts list (which only had "throttled")
+ *
+ * `classifyLlmError` does not read this list: a numeric arm there has to name
+ * a status token rather than a substring, so the classifier takes `429` from
+ * the status channel and the wording arms from the list above.
  */
-export const RATE_LIMIT_PATTERNS = [
-  /429/,
-  /rate[_ ]limit/i,
-  /too[_ ]many[_ ]requests/i,
-  /throttl/i,
-];
+export const RATE_LIMIT_PATTERNS = [/429/, ...RATE_LIMIT_WORDING_PATTERNS];
 
 /** True when the text looks like an HTTP rate-limit condition (RATE_LIMIT_PATTERNS). */
 export function isRateLimitText(text: string): boolean {
@@ -91,33 +109,51 @@ export function isRateLimitText(text: string): boolean {
 }
 
 /**
- * Extract the first standalone 3-digit HTTP status code (400-599) from an
- * error TEXT. Keyring failures arrive as plain strings (no error object for
- * extractStatusCode), and unclassified failures must still carry their HTTP
- * code in the health record so root-causing needs no log forensics.
- * Guards: not part of a longer number on either side ("1429" is not 429,
- * "6721" is not 672); only 4xx/5xx (timestamps like "42.123" cannot produce
- * a false 1xx/2xx hit).
+ * What the text presents as an HTTP status. Keyring failures arrive as plain
+ * strings (no error object for extractStatusCode), and unclassified failures
+ * must still carry their HTTP code in the health record so root-causing needs
+ * no log forensics.
+ *
+ * A run the text frames is a status; an unframed one is not. The frames are
+ * the ones producers print: the code first (`429: {…}`), after an opening
+ * bracket or angle (`(429)`, `<503>`), behind `HTTP`, or behind a
+ * `status`/`code`/`response` word. A duration (`4012 ms`), a buffered count
+ * (`1429`), the fraction of a decimal and a port (`host:443`) are the shapes
+ * that sit where a status would, and reading one of them as a status is how a
+ * timeout becomes an authentication failure. The earliest framing wins, so a
+ * status the text already gave is not outranked by a port printed later.
  */
+const STATUS_FRAMES: readonly RegExp[] = [
+  /^\s*(4\d{2}|5\d{2})(?![\d.])/,
+  /[([{<>]\s*(4\d{2}|5\d{2})(?![\d.])/,
+  /\bhttp(?:\/\d(?:\.\d)?)?\s*[:=]?\s*(4\d{2}|5\d{2})(?![\d.])/i,
+  /\b(?:status[_ ]?code|status|code|response)\b[^\d\n]{0,8}?(4\d{2}|5\d{2})(?![\d.])/i,
+];
+
 export function extractHttpCodeFromText(text: string): number | undefined {
-  const m = /(?:^|[^0-9])(4\d{2}|5\d{2})(?![0-9])/.exec(text);
-  return m ? Number(m[1]) : undefined;
+  let framed: { at: number; status: number } | undefined;
+  for (const frame of STATUS_FRAMES) {
+    const match = frame.exec(text);
+    if (!match) continue;
+    const at = match.index + (match[0].length - match[1].length);
+    if (!framed || at < framed.at) framed = { at, status: Number(match[1]) };
+  }
+  return framed?.status;
 }
 
 /**
  * True when the text looks like a context-window / payload-too-large error
- * (CONTEXT_WINDOW_PATTERNS: 413, context_length_exceeded...). Canonical
- * helper for text-based consumers: pi-core surfaces agent-loop API
+ * (a framed 413, or CONTEXT_WINDOW_PATTERNS: context_length_exceeded…).
+ * Canonical helper for text-based consumers: pi-core surfaces agent-loop API
  * failures as plain strings (assistant errorMessage), where classifyLlmError
- * is also usable, but error text arrives in several shapes — this is the one
+ * is also usable, but error text arrives in several shapes -- this is the one
  * text predicate so emergency-offload consumers never fork the pattern list.
  */
 export function isContextWindowErrorText(text: string): boolean {
-  return matchesAny(text, CONTEXT_WINDOW_PATTERNS);
+  return extractHttpCodeFromText(text) === 413 || matchesAny(text, CONTEXT_WINDOW_PATTERNS);
 }
 
 const CONTEXT_WINDOW_PATTERNS = [
-  /413/,
   /context[_ ]length[_ ]exceeded/i,
   /context[_ ]window/i,
   /maximum[_ ]context/i,
@@ -154,6 +190,11 @@ export function isContextLengthRequestShape(err: unknown): boolean {
         ? String((err as { message?: unknown }).message ?? "")
         : "";
   if (!text) return false;
+  // A framed 5xx is the same "try again later" exclusion the transient
+  // wording arms provide; the number is read through the framing rule, not as
+  // a substring.
+  const status = extractHttpCodeFromText(text);
+  if (status !== undefined && status >= 500 && status < 600) return false;
   return (
     matchesAny(text, [
       /context[_ ]length[_ ]exceeded/i,
@@ -166,11 +207,6 @@ export function isContextLengthRequestShape(err: unknown): boolean {
 }
 
 const TRANSIENT_PATTERNS = [
-  /500/,
-  /502/,
-  /503/,
-  /504/,
-  /529/,
   /overloaded/i,
   /server[_ ]error/i,
   /temporarily[_ ]unavailable/i,
@@ -190,7 +226,28 @@ const TRANSIENT_PATTERNS = [
   /other side closed/i,
 ];
 
-const AUTH_PATTERNS = [/401/, /invalid[_ ]api[_ ]key/i, /unauthorized/i, /authentication/i];
+/**
+ * Status codes whose number alone names the class. 403 is deliberately absent:
+ * a 403 is recorded here as a WAF block, a payload refusal, a capacity refusal
+ * and a spent quota, so the number cannot tell a credential problem from the
+ * route's own answer; its wording decides, as it did before. Codes outside
+ * this table fall through to the wording arms, which keeps a 400 that names a
+ * context-length refusal `context_window` and a bare 404 `unknown`.
+ */
+const STATUS_CLASSES: Readonly<Record<number, LlmErrorCategory>> = {
+  401: "auth",
+  402: "balance",
+  408: "transient",
+  413: "context_window",
+  429: "rate_limit",
+  500: "transient",
+  502: "transient",
+  503: "transient",
+  504: "transient",
+  529: "transient",
+};
+
+const AUTH_PATTERNS = [/invalid[_ ]api[_ ]key/i, /unauthorized/i, /authentication/i];
 
 /** Try to extract a numeric status code from the error object. */
 function extractStatusCode(err: unknown): number | undefined {
@@ -293,6 +350,20 @@ function makeError(
   return { ...base, ...extras };
 }
 
+/** The message a failure carries; a non-object is its own text. */
+function errorMessageOf(err: unknown): string {
+  return typeof err === "object" && err !== null && typeof (err as any).message === "string"
+    ? (err as any).message
+    : String(err);
+}
+
+/** The extras a numeric class carries: the header for a throttle, the shape for a payload. */
+function statusExtras(status: number, err: unknown): Partial<ClassifiedLlmError> {
+  if (status === 429) return { retryAfterMs: tryExtractRetryAfter(err) };
+  if (status === 413) return { requestShape: "context_length" };
+  return {};
+}
+
 export function classifyLlmError(err: unknown): ClassifiedLlmError {
   if (err == null) return makeError("unknown", err);
 
@@ -307,35 +378,38 @@ export function classifyLlmError(err: unknown): ClassifiedLlmError {
     }
   }
 
-  const status = extractStatusCode(err);
-  const message =
-    typeof err === "object" && err !== null && typeof (err as any).message === "string"
-      ? (err as any).message
-      : String(err);
-  const text = `${status ?? ""} ${message}`.trim();
+  const message = errorMessageOf(err);
+  // The structured channel decides before any wording: a status the object
+  // carries, or one its text frames. A 503 whose body says "authentication"
+  // describes the server, not the owner's key, and a 429 whose body says
+  // "insufficient balance" is still a throttle.
+  const status = extractStatusCode(err) ?? extractHttpCodeFromText(message);
+  if (status !== undefined) {
+    const numeric = STATUS_CLASSES[status];
+    if (numeric !== undefined) {
+      return makeError(numeric, err, statusExtras(status, err));
+    }
+  }
 
-  if (status === 402 || matchesAny(text, BALANCE_PATTERNS)) {
+  if (matchesAny(message, BALANCE_PATTERNS)) {
     return makeError("balance", err);
   }
-  if (status === 429 || matchesAny(text, RATE_LIMIT_PATTERNS)) {
+  if (matchesAny(message, RATE_LIMIT_WORDING_PATTERNS)) {
     return makeError("rate_limit", err, { retryAfterMs: tryExtractRetryAfter(err) });
   }
-  if (status === 401 || matchesAny(text, AUTH_PATTERNS)) {
+  if (matchesAny(message, AUTH_PATTERNS)) {
     return makeError("auth", err);
   }
-  if (status === 413 || matchesAny(text, CONTEXT_WINDOW_PATTERNS)) {
+  if (matchesAny(message, CONTEXT_WINDOW_PATTERNS)) {
     return makeError("context_window", err, { requestShape: "context_length" });
   }
   // A 400 whose body names a context-length refusal is the same class as a
   // 413: the request shape is wrong, so it must never fall through to
   // `unknown` (which is retryable, and retrying it unchanged cannot work).
-  if (status === 400 && matchesAny(text, REQUEST_SHAPE_CONTEXT_PATTERNS)) {
+  if (status === 400 && matchesAny(message, REQUEST_SHAPE_CONTEXT_PATTERNS)) {
     return makeError("context_window", err, { requestShape: "context_length" });
   }
-  if (status === 500 || status === 502 || status === 503 || status === 504 || status === 529) {
-    return makeError("transient", err);
-  }
-  if (matchesAny(text, TRANSIENT_PATTERNS)) {
+  if (matchesAny(message, TRANSIENT_PATTERNS)) {
     return makeError("transient", err);
   }
   return makeError("unknown", err);

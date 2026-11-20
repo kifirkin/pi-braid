@@ -40,15 +40,35 @@ export type LlmErrorCategory =
   | "unknown";
 
 /**
- * Core's string classifier, mirrored as an ordered data table. The order is
- * core's own precedence (balance, rate_limit, auth, context_window,
- * transient) and each pattern list is copied verbatim from llm-error.ts
- * (BALANCE_PATTERNS, RATE_LIMIT_PATTERNS, AUTH_PATTERNS,
- * CONTEXT_WINDOW_PATTERNS, TRANSIENT_PATTERNS). Core's numeric status
- * branches (`status === 402` and friends) are unreachable from a raw string:
- * a status enters core only through `extractStatusCode(err)`, which returns
- * nothing for a string. Core's `abort` branch likewise needs an error
- * object, so it is unreachable here and is deliberately not a rule.
+ * Core's status-first table, mirrored as data: the classes a status names by
+ * itself. 403 is absent because the recorded 403 shapes are a WAF block, a
+ * payload refusal, a capacity refusal and a spent quota, so core lets the
+ * wording decide.
+ */
+const CORE_STATUS_CATEGORIES: Readonly<Record<number, LlmErrorCategory>> = {
+  401: "auth",
+  402: "balance",
+  408: "transient",
+  413: "context_window",
+  429: "rate_limit",
+  500: "transient",
+  502: "transient",
+  503: "transient",
+  504: "transient",
+  529: "transient",
+};
+
+/**
+ * Core's wording tables, mirrored as an ordered data table. The order is
+ * core's own precedence (balance, rate_limit, auth, context_window, the
+ * 400-shaped request refusal, transient) and each list is copied verbatim from
+ * llm-error.ts (BALANCE_PATTERNS, RATE_LIMIT_WORDING_PATTERNS, AUTH_PATTERNS,
+ * CONTEXT_WINDOW_PATTERNS, REQUEST_SHAPE_CONTEXT_PATTERNS,
+ * TRANSIENT_PATTERNS). Numeric arms are not copied: core reads a status
+ * through its framing rule, and this module reads the same status from the
+ * walk's own reader, so the two halves of one answer cannot frame a port or a
+ * duration differently. Core's `abort` branch needs an error object, so it is
+ * unreachable here and is deliberately not a rule.
  */
 const CORE_CATEGORY_RULES: ReadonlyArray<
   readonly [LlmErrorCategory, readonly RegExp[]]
@@ -56,65 +76,78 @@ const CORE_CATEGORY_RULES: ReadonlyArray<
   [
     "balance",
     [
-      /402/,
       /insufficient[_ ]balance/i,
       /billing/i,
       /payment[_ ]required/i,
       /quota[_ ]exceeded/i,
+      /баланс[а-яё]*\s+исчерпан/i,
     ],
   ],
-  [
-    "rate_limit",
-    [/429/, /rate[_ ]limit/i, /too[_ ]many[_ ]requests/i, /throttl/i],
-  ],
-  [
-    "auth",
-    [/401/, /invalid[_ ]api[_ ]key/i, /unauthorized/i, /authentication/i],
-  ],
+  ["rate_limit", [/rate[_ ]limit/i, /too[_ ]many[_ ]requests/i, /throttl/i]],
+  ["auth", [/invalid[_ ]api[_ ]key/i, /unauthorized/i, /authentication/i]],
   [
     "context_window",
     [
-      /413/,
       /context[_ ]length[_ ]exceeded/i,
       /context[_ ]window/i,
       /maximum[_ ]context/i,
       /prompt[_ ]is[_ ]too[_ ]long/i,
     ],
   ],
-  [
-    "transient",
-    [
-      /500/,
-      /502/,
-      /503/,
-      /504/,
-      /529/,
-      /overloaded/i,
-      /server[_ ]error/i,
-      /temporarily[_ ]unavailable/i,
-      /econnreset/i,
-      /etimedout/i,
-      /enotfound/i,
-      /network[_ ]error/i,
-      /fetch failed/i,
-      /socket hang up/i,
-      /econnaborted/i,
-      /epipe/i,
-      /eai[_ ]again/i,
-      /und[_ ]err/i,
-      /other side closed/i,
-    ],
-  ],
 ];
 
-/** Core's category for a raw error string: the classifier's string path. */
-function coreCategoryOf(errText: string): LlmErrorCategory {
-  // Core builds its text as `${status ?? ""} ${message}`.trim(); for a string
-  // input the message is the string itself.
+/** Core's 400-shaped request refusal, mirrored verbatim from llm-error.ts. */
+const CORE_REQUEST_SHAPE_CONTEXT_PATTERNS: readonly RegExp[] = [
+  /maximum[_ ]context[_ ]length/i,
+  /context[_ ]length/i,
+  /reduce[ _]the[ _]length[ _]of[ _]the/i,
+  /(input|prompt|request|messages?)[ _]is[ _]too[ _]long/i,
+  /too[ _]many[ _](input[ _])?tokens/i,
+  /exceeds?[ _]the[ _](model'?s?[ _])?(maximum|max)/i,
+];
+
+/** Core's transient wording, mirrored verbatim from llm-error.ts. */
+const CORE_TRANSIENT_PATTERNS: readonly RegExp[] = [
+  /overloaded/i,
+  /server[_ ]error/i,
+  /temporarily[_ ]unavailable/i,
+  /econnreset/i,
+  /etimedout/i,
+  /enotfound/i,
+  /network[_ ]error/i,
+  /fetch failed/i,
+  /socket hang up/i,
+  /econnaborted/i,
+  /epipe/i,
+  /eai[_ ]again/i,
+  /und[_ ]err/i,
+  /other side closed/i,
+];
+
+/**
+ * Core's category for a raw error string and the status the walk read from it:
+ * core's status-first path, then its wording tables.
+ */
+function coreCategoryOf(
+  errText: string,
+  status: number | null,
+): LlmErrorCategory {
+  if (status !== null) {
+    const numeric = CORE_STATUS_CATEGORIES[status];
+    if (numeric !== undefined) return numeric;
+  }
   const text = errText.trim();
   for (const [category, patterns] of CORE_CATEGORY_RULES) {
     if (patterns.some((pattern) => pattern.test(text))) return category;
   }
+  if (
+    status === 400 &&
+    CORE_REQUEST_SHAPE_CONTEXT_PATTERNS.some((pattern) => pattern.test(text))
+  ) {
+    return "context_window";
+  }
+  if (CORE_TRANSIENT_PATTERNS.some((pattern) => pattern.test(text)))
+    return "transient";
   return "unknown";
 }
 
@@ -137,6 +170,6 @@ export function translateFailure(errText: string): FailureTranslation {
   return {
     class: classification.class,
     status: classification.status,
-    category: coreCategoryOf(errText),
+    category: coreCategoryOf(errText, classification.status),
   };
 }
