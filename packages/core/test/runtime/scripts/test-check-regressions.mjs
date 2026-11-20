@@ -221,11 +221,11 @@ test("an exemption that silenced nothing is reported as stale", () => {
   const spot = harness();
   try {
     snapshot(spot);
-    writeFileSync(spot.exemptions, JSON.stringify([{ path: "red.mjs", why: "kept from an earlier wave" }]));
+    writeFileSync(spot.exemptions, JSON.stringify([{ path: "red.mjs", why: "the case it named moved into green.mjs" }]));
 
     const checked = gate(["--check", spot.baseline, "--root", spot.tree, "--exempt", spot.exemptions]);
     assert.equal(checked.status, 0, checked.out);
-    assert.match(checked.out, /STALE exemption red\.mjs: kept from an earlier wave \(this fixture did not regress\)/);
+    assert.match(checked.out, /STALE exemption red\.mjs: the case it named moved into green\.mjs \(this fixture did not regress\)/);
     assert.match(checked.out, /0 regression\(s\), 0 exempt, 1 stale exemption\(s\)/);
   } finally {
     rmSync(spot.home, { recursive: true, force: true });
