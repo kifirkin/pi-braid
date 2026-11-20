@@ -235,6 +235,14 @@ const ALLOWANCES = new Map([
         "five arms hold a real SQLite write lock in a second process (6.2s, 2.5s, 13s and two at 1.2s) and one of them waits out that 13s from a status command, so at least 24s of the file's 33.7s is lock hold it schedules itself: 33.7s run one at a time and 36.2s beside seven other files, a 1.07x that says the pool barely moves it. Contention is not what threatens this file - an arm wedging inside its own hold is - so the allowance is what lets the file name that arm instead of being killed here as an opaque timeout",
     },
   ],
+  [
+    "scripts/test-check-result.mjs",
+    {
+      ms: 150_000,
+      reason:
+        "spawns the validator once per case, so its cost is a stack of process startups and the git reads each one makes: 53.6s alone with 86 cases and 66.3s with 99, while a pooled run was killed at the 60s default and a later one took 57.8s - a box's worth of difference either side of the cap. The number follows the case count, not the box, which is the shape an allowance is for",
+    },
+  ],
 ]);
 
 const argv = process.argv.slice(2);

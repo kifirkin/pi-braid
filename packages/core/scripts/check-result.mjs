@@ -19,7 +19,7 @@
 // Claim entries must be objects with non-empty claim text and a named verifier
 // (`verified_by`).
 //
-// Three reads refuse instead of warning, each keyed to what the block claims
+// Four reads refuse instead of warning, each keyed to what the block claims
 // about itself:
 //   - `source_revision` must resolve in a repository the gate can see. A
 //     revision that exists nowhere cannot attest the tree its evidence was read
@@ -37,6 +37,13 @@
 //     `unit` one lowercase word, `revision` a 7-to-40-char hex sha or a ref name.
 //     `packages/core/src/lib/orchestrator/workers.ts` parses the same shape at
 //     the merge path.
+//   - a claim whose `verified_by` or `command` names a runnable file (`.mjs`,
+//     `.ts`, `.sh`, `.py`) must have a `gate_evidence` row naming the same file,
+//     and a `completed` block's row must exit 0. Two spellings of one path are
+//     the same file. A claim that reads a file, runs git, or quotes an output
+//     naming no file is not asked; a claim whose verdict is `unverified` is not
+//     asked; a file the block also lists in `artifacts` is still asked. Under
+//     `partial`, `blocked` or `error` the row must exist and its exit is free.
 //
 // Everything else keeps its tier: a warning is a read that has not earned a
 // refusal yet.
@@ -207,6 +214,236 @@ function instrumentWarningLine(finding) {
   return (
     `WARN instrument-undisclosed: claim ${finding.index} states ${JSON.stringify(finding.figure)} ` +
     `without the command that produced it — name the exact command and the environment it ran in, or drop the figure`
+  );
+}
+
+// ── Claim–row parity: a cited run has to be a recorded run ──────────────────
+// A claim can cite `node test-x.mjs` while no row records that command, its exit
+// code, or that it ever ran. The claim is then the only statement that the test
+// passed, and the same worker wrote the test and that sentence. This read pairs
+// the two surfaces the block already carries: every runnable file a claim names
+// must be named by a `gate_evidence` row, and a `completed` block's row must
+// exit 0.
+//
+// It does not read the world. A row can assert exit 0 without the command having
+// run, and this file never executes what its subject quotes. What the rule buys
+// is a command and an exit code in the record, so the seat's re-run has
+// something specific to invalidate.
+//
+// Boundaries, each one a case in the harness:
+//   - a verifier that reads a file, runs git, or quotes an output naming no file
+//     has no obligation: a read is not a run, and `git show HEAD:x.mjs` attests
+//     content, not an execution;
+//   - a claim whose verdict is `unverified` has none, by definition;
+//   - a file the block also lists in `artifacts` is still obliged: an artifact is
+//     a product, a row is a run;
+//   - under `partial`, `blocked` or `error` the row must exist and its exit is
+//     not constrained, because a failing test that explains the status is honest.
+const RUNNABLE_EXTENSIONS = "mjs|ts|sh|py";
+const RUNNABLE_PATH_CHAR = "[A-Za-z0-9_@.~+-]";
+// A path is only nameable when it carries its extension, so `node build` (which
+// the shell resolves) is not read: a rule that guessed at what a bare word
+// resolves to would also guess wrong against a row's format.
+const RUNNABLE_FILE_RE = new RegExp(
+  "(?:^|[\\s`'\"(<[{=;|&,])(/?" +
+    `${RUNNABLE_PATH_CHAR}(?:${RUNNABLE_PATH_CHAR}|/)*\\.(?:${RUNNABLE_EXTENSIONS})` +
+    ")(?![\\w])",
+  "g",
+);
+// The command words that name an instrument, not project vocabulary. An unknown
+// word is not an exemption: an unrecognized citation stays obliged, which is the
+// direction that costs a reader a row rather than a lie its silence.
+const READ_INSTRUMENTS = new Set([
+  "git", "cat", "head", "tail", "less", "more", "grep", "rg", "ag", "sed", "awk", "wc",
+  "stat", "ls", "find", "fd", "diff", "read", "reading", "viewed", "opened", "open",
+  "inspected", "file", "shasum", "sha256sum", "md5sum", "openssl", "jq", "bat", "cmp",
+  "nl", "cut", "sort", "uniq", "strings", "xxd", "hexdump", "tree", "du",
+]);
+const RUN_INSTRUMENTS = new Set([
+  "node", "npx", "npm", "pnpm", "yarn", "bun", "deno", "tsx", "ts-node", "bash", "sh",
+  "zsh", "python", "python3", "uv", "pytest", "vitest", "jest", "mocha", "make",
+]);
+// A verifier that names a read in prose (`packages/x.mjs (read)`) exempts its
+// file only when the same text names no run instrument anywhere: one run word is
+// enough to make the citation an execution.
+const READ_WORD_RE = /\b(?:read|reading|viewed|opened|inspected|grep|rg|git|diff|stat|listing|listed)\b/i;
+const CLAUSE_SEPARATOR_RE = /&&|\|\||[;|\n]/g;
+const LINE_ANCHOR_RE = /^:\d+(?:-\d+)?\b/;
+
+/** The clause a character index sits in: one command, separated by `;`, `&&`, `||`, `|` or a newline. */
+function clauseAround(text, index) {
+  let start = 0;
+  let end = text.length;
+  CLAUSE_SEPARATOR_RE.lastIndex = 0;
+  let match;
+  while ((match = CLAUSE_SEPARATOR_RE.exec(text)) !== null) {
+    if (match.index < index) start = match.index + match[0].length;
+    else { end = match.index; break; }
+  }
+  return { start, end, text: text.slice(start, end) };
+}
+
+/** A token as an instrument word: quotes stripped, a path reduced to its basename. */
+function instrumentWord(token) {
+  const clean = token.replace(/^[`'"(<[{]+/, "").replace(/[`'")>\]},.;:]+$/, "");
+  return clean.split("/").pop().toLowerCase();
+}
+
+/** The nearest instrument word before an offset in a clause, or null when the clause names none. */
+function instrumentBefore(clauseText, offset) {
+  const words = clauseText.slice(0, offset).split(/[\s`'"()[\]{}<>,]+/).filter(Boolean).reverse();
+  for (const word of words) {
+    const instrument = instrumentWord(word);
+    if (READ_INSTRUMENTS.has(instrument)) return "read";
+    if (RUN_INSTRUMENTS.has(instrument)) return "run";
+  }
+  return null;
+}
+
+function plainPath(token) {
+  return token
+    .replace(/^[`'"(<[{]+/, "")
+    .replace(/[`'")>\]},.;:]+$/, "")
+    .replace(/:\d+(?:-\d+)?$/, "")
+    .replace(/\\/g, "/");
+}
+
+/** One spelling, dot segments collapsed: the comparison has to be on the file, not on its notation. */
+function normalisePath(path) {
+  const absolute = path.startsWith("/");
+  const parts = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") parts.pop();
+    else parts.push(segment);
+  }
+  return `${absolute ? "/" : ""}${parts.join("/")}`;
+}
+
+/** Every spelling a path could have: as written, with `~` expanded, and resolved against each repository the gate was told about. */
+function pathForms(token, repoDirs) {
+  const written = plainPath(token);
+  if (written === "") return new Set();
+  // `~/x` and the absolute spelling a shell expands it to are one file written
+  // twice. A reader re-running the row gets the expanded form, so the comparison
+  // has to expand it too.
+  const home = written === "~" ? homedir() : written.startsWith("~/") ? join(homedir(), written.slice(2)) : written;
+  const forms = new Set([normalisePath(written), normalisePath(home)]);
+  if (!home.startsWith("/")) {
+    for (const dir of repoDirs) forms.add(normalisePath(join(dir, home)));
+    forms.add(normalisePath(resolve(home)));
+  }
+  return forms;
+}
+
+/** Two spellings that can only be the same file: equal, or one a path-segment suffix of the other. */
+function sameFile(left, right) {
+  for (const a of left) for (const b of right) {
+    if (a === b) return true;
+    if (a.endsWith(`/${b}`) || b.endsWith(`/${a}`)) return true;
+  }
+  return false;
+}
+
+/** The runnable files a claim names in `verified_by` or `command`, with a read exempting its own file. */
+function citedRunFiles(entry) {
+  const obliged = [];
+  const texts = ["verified_by", "command"]
+    .map((field) => entry?.[field])
+    .filter((value) => typeof value === "string" && value.trim() !== "");
+  for (const text of texts) {
+    const runNamedSomewhere = text
+      .split(/[\s`'"()[\]{}<>,;|]+/)
+      .filter(Boolean)
+      .some((token) => RUN_INSTRUMENTS.has(instrumentWord(token)));
+    for (const match of text.matchAll(RUNNABLE_FILE_RE)) {
+      const file = match[1];
+      const fileStart = match.index + (match[0].length - file.length);
+      const after = text.slice(fileStart + file.length);
+      if (LINE_ANCHOR_RE.test(after)) continue;
+      const clause = clauseAround(text, fileStart);
+      const instrument = instrumentBefore(clause.text, fileStart - clause.start);
+      if (instrument === "read") continue;
+      if (instrument === null && !runNamedSomewhere && READ_WORD_RE.test(text)) continue;
+      if (!obliged.includes(file)) obliged.push(file);
+    }
+  }
+  return obliged;
+}
+
+/**
+ * Pair every runnable file a claim cites with a `gate_evidence` row naming it.
+ * Findings are refusals (no row, or a non-zero exit under `completed`); an
+ * incomplete block's non-zero exit is lifted, not dropped, so the read is
+ * visible in the transcript either way.
+ */
+function evaluateClaimRowParity(entries, gateRows, options = {}) {
+  const status = options.status;
+  const repoDirs = Array.isArray(options.repoDirs) ? options.repoDirs : [];
+  const list = Array.isArray(entries) ? entries : [];
+  const rows = (Array.isArray(gateRows) ? gateRows : [])
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row && typeof row === "object" && !Array.isArray(row) && typeof row.cmd === "string" && row.cmd.trim() !== "")
+    .map(({ row, index }) => {
+      const forms = new Set();
+      for (const match of row.cmd.matchAll(RUNNABLE_FILE_RE)) {
+        for (const form of pathForms(match[1], repoDirs)) forms.add(form);
+      }
+      const exit = typeof row.exit === "number" ? row.exit : typeof row.exit_code === "number" ? row.exit_code : null;
+      return { index, cmd: row.cmd, forms, exit };
+    });
+  const findings = [];
+  const lifted = [];
+  let obliged = 0;
+  let matched = 0;
+  for (let index = 0; index < list.length; index++) {
+    const entry = list[index];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const verdict = typeof entry.verdict === "string" ? entry.verdict.trim().toLowerCase() : "";
+    if (verdict === "unverified") continue;
+    for (const file of citedRunFiles(entry)) {
+      obliged++;
+      const forms = pathForms(file, repoDirs);
+      const hits = rows.filter((candidate) => sameFile(forms, candidate.forms));
+      if (hits.length === 0) {
+        findings.push({ index, file, reason: "no-row" });
+        continue;
+      }
+      matched++;
+      const exits = hits.map((hit) => hit.exit).filter((exit) => exit !== null);
+      // Any passing run satisfies the rule: a file re-run after a red one is the
+      // file passing, and a row that carries no numeric exit is the shape leg's
+      // subject, not this one's.
+      if (exits.length === 0 || exits.includes(0)) continue;
+      const worst = hits.find((hit) => hit.exit === exits[0]);
+      const finding = { index, file, reason: "exit", exit: exits[0], rowIndex: worst ? worst.index : hits[0].index };
+      if (status === "completed") findings.push(finding);
+      else lifted.push(finding);
+    }
+  }
+  return { entries: list.length, obliged, matched, findings, lifted };
+}
+
+/** One command excerpt for a line, bounded and single-line. */
+function commandExcerpt(cmd) {
+  const text = typeof cmd === "string" ? cmd.replace(/\s+/g, " ").trim() : String(cmd);
+  return text.length > 96 ? `${text.slice(0, 93)}...` : text;
+}
+
+function claimRowParityFailureLine(finding, rows) {
+  const searched = rows.length === 0
+    ? "gate_evidence carries no rows"
+    : `${rows.length} row(s): ${rows.slice(0, 3).map((row) => `"${commandExcerpt(row.cmd)}"`).join(", ")}` +
+      `${rows.length > 3 ? `, +${rows.length - 3} more` : ""}`;
+  if (finding.reason === "exit") {
+    return (
+      `FAIL claim-row-parity: claim ${finding.index} cites ${finding.file} and its row ${finding.rowIndex} exits ${finding.exit} — ` +
+      "a completed block attests a finished result, so a cited run that did not pass is not the evidence the claim says it is"
+    );
+  }
+  return (
+    `FAIL claim-row-parity: claim ${finding.index} cites ${finding.file} and no gate row names that file — searched ${searched}; ` +
+    "a claim that names a run must carry the row that records it (the command and its exit code)"
   );
 }
 
@@ -404,11 +641,6 @@ function parsePopulationStamp(value) {
   return { n: Number(match[1]), unit: match[2], revision };
 }
 
-/** One command excerpt for a warning line, bounded and single-line. */
-function commandExcerpt(cmd) {
-  const text = typeof cmd === "string" ? cmd.replace(/\s+/g, " ").trim() : String(cmd);
-  return text.length > 96 ? `${text.slice(0, 93)}...` : text;
-}
 const weaselVerifier = claimObjects.filter((c) => typeof c.verified_by === "string" && verifierNamesNothing(c.verified_by));
 check("claims-verified-by-names", weaselVerifier.length === 0, weaselVerifier.length === 0 ? "" : `${weaselVerifier.length} entr(ies) whose verified_by names no instrument (${weaselVerifier.map((c) => JSON.stringify(String(c.verified_by).slice(0, 40))).join(", ")})`);
 const unsourcedVerifier = claimObjects.filter((c) => typeof c.verified_by === "string" && !verifierNamesNothing(c.verified_by) && !verifierNamesAnArtifact(c.verified_by));
@@ -749,6 +981,28 @@ if (redRows.length > 0) {
   );
 }
 
+// Claim–row parity. Read after the shape leg so a prose row is named there, not
+// here as a missing match: this leg's subject is a claim that names a run and a
+// block that records none.
+const parity = evaluateClaimRowParity(claimEntries, gateEntries, {
+  status: schema.status,
+  repoDirs: SOURCE_REPOS.map(([, dir]) => dir),
+});
+const searchedRows = gateEntries.filter((row) => row && typeof row === "object" && !Array.isArray(row) && typeof row.cmd === "string" && row.cmd.trim() !== "");
+for (const finding of parity.findings) {
+  console.log(claimRowParityFailureLine(finding, searchedRows));
+  failed++;
+}
+for (const lifted of parity.lifted) {
+  console.log(
+    `WARN claim-row-exit: claim ${lifted.index} cites ${lifted.file} and its row ${lifted.rowIndex} exits ${lifted.exit} — ` +
+      `status=${schema.status}, so the row must exist and its exit is not constrained`,
+  );
+}
+if (parity.obliged > 0) {
+  console.log(`claim-row-parity: ${parity.matched}/${parity.obliged} claim(s) citing a runnable file are matched by a gate row`);
+}
+
 if (predictsMissing > 0) console.log(`WARN predicts: ${predictsMissing} claim(s) without a prediction`);
 if (unsourcedVerifier.length > 0) console.log(`WARN claims-verified-by-names: ${unsourcedVerifier.length} claim(s) whose verified_by names no artifact or command (advisory: the decidable case fails, this residue is the seat's re-derivation job)`);
 if (predictsInvalid > 0) console.log(`WARN predicts: ${predictsInvalid} claim(s) carry a prediction failing the heuristic (>=20 chars, one of ${PREDICTS_MARKERS.join(" ")})`);
@@ -805,4 +1059,4 @@ console.log(`output_file: ${schema.output_file}`);
 process.exit(failed === 0 ? 0 : 1);
 }
 
-export { VERIFIER_CLASSES, CLAIM_CLASSES, COUNT_VERBS, DECOMPOSITION_WORDS, CENSUS_SUGGESTION, evaluateClaimCapability, evaluateInstrumentDisclosure, MEASURED_FIGURE_RE };
+export { VERIFIER_CLASSES, CLAIM_CLASSES, COUNT_VERBS, DECOMPOSITION_WORDS, CENSUS_SUGGESTION, evaluateClaimCapability, evaluateClaimRowParity, evaluateInstrumentDisclosure, MEASURED_FIGURE_RE };
