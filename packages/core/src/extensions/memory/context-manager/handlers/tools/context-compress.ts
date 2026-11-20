@@ -506,9 +506,35 @@ function armSlideCompaction(
   return { cutEntryId, keptCount, droppedCount };
 }
 
-/** Per-session hysteresis counter for the usage-driven auto-arm. */
+/**
+ * Percent of usage growth since the last auto fire that re-opens the gate.
+ *
+ * An auto slide keeps the recent half of the branch, so on a session that grows
+ * faster than it is cut the post-cut reading lands just under the pre-cut one:
+ * usage stays above `armPercent`, the hysteresis counter re-confirms, and the
+ * same mass of context buys another fire every couple of ticks (measured: four
+ * fires in 47 minutes on one session, each dropping about half a branch that
+ * never fell below the arm threshold).
+ *
+ * The margin has to sit above the meter's noise, not at zero: appending a turn
+ * moves the live percent by a point or two, and re-arming on that would fire on
+ * the tail of the last cut rather than on new context. Five points is ~10k
+ * tokens on a 200k window.
+ */
+const AUTO_ARM_USAGE_GROWTH_PP = 5;
+
+/**
+ * Per-session hysteresis counter for the usage-driven auto-arm, plus the record
+ * of the last fire it has to be compared against.
+ */
 interface AutoArmState {
   aboveCount: number;
+  /** Usage percent when the last slide was armed; null before the first fire. */
+  firedPercent: number | null;
+  /** Branch length the last fire left live (its keep window). */
+  firedKept: number;
+  /** Entries the last fire dropped. */
+  firedDropped: number;
 }
 
 /**
@@ -524,7 +550,12 @@ export function resolveAutoSlideKeep(branchLength: number): number {
 }
 
 function getAutoArmState(ctx: any): AutoArmState {
-  return getExtensionState(ctx, "context-manager/auto-arm", () => ({ aboveCount: 0 }));
+  return getExtensionState(ctx, "context-manager/auto-arm", () => ({
+    aboveCount: 0,
+    firedPercent: null,
+    firedKept: 0,
+    firedDropped: 0,
+  }));
 }
 
 /**
@@ -534,6 +565,12 @@ function getAutoArmState(ctx: any): AutoArmState {
  * accounting context_inspect computes (analyzeSession) and the same pending
  * queue the tool arms drain through: arming only queues; the compaction itself
  * fires when the run settles (or at the 0.90W backstop), never mid-run.
+ *
+ * A fire is not a threshold crossing but a repayment: after one lands, the arm
+ * stays closed until the meter has climbed by `AUTO_ARM_USAGE_GROWTH_PP` since
+ * that fire, or the branch has re-accumulated the entries the cut dropped. The
+ * explicit tool path (an agent asking for `action: "slide"`) is not gated this
+ * way: a person asking twice gets two.
  *
  * Called from the heartbeat tick — the only cadence that runs while a session
  * works. Arming only queues: the entry waits for `agent_settled`, because the
@@ -553,26 +590,63 @@ export function maybeArmAutoCompaction(
   }
   const usage = captureUsage(ctx);
   if (!usage) return { armed: false, reason: "usage-unavailable" };
+  const st = getAutoArmState(ctx);
   if (usage.percent < config.armPercent) {
-    getAutoArmState(ctx).aboveCount = 0;
+    st.aboveCount = 0;
     return { armed: false, reason: `below-arm-percent (${usage.percent.toFixed(1)}%)` };
   }
-  const st = getAutoArmState(ctx);
+  const branchLength = ctx?.sessionManager?.getBranch?.().length ?? 0;
+
+  // Post-fire growth gate. The last fire already cut this branch, so the same
+  // mass of context reads as "above the threshold" again one tick later; only
+  // growth the cut did not remove earns another fire. Either reading repays the
+  // last fire: the meter climbed by the margin since then, or the branch grew
+  // back at least the entries that cut dropped. `firedKept` is the length the
+  // cut left live, so `branchLength - firedKept` is what arrived after it.
+  //
+  // The counter is deliberately not advanced while the gate is closed: the
+  // growth gate is then the only thing withholding the arm, and credit earned
+  // behind it would fire the instant it opens instead of after `confirmTicks`
+  // fresh observations of a sustained reading.
+  let repaidBy = "";
+  if (st.firedPercent !== null) {
+    const usageGrowth = usage.percent - st.firedPercent;
+    const branchGrowth = branchLength - st.firedKept;
+    if (usageGrowth >= AUTO_ARM_USAGE_GROWTH_PP) {
+      repaidBy = ` (+${usageGrowth.toFixed(1)}pp since the last fire at ${st.firedPercent.toFixed(1)}%)`;
+    } else if (st.firedDropped > 0 && branchGrowth >= st.firedDropped) {
+      repaidBy = ` (branch grew ${branchGrowth} entries since the last cut dropped ${st.firedDropped})`;
+    } else {
+      const entriesClause =
+        st.firedDropped > 0 ? ` or +${st.firedDropped} entries since the cut` : "";
+      const reason =
+        `cooling-down (${usage.percent.toFixed(1)}% now vs ` +
+        `${st.firedPercent.toFixed(1)}% at the last fire; ` +
+        `needs +${AUTO_ARM_USAGE_GROWTH_PP}pp${entriesClause})`;
+      // The heartbeat's tick calls this for its effect and drops the return
+      // value, so the log is the surface that makes a withheld arm countable.
+      log.info(`[context-compress] Auto-arm refused: ${reason}`);
+      return { armed: false, reason };
+    }
+  }
+
   st.aboveCount += 1;
   if (st.aboveCount < config.confirmTicks) {
     return { armed: false, reason: `warming ${st.aboveCount}/${config.confirmTicks}` };
   }
-  const branchLength = ctx?.sessionManager?.getBranch?.().length ?? 0;
   const keep = resolveAutoSlideKeep(branchLength);
   const armed = armSlideCompaction(pi, ctx, keep);
   st.aboveCount = 0;
   if (!armed) return { armed: false, reason: "branch-too-short" };
+  st.firedPercent = usage.percent;
+  st.firedKept = armed.keptCount;
+  st.firedDropped = armed.droppedCount;
   log.info(
     `[context-compress] Auto-arm: usage sustained at ${usage.percent.toFixed(1)}% ` +
       `(>= ${config.armPercent}% for ${config.confirmTicks} observations) — slide armed ` +
       `(${armed.droppedCount} entries before the cut), fires when the run settles.`,
   );
-  return { armed: true, reason: `usage ${usage.percent.toFixed(1)}% sustained` };
+  return { armed: true, reason: `usage ${usage.percent.toFixed(1)}% sustained${repaidBy}` };
 }
 
 // Schema
