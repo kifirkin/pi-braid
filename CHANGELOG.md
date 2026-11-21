@@ -53,6 +53,23 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.50.1: a babysit cadence stops naming workers that have closed (2026-11-21)
+
+A timer was armed once with a sentence naming every uncovered worker and then left to recur. The sentence stayed true
+for at most three minutes and then became a lie, delivered every five minutes for hours: nine wakes in four minutes
+naming three workers that had already closed, four such cadences alive at once, and a delivery at 05:19 that said "no
+timer naming them" about a timer the seat had armed 194 seconds earlier.
+
+The measurement that changed the diagnosis: the matcher was never wrong. Every cadence was armed while the session
+held no timer naming its workers; the seat armed its own timer 72 to 105 seconds later and the store says so. `pending`
+is read once, at the turn end, and `scheduleTimer` freezes the reason, so the one fact that could contradict the
+sentence is never consulted again while the cadence lives.
+
+`43e67f4` arms it once (`recurring: false`), re-derives the uncovered set at the next turn end, and withdraws any
+babysit timer whose reason names a worker the registry no longer holds open, reporting the withdrawal. Seven cases in
+`test-babysit-cadence.mjs`, including the half a withdraw-everything implementation would fail: a timer naming a live
+worker survives a turn end untouched.
+
 ## Core 0.50.0: the rules the fleet kept in its head are now instruments (2026-11-21)
 
 Two constraints were written in memory, repeated in briefs, and violated whenever two things happened at once. Both
