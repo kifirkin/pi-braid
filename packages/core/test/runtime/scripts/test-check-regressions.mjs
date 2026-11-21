@@ -21,8 +21,10 @@
 // an exemption that silenced nothing is reported as stale; a run from inside a
 // suite refuses the default root rather than re-entering the suite it is
 // already in; a baseline whose revision field is present but unreadable is
-// refused rather than read as "no revision"; and a fixture that passed in the
-// baseline and now times out is named as timing out rather than as failing.
+// refused rather than read as "no revision"; a fixture that passed in the
+// baseline and now times out is named as timing out rather than as failing; and
+// a baseline holding no fixture row is refused, because a comparison against it
+// would report every fixture as new and then exit 0.
 //
 // The gate under test defaults to the script three directories up;
 // CHECK_REGRESSIONS=<path> overrides it, which is how a RED run is recorded
@@ -256,6 +258,38 @@ test("a baseline whose revision is unreadable is refused rather than read as no 
     const checked = gate(["--check", spot.baseline, "--root", spot.tree]);
     assert.equal(checked.status, 2, checked.out);
     assert.match(checked.out, /records a revision that is not one/);
+  } finally {
+    rmSync(spot.home, { recursive: true, force: true });
+  }
+});
+
+test("a baseline holding no fixture row is refused, and a baseline holding one still compares", () => {
+  // The two halves are one case on purpose. A predicate that refuses every
+  // baseline satisfies the first half, so the second half is the control: a
+  // baseline with one row still reaches the comparison and still exits 0.
+  const spot = harness();
+  try {
+    const taken = snapshot(spot);
+    writeFileSync(spot.baseline, JSON.stringify({ ...taken, fixtures: [] }));
+
+    const refused = gate(["--check", spot.baseline, "--root", spot.tree]);
+    assert.equal(refused.status, 2, refused.out);
+    assert.ok(refused.out.includes(spot.baseline), `the refusal names the baseline it read: ${refused.out}`);
+    assert.match(refused.out, /holds no fixture row/);
+    assert.match(refused.out, /grounds nothing/);
+    assert.doesNotMatch(refused.out, /fixture\(s\) compared against the baseline/, "the refusal arrives before the suite runs");
+
+    const oneRow = {
+      ...taken,
+      counts: { fixtures: 1, passed: 1, failed: 0, timedOut: 0 },
+      fixtures: taken.fixtures.filter((row) => row.path === "green.mjs"),
+    };
+    writeFileSync(spot.baseline, JSON.stringify(oneRow));
+
+    const compared = gate(["--check", spot.baseline, "--root", spot.tree]);
+    assert.equal(compared.status, 0, compared.out);
+    assert.match(compared.out, /1 fixture\(s\) compared against the baseline, 0 regression/);
+    assert.match(compared.out, /1 fixture\(s\) new since the baseline/);
   } finally {
     rmSync(spot.home, { recursive: true, force: true });
   }

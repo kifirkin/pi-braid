@@ -370,6 +370,16 @@ function readBaseline(file) {
   if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.fixtures)) {
     refuse(`the baseline ${file} carries no fixtures array, so it cannot ground a comparison`);
   }
+  if (parsed.fixtures.length === 0) {
+    // A baseline with no row is not a weaker comparison, it is no comparison:
+    // every fixture the tree carries reads as new, nothing is ever compared, and
+    // the run exits 0 over any tree at all. The suite runner refuses the same
+    // shape one file away and for the same reason, so the two instruments agree.
+    refuse(
+      `the baseline ${file} holds no fixture row, so it grounds nothing: every fixture this tree carries would read as new ` +
+        "and no comparison would be made. Take a new baseline with --baseline.",
+    );
+  }
   return parsed;
 }
 

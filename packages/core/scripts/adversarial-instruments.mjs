@@ -266,6 +266,31 @@ const BUILDERS = {
 // token in braces is a value the world constructed, so the declaration cannot
 // drift from the case.
 
+/** A row the journal schema no longer admits, at the seq one declaration names:
+ *  an outcome written before the slug cap, so the field problem it carries is
+ *  the one the declaration excuses and nothing else fires. */
+const DECLARED_LEGACY_SHAPE = {
+  seq: 252,
+  at: stamp(15),
+  kind: "outcome",
+  subject: "a-subject-longer-than-the-sixty-four-character-cap-the-schema-enforces",
+  text: "A row written when the subject cap was not enforced.",
+  evidence: ["absent-evidence.txt"],
+  seat: { label: "fixture", session: "fixture", revision: "fixture" },
+};
+
+/** The same journal with one row no declaration names, standing for a sixth
+ *  violation a hand or an older writer adds beside the five. */
+const UNDECLARED_ROW = {
+  seq: 400,
+  at: stamp(15),
+  kind: "finding",
+  subject: "a-kind-the-writer-does-not-emit",
+  text: "A row no declaration names.",
+  evidence: ["absent-evidence.txt"],
+  seat: { label: "fixture", session: "fixture", revision: "fixture" },
+};
+
 const CASES = [
   {
     checker: "check-result",
@@ -334,10 +359,10 @@ const CASES = [
     checker: "check-result",
     script: "packages/core/scripts/check-result.mjs",
     case: "row-claims-a-zero-the-command-does-not-return",
-    why: "a gate row records exit 0 for a command that exits 1",
+    why: "a gate row records exit 0 for a command that exits 1, the gate credits it, and the only line that says the row was never run is the absent re-runner",
     world: { kind: "session", session: "present", failureScript: true },
     argv: ["node", "packages/core/scripts/check-result.mjs", "{session}"],
-    expect: { code: 1, names: ["always-fails.sh"] },
+    expect: { code: 0, names: ["gate-sampler", "no row's exit was re-run"] },
   },
   {
     checker: "check-journal",
@@ -374,6 +399,24 @@ const CASES = [
     world: { kind: "journal", slug: "fixture", rows: ["legacy"] },
     argv: ["node", "packages/core/scripts/check-journal.mjs", "--project", "fixture", "--digest"],
     expect: { code: 2, names: ["FIELDS line 1", "intent without status"] },
+  },
+  {
+    checker: "check-journal",
+    script: "packages/core/scripts/check-journal.mjs",
+    case: "a-declared-row-is-counted-not-found",
+    why: "a row the schema no longer admits is already written, so the run names the seq it is at and counts it instead of failing on it",
+    world: { kind: "journal", slug: "fixture", rows: [DECLARED_LEGACY_SHAPE] },
+    argv: ["node", "packages/core/scripts/check-journal.mjs", "--project", "fixture"],
+    expect: { code: 0, names: ["DECLARED seq 252", "declared 1 of 5"] },
+  },
+  {
+    checker: "check-journal",
+    script: "packages/core/scripts/check-journal.mjs",
+    case: "a-row-no-declaration-names",
+    why: "the declared row is excused and the one beside it is not, so the run still fails and names the line",
+    world: { kind: "journal", slug: "fixture", rows: [DECLARED_LEGACY_SHAPE, UNDECLARED_ROW] },
+    argv: ["node", "packages/core/scripts/check-journal.mjs", "--project", "fixture"],
+    expect: { code: 2, names: ["DECLARED seq 252", "FIELDS line 2"] },
   },
   {
     checker: "check-regressions",
@@ -415,10 +458,10 @@ const CASES = [
     checker: "check-regressions",
     script: "packages/core/scripts/check-regressions.mjs",
     case: "baseline-with-no-fixtures",
-    why: "a baseline holding no row grounds no comparison",
+    why: "a baseline holding no row grounds no comparison, and the run must not report one as OK",
     world: { kind: "suite", git: true, baseline: "recorded", fixtures: 0 },
     argv: ["node", "packages/core/scripts/check-regressions.mjs", "--check", "{baseline}", "--root", "{root}"],
-    expect: { code: 2, names: ["0 fixture(s) compared"] },
+    expect: { code: 2, names: ["{baseline}", "holds no fixture row", "grounds nothing"] },
   },
   {
     checker: "check-source-claims",
