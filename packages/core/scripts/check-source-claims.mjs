@@ -48,6 +48,19 @@
  * moves it, and a registry whose pointer is stale sends the next reader to the
  * wrong line; the message names the line the claim is actually on.
  *
+ * Every number on a governed line is proved by some entry on that line. An entry
+ * compares one number: the capture its stated pattern reads. A second number in
+ * the same line - beside the proved one, or inside the sentence the pattern
+ * matched but outside its capture groups - is stated by the document and proved
+ * by nothing, so it drifts on every edit while the entry sharing its line keeps
+ * passing. The gate therefore holds each governed line to the union of the
+ * captures its entries prove, and refuses a digit run outside that union: the
+ * numbers a governed line states are exactly the numbers some entry re-derives.
+ * A refusal names the number, the line and the sentence an entry reads, and both
+ * ways out - enrol the number with an entry of its own, or keep it off the
+ * governed line. Numbers written as words are read for value (see above) but are
+ * not counted by that census, which reads numerals.
+ *
  * Usage: node scripts/check-source-claims.mjs [--root <dir>] [--registry <path>]
  *   --root      the tree the commands run in and the document paths resolve
  *               against (default: this package, packages/core)
@@ -128,7 +141,9 @@ function stderrTail(text) {
 /** A compiled pattern, or null with a problem recorded: an uncompilable pattern checks nothing. */
 function compile(pattern, where) {
   try {
-    return new RegExp(pattern, "g");
+    // `d` records where each capture landed, so a number can be checked against
+    // the span an entry proves rather than the whole sentence it matched.
+    return new RegExp(pattern, "gd");
   } catch (error) {
     problems.push(`${where}: the pattern /${pattern}/ does not compile (${error.message})`);
     return null;
@@ -193,7 +208,7 @@ function readStated(entry) {
   for (let i = 0; i < lines.length; i += 1) {
     re.lastIndex = 0;
     const match = re.exec(lines[i]);
-    if (match !== null) hits.push({ line: i + 1, match });
+    if (match !== null) hits.push({ line: i + 1, text: lines[i], match });
   }
   if (hits.length === 0) {
     return { problem: `${file}: no line matches the stated pattern /${pattern}/ - the claim is gone, so nothing is checked` };
@@ -214,7 +229,82 @@ function readStated(entry) {
   if (value === null) {
     return { problem: `${file}:${line}: "${token}" is not a number this gate can read (a numeral, or an English number word from one to twenty)` };
   }
-  return { value, token };
+  return { value, token, file, line, text: hit.text, match: hit.match };
+}
+
+/** Every digit run in a line, with the span it occupies. */
+function digitRuns(text) {
+  return [...text.matchAll(/\d+/g)].map((match) => ({
+    token: match[0],
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+/** One key per governed line, so entries that share a line share a key. */
+function lineKey(file, line) {
+  return `${resolve(root, file)}\u0000${line}`;
+}
+
+/** The capture each entry proves, grouped under the line it governs. */
+function provedSpans(readings) {
+  const proved = new Map();
+  for (const { entry, stated } of readings) {
+    const capture = stated.match.indices[1];
+    if (capture === undefined || capture === null) continue;
+    const key = lineKey(stated.file, stated.line);
+    const spans = proved.get(key) ?? [];
+    spans.push({ id: entry.id, token: stated.token, start: capture[0], end: capture[1] });
+    proved.set(key, spans);
+  }
+  return proved;
+}
+
+/** "a", "a and b", "a, b and c": a list a message reads as one phrase. */
+function andList(items) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/**
+ * What a reader can do about a number no entry proves, in the message itself:
+ * the number, the line as it is written, the counts the line's entries do
+ * prove, and both ways out. A reader who never opens this file fixes the
+ * document or the registry from these sentences alone.
+ */
+function unprovedMessage(stated, unproved, spans) {
+  const numbers = andList(unproved.map((run) => run.token));
+  const proved = andList(spans.map((span) => `${span.token} (entry "${span.id}")`));
+  const raw = stated.text.trim();
+  const line = raw.length > 240 ? `${raw.slice(0, 237)}...` : raw;
+  return (
+    `${stated.file}:${stated.line}: the line states ${numbers}, which no entry proves` +
+    ` - it reads "${line}", and the entries that read it prove ${proved}.` +
+    ` A number no entry proves drifts while every entry on its line keeps passing.` +
+    ` Two ways out: enrol ${numbers} with an entry whose stated pattern captures it and whose command derives it from the tree,` +
+    ` or keep ${numbers} off the governed line so every number the line states is one an entry proves`
+  );
+}
+
+/**
+ * One refusal per governed line that states a number no capture proves, held
+ * under the line and attributed to the first entry that reads it, so a line two
+ * entries share is refused once.
+ */
+function unprovedByLine(readings, proved) {
+  const out = new Map();
+  for (const { index, stated } of readings) {
+    const key = lineKey(stated.file, stated.line);
+    if (out.has(key)) continue;
+    const spans = proved.get(key) ?? [];
+    const unproved = digitRuns(stated.text).filter(
+      (run) => !spans.some((span) => run.start >= span.start && run.end <= span.end),
+    );
+    if (unproved.length > 0) {
+      out.set(key, { index, problem: unprovedMessage(stated, unproved, spans) });
+    }
+  }
+  return out;
 }
 
 /** The number the entry's command derives from the tree, or why it cannot be re-derived. */
@@ -295,13 +385,21 @@ if (Array.isArray(claims) && claims.length === 0) {
   );
 }
 
-// ── every enrolled count, re-derived ────────────────────────────────────────
+// ── every enrolled count, re-derived, and every number on its line proved ───
+//
+// Two passes, because whether a number is proved depends on the captures of
+// every entry on its line, not only the entry whose sentence it sits in: the
+// first reads the stated number of every entry, the second re-derives, compares,
+// and refuses a line that states a number no capture proves. Each entry keeps
+// its own problem list, so the report stays in registry order.
 
 const seen = new Set();
 const documents = new Set();
-let verified = 0;
+const perEntry = entries.map(() => []);
+const readings = [];
 
 for (const [index, entry] of entries.entries()) {
+  const out = perEntry[index];
   const where = `${basename(registryPath)}: claim #${index + 1}`;
   const malformed = shapeProblems(entry, where);
   if (typeof entry?.id === "string" && entry.id.trim() !== "") {
@@ -311,30 +409,51 @@ for (const [index, entry] of entries.entries()) {
     seen.add(entry.id);
   }
   if (malformed.length > 0) {
-    problems.push(...malformed);
+    out.push(...malformed);
     continue;
   }
 
   const stated = readStated(entry);
   if (stated.problem !== undefined) {
-    problems.push(stated.problem);
+    out.push(stated.problem);
     continue;
   }
+  readings.push({ index, entry, stated });
+}
+
+const proved = provedSpans(readings);
+const unproved = unprovedByLine(readings, proved);
+let verified = 0;
+
+for (const { index, entry, stated } of readings) {
+  const out = perEntry[index];
+  const key = lineKey(stated.file, stated.line);
   const derived = deriveNumber(entry);
+  let agrees = false;
   if (derived.problem !== undefined) {
-    problems.push(`${entry.stated.file}:${entry.stated.line} (${entry.claim}): ${derived.problem}`);
-    continue;
+    out.push(`${stated.file}:${stated.line} (${entry.claim}): ${derived.problem}`);
+  } else {
+    documents.add(stated.file);
+    if (stated.value !== derived.value) {
+      out.push(
+        `${stated.file}:${stated.line} (${entry.claim}): states ${stated.token}, the command derives ${derived.token}; command: ${entry.derived.cmd}`,
+      );
+    } else {
+      agrees = true;
+    }
   }
 
-  documents.add(entry.stated.file);
-  if (stated.value !== derived.value) {
-    problems.push(
-      `${entry.stated.file}:${entry.stated.line} (${entry.claim}): states ${stated.token}, the command derives ${derived.token}; command: ${entry.derived.cmd}`,
-    );
-    continue;
+  // A governed line is refused once, by the entry that reads it first; every
+  // entry on that line is unverified until the line states only proved numbers.
+  const lineRefusal = unproved.get(key);
+  if (lineRefusal !== undefined) {
+    if (lineRefusal.index === index) out.push(lineRefusal.problem);
+  } else if (agrees) {
+    verified += 1;
   }
-  verified += 1;
 }
+
+for (const out of perEntry) problems.push(...out);
 
 if (problems.length > 0) {
   console.error(`check-source-claims: ${problems.length} problem(s)`);

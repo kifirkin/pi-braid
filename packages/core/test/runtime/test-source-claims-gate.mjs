@@ -20,7 +20,20 @@
  *   - an entry with no command is refused as malformed rather than read as
  *     nothing to do;
  *   - a registry that enrolls nothing is refused, because it would print green
- *     over any document at all.
+ *     over any document at all;
+ *   - a line that states a number no entry proves is refused, naming the number,
+ *     the line and both repairs, even when the entry beside it re-derives
+ *     cleanly - and a line whose numbers are all proved passes, whether one
+ *     entry proves them or two;
+ *   - a number the matched sentence carries but the pattern does not capture is
+ *     refused: the capture is what the gate compares, so the shape of a
+ *     sentence proves no value;
+ *   - a number outside every sentence the line's entries match is refused too,
+ *     because the line as a whole is what an entry governs;
+ *   - the census reads numerals, so a number word no capture contains is left
+ *     alone rather than refused on a count no entry states;
+ *   - every digit run is counted and none is exempted, so a digit inside an
+ *     identifier on a governed line is refused while no exemption exists.
  *
  * Finally the gate is run over the repository's own registry, where it must
  * pass, so a registry that has drifted from the documents it governs cannot sit
@@ -104,7 +117,7 @@ test("a stale entry beside a true one fails alone", () => {
     derived: { cmd: "awk 'END{print NR}' tally.txt", pattern: "^(\\d+)$" },
   };
   const { dir, registryPath } = bench([TRUE_ENTRY, stale], {
-    doc2: "doc2 records 4 rows.\n",
+    doc2: "The second document records 4 rows.\n",
   });
   try {
     const result = gateOn(dir, registryPath);
@@ -180,6 +193,124 @@ test("a registry that enrolls nothing is refused", () => {
     assert.equal(result.status, 1, result.stdout);
     assert.match(result.stderr, /enrolls no claim/);
     assert.doesNotMatch(result.stdout, /clean/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a governed line that states a number no entry proves is refused", () => {
+  const pair = { ...TRUE_ENTRY, stated: { file: "doc.md", line: 3, pattern: "holds (\\S+) of" } };
+  const { dir, registryPath } = bench([pair], { doc: "# Bench\n\nThe bench holds 2 of 41 rows.\n" });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /doc\.md:3/);
+    assert.match(result.stderr, /states 41, which no entry proves/);
+    assert.match(result.stderr, /enrol 41 with an entry/);
+    assert.match(result.stderr, /keep 41 off the governed line/);
+    assert.doesNotMatch(result.stdout, /clean/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a second entry on the same line proves the number the first one does not", () => {
+  const second = {
+    id: "bench-rows-of-leaves",
+    claim: "how many of the bench's rows the same sentence names",
+    stated: { file: "doc.md", line: 3, pattern: "of (\\S+) rows" },
+    derived: { cmd: "printf '41\\n'", pattern: "^(\\d+)$" },
+  };
+  const pair = { ...TRUE_ENTRY, stated: { file: "doc.md", line: 3, pattern: "holds (\\S+) of" } };
+  const { dir, registryPath } = bench([pair, second], {
+    doc: "# Bench\n\nThe bench holds 2 of 41 rows.\n",
+  });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /clean - 2 stated count\(s\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a line whose every number an entry captures passes", () => {
+  const entry = { ...TRUE_ENTRY, stated: { file: "doc.md", line: 3, pattern: "holds (\\S+) rows" } };
+  const { dir, registryPath } = bench([entry]);
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /clean - 1 stated count\(s\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A pattern proves the shape of a sentence; only its capture carries a value the
+// gate compares. So a number the match spans but no group captures is stated by
+// the document and proved by nothing, and it is refused: a pattern that moves
+// over a number is not a check on it.
+test("a number the matched sentence carries but no capture group takes is refused", () => {
+  const entry = {
+    ...TRUE_ENTRY,
+    stated: { file: "doc.md", line: 3, pattern: "holds (\\S+) of \\S+ rows" },
+  };
+  const { dir, registryPath } = bench([entry], { doc: "# Bench\n\nThe bench holds 2 of 41 rows.\n" });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /doc\.md:3/);
+    assert.match(result.stderr, /states 41, which no entry proves/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a number outside every sentence the line's entries match is refused", () => {
+  const { dir, registryPath } = bench([TRUE_ENTRY], {
+    doc: "# Bench\n\nThe bench holds 2 rows, 7 of them new.\n",
+  });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /doc\.md:3/);
+    assert.match(result.stderr, /states 7, which no entry proves/);
+    assert.match(result.stderr, /prove 2 \(entry "bench-rows"\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The census is of numerals, which is the only way a digit run can be found
+// without reading prose for meaning. A number word is still read as a value when
+// an entry captures it; a word no capture contains is outside what this rule
+// counts, and is left to the entry that states it.
+test("the census reads numerals, so a number word no capture contains passes", () => {
+  const { dir, registryPath } = bench([TRUE_ENTRY], {
+    doc: "# Bench\n\nThe bench holds 2 rows, two of them new.\n",
+  });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The census takes every digit run on a governed line and exempts none, so a
+// digit that is part of an identifier is refused like a count: the rule reads
+// numerals, and telling a filename from a figure is a judgement no cheap scan
+// makes. A governed line therefore keeps identifiers that end in digits off it.
+// An exemption for this class would be a recorded decision, not a silent one.
+test("a digit inside an identifier on a governed line is refused like a count", () => {
+  const { dir, registryPath } = bench([TRUE_ENTRY], {
+    doc: "# Bench\n\nThe bench holds 2 rows in doc7.\n",
+  });
+  try {
+    const result = gateOn(dir, registryPath);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /doc\.md:3/);
+    assert.match(result.stderr, /states 7, which no entry proves/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
