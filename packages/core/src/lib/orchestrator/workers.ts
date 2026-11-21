@@ -39,7 +39,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { braidDir, getWorkersFilePath, projectsDir } from "../config/braid-paths.js";
 import { getCloseGateWellFormedness } from "../config/braid-settings.js";
 import type { CloseGateWellFormednessMode } from "../config/braid-settings.js";
@@ -101,6 +101,44 @@ export interface WorkerCheckpoint extends WorkerCheckpointInput {
   at: string;
 }
 
+/**
+ * Which side of the fleet performed a close. `seat` and `worker` are resolved
+ * from evidence (the row's recorded session, the launch-time role marker);
+ * `unknown` is what remains when a session cannot be matched to the row.
+ */
+export type WorkerCloserKind = "seat" | "worker" | "unknown";
+
+/**
+ * The closer a close recorded. The registry writes it, never the caller: the
+ * handler resolves the evidence and `at` is the registry clock, so a closer
+ * cannot name itself or backdate the record.
+ */
+export interface WorkerClosedBy {
+  kind: WorkerCloserKind;
+  /** Session file the closer ran in; null when the caller carried none. */
+  session: string | null;
+  /** When the close was accepted. */
+  at: string;
+  /** True when a worker-shaped caller used the seat override. */
+  forced?: true;
+}
+
+/** What a close caller resolved about itself, before the registry writes. */
+export interface WorkerCloseCaller {
+  /** The caller's session file, when the handler could resolve one. */
+  session: string | null;
+  /** True when the process carries the launch-time worker role marker. */
+  workerRole: boolean;
+  /**
+   * The caller's context exposed a session manager but no session identity.
+   * A close from such a caller is refused: there is nothing to attribute it
+   * to, and an unattributed terminal row is worse than a refused close.
+   */
+  unattributed?: boolean;
+  /** The caller asked to close despite resolving as the row's worker. */
+  forced?: boolean;
+}
+
 export interface WorkerEntry {
   workerId: string;
   spec: string;
@@ -131,6 +169,11 @@ export interface WorkerEntry {
   /** When that merge landed. */
   mergedAt: string | null;
   closedAt: string | null;
+  /**
+   * Who closed the row, and in which session. Null on a row written before the
+   * field existed; those rows are read, never rewritten.
+   */
+  closedBy: WorkerClosedBy | null;
   gates: WorkerGate[];
   /**
    * Duplicate admissions this row turned away while it was live: each records
@@ -235,6 +278,12 @@ export interface WorkerCheckOptions {
    * leaves dependency satisfaction unread, so no row is reported blocked.
    */
   registry?: WorkerRegistry;
+  /**
+   * Root of the session corpus. Supplied only when the caller wants a closed
+   * row that predates the closer stamp read for its closing session; without
+   * it a legacy row reports an unknown closer and no session is read.
+   */
+  sessionsDir?: string;
 }
 
 export interface WorkerCheckResult {
@@ -270,6 +319,13 @@ export interface WorkerCheckResult {
    * row shows none of the three evidence kinds.
    */
   effectEvidence: WorkerEffectEvidence | null;
+  /**
+   * Who closed the row: the stamped closer, or — for a row closed before the
+   * stamp existed — the closer read from the closing session when a sessions
+   * root was supplied. Null while the row is open, and on a legacy row whose
+   * closing call could not be found.
+   */
+  closer: WorkerClosedBy | null;
 }
 
 /**
@@ -299,13 +355,15 @@ export interface WorkerOrderRow {
 }
 
 /**
- * A status the registry reports. `resumable` and `blocked` are derived, never
- * stored: `resumable` says the entry is mid-flight with a checkpoint to resume
- * from, `blocked` that a dependency has not been delivered. Both are statements
- * about evidence rather than lifecycle states a caller sets, so no stored row
- * carries either and the on-disk status set is unchanged.
+ * A status the registry reports. `resumable`, `blocked` and
+ * `closed-unverified` are derived, never stored: `resumable` says the entry is
+ * mid-flight with a checkpoint to resume from, `blocked` that a dependency has
+ * not been delivered, and `closed-unverified` that the close is on record
+ * without the evidence a seat's close carries. All three are statements about
+ * evidence rather than lifecycle states a caller sets, so no stored row carries
+ * one and the on-disk status set is unchanged.
  */
-export type WorkerVerdictStatus = WorkerStatus | "resumable" | "blocked";
+export type WorkerVerdictStatus = WorkerStatus | "resumable" | "blocked" | "closed-unverified";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -338,13 +396,14 @@ export const WORKER_OUTCOMES: readonly WorkerOutcome[] = [
 ];
 
 /**
- * Statuses check-worker may report: the stored statuses plus the derived ones,
- * `resumable` and `blocked`, which no row ever carries on disk.
+ * Statuses check-worker may report: the stored statuses plus the derived
+ * `resumable`, `blocked` and `closed-unverified`, which no row carries on disk.
  */
 export const WORKER_VERDICT_STATUSES: readonly WorkerVerdictStatus[] = [
   ...WORKER_STATUSES,
   "resumable",
   "blocked",
+  "closed-unverified",
 ];
 
 /** Statuses a worker's result schema may self-report. */
@@ -402,7 +461,8 @@ export const WORKER_STATUS_LAYERS: readonly WorkerStatusLayer[] = [
     role: "computed verdict",
     owner: "check-worker",
     values: WORKER_VERDICT_STATUSES,
-    states: "what check-worker derives from evidence, resumable and blocked never stored",
+    states:
+      "what check-worker derives from evidence, resumable, blocked and closed-unverified never stored",
   },
   {
     role: "result attestation",
@@ -463,12 +523,27 @@ function normalizeEntry(raw: WorkerEntry): WorkerEntry {
     ...raw,
     requestId,
     checkpoint: isCheckpoint(raw.checkpoint) ? raw.checkpoint : null,
+    closedBy: normalizeClosedBy(raw.closedBy),
     admissionRefusals: Array.isArray(raw.admissionRefusals) ? raw.admissionRefusals : [],
     // A row admitted before the queue facts existed is unranked and waits for
     // nothing, which is exactly what the absent fields mean.
     priority:
       typeof raw.priority === "number" && Number.isFinite(raw.priority) ? raw.priority : null,
     dependsOn: normalizeDependsOn(raw.dependsOn),
+  };
+}
+
+/** Validate a recorded closer; a row written before the field existed has null. */
+function normalizeClosedBy(raw: unknown): WorkerClosedBy | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as { kind?: unknown; session?: unknown; at?: unknown; forced?: unknown };
+  if (value.kind !== "seat" && value.kind !== "worker" && value.kind !== "unknown") return null;
+  if (typeof value.at !== "string") return null;
+  return {
+    kind: value.kind,
+    session: typeof value.session === "string" ? value.session : null,
+    at: value.at,
+    ...(value.forced === true ? { forced: true as const } : {}),
   };
 }
 
@@ -942,6 +1017,7 @@ export function registerWorker(input: RegisterWorkerInput, cwd?: string): Regist
     mergeSha: null,
     mergedAt: null,
     closedAt: null,
+    closedBy: null,
     gates: [],
     admissionRefusals: [],
     requestId,
@@ -970,6 +1046,23 @@ export function updateWorker(
   const located = locateWorker(workerId, cwd);
   if (!located) return null;
   const entry = located.registry.workers[workerId];
+
+  // A closed row is terminal: its outcome is the record a later reader trusts,
+  // so a status or checkpoint patch after the close would state a lifecycle
+  // the close never witnessed. Handle fields still fill in — the close's own
+  // pane step writes one after the row lands — but not the judgement fields.
+  if (entry.closedAt && patch.status !== undefined) {
+    throw new Error(
+      `updateWorker: ${workerId} is already closed (${entry.status} at ${entry.closedAt}); ` +
+        "a closed row's status is terminal.",
+    );
+  }
+  if (entry.closedAt && patch.checkpoint !== undefined) {
+    throw new Error(
+      `updateWorker: ${workerId} is already closed (${entry.status} at ${entry.closedAt}); ` +
+        "a closed row carries no resume point.",
+    );
+  }
 
   if (patch.pane !== undefined) entry.pane = patch.pane;
   if (patch.workspace !== undefined) entry.workspace = patch.workspace;
@@ -1764,18 +1857,49 @@ export function populationRefusalDetail(read: PopulationRead): string | null {
  * survives it blocks the next spawn on the same files. The release runs with
  * the entry's own project key so the lock table read is the same one
  * `acquireLock` wrote; `release-locks` stays the explicit override.
+ *
+ * A close also records who performed it. The caller's handler resolves the
+ * evidence (the caller's session against the row's `workerSession`, the
+ * launch-time role marker) and this function classifies it, refuses a caller
+ * that resolves as the row's worker, and stamps `closedBy` on the accepted
+ * close. A caller that supplies no identity at all is recorded `unknown`: that
+ * is what a direct library call is, and the tool always supplies one.
  */
 export function closeWorker(
   workerId: string,
   outcome: WorkerOutcome,
   gates?: Array<{ cmd: string; exit: number; stamp?: string }>,
   cwd?: string,
+  caller?: WorkerCloseCaller,
 ): WorkerEntry | null {
   const parsed = parseWorkerOutcome(outcome);
   const located = locateWorker(workerId, cwd);
   if (!located) return null;
   const entry = located.registry.workers[workerId];
   if (entry.closedAt) return entry;
+
+  const closer = caller ?? { session: null, workerRole: false };
+  // An unattributed close is refused before anything else: the row is the
+  // artifact a later reader trusts, and a terminal row with no closer is the
+  // state this rule exists to end.
+  if (closer.unattributed && !closer.session && !closer.workerRole) {
+    throw new Error(
+      `closeWorker: the close of worker ${workerId} is unattributed. The caller's session context ` +
+        "carries a session manager but no session identity and no role marker, so the row would " +
+        "record a terminal outcome no session can be asked about. Run the close from the seat's session.",
+    );
+  }
+  const kind = resolveCloserKind(entry, closer);
+  if (kind === "worker" && !closer.forced) {
+    throw new Error(
+      `closeWorker: worker ${workerId} may not close its own row - ${
+        closer.workerRole
+          ? "the caller runs with the worker role marker"
+          : `the caller session is the row's worker session (${closer.session})`
+      }. A worker signals completion by ending its turn with a result block; the seat checks the ` +
+        "result, re-runs the gates and closes the row with orchestrate action=close-worker.",
+    );
+  }
 
   assertGateEvidence(workerId, parsed, gates);
 
@@ -1818,6 +1942,12 @@ export function closeWorker(
   const nowIso = new Date().toISOString();
   entry.status = parsed;
   entry.closedAt = nowIso;
+  entry.closedBy = {
+    kind,
+    session: closer.session,
+    at: nowIso,
+    ...(kind === "worker" && closer.forced ? { forced: true as const } : {}),
+  };
   entry.lastSeenAt = nowIso;
   if (parsed === "completed" && !entry.resultAt) entry.resultAt = nowIso;
   if (gates && gates.length > 0) {
@@ -1833,6 +1963,202 @@ export function closeWorker(
 
   writeWorkers(located.registry, located.key);
   return entry;
+}
+
+// ── Close provenance ───────────────────────────────────────────────────────
+
+/** Two session paths name the same session; resolved so a relative call matches. */
+function sameSessionFile(a: string, b: string): boolean {
+  return resolve(a) === resolve(b);
+}
+
+/**
+ * Classify a close caller against the row it is closing. The role marker is
+ * read first because it is launch-time truth no tool call can add: a process
+ * carrying it is a worker whatever session it opened. With no marker, the
+ * row's own session handle decides: the same file is the worker, a different
+ * file is a seat, and no handle at all leaves the caller unattributable —
+ * recorded `unknown` rather than guessed.
+ */
+function resolveCloserKind(entry: WorkerEntry, caller: WorkerCloseCaller): WorkerCloserKind {
+  if (caller.workerRole) return "worker";
+  if (caller.session) {
+    if (entry.workerSession && sameSessionFile(caller.session, entry.workerSession))
+      return "worker";
+    if (entry.workerSession) return "seat";
+    return "unknown";
+  }
+  return "unknown";
+}
+
+/** One orchestrate call found in a session file, and when its message ran. */
+interface SessionCloseCall {
+  session: string;
+  at: string;
+  /** The session also admitted the row, which only a seat's session does. */
+  admitted: boolean;
+}
+
+/**
+ * The start time encoded in a session file's name
+ * (`2026-01-02T03-04-05-678Z_<id>.jsonl`), or null when the name is not one.
+ */
+function sessionStartMs(file: string): number | null {
+  const match = basename(file).match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
+  if (!match) return null;
+  const ms = Date.parse(`${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** Every session file under the corpus root, one project level plus archives. */
+function listSessionFiles(root: string): string[] {
+  const files: string[] = [];
+  const visit = (dir: string, depth: number): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < 2) visit(full, depth + 1);
+      } else if (entry.name.endsWith(".jsonl")) {
+        files.push(full);
+      }
+    }
+  };
+  visit(root, 0);
+  return files;
+}
+
+/**
+ * Read one session file for the calls that name this worker: close calls
+ * (with their message times) and whether the session ever admitted the row.
+ * Only lines carrying a tool call are parsed, so a long session costs a
+ * substring scan plus its orchestrate calls.
+ */
+function readSessionCalls(file: string, workerId: string): { closes: string[]; admitted: boolean } {
+  const closeTimes: string[] = [];
+  let admitted = false;
+  let lines: string[];
+  try {
+    lines = readFileSync(file, "utf-8").split("\n");
+  } catch {
+    return { closes: closeTimes, admitted };
+  }
+  for (const line of lines) {
+    if (!line.includes('"toolCall"') || !line.includes(workerId)) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const at = (parsed as { timestamp?: unknown }).timestamp;
+    for (const call of orchestrateCalls(parsed)) {
+      if (call.workerId !== workerId) continue;
+      if (call.action === "spawn-worker" || call.action === "register-worker") admitted = true;
+      if (call.action === "close-worker" && typeof at === "string") closeTimes.push(at);
+    }
+  }
+  return { closes: closeTimes, admitted };
+}
+
+/** Orchestrate tool calls anywhere in one parsed session line. */
+function orchestrateCalls(node: unknown, depth = 0): Array<{ action: string; workerId: string }> {
+  if (depth > 12 || !node || typeof node !== "object") return [];
+  if (Array.isArray(node)) return node.flatMap((item) => orchestrateCalls(item, depth + 1));
+  const record = node as { type?: unknown; name?: unknown; arguments?: unknown };
+  const found: Array<{ action: string; workerId: string }> = [];
+  if (record.type === "toolCall" && record.name === "orchestrate") {
+    const args = record.arguments;
+    const value =
+      typeof args === "string"
+        ? (safeJsonObject(args) ?? {})
+        : ((args ?? {}) as Record<string, unknown>);
+    const action = typeof value.action === "string" ? value.action : "";
+    const workerId = typeof value.workerId === "string" ? value.workerId : "";
+    if (action && workerId) found.push({ action, workerId });
+  }
+  for (const value of Object.values(record)) found.push(...orchestrateCalls(value, depth + 1));
+  return found;
+}
+
+function safeJsonObject(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The latest close call that could have closed this row, from the sessions
+ * that were alive during its life. Null when the corpus has none, which is a
+ * row closed by a write no session recorded.
+ */
+function findClosingCall(entry: WorkerEntry, sessionsDir: string): SessionCloseCall | null {
+  const spawned = Date.parse(entry.spawnedAt);
+  const closed = entry.closedAt ? Date.parse(entry.closedAt) : Number.NaN;
+  const lifetimeSkewMs = 120_000;
+  let best: (SessionCloseCall & { ms: number }) | null = null;
+  for (const file of listSessionFiles(sessionsDir)) {
+    const start = sessionStartMs(file);
+    // A session created after the row closed cannot have closed it, and one
+    // created long before the row spawned kept running only if its file was
+    // still written during the row's life (checked below by mtime).
+    if (start !== null && Number.isFinite(closed) && start > closed + lifetimeSkewMs) continue;
+    let mtimeMs: number;
+    try {
+      mtimeMs = statSync(file).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(spawned) && mtimeMs < spawned) continue;
+    const read = readSessionCalls(file, entry.workerId);
+    for (const at of read.closes) {
+      const ms = Date.parse(at);
+      if (Number.isNaN(ms)) continue;
+      if (Number.isFinite(spawned) && ms < spawned - lifetimeSkewMs) continue;
+      if (Number.isFinite(closed) && ms > closed + lifetimeSkewMs) continue;
+      if (!best || ms >= best.ms) {
+        best = { session: file, at, admitted: read.admitted, ms };
+      }
+    }
+  }
+  return best ? { session: best.session, at: best.at, admitted: best.admitted } : null;
+}
+
+/**
+ * The closer of a row that predates the stamp, read from its closing session.
+ * Only reached for a closed row with no `closedBy` and a caller-supplied
+ * sessions root; a stamped row never consults the corpus.
+ */
+function derivedCloser(entry: WorkerEntry, sessionsDir: string): WorkerClosedBy | null {
+  const call = findClosingCall(entry, sessionsDir);
+  if (!call || !entry.closedAt) return null;
+  let kind: WorkerCloserKind;
+  if (entry.workerSession) {
+    kind = sameSessionFile(call.session, entry.workerSession) ? "worker" : "seat";
+  } else if (call.admitted) {
+    // A session that admitted the row is the seat that spawned it.
+    kind = "seat";
+  } else {
+    const start = sessionStartMs(call.session);
+    const spawned = Date.parse(entry.spawnedAt);
+    // A session that began at or after the spawn and never admitted the row is
+    // the row's own worker session: the worker opened it to do the work.
+    kind =
+      start !== null && Number.isFinite(spawned) && start >= spawned - 60_000
+        ? "worker"
+        : "unknown";
+  }
+  return { kind, session: call.session, at: entry.closedAt };
 }
 
 // ── Result schema ──────────────────────────────────────────────────────────
@@ -2155,6 +2481,9 @@ export function evaluateWorker(
   const effectiveBranch = entry.branch ?? opts.fallbackBranch ?? null;
   const branchAhead = countBranchAhead(effectiveBranch, opts.cwd);
   const gateSummary = summarizeGates(entry.gates);
+  const closer = entry.closedAt
+    ? (entry.closedBy ?? (opts.sessionsDir ? derivedCloser(entry, opts.sessionsDir) : null))
+    : null;
   const effectEvidence =
     entry.closedAt && entry.status === "completed"
       ? workerEffectEvidence(entry, {
@@ -2187,6 +2516,7 @@ export function evaluateWorker(
     checkpoint,
     gateSummary,
     effectEvidence,
+    closer,
   };
 
   const blockers: string[] = [];
@@ -2198,10 +2528,31 @@ export function evaluateWorker(
   const commitNote = entry.spec === "impl" ? " + commit present" : "";
 
   if (entry.closedAt) {
+    // Two ways a closed row's outcome is not backed by an independent close:
+    // the closer is the row's own worker, or the row reads `completed` with no
+    // gate evidence at all — a completed close cannot be produced without
+    // gates, so a gate-less completed row was patched, not closed.
+    const workerClosed = closer?.kind === "worker";
+    const gateLessCompletion = entry.status === "completed" && entry.gates.length === 0;
+    if (workerClosed || gateLessCompletion) {
+      return {
+        ...base,
+        status: "closed-unverified",
+        reason:
+          `closed ${entry.closedAt} with outcome ${entry.status}; ` +
+          (workerClosed
+            ? `the recorded closer is the worker${closer?.session ? ` (session ${closer.session})` : ""}`
+            : "a completed row records no gate evidence"),
+      };
+    }
     return {
       ...base,
       status: "closed",
-      reason: `closed ${entry.closedAt} with outcome ${entry.status}`,
+      reason:
+        `closed ${entry.closedAt} with outcome ${entry.status}` +
+        (closer
+          ? `; closer ${closer.kind}${closer.session ? ` (session ${closer.session})` : ""}`
+          : ""),
     };
   }
   // A row waiting on a dependency nothing delivered is not actionable, whatever

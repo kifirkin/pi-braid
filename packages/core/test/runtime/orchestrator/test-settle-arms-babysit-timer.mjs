@@ -48,6 +48,9 @@ process.env.PI_CODING_AGENT_DIR = join(FAKE_HOME, ".pi", "agent");
 delete process.env.BRAID_HOME;
 delete process.env.HERDR_ENV;
 delete process.env.HERDR_PANE_ID;
+// The role marker belongs to whatever process runs the suite; a seat driving a
+// close must not inherit a worker role from the shell it was launched in.
+delete process.env.BRAID_SESSION_ROLE;
 
 const { default: orchestratorExtension } = await import(
   "../../../dist/extensions/orchestrator/index.js"

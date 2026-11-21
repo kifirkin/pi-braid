@@ -33,6 +33,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
+import { basename, dirname } from "node:path";
 import { Type } from "typebox";
 import { createLogger } from "../../lib/core/logger.js";
 import { TURN_END } from "../../lib/core/event-names.js";
@@ -543,6 +544,13 @@ function textResult(text: string, details: Record<string, unknown> = {}) {
 /** One-line registry listing for a worker entry. */
 function workerLine(entry: WorkerEntry): string {
   const closed = entry.closedAt ? `  closed=${entry.closedAt}` : "";
+  // The closer sits next to the status it explains: a closed row whose
+  // closure no seat performed is the reading this line exists to expose.
+  const closer = entry.closedBy
+    ? `  closer=${entry.closedBy.kind}${entry.closedBy.forced ? "(forced)" : ""}${
+        entry.closedBy.session ? ` session=${entry.closedBy.session}` : ""
+      }`
+    : "";
   // Printed only when the row carries one: an unranked, wait-free row keeps the
   // line it had before the queue facts existed.
   const priority = typeof entry.priority === "number" ? `  priority=${entry.priority}` : "";
@@ -550,7 +558,7 @@ function workerLine(entry: WorkerEntry): string {
     Array.isArray(entry.dependsOn) && entry.dependsOn.length > 0
       ? `  depends-on=${entry.dependsOn.join(", ")}`
       : "";
-  return `  ${entry.workerId}  spec=${entry.spec}  status=${entry.status}  pane=${
+  return `  ${entry.workerId}  spec=${entry.spec}  status=${entry.status}${closer}  pane=${
     entry.pane ?? "-"
   }  session=${entry.workerSession ?? "-"}  output=${
     entry.outputFile ?? "-"
@@ -788,6 +796,68 @@ function noteProjectKey(ctx: unknown, key: string | undefined): void {
   }
 }
 
+/** The launch-time role marker the orchestrator exports into a worker's pane. */
+const ENV_SESSION_ROLE = "BRAID_SESSION_ROLE";
+
+/**
+ * What the calling process can say about itself. The session file is the
+ * identity a row can be compared against; the role marker is the one
+ * launch-time fact a seat does not carry. A context whose session manager
+ * exists but cannot name its session is `unattributed`: a close from it would
+ * record a terminal outcome no session can be asked about.
+ */
+function readCallerIdentity(ctx: unknown): {
+  session: string | null;
+  workerRole: boolean;
+  unattributed: boolean;
+} {
+  // A call that carries no context is a library call: its closer cannot be
+  // attributed to a session, so it is recorded unknown even when this process
+  // carries the worker marker. The tool always passes a context.
+  if (!ctx || typeof ctx !== "object") {
+    return { session: null, workerRole: false, unattributed: false };
+  }
+  const workerRole = process.env[ENV_SESSION_ROLE]?.trim().toLowerCase() === "worker";
+  let manager: unknown;
+  try {
+    manager = (ctx as { sessionManager?: unknown }).sessionManager;
+  } catch {
+    return { session: null, workerRole, unattributed: false };
+  }
+  if (!manager || typeof manager !== "object") {
+    return { session: null, workerRole, unattributed: false };
+  }
+  try {
+    const sm = manager as { getSessionFile?(): unknown; getSessionId?(): unknown };
+    const file = sm.getSessionFile?.() ?? sm.getSessionId?.();
+    if (typeof file === "string" && file.length > 0) {
+      return { session: file, workerRole, unattributed: false };
+    }
+    return { session: null, workerRole, unattributed: true };
+  } catch {
+    // A stale context getter throws; that is a missing identity, not an
+    // identity that was refused, so the close is recorded unknown.
+    return { session: null, workerRole, unattributed: false };
+  }
+}
+
+/**
+ * The sessions root this session belongs to, or undefined when the context
+ * cannot name one. Only a closed row that predates the closer stamp reads it.
+ */
+function callerSessionsRoot(ctx: unknown): string | undefined {
+  if (!ctx || typeof ctx !== "object") return undefined;
+  try {
+    const dir = (
+      ctx as { sessionManager?: { getSessionDir?(): unknown } }
+    ).sessionManager?.getSessionDir?.();
+    if (typeof dir !== "string" || dir.length === 0) return undefined;
+    return /^--.*--$/.test(basename(dir)) ? dirname(dir) : dir;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Tag on every timer this device arms, so a cadence that watches nothing can be withdrawn. */
 const BABYSIT_TAG = "orchestrator-babysit";
 
@@ -880,7 +950,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
   label: "Orchestrate",
   promptSnippet: "Coordinate parallel agent workers (spawn/check/merge, locks)",
   description:
-    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. A close's stamped `files` row is compared against the census of the revision it names, and a number below that census refuses the merge before any ref moves. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. close-worker also ends the pane its row names (or the `pane` it is given for a row that records none), and leaves alone a pane herdr reports as working or blocked, a pane holding a different agent session, and this process's own pane. " +
+    "Coordinate parallel agent workers to prevent edit conflicts. Auto-detects the repo root (cwd overrides); without git, lock-only. verify-and-merge requires workerId, merges into an explicit base branch (default main), and claims success only when that base ref actually advanced. A close's stamped `files` row is compared against the census of the revision it names, and a number below that census refuses the merge before any ref moves. It never switches a worktree's branch: the caller's tree is left on the branch it was on, named in the report, and a branch is dropped only when it is actually gone. close-worker also ends the pane its row names (or the `pane` it is given for a row that records none), and leaves alone a pane herdr reports as working or blocked, a pane holding a different agent session, and this process's own pane. It records who performed the close (`closedBy`, resolved from the row's session and the caller's role marker) and refuses a caller that resolves as the row's worker, so a self-closed row cannot read as a seat's verified close; a closed row's status and checkpoint are terminal. " +
     `Worker lifecycle speaks in four vocabularies: ${renderStatusLayers()}.`,
   parameters: Type.Object({
     action: Type.Union(
@@ -1046,6 +1116,12 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
           "check-worker: herdr lifecycle state (idle|working|blocked|done|unknown) passed by the parent; the tool never queries herdr itself.",
       }),
     ),
+    forcedBySeat: Type.Optional(
+      Type.Boolean({
+        description:
+          "close-worker: close a row whose caller resolves as the row's worker. The row records closedBy kind worker with forced=true; reserved for a stuck row whose only reachable session is the worker's, never an ordinary close.",
+      }),
+    ),
   }),
   execute: async (
     _id: string,
@@ -1073,6 +1149,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       includeClosed?: boolean;
       includeStats?: boolean;
       liveStatus?: string;
+      forcedBySeat?: boolean;
     },
     _signal: AbortSignal,
     _onUpdate: unknown,
@@ -1102,6 +1179,7 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       includeClosed,
       includeStats,
       liveStatus,
+      forcedBySeat,
     } = params;
 
     const repoRoot = resolveCwd(explicitCwd, files);
@@ -1430,7 +1508,10 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         // nothing can name. A row that already records one is never overwritten.
         const requestedPane = typeof pane === "string" ? pane.trim() : "";
 
-        const closed = closeWorker(workerId, parseWorkerOutcome(outcome), gates, repoRoot);
+        const closed = closeWorker(workerId, parseWorkerOutcome(outcome), gates, repoRoot, {
+          ...readCallerIdentity(ctx),
+          forced: forcedBySeat === true,
+        });
         if (!closed) {
           return textResult(`No registry entry for worker ${workerId}.`);
         }
@@ -1484,7 +1565,11 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
 
         // The lock table is the fallback branch source for an entry whose own
         // branch is null; checkWorker reads it at the entry's own project key.
-        const verdict = checkWorker(workerId, { liveStatus, cwd: repoRoot });
+        const verdict = checkWorker(workerId, {
+          liveStatus,
+          cwd: repoRoot,
+          sessionsDir: callerSessionsRoot(ctx),
+        });
         if (verdict) {
           return textResult(formatCheckVerdict(verdict), { ...verdict });
         }
