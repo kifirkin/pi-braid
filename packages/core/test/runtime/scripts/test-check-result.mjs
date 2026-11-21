@@ -1153,6 +1153,55 @@ const samplerPath = join(CHECK_RESULT, "..", "gate-sampler.mjs");
   );
 }
 
+// ── (q) a refusal about a session names the session ─────────────────────────
+//
+// A wave spawns a worker per session and reads their transcripts side by side.
+// A refusal that prints the reason without the file leaves the reader
+// reconstructing the command line to learn which session produced it. These
+// cases pin the path at all three refusal sites and keep the well-formed close
+// unchanged.
+
+{
+  const emptyPath = join(root, "q-empty.jsonl");
+  writeFileSync(emptyPath, "");
+  const empty = run(emptyPath);
+  check(
+    "(q1) a session with no assistant message is refused, naming the session",
+    empty.code === 1 &&
+      empty.stderr.includes(`${emptyPath}: no assistant messages in session`),
+    `exit=${empty.code} stderr=${empty.stderr.trim().slice(0, 110)}`,
+  );
+
+  const stringPath = makeSession("q-string-block.jsonl", "a string is not a block");
+  const stringBlock = run(stringPath);
+  check(
+    "(q2) a session whose block is a fenced string is refused, naming the session",
+    stringBlock.code === 2 &&
+      stringBlock.stderr.includes(`${stringPath}: no result-schema JSON block found`),
+    `exit=${stringBlock.code} stderr=${stringBlock.stderr.trim().slice(0, 110)}`,
+  );
+
+  const toolOnlyPath = join(root, "q-tool-only.jsonl");
+  writeFileSync(
+    toolOnlyPath,
+    `${JSON.stringify({ type: "message", message: { role: "assistant", content: [{ type: "tool_use", name: "read" }] } })}\n`,
+  );
+  const toolOnly = run(toolOnlyPath);
+  check(
+    "(q3) a session with assistant entries and no text is refused as mid-flight, naming the session",
+    toolOnly.code === 1 &&
+      toolOnly.stderr.includes(`${toolOnlyPath}: no assistant TEXT yet`),
+    `exit=${toolOnly.code} stderr=${toolOnly.stderr.trim().slice(0, 110)}`,
+  );
+
+  const wellFormed = run(makeSession("q-well-formed.jsonl", block({ source_revision: settled })));
+  check(
+    "(q4) a well-formed close is unchanged: it passes and refuses nothing",
+    wellFormed.code === 0 && /RESULT: PASS/.test(wellFormed.stdout) && wellFormed.stderr.trim() === "",
+    `exit=${wellFormed.code} stderr=${wellFormed.stderr.trim().slice(0, 80)}`,
+  );
+}
+
 // ── Verdict ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${failures === 0 ? `RESULT: PASS (${checks} checks)` : `RESULT: FAIL (${failures}/${checks} checks)`}`);

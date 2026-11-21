@@ -586,18 +586,21 @@ if (texts.length === 0) {
   // thinking and tool calls — a mid-flight worker, or one that never writes prose.
   // That wording cost real time twice: it reads as a broken validator and sends the
   // reader hunting a bug in this script instead of waiting for the worker.
+  // Both branches also name the session. A wave reads one transcript per worker,
+  // and a refusal that prints only the reason leaves the reader rebuilding the
+  // command line to learn which session produced it.
   const n = assistantTexts.entries ?? 0;
   fail(
     n === 0
-      ? "no assistant messages in session (the session may be empty or truncated)"
-      : `no assistant TEXT yet: ${n} assistant message(s), none carrying a text part ` +
+      ? `${sessionPath}: no assistant messages in session (the session may be empty or truncated)`
+      : `${sessionPath}: no assistant TEXT yet: ${n} assistant message(s), none carrying a text part ` +
         "— the worker is still mid-flight (thinking and tool calls only), or it finished without prose. " +
         "Re-run when it settles.",
   );
 }
 
 const found = extractLastSchema(texts);
-if (!found) { console.error("FAIL: no result-schema JSON block found in any assistant message"); process.exit(2); }
+if (!found) { console.error(`FAIL: ${sessionPath}: no result-schema JSON block found in any assistant message`); process.exit(2); }
 const { schema } = found;
 
 const results = [];
