@@ -15,10 +15,19 @@ these are smaller, domain-specific stores.
 | `conflict-qa.ts`            | Conflict resolution - when two claims conflict, runs a Q&A to determine which to keep. |
 | `bidirectional-verifier.ts` | Verifies a claim by independently checking it from both directions.                    |
 | `belief-store.ts`           | Stores the agent's beliefs (current best-guess claims).                                |
+| `versioned.ts`              | The version rule for on-disk stores: a JSON document reader and a JSONL row reader.    |
 
 ## Local Contracts
 
 - These stores are **persistent** (saved to disk). Use them for things that need to survive session boundaries.
 - Each store has a JSON file in `~/.pi/agent/` or similar.
 - Stores should be **append-only** when possible - easier to debug, easier to undo.
+- A store that lives on disk declares the version of its contents. `versioned.ts`
+  holds the two readers and knows nothing about what a store means: it enforces
+  the supported versions, runs the declared migration steps in order, and counts
+  every row it could not use instead of skipping it. A versionless file is
+  refused unless its reader declares a tolerance with a reason, and that reason
+  travels back in the read summary so it can be printed rather than buried.
+  The schema of a store (its versions, its fields, its migrations) stays in the
+  store's own module.
 - See `conflict_qa` tool for the runtime contract on conflict resolution.
