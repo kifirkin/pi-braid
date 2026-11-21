@@ -64,11 +64,19 @@
  * Usage:
  *   node scripts/check-journal.mjs [--cwd <dir>] [--project <slug>] [--digest]
  *
+ * The journal is the project's, not the checkout's: with no --project the slot
+ * comes from the directory the run is rooted at, and a linked worktree resolves
+ * to the checkout it was branched from, because `git worktree` puts the tree
+ * somewhere else and keeps one repository. Evidence references are resolved
+ * from the directory the run was given, which is the tree the entries were read
+ * in.
+ *
  * Exit: 0 clean (informational readings may still print; --digest prints the
  *       open program instead), 2 at least one finding from the list above, 1 an
  *       operational error.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -145,7 +153,48 @@ for (let i = 0; i < args.length; i++) {
   } else die(2, `check-journal: unknown argument ${JSON.stringify(arg)}`);
 }
 
-const slug = project || projectSlugFromCwd(cwd);
+/** One git read in a directory, or null when the directory is not in a
+ *  repository or the read fails. A checker that shells out to git has company
+ *  here; what it must not do is treat a failed read as a fact about the tree. */
+function git(dir, argv) {
+  try {
+    const out = execFileSync("git", ["-C", dir, ...argv], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const trimmed = out.trim();
+    return trimmed === "" ? null : trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The project a run reads the journal of, when no --project names one.
+ *
+ * A journal is keyed by the directory a seat works in, and a linked worktree is
+ * the same project as the checkout it was branched from: `git worktree` puts the
+ * tree somewhere else and keeps one repository. Slugging the worktree's own path
+ * would read a second, never-written journal and print a zero population, which
+ * is how a gate passes without having read anything. The primary checkout's
+ * `.git` sits one level below its working tree and a linked worktree's common
+ * directory points back at it, so one rule covers both.
+ *
+ * A directory outside a repository keeps the directory it was given, and so does
+ * a submodule, whose common directory is named after the module rather than
+ * `.git`: the submodule's own path is the project there, not its parent's.
+ */
+function projectDirectory(dir) {
+  const toplevel = git(dir, ["rev-parse", "--show-toplevel"]);
+  if (toplevel === null) return dir;
+  const common = git(dir, ["rev-parse", "--git-common-dir"]);
+  if (common === null) return toplevel;
+  const commonDir = resolve(toplevel, common);
+  if (basename(commonDir) !== ".git") return toplevel;
+  return dirname(commonDir);
+}
+
+const slug = project || projectSlugFromCwd(projectDirectory(cwd));
 const journalFile = journalFilePath(slug);
 const outcomesFile = join(braidDir(), "self-review", "outcomes.jsonl");
 
@@ -161,6 +210,46 @@ function finding(shape, detail) {
 function warning(shape, detail) {
   warnings.push(detail ? `${shape} ${detail}` : shape);
 }
+
+// ── The rows already in the journal that break this schema ────────────────
+//
+// The journal is appended to, never rewritten: a line written under an older
+// schema stays exactly as it was written, and a correction is a later entry that
+// says so. Five such rows are in the live project journal. Each names one seq and
+// the class it is about, and a run reports those as DECLARED rather than as
+// findings; every other problem still fails it.
+//
+// The list is data, not a switch: a row excuses one class on one seq, so a second
+// problem on the same entry, or the same class on another entry, is reported and
+// counted. A declaration that stops matching anything is visible as a falling
+// count in the instrument line, not as silence.
+const DECLARED_LEGACY = [
+  {
+    seq: 252,
+    shape: "FIELDS",
+    why: "an outcome whose subject runs past the 64-character slug the schema now caps",
+  },
+  {
+    seq: 253,
+    shape: "EVIDENCE",
+    why: "an outcome closed with no evidence and without the unverified flag that would say so",
+  },
+  {
+    seq: 281,
+    shape: "FIELDS",
+    why: 'an outcome carrying a reason, a field the schema admits on a decision only',
+  },
+  {
+    seq: 282,
+    shape: "FIELDS",
+    why: 'an entry of kind "finding", which the writer no longer emits',
+  },
+  {
+    seq: 285,
+    shape: "FIELDS",
+    why: "a decision written before the writer required a reason",
+  },
+];
 
 // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -590,9 +679,45 @@ function classOf(line) {
 
 const CENSUS = ["ABSENT", "UNRESOLVED", "ROTATED", "DANGLING"];
 
+/** The seq a problem is about, or null when it is about no single entry.
+ *
+ * Two shapes reach here. A field problem names the line it was found on, which
+ * this run can map back through the entries it parsed; every other class names
+ * the seq it is about. A line that does not parse and an archive boundary name
+ * neither, so neither can be declared: there is no row to name. A problem about
+ * two entries is attributed to the first seq it names, which is the entry the
+ * finding is reported under. */
+function attributedSeq(line) {
+  const byLine = /^FIELDS line (\d+):/.exec(line);
+  if (byLine) {
+    const found = entries.find((item) => item.line === Number(byLine[1]));
+    return found === undefined ? null : Number(found.entry.seq);
+  }
+  const named = /(?:^|[ :])seq (\d+)/.exec(line);
+  return named === null ? null : Number(named[1]);
+}
+
+/** The problems split into the ones a declared row excuses and the ones that
+ *  fail the run. The class has to match as well as the seq: a declared entry that
+ *  acquires a different problem is a line somebody edited, and editing a journal
+ *  is not how its record changes. */
+const excused = [];
+const failing = [];
+for (const line of problems) {
+  const seq = attributedSeq(line);
+  const row =
+    seq === null
+      ? undefined
+      : DECLARED_LEGACY.find((candidate) => candidate.seq === seq && candidate.shape === classOf(line));
+  if (row === undefined) failing.push(line);
+  else excused.push({ line, row });
+}
+
 /** The instrument line every run ends with. The four classes this reading is
  *  about are counted by name; everything else is counted together, so no
- *  finding goes uncounted by being unlisted and two runs compare directly. */
+ *  finding goes uncounted by being unlisted and two runs compare directly. The
+ *  declared count is part of it for the same reason: a declaration that stops
+ *  matching shows up as a falling number rather than as a quiet run. */
 function instrumentLine() {
   const counts = new Map();
   for (const line of [...problems, ...warnings]) {
@@ -601,20 +726,32 @@ function instrumentLine() {
   }
   const named = CENSUS.map((name) => `${name} ${counts.get(name) ?? 0}`).join(", ");
   const other = (lines) => lines.filter((line) => !CENSUS.includes(classOf(line))).length;
-  return `findings: ${named}; other problems ${other(problems)}, other warnings ${other(warnings)}`;
+  const declared =
+    DECLARED_LEGACY.length === 0 ? "" : `; declared ${excused.length} of ${DECLARED_LEGACY.length}`;
+  return `findings: ${named}; other problems ${other(problems)}, other warnings ${other(warnings)}${declared}`;
 }
 
 function emit(lines) {
   for (const line of lines) process.stdout.write(`${line}\n`);
 }
 
+/** A declared row is reported, not hidden: it names the seq, the problem and the
+ *  reason the row was written that way. */
+function emitDeclared() {
+  for (const { line, row } of excused) {
+    process.stdout.write(`DECLARED seq ${row.seq} ${line} (${row.why})\n`);
+  }
+}
+
 if (digest) {
-  if (problems.length > 0) {
-    emit(problems);
+  if (failing.length > 0) {
+    emitDeclared();
+    emit(failing);
     emit(warnings);
     emit([instrumentLine()]);
     process.exit(2);
   }
+  emitDeclared();
   emit(warnings);
   process.stdout.write(
     `journal ${journalFile}: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}, ` +
@@ -643,13 +780,15 @@ if (digest) {
   process.exit(0);
 }
 
-if (problems.length > 0) {
-  emit(problems);
+if (failing.length > 0) {
+  emitDeclared();
+  emit(failing);
   emit(warnings);
   emit([instrumentLine()]);
   process.exit(2);
 }
 
+emitDeclared();
 emit(warnings);
 const maxSeq = entries.reduce((max, item) => Math.max(max, item.entry.seq ?? 0), 0);
 process.stdout.write(
