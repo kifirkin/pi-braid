@@ -48,7 +48,7 @@ const EXIT_CANNOT_RUN = 2;
 const USAGE = `Usage: node packages/core/scripts/check-boot.mjs [options]
 
   --cwd <dir>          project the rows describe (default: process cwd)
-  --brief <path>       the wave's brief, printed under "task"
+  --brief <path>       the work's brief, printed under "task"
   --skills-root <dir>  extra skills root to count (repeatable)
   --skip <step>        do not run this step; needs --reason
   --reason <text>      why the skipped steps were skipped

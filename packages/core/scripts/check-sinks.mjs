@@ -1,35 +1,35 @@
 #!/usr/bin/env node
-// check-sinks.mjs - did the learning this wave produced reach a sink?
+// check-sinks.mjs - did the learning this work produced reach a sink?
 //
-// A wave can close with its report written and its learning nowhere: no journal
+// A work item can close with its report written and its learning nowhere: no journal
 // entry the next seat will read, no memory the next recall can find, no doc line
 // naming what changed. The report then reads as complete while the only copy of
 // the finding is the report itself.
 //
-//   node packages/core/scripts/check-sinks.mjs --wave <id> [--report <path>]
+//   node packages/core/scripts/check-sinks.mjs --worker <id> [--report <path>]
 //        [--subject <text>]... [--file <path>]... [--since <iso>]
-//        [--cwd <dir>] [--repo <dir>] [--workers <file>] [--base <ref>] [--json]
+//        [--cwd <dir>] [--repo <dir>] [--registry <file>] [--base <ref>] [--json]
 //
 // Four searches, each printing what it scanned and what it found:
 //
-//   journal  a journal entry naming the wave's subject or one of its files,
-//            written since the wave started
-//   memory   an episode or semantic entry written since the wave started and
+//   journal  a journal entry naming the work's subject or one of its files,
+//            written since the work started
+//   memory   an episode or semantic entry written since the work started and
 //            naming the subject (the write log is counted, not matched: it
 //            records hashes, not text)
 //   doc      an AGENTS.md or doc line added by the branch that names the
 //            subject; documentation is a sink. A doc that only points at a
 //            store, or quotes a rule id the store holds, is classified as a
-//            projection rather than a second truth, and the wave's own report
+//            projection rather than a second truth, and the work's own report
 //            is never counted: a report naming itself proves nothing
-//   store    a preference rule the store holds whose `since` day is the wave's
+//   store    a preference rule the store holds whose `since` day is the work's
 //            day or later: the rule reached a store, and the doc can only
 //            point at it
 //
 // Verdicts:
-//   exit 0  at least one sink carries the wave's trace
+//   exit 0  at least one sink carries the work's trace
 //   exit 1  REFUSED: the report's work left no trace in any sink
-//   exit 2  usage, a wave start that cannot be placed, or a store that cannot
+//   exit 2  usage, a work start that cannot be placed, or a store that cannot
 //           be read - a search that could not run cannot honestly say "no trace"
 //
 // Read-only: nothing here writes, appends or repairs.
@@ -46,16 +46,16 @@ const EXIT_REACHED = 0;
 const EXIT_REFUSED = 1;
 const EXIT_CANNOT_RUN = 2;
 
-const USAGE = `Usage: node packages/core/scripts/check-sinks.mjs --wave <id> [options]
+const USAGE = `Usage: node packages/core/scripts/check-sinks.mjs --worker <id> [options]
 
-  --wave <id>        the wave to look for (also a search term)
-  --report <path>    the report the wave wrote; its name is a search term
-  --subject <text>   a phrase the wave's trace should carry (repeatable)
-  --file <path>      a file the wave changed; its basename is a search term
-  --since <iso>      when the wave started (default: the registry row's spawnedAt)
+  --worker <id>      the worker row to look for (also a search term)
+  --report <path>    the report the work wrote; its name is a search term
+  --subject <text>   a phrase the work's trace should carry (repeatable)
+  --file <path>      a file the work changed; its basename is a search term
+  --since <iso>      when the work started (default: the registry row's spawnedAt)
   --cwd <dir>        project whose journal, memory and fleet are read
   --repo <dir>       git repo whose branch carries the doc lines (default: --cwd)
-  --workers <file>   worker registry to place the wave start from
+  --registry <file>  worker registry to place the work start from
   --base <ref>       branch base for the doc search (default: main)
   --json             print the searches as JSON`;
 
@@ -66,12 +66,12 @@ function usageError(message) {
 }
 
 const argv = process.argv.slice(2);
-let wave = null;
+let worker = null;
 let report = null;
 let sinceArg = null;
 let cwd = process.cwd();
 let repo = null;
-let workersArg = null;
+let registryArg = null;
 let base = "main";
 let json = false;
 const subjects = [];
@@ -79,7 +79,7 @@ const files = [];
 
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === "--wave") wave = argv[++i] ?? null;
+  if (a === "--worker") worker = argv[++i] ?? null;
   else if (a === "--report") report = argv[++i] ?? null;
   else if (a === "--subject") subjects.push(argv[++i] ?? "");
   else if (a === "--file") files.push(argv[++i] ?? "");
@@ -92,7 +92,7 @@ for (let i = 0; i < argv.length; i++) {
     const v = argv[++i];
     if (!v) usageError("--repo needs a directory");
     repo = isAbsolute(v) ? v : resolve(process.cwd(), v);
-  } else if (a === "--workers") workersArg = argv[++i] ?? null;
+  } else if (a === "--registry") registryArg = argv[++i] ?? null;
   else if (a === "--base") base = argv[++i] ?? "main";
   else if (a === "--json") json = true;
   else if (a === "--help" || a === "-h") {
@@ -101,7 +101,7 @@ for (let i = 0; i < argv.length; i++) {
   } else usageError(`unknown argument ${a}`);
 }
 
-if (!wave) usageError("--wave is required: a sink search without a wave has no subject and no window");
+if (!worker) usageError("--worker is required: a sink search without a worker has no subject and no window");
 if (!existsSync(cwd)) usageError(`--cwd does not exist: ${cwd}`);
 
 // ── the built modules ───────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ const addTerm = (value) => {
   if (term && !terms.includes(term)) terms.push(term);
 };
 
-addTerm(wave);
+addTerm(worker);
 for (const subject of subjects) addTerm(subject);
 if (report !== null) {
   const stem = basename(report, extname(report));
@@ -154,47 +154,47 @@ for (const file of files) {
   addTerm(basename(file));
   addTerm(stripDate(basename(file)));
 }
-if (terms.length === 0) usageError("no search terms: pass --wave, --subject or --file");
+if (terms.length === 0) usageError("no search terms: pass --worker, --subject or --file");
 
 const namesTerm = (text) => {
   const haystack = String(text ?? "").toLowerCase();
   return terms.some((term) => haystack.includes(term));
 };
 
-// ── the wave start ──────────────────────────────────────────────────────────
+// ── the work start ──────────────────────────────────────────────────────────
 
-const workersFile = workersArg !== null ? resolve(cwd, workersArg) : getWorkersFilePath(cwd);
+const registryFile = registryArg !== null ? resolve(cwd, registryArg) : getWorkersFilePath(cwd);
 
-function waveRow() {
-  if (!existsSync(workersFile)) return null;
+function workerRow() {
+  if (!existsSync(registryFile)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(workersFile, "utf-8"));
-    return parsed?.workers?.[wave] ?? null;
+    const parsed = JSON.parse(readFileSync(registryFile, "utf-8"));
+    return parsed?.workers?.[worker] ?? null;
   } catch {
     return null;
   }
 }
 
-const row = waveRow();
+const row = workerRow();
 let sinceMs;
 if (sinceArg !== null) {
   sinceMs = Date.parse(sinceArg);
   if (Number.isNaN(sinceMs)) usageError(`--since ${sinceArg} is not a timestamp`);
 } else if (row?.spawnedAt) {
   sinceMs = Date.parse(row.spawnedAt);
-  if (Number.isNaN(sinceMs)) usageError(`the registry row for ${wave} carries an unusable spawnedAt: ${row.spawnedAt}`);
+  if (Number.isNaN(sinceMs)) usageError(`the registry row for ${worker} carries an unusable spawnedAt: ${row.spawnedAt}`);
 } else {
   usageError(
-    `cannot place when ${wave} started: no registry row in ${workersFile}. Pass --since <iso>, or --workers <file> that names it.`,
+    `cannot place when ${worker} started: no registry row in ${registryFile}. Pass --since <iso>, or --registry <file> that names it.`,
   );
 }
 const sinceDay = new Date(sinceMs).toISOString().slice(0, 10);
 
 // The row's output file is a search term: a journal entry naming the report is
-// a sink hit even when it never says the wave id. The row's source files are
+// a sink hit even when it never says the worker id. The row's source files are
 // not: basenames such as `index.ts` or `store.ts` name half the tree, and a
-// term that matches everything cannot distinguish "this wave landed" from
-// "some other wave did". A caller who wants one file matched passes --file.
+// term that matches everything cannot distinguish "this work landed" from
+// "some other work did". A caller who wants one file matched passes --file.
 if (row?.outputFile) addTerm(basename(row.outputFile, extname(row.outputFile)));
 
 // ── readers ─────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ const toMs = (value) => {
   return null;
 };
 
-// The stores belong to a project; the branch belongs to a repo. A wave can run
+// The stores belong to a project; the branch belongs to a repo. A work item can run
 // in one and write its report in the other, so the two roots are named apart.
 const docRoot = repo ?? cwd;
 if (!existsSync(docRoot)) usageError(`--repo does not exist: ${docRoot}`);
@@ -332,8 +332,8 @@ function searchMemory() {
   }
 
   // A semantic entry carries no timestamp in the store's current shape, so a
-  // match cannot be placed in the wave's window. It is printed as undated and
-  // never counted as a hit: "this exists now" is not "this wave put it there".
+  // match cannot be placed in the work's window. It is printed as undated and
+  // never counted as a hit: "this exists now" is not "this work put it there".
   let semanticUndated = 0;
   if (existsSync(semanticFile)) {
     present++;
@@ -561,9 +561,9 @@ searches.push(searchJournal(), searchMemory(), docSearch, storeSearch);
 const failed = searches.filter((search) => search.state === "unreadable");
 if (failed.length > 0) {
   if (json) {
-    console.log(JSON.stringify({ wave, since: new Date(sinceMs).toISOString(), terms, searches, verdict: "cannot-answer" }, null, 2));
+    console.log(JSON.stringify({ worker, since: new Date(sinceMs).toISOString(), terms, searches, verdict: "cannot-answer" }, null, 2));
   } else {
-    console.error(`Sink check: cannot answer for ${wave} - ${failed.map((s) => s.name).join(", ")} could not be read; an unread search cannot say "no trace"`);
+    console.error(`Sink check: cannot answer for ${worker} - ${failed.map((s) => s.name).join(", ")} could not be read; an unread search cannot say "no trace"`);
     for (const search of failed) console.error(`  ${search.name}: ${search.scanned}`);
   }
   process.exit(EXIT_CANNOT_RUN);
@@ -587,7 +587,7 @@ if (json) {
   console.log(
     JSON.stringify(
       {
-        wave,
+        worker,
         since: new Date(sinceMs).toISOString(),
         terms,
         report: reportRow,
@@ -601,7 +601,7 @@ if (json) {
     ),
   );
 } else {
-  console.log(`Sink check - ${wave} since ${new Date(sinceMs).toISOString()}`);
+  console.log(`Sink check - ${worker} since ${new Date(sinceMs).toISOString()}`);
   console.log(`terms: ${terms.join(", ")}`);
   if (reportRow !== null) {
     console.log(
@@ -632,7 +632,7 @@ if (json) {
 }
 
 if (hitSearches.length === 0) {
-  console.error(`\nREFUSED: no trace of ${wave} in any sink since ${new Date(sinceMs).toISOString()}`);
+  console.error(`\nREFUSED: no trace of ${worker} in any sink since ${new Date(sinceMs).toISOString()}`);
   console.error("  the work left no journal entry, no memory entry, no doc line and no store rule");
   process.exit(EXIT_REFUSED);
 }

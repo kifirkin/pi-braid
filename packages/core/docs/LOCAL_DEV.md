@@ -138,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 159 of the core suite's 400 fixtures already use `node:test` - so the
+file uses - 161 of the core suite's 402 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -329,12 +329,12 @@ surface with its own path.
 ## Boot state and sink checks
 
 Two read-only instruments answer the two questions a seat asks from scratch: what
-is here, and did this wave's learning land anywhere a later seat will read it.
+is here, and did this work's learning land anywhere a later seat will read it.
 
 ```bash
 node packages/core/scripts/check-boot.mjs [--cwd <dir>] [--json]
 node packages/core/scripts/check-boot.mjs --skip journal --reason "fresh tree"
-node packages/core/scripts/check-sinks.mjs --wave <id> --report <path>
+node packages/core/scripts/check-sinks.mjs --worker <id> --report <path>
 ```
 
 `check-boot` prints three groups in one screen: environment (braid home, git root
@@ -348,12 +348,12 @@ step named with `--require` produced nothing and no skip was declared, and 2 on
 usage or a tree with no build. `--skip` needs `--reason`: a skip that does not say
 why is a silent hole.
 
-`check-sinks` searches four sinks for the wave's subject or one of its files: the
+`check-sinks` searches four sinks for the work's subject or one of its files: the
 journal, the memory stores, doc lines added by the branch, and the preference
 store. It prints each search with what it scanned and found, and refuses (exit 1)
 a report whose work left no trace in any of them. A doc whose matching lines only
 point at a store, or quote a rule id the store holds, is reported as a projection
-rather than a second truth; the wave's own report is never counted, since a report
+rather than a second truth; the work's own report is never counted, since a report
 naming itself proves nothing. `--cwd` names the project whose stores are read and
 `--repo` the branch that is diffed, which are not always the same tree. A search
 that could not run (an unreadable store, a base ref the repo does not carry) exits

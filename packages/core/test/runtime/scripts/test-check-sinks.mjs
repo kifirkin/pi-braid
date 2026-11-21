@@ -1,17 +1,17 @@
 /**
- * Test: scripts/check-sinks.mjs - did the learning a wave produced reach a sink?
+ * Test: scripts/check-sinks.mjs - did the learning this work produced reach a sink?
  *
  * Each case pins one verdict boundary. The stores live under a pinned
  * BRAID_HOME and the branch lives in a temp git repo, so both the window and
  * the diff are attributable: nothing here reads the live tree.
  *
- * 1. a journal entry, an episode and a doc line all name the wave: reached;
+ * 1. a journal entry, an episode and a doc line all name the work: reached;
  * 2. nothing names it: refused, with every search reporting its zero;
  * 3. a preference rule reached the store while the doc only points at it: the
  *    verdict is a store sink and the doc line is classified as a projection;
- * 4. a trace older than --since is not this wave's: still refused;
- * 5. a wave the registry does not hold and no --since: exit 2, not a guess;
- * 6. the wave's own report is not a sink: a branch that only adds the report
+ * 4. a trace older than --since is not this work's: still refused;
+ * 5. a worker the registry does not hold and no --since: exit 2, not a guess;
+ * 6. the work's own report is not a sink: a branch that only adds the report
  *    line proves nothing;
  * 7. a base ref the repo does not carry exits 2: an unread search cannot say
  *    "no trace";
@@ -32,7 +32,7 @@ const DIST = join(ROOT, "dist");
 
 const SINCE = "2026-01-02T03:04:05.000Z";
 const BEFORE = "2026-01-01T00:00:00.000Z";
-const WAVE = "w9001";
+const WORKER = "w9001";
 
 /** Store paths for a pinned home and project cwd, resolved by the built modules. */
 function pathsFor(home, cwd) {
@@ -78,7 +78,7 @@ function fixture(t) {
   const workers = join(root, "workers.json");
   writeFileSync(
     workers,
-    JSON.stringify({ version: 1, workers: { [WAVE]: { workerId: WAVE, status: "admitted", spawnedAt: SINCE } } }),
+    JSON.stringify({ version: 1, workers: { [WORKER]: { workerId: WORKER, status: "admitted", spawnedAt: SINCE } } }),
   );
 
   return {
@@ -90,11 +90,11 @@ function fixture(t) {
     workers,
     /** Commit one file on a side branch and leave the repo checked out on it. */
     branchWith(name, content) {
-      git(repo, "checkout", "-q", "-b", `wave-${name}`);
+      git(repo, "checkout", "-q", "-b", `work-${name}`);
       mkdirSync(dirname(join(repo, name)), { recursive: true });
       writeFileSync(join(repo, name), content);
       git(repo, "add", name);
-      git(repo, "commit", "-q", "-m", `wave: ${name}`);
+      git(repo, "commit", "-q", "-m", `work: ${name}`);
     },
     writeJournal(rows) {
       mkdirSync(dirname(paths.journal), { recursive: true });
@@ -114,7 +114,7 @@ function fixture(t) {
     run(...args) {
       const result = spawnSync(
         process.execPath,
-        [GATE, "--wave", WAVE, "--cwd", repo, "--workers", workers, ...args],
+        [GATE, "--worker", WORKER, "--cwd", repo, "--registry", workers, ...args],
         { env: { ...process.env, BRAID_HOME: home }, encoding: "utf-8" },
       );
       return {
@@ -127,15 +127,15 @@ function fixture(t) {
 }
 
 describe("check-sinks", () => {
-  it("reaches every sink a wave wrote to", (t) => {
+  it("reaches every sink the work wrote to", (t) => {
     const fx = fixture(t);
     fx.writeJournal([
-      { seq: 7, at: SINCE, kind: "outcome", subject: "sink-wave", text: "the wave landed", evidence: ["check-sinks.mjs"] },
+      { seq: 7, at: SINCE, kind: "outcome", subject: "sink-work", text: "the work landed", evidence: ["check-sinks.mjs"] },
     ]);
-    fx.writeEpisodes([{ id: "ep-1", task: "sink-wave finding", solution: "a durable lesson", timestamp: Date.parse(SINCE) }]);
-    fx.branchWith("docs/NOTES.md", "# Notes\n\nsink-wave added this line.\n");
+    fx.writeEpisodes([{ id: "ep-1", task: "sink-work finding", solution: "a durable lesson", timestamp: Date.parse(SINCE) }]);
+    fx.branchWith("docs/NOTES.md", "# Notes\n\nsink-work added this line.\n");
 
-    const r = fx.run("--subject", "sink-wave", "--since", SINCE);
+    const r = fx.run("--subject", "sink-work", "--since", SINCE);
     assert.equal(r.status, 0, r.output);
     assert.match(r.stdout, /journal\s+1 hit/);
     assert.match(r.stdout, /memory\s+1 hit/);
@@ -185,18 +185,18 @@ describe("check-sinks", () => {
     assert.match(r.stdout, /the rule reached the store; the doc line is a projection/);
   });
 
-  it("does not count a trace older than the wave", (t) => {
+  it("does not count a trace older than the work start", (t) => {
     const fx = fixture(t);
     fx.writeJournal([
-      { seq: 3, at: BEFORE, kind: "outcome", subject: "sink-wave", text: "an earlier wave", evidence: [] },
+      { seq: 3, at: BEFORE, kind: "outcome", subject: "sink-work", text: "an earlier work item", evidence: [] },
     ]);
-    fx.writeEpisodes([{ id: "ep-0", task: "sink-wave", solution: "earlier", timestamp: Date.parse(BEFORE) }]);
-    const r = fx.run("--subject", "sink-wave", "--since", SINCE);
+    fx.writeEpisodes([{ id: "ep-0", task: "sink-work", solution: "earlier", timestamp: Date.parse(BEFORE) }]);
+    const r = fx.run("--subject", "sink-work", "--since", SINCE);
     assert.equal(r.status, 1, r.output);
     assert.match(r.output, /REFUSED: no trace of w9001/);
   });
 
-  it("cannot place an unknown wave without --since", (t) => {
+  it("cannot place an unknown worker without --since", (t) => {
     const fx = fixture(t);
     writeFileSync(fx.workers, JSON.stringify({ version: 1, workers: {} }));
     const r = fx.run();
@@ -204,10 +204,10 @@ describe("check-sinks", () => {
     assert.match(r.output, /cannot place when w9001 started/);
   });
 
-  it("never counts the wave's own report as a doc sink", (t) => {
+  it("never counts the work's own report as a doc sink", (t) => {
     const fx = fixture(t);
-    const report = join(fx.repo, "reports", "SINKS-WAVE-2026-01-02.md");
-    fx.branchWith("reports/SINKS-WAVE-2026-01-02.md", "# Sinks wave\n\nw9001 wrote this report.\n");
+    const report = join(fx.repo, "reports", "SINKS-WORK-2026-01-02.md");
+    fx.branchWith("reports/SINKS-WORK-2026-01-02.md", "# Sink check\n\nw9001 wrote this report.\n");
     const r = fx.run("--report", report, "--since", SINCE);
     assert.equal(r.status, 1, r.output);
     assert.match(r.stdout, /of the report itself excluded/);
@@ -224,8 +224,8 @@ describe("check-sinks", () => {
 
   it("prints an undated semantic match without counting it", (t) => {
     const fx = fixture(t);
-    fx.writeSemantic([{ id: "mem-1", content: "sink-wave is mentioned here but carries no date" }]);
-    const r = fx.run("--subject", "sink-wave", "--since", SINCE);
+    fx.writeSemantic([{ id: "mem-1", content: "sink-work is mentioned here but carries no date" }]);
+    const r = fx.run("--subject", "sink-work", "--since", SINCE);
     assert.equal(r.status, 1, r.output);
     assert.match(r.stdout, /1 semantic match\(es\) carry no timestamp/);
     assert.match(r.output, /REFUSED: no trace of w9001/);
