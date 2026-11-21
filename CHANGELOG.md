@@ -53,6 +53,66 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.49.0: what a session owes the next one, and what a checker owes a broken world (2026-11-21)
+
+A compaction that succeeds returns the bodies it dropped (`20b29d1`). The detector was already there and only
+whispered "re-read": `packages/core/src/extensions/memory/context-manager/handlers/compaction-curator.ts` now takes
+the `readFiles` pi records for the compaction, intersects them with `AGENTS.md`, `CLAUDE.md` and `DESIGN.md`, and
+returns their bodies whole within 6 KB per file and 24 KB in total; a file past the ceiling is named as omitted
+rather than truncated, and an instruction body still present in the projection produces nothing. The same path returns
+delivered skill bodies and counts them in `SkillStats.returned` and `SkillStats.reloads`, which are separate series on
+purpose. Six cases in `packages/core/test/runtime/lib/test-compaction-reinject.mjs`; the fixture reads `dist`, so a
+build comes first.
+
+Evidence from a tree with no repository now attests by content (`441a402`). `packages/core/scripts/tree-digest.mjs`
+hashes every tracked path as `<relpath>\0<size>\0<sha256>`, sorted, with exclusions declared, and
+`check-result.mjs` accepts `source_revision: "tree:<64 hex>"` only when the digest equals the tree the gate sees. The
+hex path is untouched, and a bare `no-vcs` is refused with a message naming both accepted forms. Seventeen cases,
+including the control that matters: two trees differing by one byte must differ, and a rename changes the digest
+because the path is on the line.
+
+A pi upgrade is now a readable diff (`9915aa0`). `packages/core/scripts/check-pi-surface.mjs --record` writes
+`packages/core/pi-surface.json`: 29 surfaces, 82 symbols and 686 members with normalized signatures; `--check` fails
+on a removed symbol or a moved signature and lists additions without failing, and the default mode prints the
+dependency-range reconciliation the repository never had. Its first real run, against the runtime install rather than
+the workspace, named one signature change (`registerMarkdownTransformer` gained an optional parameter) and two additive
+members — recorded against 1.5.0 while the runtime was 1.5.2. `packages/core/docs/PI-UPGRADE.md` carries the playbook
+and that diff as the worked example.
+
+A preference that must fire at a moment now fires there (`3a782d1`). `packages/core/src/lib/preferences/store.ts`
+holds a versioned store; `prompt-builder/preferences-section.ts` renders one section per surface present in the
+session's tool set, so a Telegram rule appears when that tool is enabled and not otherwise, and a rule that names no
+surface renders in its own block labelled unbound. `check-preferences.mjs` refuses a contradictory pair, an undeclared
+unbound rule, and a rendered file that disagrees with the store in either direction; `--render` is the only writer. A
+preference retrieved by fuzzy recall was the fragility the owner named: the rule existed and fired only when the prompt
+happened to resemble it.
+
+Process-global slots declare what they hold (`d138c0a`). `lib/state/slot.ts` gives a slot a key, a version, an owner
+and a parse; a value written by a build declaring another version is refused with both versions and the writer's
+identity in the message, and a value that fails its parse is refused with what was expected and what arrived.
+`slot-registry.ts` reports the census and subscriber counts, and `check-global-slots.mjs` refuses a new
+`__braid_`-keyed slot outside the registry. Two of the twelve slots are migrated — the route-exhaustion slot the
+providers package writes and core reads, and the custom-model-keys slot the source tree and the dist copy both touch —
+with their explanatory comments moved, not deleted.
+
+On-disk stores declare a version and refuse what they cannot read (`ec3d97b`). `lib/store/versioned.ts` reads JSON and
+JSONL under a declared version, runs migrations in order, refuses an unknown version naming both, and accepts an
+unversioned file only when a legacy acceptance is declared — counting it. A JSONL row that fails to parse is counted
+and returned, never skipped; a row missing declared fields is `partial`. `check-store-versions.mjs` prints the census
+of every store the machine holds and fails on one nobody declared. The measurement that motivated it: this machine's
+`memory/episodes.jsonl` had 958 rows of which 121 never carried the three SOP fields that every reader now assumes.
+
+Every checker runs against a broken world (`5cd66a0`). `packages/core/scripts/adversarial-instruments.mjs` builds
+one broken world per case — a missing file, an empty file, a directory where a file belongs, unparseable JSON, a
+repository with no commits, a corrupt lock — runs the checker through its command line, and requires a non-zero exit
+whose message names the missing thing. Its first run on this tree produced 25 cases, 19 passing and **6 findings**:
+three checkers exit 0 on a world that should refuse them, and three exit non-zero without naming what was missing.
+That list is the deliverable; a runner that reports green would have been the failure.
+
+Also in this release: the curated notes for 0.46.0, 0.47.0 and 0.48.0, which shipped without entries; and the
+`LOCAL_DEV.md` fixture census re-derived from the checker's own output after each merge rather than adjusted by hand,
+which it needed four times in one night.
+
 ## Core 0.48.0: a dead route says so once, a suite remembers what passed, and a provider can be emulated (2026-11-20)
 
 When every key for a route was spent, the failure surfaced as a provider error and the next attempt discovered the same
