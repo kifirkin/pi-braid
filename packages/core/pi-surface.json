@@ -1,10 +1,10 @@
 {
   "version": 1,
   "packages": {
-    "@earendil-works/pi-coding-agent": "1.5.0",
-    "@earendil-works/pi-ai": "1.5.0",
-    "@earendil-works/pi-agent-core": "1.5.0",
-    "@earendil-works/pi-tui": "1.5.0"
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-tui": "1.6.0"
   },
   "surfaces": {
     "extension-api": {
@@ -76,7 +76,7 @@
               "registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void"
             ],
             "registerMarkdownTransformer": [
-              "registerMarkdownTransformer(transformer: MarkdownTransformer): void"
+              "registerMarkdownTransformer(transformer: MarkdownTransformer, options?: MarkdownTransformerOptions): void"
             ],
             "registerEntryRenderer": [
               "registerEntryRenderer<T = unknown>(customType: string, renderer: EntryRenderer<T>): void"
@@ -920,6 +920,7 @@
             "removeRuntimeApiKey": [
               "removeRuntimeApiKey(providerId: string, options?: AuthOperationOptions): Promise<void>"
             ],
+            "settleCredentialWrites": ["settleCredentialWrites(): Promise<void>"],
             "listCredentials": [
               "listCredentials(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]>"
             ],
@@ -1209,6 +1210,7 @@
             "getModels": ["getModels(): readonly Model<TApi>[]"],
             "getAllModels": ["getAllModels?(): readonly ProviderModel<TApi>[]"],
             "refreshModels": ["refreshModels?(context: RefreshModelsContext): Promise<void>"],
+            "refreshModelsAuth": ["readonly refreshModelsAuth?: \"credential\" | \"configured\""],
             "filterModels": [
               "filterModels?(models: readonly Model<TApi>[], credential: Credential | undefined): readonly Model<TApi>[]"
             ],
@@ -1524,7 +1526,7 @@
             "updateValue": ["updateValue(id: string, newValue: string): void"],
             "selectItem": ["selectItem(id: string): void"],
             "invalidate": ["invalidate(): void"],
-            "render": ["render(width: number): string[]"],
+            "render": ["render(width: number): readonly string[]"],
             "renderMainList": ["private renderMainList"],
             "handleMouse": ["handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined"],
             "handleInput": ["handleInput(data: string): void"],
@@ -1586,7 +1588,7 @@
             "setCustomBgFn": ["setCustomBgFn(customBgFn?: (text: string) => string): void"],
             "setPaddingX": ["setPaddingX(paddingX: number): void"],
             "invalidate": ["invalidate(): void"],
-            "render": ["render(width: number): string[]"]
+            "render": ["render(width: number): readonly string[]"]
           }
         }
       }
@@ -1601,7 +1603,7 @@
           "signature": "export declare class Container implements Component {",
           "members": {
             "children": ["children: Component[]"],
-            "mouseLayout": ["private mouseLayout?"],
+            "childLines": ["private childLines?"],
             "addChild": ["addChild(component: Component): void"],
             "removeChild": ["removeChild(component: Component): void"],
             "clear": ["clear(): void"],
@@ -1609,7 +1611,7 @@
             "handleMouse": [
               "handleMouse(event: TuiMouseEvent): TuiMouseDispatchResult | undefined"
             ],
-            "render": ["render(width: number): string[]"]
+            "render": ["render(width: number): readonly string[]"]
           }
         }
       }
