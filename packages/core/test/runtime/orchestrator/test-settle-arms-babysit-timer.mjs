@@ -12,8 +12,8 @@
  *
  * What this pins:
  *   1. a live row and no timer naming it, at a project this session
- *      orchestrated in, arms exactly one timer whose reason names the worker,
- *      with an interval set and the seat's own session on it;
+ *      orchestrated in, arms exactly one single-fire timer whose reason names
+ *      the worker and whose session is the seat's;
  *   2. a pending timer that already names the worker leaves the count
  *      unchanged, and no second timer id appears;
  *   3. a fleet whose rows are all closed arms nothing;
@@ -129,9 +129,10 @@ describe("turn-end babysit arm", () => {
     const timers = listTimers("sess-arm");
     assert.equal(timers.length, 1, "exactly one timer after the turn end");
     assert.match(timers[0].reason, /w-live-one/, "the reason names the worker it watches");
-    assert.ok(
-      typeof timers[0].intervalMs === "number" && timers[0].intervalMs > 0,
-      "the arm is a recurrence, not a single fire",
+    assert.equal(
+      timers[0].intervalMs,
+      undefined,
+      "the arm is a single fire: its reason is a snapshot of who is uncovered, so it may not repeat",
     );
     assert.equal(timers[0].sessionId, "sess-arm", "the fire is attributed to the seat's session");
     assert.equal(timers[0].wake, true, "the fire must start a turn, or it wakes nobody");
