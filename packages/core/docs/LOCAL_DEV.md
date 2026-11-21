@@ -326,6 +326,42 @@ This instrument does not read or migrate memory entries. A preference may also
 live in the memory stores; those are retrieved by association and are a separate
 surface with its own path.
 
+## Boot state and sink checks
+
+Two read-only instruments answer the two questions a seat asks from scratch: what
+is here, and did this wave's learning land anywhere a later seat will read it.
+
+```bash
+node packages/core/scripts/check-boot.mjs [--cwd <dir>] [--json]
+node packages/core/scripts/check-boot.mjs --skip journal --reason "fresh tree"
+node packages/core/scripts/check-sinks.mjs --wave <id> --report <path>
+```
+
+`check-boot` prints three groups in one screen: environment (braid home, git root
+and HEAD, skills files reachable, corpus index shards), project (journal, the three
+memory files, scratchpad goal and open plan items, resume handoff, live fleet
+rows, the AGENTS.md walk from cwd to the git root) and task (the live rows' output
+files, the brief when named, every declared skip). Every row carries existence and
+a size, because an empty store and a missing store lead to different next actions.
+It exits 0 when every step produced a fact, 1 when a store cannot be read or a
+step named with `--require` produced nothing and no skip was declared, and 2 on
+usage or a tree with no build. `--skip` needs `--reason`: a skip that does not say
+why is a silent hole.
+
+`check-sinks` searches four sinks for the wave's subject or one of its files: the
+journal, the memory stores, doc lines added by the branch, and the preference
+store. It prints each search with what it scanned and found, and refuses (exit 1)
+a report whose work left no trace in any of them. A doc whose matching lines only
+point at a store, or quote a rule id the store holds, is reported as a projection
+rather than a second truth; the wave's own report is never counted, since a report
+naming itself proves nothing. `--cwd` names the project whose stores are read and
+`--repo` the branch that is diffed, which are not always the same tree. A search
+that could not run (an unreadable store, a base ref the repo does not carry) exits
+2: it cannot honestly say "no trace".
+
+Neither script runs in `ci:check`. Both read their paths from `dist/`, so
+`npm run build` has to run first, and neither writes, appends or repairs anything.
+
 ## Provider failures on demand
 
 Three provider behaviours decide how a turn ends, and none of them can be
