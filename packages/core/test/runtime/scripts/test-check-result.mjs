@@ -1155,11 +1155,10 @@ const samplerPath = join(CHECK_RESULT, "..", "gate-sampler.mjs");
 
 // ── (q) a refusal about a session names the session ─────────────────────────
 //
-// A wave spawns a worker per session and reads their transcripts side by side.
-// A refusal that prints the reason without the file leaves the reader
-// reconstructing the command line to learn which session produced it. These
-// cases pin the path at all three refusal sites and keep the well-formed close
-// unchanged.
+// Transcripts arrive one per worker and are read side by side. A refusal that
+// prints the reason without the file leaves the reader reconstructing the
+// command line to learn which session produced it. These cases pin the path at
+// all three refusal sites and keep the well-formed close unchanged.
 
 {
   const emptyPath = join(root, "q-empty.jsonl");

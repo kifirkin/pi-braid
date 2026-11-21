@@ -586,9 +586,9 @@ if (texts.length === 0) {
   // thinking and tool calls — a mid-flight worker, or one that never writes prose.
   // That wording cost real time twice: it reads as a broken validator and sends the
   // reader hunting a bug in this script instead of waiting for the worker.
-  // Both branches also name the session. A wave reads one transcript per worker,
-  // and a refusal that prints only the reason leaves the reader rebuilding the
-  // command line to learn which session produced it.
+  // Both branches also name the session. Transcripts are read in a stack, one
+  // per worker, and a refusal that prints only the reason leaves the reader
+  // rebuilding the command line to learn which session produced it.
   const n = assistantTexts.entries ?? 0;
   fail(
     n === 0
