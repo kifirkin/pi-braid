@@ -14,6 +14,7 @@ promotion paths.
 | `types.ts`            | Type definitions for MemoryRecord, MemoryType, Episode                                  |
 | `heuristics.ts`       | BUILTIN_HEURISTICS: 7 hand-coded episodic rules for the lightweight `memory_store` tool |
 | `episodes.ts`         | Episode storage: how a chain of tool calls becomes an episodic memory                   |
+| `episodes-disk.ts`    | The episode store on disk: append, compaction, and the versioned row read               |
 | `tool-reliability.ts` | Tracks per-tool success rates; contributes to cross-session `episodic` memory           |
 
 ## Three memory tiers
@@ -64,3 +65,10 @@ references them 3+ times across sessions.
   agent can pin a memory to a specific tier via the `type` field.
 - **Heuristic tier is hand-coded and intentionally fragile** - kept
   as a fast-path; LLM critic is the fallback.
+- **The episode store declares its row version.** `episodes-disk.ts` reads the
+  file through the versioned reader with the row version, the required fields
+  and the optional fields declared beside it. A row missing an optional field
+  is `partial` and stays in the store; a row this build cannot use is counted
+  with its line number and logged, never dropped in silence. The fields were
+  added after rows existed, so the older rows keep the shape they were written
+  with rather than being backfilled with an invented value.

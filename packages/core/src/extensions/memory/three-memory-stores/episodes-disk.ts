@@ -24,7 +24,11 @@ import * as path from "node:path";
 import { episodesFilePath } from "../../../lib/config/braid-paths.js";
 import { withStoreLock } from "../../../lib/memory/store-lock.js";
 import { createLogger } from "../../../lib/core/logger.js";
-import { asyncExists } from "../../../lib/utils/async-fs.js";
+import {
+  describeJsonlSummary,
+  readVersionedJsonl,
+  type JsonlSummary,
+} from "../../../lib/store/versioned.js";
 import type { Episode } from "./types.js";
 
 const log = createLogger("three-memory-stores:episodes-disk");
@@ -83,28 +87,82 @@ export async function flushEpisodeAppends(): Promise<void> {
   await appendQueue;
 }
 
+/** The row version this build reads episodes at. A stored row that declares a
+ *  different one is counted and reported rather than reinterpreted. */
+export const EPISODE_ROW_VERSION = 1;
+
+/** Fields every stored episode carries. A row missing one is a row this build
+ *  cannot use, and it is counted with its line number. */
+const EPISODE_REQUIRED_FIELDS = [
+  "id",
+  "task",
+  "solution",
+  "outcome",
+  "similarity",
+  "timestamp",
+  "toolSequence",
+  "tags",
+  "project",
+  "sessionId",
+  "quality",
+] as const;
+
+/** Fields a stored episode may omit. The rows written before these fields
+ *  existed never had them, and inventing a value for them would be a worse
+ *  answer than the count: the honest state is that those rows predate the
+ *  fields, and `partial` is how that state is visible. */
+const EPISODE_OPTIONAL_FIELDS = ["strategicSOP", "functionalSOP", "atomicSOP"] as const;
+
+/** One read of the episode store: the rows this build can use, and what the
+ *  file held that it could not. */
+export interface EpisodeStoreRead {
+  readonly episodes: Episode[];
+  /** Null when the file could not be read at all, so a caller can tell an
+   *  empty store from an unreadable one. */
+  readonly summary: JsonlSummary | null;
+}
+
 /**
- * Parse every intact episode line on disk. Torn or corrupt lines (a crash
- * mid-append) are skipped — they are the only lines a crash can lose.
+ * Read every usable episode row from disk under the declared row version.
+ *
+ * The store is read for what it holds: a torn line from a crash, a row missing
+ * a required field and a row at a version this build does not read are counted
+ * with their line numbers, never silently dropped. A file that cannot be read
+ * at all is a warning and an empty result, because the store's readers run on
+ * the session-start path and a missing store is recoverable while a session
+ * that refuses to start is not.
  */
-async function readEpisodeLines(): Promise<Episode[]> {
+export async function readEpisodeStore(): Promise<EpisodeStoreRead> {
+  const path = episodesFilePath();
   try {
-    if (!(await asyncExists(episodesFilePath()))) return [];
-    const content = await fs.readFile(episodesFilePath(), "utf-8");
-    const episodes: Episode[] = [];
-    for (const line of content.split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        episodes.push(JSON.parse(line));
-      } catch {
-        /* torn or malformed line — skip */
-      }
-    }
-    return episodes;
+    const read = readVersionedJsonl(path, {
+      supported: [EPISODE_ROW_VERSION],
+      rowVersion: EPISODE_ROW_VERSION,
+      required: EPISODE_REQUIRED_FIELDS,
+      optional: EPISODE_OPTIONAL_FIELDS,
+    });
+    reportEpisodeRead(read.summary);
+    return { episodes: read.rows as unknown as Episode[], summary: read.summary };
   } catch (err) {
-    log.warn(`episodes file read failed: ${err}`);
-    return [];
+    log.warn(`episodes store read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return { episodes: [], summary: null };
   }
+}
+
+/** A read is information, not alarm: partial rows are the expected shape of a
+ *  store whose fields were added later. Rows this build cannot use at all are a
+ *  warning, with the lines named, because those are the rows a session will not
+ *  recall. */
+function reportEpisodeRead(summary: JsonlSummary): void {
+  if (!summary.present) return;
+  const unusable = summary.unparseable + summary.incomplete + summary.unknownVersion;
+  if (unusable === 0) {
+    log.debug(`episodes store: ${describeJsonlSummary(summary)}`);
+    return;
+  }
+  const lines = summary.problems.map((problem) => `line ${problem.line}: ${problem.detail}`);
+  const omitted = summary.problemsOmitted > 0 ? `, ${summary.problemsOmitted} more not listed` : "";
+  log.warn(`episodes store: ${describeJsonlSummary(summary)}; ${lines.join("; ")}${omitted}`);
 }
 
 /**
@@ -115,7 +173,7 @@ async function readEpisodeLines(): Promise<Episode[]> {
  */
 export async function compactEpisodesFile(local: readonly Episode[]): Promise<number> {
   return withStoreLock(episodesLockFilePath(), async () => {
-    const diskEpisodes = await readEpisodeLines();
+    const { episodes: diskEpisodes } = await readEpisodeStore();
     const byId = new Map<string, Episode>();
     for (const ep of diskEpisodes) byId.set(ep.id, ep);
     for (const ep of local) byId.set(ep.id, ep);

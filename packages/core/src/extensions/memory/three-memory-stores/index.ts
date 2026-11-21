@@ -48,11 +48,11 @@ import {
 } from "../../../lib/config/braid-paths.js";
 import { getCognitiveMemory } from "../../../lib/memory/index.js";
 import { deriveProjectIdFromCwd } from "../../../lib/memory/past-insights.js";
-import { compactEpisodesFile, flushEpisodeAppends } from "./episodes-disk.js";
+import { compactEpisodesFile, flushEpisodeAppends, readEpisodeStore } from "./episodes-disk.js";
 
 // Re-export types
 export type { Episode, HeuristicRule, ToolStat, MemoryStoresState } from "./types.js";
-import type { MemoryStoresState, Episode } from "./types.js";
+import type { MemoryStoresState } from "./types.js";
 
 // Sub-module imports
 import { retrieveByRUMS, sanitizeEpisode } from "./episodes.js";
@@ -472,28 +472,16 @@ function inferTaskType(_ctx: ExtensionContext, _toolName: string): string {
 async function loadPastEpisodes(state: MemoryStoresState): Promise<number> {
   let loaded = 0;
 
-  // Current path wins; the legacy file below is the fallback.
-  try {
-    const newPath = episodesFilePath();
-    if (await asyncExists(newPath)) {
-      const content = await readFilePromise(newPath, "utf-8");
-      const lines = content.split("\n").filter((l) => l.trim());
-      for (const line of lines) {
-        try {
-          const ep: Episode = JSON.parse(line);
-          const sanitized = sanitizeEpisode(ep);
-          if (!state.episodes.some((e) => e.id === sanitized.id)) {
-            state.episodes.push(sanitized);
-            loaded++;
-          }
-        } catch {
-          /* skip malformed lines */
-        }
-      }
+  // Current path wins; the legacy file below is the fallback. The read is the
+  // store's own, so the row version and the accounting live in one place:
+  // a row this build cannot use is counted there and logged, not dropped here.
+  const { episodes: stored } = await readEpisodeStore();
+  for (const ep of stored) {
+    const sanitized = sanitizeEpisode(ep);
+    if (!state.episodes.some((e) => e.id === sanitized.id)) {
+      state.episodes.push(sanitized);
+      loaded++;
     }
-  } catch {
-    // Legacy episodic file unreadable — stores start empty; the canonical
-    // three-store files remain authoritative.
   }
 
   // Backward compat: load episodic items from the legacy memory file path.
