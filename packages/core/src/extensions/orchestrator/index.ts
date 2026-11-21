@@ -45,7 +45,12 @@ import {
   reapWorkerPane,
   type PaneReapOutcome,
 } from "../../lib/orchestrator/pane-lifecycle.js";
-import { cancelTimersByTag, listTimers, scheduleTimer } from "../scheduling/timer/index.js";
+import {
+  cancelTimer,
+  cancelTimersByTag,
+  listTimers,
+  scheduleTimer,
+} from "../scheduling/timer/index.js";
 import {
   acquireLock,
   releaseLock,
@@ -703,7 +708,12 @@ interface SettleArmConfig {
   mode: "on" | "off";
   /** Delay before the first fire: inside the window a seat checks a dispatch anyway. */
   delayMs: number;
-  /** Recurrence after that, so the fleet stays watched without a second cadence. */
+  /**
+   * The recurrence the arm carried while it delivered a cadence. A single fire
+   * has nothing to repeat, so the value is inert; the field stays because
+   * `broker.orchestrator` is a shipped settings block, and dropping a knob is a
+   * contract change with its own migration.
+   */
   intervalMs: number;
 }
 
@@ -711,8 +721,8 @@ interface SettleArmConfig {
  * Code-constant defaults, in the watchdog's shape: the settings block overrides
  * them field by field and an invalid field falls back on its own, so one typo
  * cannot disarm the device or set a zero delay. The delay sits inside the
- * measured gap a seat leaves between a dispatch and its next input; the
- * recurrence keeps one watcher on the fleet rather than one per worker.
+ * measured gap a seat leaves between a dispatch and its next input; every fire
+ * re-derives the uncovered set instead of repeating one.
  */
 const SETTLE_ARM_DEFAULTS: SettleArmConfig = {
   mode: "on",
@@ -861,9 +871,16 @@ function callerSessionsRoot(ctx: unknown): string | undefined {
 /** Tag on every timer this device arms, so a cadence that watches nothing can be withdrawn. */
 const BABYSIT_TAG = "orchestrator-babysit";
 
-/** Tokens of a timer reason, for worker-id matching that cannot match a prefix. */
+/**
+ * Whether a timer reason names one worker id as a token.
+ *
+ * The id alphabet is the one the orchestrator's own branch lookup accepts
+ * (`[A-Za-z0-9._-]`): an id that carries a dot is a legal worker id, so a split
+ * on non-alphanumerics would cut it in half and never match it.
+ */
 function reasonNamesWorker(reason: string, workerId: string): boolean {
-  return reason.split(/[^A-Za-z0-9_-]+/).includes(workerId);
+  const escaped = workerId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9._-])${escaped}(?=$|[^A-Za-z0-9._-])`).test(reason);
 }
 
 /** The reason a babysit timer carries: every worker it watches is named in it. */
@@ -872,16 +889,40 @@ function babysitReason(workerIds: string[]): string {
 }
 
 /**
- * Arm one babysit timer for the live workers nothing names, and withdraw the
- * cadence when the fleet empties. Returns a line for the log, or null when the
- * turn end needed no change.
+ * The worker ids a reason of this device's own shape names, or null when the
+ * reason is not that shape. The device writes `babysit <id>, <id>: ...`, so the
+ * ids are the words between the verb and the colon.
+ */
+function workersInBabysitReason(reason: string): string[] | null {
+  const match = /^babysit\s+([^:]+):/.exec(reason);
+  if (!match) return null;
+  const ids = match[1]
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return ids.length > 0 ? ids : null;
+}
+
+/**
+ * Arm one single-fire babysit timer for the live workers nothing names, after
+ * withdrawing the timers whose sentence no longer describes the fleet. Returns a
+ * line for the log, or null when the turn end needed no change.
+ *
+ * The reason is a snapshot of who is uncovered, so it may only be delivered
+ * once: a recurrence re-delivers a claim about a fleet that has moved on, and
+ * the session accumulates one such sentence per dispatch it ever left uncovered.
+ * The next turn end re-derives the set from the registry instead, which is also
+ * why a closed worker can never come back in a later fire.
+ *
+ * Withdrawal is the same decision as the arm: two places deciding which timers
+ * should exist would disagree exactly when the fleet changes under them. A
+ * timer is residue when none of the workers its reason names is open any more;
+ * a reason that still names one open worker is not residue, whatever else it
+ * names, and it is the one that blocks a second cadence. One fire wakes the seat
+ * and is gone, so at most one cadence stands per session.
  *
  * Guards, each one a state this must not act on: an off switch; a session id the
- * fire could not be attributed to; no project this session orchestrated in; no
- * live row; every live row already named by a pending timer. One timer per
- * settle naming all uncovered workers, rather than one per worker: the invariant
- * is that something wakes the seat, and a per-worker arm would multiply wakes by
- * the fleet size for no extra information.
+ * fire could not be attributed to; no project this session orchestrated in.
  */
 function armMissingWorkerTimers(ctx: unknown): string | null {
   const config = loadSettleArmConfig();
@@ -909,28 +950,46 @@ function armMissingWorkerTimers(ctx: unknown): string | null {
     }
   }
 
-  if (live.size === 0) {
-    const cancelled = cancelTimersByTag(sessionId, BABYSIT_TAG);
-    return cancelled > 0 ? `withdrew ${cancelled} babysit timer(s): no live worker left` : null;
+  // Residue: a timer this device armed whose reason names no worker the
+  // registry still holds open. The tag is the device's own mark and every
+  // reason it writes carries the shape, so a tagged reason outside the shape
+  // has no open worker it can be shown to watch either.
+  let withdrawn = 0;
+  for (const timer of listTimers(sessionId)) {
+    if (timer.tag !== BABYSIT_TAG) continue;
+    const named = workersInBabysitReason(timer.reason);
+    if (named && named.some((id) => live.has(id))) continue;
+    if (cancelTimer(sessionId, timer.id)) withdrawn++;
   }
 
-  const pending = listTimers(sessionId).map((timer) => timer.reason);
-  const uncovered = [...live].filter(
-    (id) => !pending.some((reason) => reasonNamesWorker(reason, id)),
-  );
-  if (uncovered.length === 0) return null;
+  if (live.size === 0) {
+    // The fleet is empty: whatever the reasons say, no cadence has anything to
+    // watch.
+    withdrawn += cancelTimersByTag(sessionId, BABYSIT_TAG);
+    return withdrawn > 0 ? `withdrew ${withdrawn} babysit timer(s): no live worker left` : null;
+  }
 
-  const id = scheduleTimer(
-    sessionId,
-    config.delayMs,
-    babysitReason(uncovered),
-    BABYSIT_TAG,
-    true,
-    config.intervalMs,
+  const standing = listTimers(sessionId);
+  const uncovered = [...live].filter(
+    (id) => !standing.some((timer) => reasonNamesWorker(timer.reason, id)),
   );
-  return `armed ${id} for ${uncovered.join(", ")} (first fire in ${Math.round(
+  const residue =
+    withdrawn > 0 ? `withdrew ${withdrawn} babysit timer(s) naming no open worker` : "";
+  if (uncovered.length === 0) return residue || null;
+
+  const cadences = standing.filter((timer) => timer.tag === BABYSIT_TAG);
+  if (cadences.length > 0) {
+    // A cadence that survived withdrawal names an open worker. A second one
+    // would double the wakes for the same fleet, so the uncovered worker waits
+    // for this fire, which re-derives the whole set.
+    return residue ? `${residue}; left ${cadences.length} cadence standing, armed nothing` : null;
+  }
+
+  const id = scheduleTimer(sessionId, config.delayMs, babysitReason(uncovered), BABYSIT_TAG, true);
+  const armed = `armed ${id} for ${uncovered.join(", ")} (one fire in ${Math.round(
     config.delayMs / 1000,
-  )}s, then every ${Math.round(config.intervalMs / 1000)}s)`;
+  )}s)`;
+  return residue ? `${residue}; ${armed}` : armed;
 }
 
 // Tool Definition
