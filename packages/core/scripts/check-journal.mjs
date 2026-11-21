@@ -249,6 +249,11 @@ const DECLARED_LEGACY = [
     shape: "FIELDS",
     why: "a decision written before the writer required a reason",
   },
+  {
+    seq: 333,
+    shape: "ABSENT",
+    why: "a closure recorded in the wrong tree, citing a path that only the orchestrator checkout carries; the closure was re-recorded where that path resolves, and this journal is append-only",
+  },
 ];
 
 // ── Read ──────────────────────────────────────────────────────────────────
