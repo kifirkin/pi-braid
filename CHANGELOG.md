@@ -53,6 +53,29 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.51.0: a governed line may not state a number no entry proves, and the surface record follows pi 1.6.0 (2026-11-22)
+
+The documentation check had a hole in the shape of a sentence. `check-source-claims` proved that every number an entry
+captures appears where the entry says it does, and said nothing about numbers written outside any entry: a doc line could
+carry a figure invented yesterday, a count from another checkout, or a round number chosen to sound measured, and the
+checker stayed silent because no entry claimed it. `19dfe13` closes that by refusing any digit run on a governed line
+that falls outside the union of the spans the entries prove, and the refusal names the number, the line, and the two
+repairs: enrol it with an entry of its own, or keep it off the governed line. The census reads numerals and exempts none,
+so a digit inside an identifier is refused like a count, while a number written as a word is still read as a value when an
+entry captures it. Sixteen runtime cases hold the gate, four of which redden the moment the rule is disabled.
+
+The journal learned to file a closure it cannot re-derive instead of failing on it (`fee108d`): a closure that cites a path
+living in another checkout is a true record of a closure, not a broken one, so `check-journal` declares it and reports the
+declaration rather than turning the whole digest red.
+
+The surface record moved to pi-core 1.6.0 (`0c837ce`). The release changed exactly four things braid names: three `render()`
+methods on `SettingsList`, `Text` and `Container` now return `readonly string[]`, `registerMarkdownTransformer` gained an
+optional options argument, and `Container.mouseLayout` is gone. Braid's only custom component returns a fresh array per
+render and no braid code names `mouseLayout` <!-- doc-ref-exempt: the member pi 1.6.0 removed, named as the change itself -->, so the record moved by the three signatures pi changed and the typecheck
+and the full chain agree with it. `pi-surface.json` now states 29 surfaces and 82 symbols against 1.6.0 with every recorded signature unchanged, and
+`check-pi-surface` is the command that prints that line; it is the form in which a future upgrade can be refused rather
+than discovered.
+
 ## Core 0.50.1: a babysit cadence stops naming workers that have closed (2026-11-21)
 
 A timer was armed once with a sentence naming every uncovered worker and then left to recur. The sentence stayed true
