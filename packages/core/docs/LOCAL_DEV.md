@@ -138,7 +138,7 @@ before and after a full run. A non-zero delta is the leak this rule prevents.
 ### New fixtures: use `node:test`
 
 A new fixture is written on `node:test`. The runner does not care which style a
-file uses - 161 of the core suite's 402 fixtures already use `node:test` - so the
+file uses - 162 of the core suite's 403 fixtures already use `node:test` - so the
 reason is the failure the other style produces. A hand-rolled helper that calls
 `fn()` without awaiting it discards the case's promise, so an `async` case runs
 detached and the file can print its green tally before that case settles, with
@@ -209,6 +209,38 @@ A run inside the holder - a fixture that spawns the runner over a bench - is not
 contention: it inherits `PI_SUITE_LOCK_TOKEN` and proceeds. `PI_TEST_ROOT` runs a
 bench tree rather than the suite and takes no lock at all. `PI_SUITE_LOCK_FILE`
 points the device at another file, which is how the tests exercise it.
+
+### One full chain at a time
+
+The suite lock separates suites of one repository. The whole chain - every gate
+and every workspace suite, `npm run ci:check` - has its own lock, one per
+machine, at `~/.pi/agent/braid/locks/full-chain.lock`. It lives outside every
+checkout because the chains it separates run from different worktrees and from
+the installed package, and a lock inside a tree sees only that tree.
+`packages/core/scripts/chain-lock.mjs` holds the policy and three verbs:
+`acquire --reason <who and what>`, `release`, `status`.
+
+The `ci:check` script acquires before its first leg and releases in a shell exit
+trap, so a chain cannot start beside another one without anyone remembering the
+rule. An `acquire` that finds a live holder prints the holder's fields and exits
+1 - the refusal line is the instrument, and the chain does not start. A lock
+whose pid is gone, whose file is unreadable, or whose age is past two hours is
+reclaimed with a line saying which rule fired; a record from another host is
+reported and never reclaimed, and a lock path this device cannot write runs the
+chain unguarded with a line saying what it lost.
+
+The recorded pid is the process that will outlive the helper: the shell that
+installed the trap. So the trap that acquired is the trap that releases, and
+acquiring in one shell while releasing from another is refused by design. To
+see what is holding it, or to run the chain by hand:
+
+```bash
+node packages/core/scripts/chain-lock.mjs status
+BRAID_CHAIN_LOCK_FILE=<path> node packages/core/scripts/chain-lock.mjs acquire --reason "<who and what>"
+```
+
+`BRAID_CHAIN_LOCK_FILE` points the device at another file, which is how the
+fixture exercises it.
 
 ### Regressions against a baseline
 
