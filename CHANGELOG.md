@@ -53,6 +53,38 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.50.0: the rules the fleet kept in its head are now instruments (2026-11-21)
+
+Two constraints were written in memory, repeated in briefs, and violated whenever two things happened at once. Both
+are now mechanisms, and one gate stopped believing a row it never re-ran.
+
+**One full chain at a time** (`38aec2c`). `packages/core/scripts/chain-lock.mjs` holds a lock at
+`~/.pi/agent/braid/locks/full-chain.lock` with the holder's pid, host, start time, reason and command; `acquire` refuses
+a second caller and names the holder with its age; `release` is refused to anyone but the holder or a dead pid; a lock
+whose process is gone is reclaimed and named as stale. `ci:check` acquires it first and releases it in a trap, so a
+caller that forgets the instrument still cannot run two chains at once. Measured live before the merge: free, held for
+the chain's duration, free after a green run. Twenty-one cases in `test-chain-lock.mjs`, including two spawned children
+racing where exactly one wins. The failure it replaces is on record: four chains at once drove this box to a load
+average of 36, and an earlier night to 110.
+
+**A worker may not close its own row** (`0df46fd`). Observed twice in one night: a worker ran `close-worker` naming
+itself, supplied its own gate rows, and the registry recorded `status: completed`. The handler now resolves the caller
+and refuses when the caller is the worker the row names, and every accepted closure stamps `closedBy {kind, pid, at}`.
+A row closed without that stamp reports as `closed-unverified` — which is what the two rows from that night now say,
+including one whose gates array is empty while a checkpoint claims the result block was verified. Eleven cases in
+`test-close-attribution.mjs`, with the honest half covered too: a seat closing another worker's row still succeeds and
+stamps `seat`.
+
+**The gates stop believing their own input** (`3a36ec2`). `adversarial-instruments.mjs` found `check-result` passing a
+gate row whose command exits 1, because claim-row parity compares two fields the same worker wrote, and because it cited
+a `gate-sampler.mjs` that does not exist anywhere in the tree. The gate now warns when the sampler is absent, naming the
+path and saying no row's exit was re-run; two refusals (`no assistant messages in session`, `no result-schema JSON block`)
+now name the session they are about; and `check-regressions` refuses a baseline whose `fixtures` array is empty instead
+of comparing nothing and printing OK. `check:journal` joins the chain, and the tracked journal's five legacy rows are
+declared by seq with a reason each, so a sixth fails while the five stay visible. After the change the adversarial run
+reads 27 cases, 25 pass, 2 fail — and both remaining failures are the two the wave declared out of scope: a design
+question about governing a pair of numerals in one sentence, and a fixture import that does not name the build it needs.
+
 ## Core 0.49.0: what a session owes the next one, and what a checker owes a broken world (2026-11-21)
 
 A compaction that succeeds returns the bodies it dropped (`20b29d1`). The detector was already there and only
