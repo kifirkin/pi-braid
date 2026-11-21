@@ -359,13 +359,18 @@ test("the exit-trap shape keeps a failing leg's status and leaves nothing behind
 
 test("without the override the lock lives under the braid home, not in a tree", () => {
   // A status read never writes, so this case pins the default path without
-  // touching the machine's real lock file even when a chain holds it.
+  // touching the machine's real lock file - and without depending on what that
+  // file holds right now: this suite runs inside a chain that holds exactly this
+  // lock, so the line it prints here is the held one, not the free one.
   const env = { ...process.env };
   delete env.BRAID_CHAIN_LOCK_FILE;
   const result = spawnSync(process.execPath, [SCRIPT, "status"], { encoding: "utf8", env });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout.trim(), /\.pi\/agent\/braid\/locks\/full-chain\.lock$/);
-  assert.ok(result.stdout.includes(join(homedir(), ".pi", "agent", "braid", "locks", "full-chain.lock")));
+  assert.match(result.stdout, /^chain-lock: /);
+  assert.ok(
+    result.stdout.includes(join(homedir(), ".pi", "agent", "braid", "locks", "full-chain.lock")),
+    result.stdout,
+  );
 });
 
 test("the manifest's ci:check still takes the lock and still runs every leg", () => {
