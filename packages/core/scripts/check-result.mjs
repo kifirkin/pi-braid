@@ -931,7 +931,7 @@ for (const r of results) {
   console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  (${r.detail})` : ""}`);
   if (!r.ok) failed++;
 }
-// Gate-evidence sampleability: gate-sampler.mjs re-runs entries shaped
+// Gate-evidence sampleability: the sampler re-runs entries shaped
 // {cmd, exit_code|exit}; string-shaped entries pass this validator but cannot
 // be sampled at all. Instrumented as a WARN so the gap is visible without
 // turning previously-valid blocks into failures.
@@ -941,6 +941,19 @@ if (gateEntries.length > 0 && sampleable === 0)
   console.log(`WARN gate-evidence: 0/${gateEntries.length} entries carry {cmd, exit_code} — gate-sampler cannot sample this block`);
 else if (sampleable < gateEntries.length)
   console.log(`gate-evidence-sampleable: ${sampleable}/${gateEntries.length}`);
+
+// A sampleable row is credited on two fields the same worker wrote, and what
+// would re-run it is this program's sibling. This file runs from copies too, so
+// the sibling is tested rather than assumed: when it is absent the rows were
+// never executed by anything but their author, and a warning is the only place
+// the reader learns that. The parity leg credits the same claim one line later,
+// which is why the absence is named instead of being left to the reader.
+const samplerGate = join(import.meta.dirname, "gate-sampler.mjs");
+if (sampleable > 0 && !existsSync(samplerGate)) {
+  console.log(
+    `WARN gate-evidence: the sampler is not beside this script (${samplerGate}), so no row's exit was re-run`,
+  );
+}
 
 // Population-stamp read over every row. A row whose command carries a walk,
 // list or count verb is a population scan, and any row whose stamp is present

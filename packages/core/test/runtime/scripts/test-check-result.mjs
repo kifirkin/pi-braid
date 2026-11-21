@@ -30,7 +30,7 @@
 // baseline block, whose verifier names no file so that every other case isolates
 // one leg.
 
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -126,7 +126,7 @@ function block(extra = {}) {
 }
 
 function run(session, extraArgs = [], opts = {}) {
-  const r = spawnSync(process.execPath, [CHECK_RESULT, session, ...extraArgs], {
+  const r = spawnSync(process.execPath, [opts.checkResult ?? CHECK_RESULT, session, ...extraArgs], {
     encoding: "utf8",
     cwd: opts.cwd,
     env: {
@@ -1092,6 +1092,66 @@ check(
     parityCounter(r.stdout) === "claim-row-parity: 1/1 claim(s) citing a runnable file are matched by a gate row",
   `exit=${r.code} counter=${parityCounter(r.stdout) ?? "absent"}`,
 );
+
+// ── (p) a sampling claim needs the sampler, and its absence is named ────────
+//
+// A row shaped {cmd, exit} is sampleable, so the gate accepts the block's own
+// account of what the command returned. Nothing re-runs it: the re-runner is
+// `gate-sampler.mjs` beside the script, and when the file is not there the
+// block is credited on two fields one worker wrote. These cases pin the line
+// that says so, and its two boundaries: a sampler beside the script silences
+// it, and a block carrying no row makes no sampling claim to qualify.
+
+const samplerWarn = (stdout) =>
+  stdout.split("\n").find((l) => l.startsWith("WARN gate-evidence: the sampler is not beside this script"));
+const samplerPath = join(CHECK_RESULT, "..", "gate-sampler.mjs");
+
+{
+  const exitsOne = join(root, "exits-one.sh");
+  writeFileSync(exitsOne, "#!/bin/sh\nexit 1\n");
+  chmodSync(exitsOne, 0o755);
+  // The row records the exit the block wants credited, not the one the script
+  // returns; the claim cites the same file, which is the shape the parity leg
+  // matches. Nothing in this case re-runs it.
+  const unrun = block({
+    source_revision: settled,
+    gate_evidence: [{ cmd: exitsOne, exit: 0 }],
+    claims: [
+      { claim: "the fixture script passes when run", verified_by: exitsOne, predicts: "the script exits 0 when run" },
+    ],
+  });
+
+  r = run(makeSession("p-absent-sampler.jsonl", unrun));
+  check(
+    "(p1) a sampleable row with no sampler beside the script warns, naming the absent file",
+    r.code === 0 && samplerWarn(r.stdout) !== undefined && samplerWarn(r.stdout).includes(samplerPath),
+    `exit=${r.code} line=${(samplerWarn(r.stdout) ?? "absent").slice(0, 100)}`,
+  );
+
+  const withSampler = join(root, "with-sampler");
+  mkdirSync(withSampler, { recursive: true });
+  const copied = join(withSampler, "check-result.mjs");
+  copyFileSync(CHECK_RESULT, copied);
+  writeFileSync(join(withSampler, "gate-sampler.mjs"), "// a re-runner these cases never call\n");
+
+  const rr = run(makeSession("p-with-sampler.jsonl", unrun), [], { checkResult: copied });
+  check(
+    "(p2) a sampler beside the script silences the warning, and the row still passes the shape gate",
+    rr.code === 0 && samplerWarn(rr.stdout) === undefined && /PASS\s+gate-evidence/.test(rr.stdout),
+    `exit=${rr.code} line=${(samplerWarn(rr.stdout) ?? "absent").slice(0, 60)}`,
+  );
+
+  // A row the gate cannot sample carries no exit to re-run, so the absence
+  // warning has nothing to qualify: the shape gate is the line that speaks, and
+  // the two must not both report one defect.
+  const proseRows = block({ source_revision: settled, gate_evidence: ["check ran, all green"] });
+  const r3 = run(makeSession("p-prose-rows.jsonl", proseRows));
+  check(
+    "(p3) a block whose rows are not sampleable makes no sampling claim, so only the shape gate reports it",
+    r3.code === 1 && samplerWarn(r3.stdout) === undefined && /FAIL\s+gate-evidence-shape/.test(r3.stdout),
+    `exit=${r3.code} line=${(samplerWarn(r3.stdout) ?? "absent").slice(0, 60)}`,
+  );
+}
 
 // ── Verdict ──────────────────────────────────────────────────────────────────
 
