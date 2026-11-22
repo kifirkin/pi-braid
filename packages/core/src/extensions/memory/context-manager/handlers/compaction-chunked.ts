@@ -28,7 +28,10 @@
 // ladder split the chunk's units (the content-dense class the split recovers,
 // 60-unit chunks into 30+30) or accept the partial merge, keeping the running
 // fold untouched when that partial text is shorter than the fold. Only a call
-// budget exhausted with work left is a summary-cap failure.
+// budget exhausted with work left is a summary-cap failure - and so is a span
+// the bounded shape cannot cover at all (more chunks than the hard ceiling):
+// both mean the bounded summarizer cannot serve this span, the one class that
+// must never be handed to the unbounded single-call summarizer.
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Usage } from "@earendil-works/pi-ai";
@@ -169,10 +172,11 @@ export function groupIntoUnits(messages: readonly unknown[]): unknown[][] {
 /**
  * Pack units into chunks under the per-call input cap and the per-chunk
  * message cap. Returns null when the span needs more chunks than
- * CHUNK_COUNT_MAX — the caller then falls back to the default path instead of
- * silently unbounding a call. A single unit whose own estimate exceeds the cap
- * becomes its own chunk: the serialized text is typically smaller than the raw
- * estimate (toolResults truncate at 2000 chars), so honesty beats silence.
+ * CHUNK_COUNT_MAX: the bounded shape cannot cover it, so the caller fails the
+ * cycle with the summary-cap class rather than unbounding a call. A single unit
+ * whose own estimate exceeds the cap becomes its own chunk: the serialized text
+ * is typically smaller than the raw estimate (toolResults truncate at 2000
+ * chars), so honesty beats silence.
  */
 export function planChunks(
   messages: readonly unknown[],
@@ -507,8 +511,14 @@ export async function summarizeSpanInChunks(params: {
   const window = resolveWindow(ctx?.model?.contextWindow).contextWindow;
   const chunks = planChunks(span, window);
   if (!chunks) {
+    // Over the chunk ceiling: the bounded shape cannot cover this span. The
+    // class is the one an exhausted split budget carries, because the recovery
+    // is the same - fail the cycle honestly, never hand the span to pi-core's
+    // unbounded single-call summarizer, which cannot serve a span the bounded
+    // path could not fit.
     return {
       error: `span needs more than ${CHUNK_COUNT_MAX} chunks (est. ${estimateMessagesTokens(span)} tokens) - not chunkable within the bounded call shape`,
+      failureClass: "summary-cap",
     };
   }
   if (chunks.length === 0) return { error: "empty span" };

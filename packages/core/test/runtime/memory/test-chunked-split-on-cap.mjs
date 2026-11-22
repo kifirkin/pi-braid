@@ -29,6 +29,11 @@
  *      stub drains exactly the budget and returns the honest summary-cap
  *      failure class. Fails pre-fix: the first cap aborts with no budget
  *      semantics.
+ *  (e) A span past the chunk ceiling is the same class: the refusal carries
+ *      `failureClass: "summary-cap"`, so the range cycle cancels instead of
+ *      falling through to pi-core's unbounded single call. Fails pre-fix: the
+ *      refusal carried no class, the caller logged a fall-through and handed
+ *      the span to the summarizer that cannot serve it.
  *
  * The "pi-core default summarizer" is modeled, not run: in this fixture
  * harness pi-core itself is absent, so an invocation is the handler
@@ -439,6 +444,53 @@ await test("(d) the split call budget is a hard, stated bound", async () => {
       chunkedMod.CHUNK_SPLIT_CALL_BUDGET,
       `the budget must bind exactly, got ${calls.length} vs ${chunkedMod.CHUNK_SPLIT_CALL_BUDGET}`,
     );
+  });
+  resetRetryState();
+});
+
+await test("(e) a span the bounded shape cannot cover cancels the cycle instead of unbounding one call", async () => {
+  clearLogBuffer();
+  resetRetryState();
+  piCoreDefaultCalls = [];
+  // 1000 plain messages plan to 17 chunks of 60, one past the hard ceiling:
+  // the bounded shape cannot cover the span at all, which is the same class as
+  // an exhausted split budget - the controller must not hand it to pi-core's
+  // single unbounded summarizer.
+  const pi = makeFakePi();
+  const ctx = makeFakeCtx({ branchLength: 1002 });
+  registerBeforeCompactHandler(pi);
+  getCmState(ctx).rangeMode = {
+    active: true,
+    startIndex: 0,
+    endIndex: 999,
+    summary: "ANCHOR-OVER-CHUNK-CEILING",
+    topic: "chunk ceiling fixture",
+    firstKeptEntryId: "e1000",
+    boundaryIsBranchEnd: false,
+    timestamp: Date.now(),
+  };
+
+  await withStub({ capUnits: undefined }, async (calls) => {
+    const { result } = await fireBeforeCompact(pi, ctx, makePrep(2, { firstKeptEntryId: "e-kept" }));
+    emulatePiCoreDefault(result, 1000);
+
+    assert.equal(
+      result?.cancel,
+      true,
+      `an unplannable span must cancel the cycle, got: ${JSON.stringify(result)}`,
+    );
+    assert.deepEqual(
+      piCoreDefaultCalls,
+      [],
+      "pi-core's default summarizer must never be handed a span the bounded path cannot plan",
+    );
+    assert.equal(
+      getCmState(ctx).cancelSource,
+      "summary-cap",
+      "the over-ceiling refusal carries the summary-cap class",
+    );
+    assert.equal(calls.length, 0, "no chunk call is attempted for a span that cannot be planned");
+    assert.match(logs(), /not chunkable within the bounded call shape/, "the refusal names the span");
   });
   resetRetryState();
 });

@@ -54,7 +54,11 @@ import {
   resetOverflowRetry,
   COMPACTION_NO_PROGRESS_LIMIT,
 } from "./shared.js";
-import { snapBoundaryOutsideToolBatch } from "./tool-batch-boundary.js";
+import {
+  compactionFloor,
+  monotonicBoundaryIndex,
+  snapBoundaryOutsideToolBatch,
+} from "./tool-batch-boundary.js";
 import { reinjectCuratedContext } from "./compaction-curator.js";
 import type { AgentMessage as CoreAgentMessage } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
@@ -97,7 +101,7 @@ import {
   countSpanMessages,
   writeCompactionTrace,
 } from "./compaction-trace.js";
-import { summarizeSpanInChunks } from "./compaction-chunked.js";
+import { summarizeSpanInChunks, findPreviousSummary } from "./compaction-chunked.js";
 import { trackInjection } from "../../../../lib/utils/injection-tracker.js";
 
 // Deduplication Guard
@@ -959,6 +963,102 @@ function buildCompactionInstructions(audit: any): string[] {
 //  3. Instruct - inject smart summarization instructions (STEP 2)
 //     pi core then calls LLM summarization with our instructions
 
+/** The fields the boundary normalizers read off a raw session entry. */
+interface BoundaryEntryShape {
+  id?: string;
+  type?: string;
+  summary?: unknown;
+}
+
+function boundaryEntryAt(
+  entries: readonly unknown[],
+  index: number,
+): BoundaryEntryShape | undefined {
+  const entry = entries[index];
+  return entry && typeof entry === "object" ? (entry as BoundaryEntryShape) : undefined;
+}
+
+/**
+ * A boundary no compaction may write behind: out of any tool batch, and no
+ * further back than where the branch's most recent compaction starts keeping
+ * context (`compactionFloor`, its own boundary rather than its entry index, so
+ * the clamp keeps the messages that compaction still had live). Returns the
+ * index to use and, when the new entry supersedes that compaction, the summary
+ * it must carry forward: the entry replaces everything the compaction folded,
+ * and a superseded compaction entry projects to empty, so its summary is the
+ * only record left of that context.
+ */
+export function clampedBoundary(
+  branch: readonly unknown[],
+  requestedIndex: number,
+  site: string,
+): { index: number; clamped: boolean; carriedSummary?: string } {
+  const index = monotonicBoundaryIndex(branch, requestedIndex);
+  const floor = compactionFloor(branch);
+  const clamped = index > requestedIndex;
+  if (clamped) {
+    log.warn(
+      `[context-manager] ${site}: boundary index ${requestedIndex} sits behind the branch's ` +
+        `compaction at ${floor?.entryIndex ?? index} (its context starts at ${floor?.anchorIndex ?? index}) ` +
+        `- keeping from ${index}`,
+    );
+  }
+  // The supersede test is the compaction's own start, not a move: the armer may
+  // already have clamped the id it stored, so "no move at consumption" is not
+  // "no supersede".
+  if (floor && floor.entryIndex >= index) {
+    return {
+      index,
+      clamped,
+      carriedSummary: findPreviousSummary(branch as ReadonlyArray<BoundaryEntryShape>),
+    };
+  }
+  return { index, clamped };
+}
+
+/**
+ * Resolve a stored boundary entry id against the branch as it stands at
+ * consumption: snap it out of any tool batch (HTTP 400: a kept slice that opens
+ * with a tool result has no preceding tool_calls) and clamp it to where the
+ * branch's most recent compaction starts keeping context. An id that no longer
+ * resolves is returned untouched - the consumer's own fallback owns that case.
+ */
+function consumeBoundaryId(
+  branch: readonly unknown[],
+  storedId: string | undefined,
+  site: string,
+): { id: string | undefined; carriedSummary?: string } {
+  if (!storedId) return { id: storedId };
+  let storedIndex = -1;
+  for (let i = 0; i < branch.length; i++) {
+    if (boundaryEntryAt(branch, i)?.id === storedId) {
+      storedIndex = i;
+      break;
+    }
+  }
+  if (storedIndex < 0) return { id: storedId };
+  const cut = clampedBoundary(branch, snapBoundaryOutsideToolBatch(branch, storedIndex), site);
+  return {
+    id: boundaryEntryAt(branch, cut.index)?.id ?? storedId,
+    carriedSummary: cut.carriedSummary,
+  };
+}
+
+/** Line introducing the superseded summary a clamped compaction entry carries. */
+const CARRIED_SUMMARY_LABEL = "Carried from the compaction this entry supersedes:";
+
+/**
+ * A clamped entry replaces everything the compaction it supersedes had folded,
+ * and that entry projects to empty - so its summary begins with the superseded
+ * summary verbatim. A paraphrase of a summary is not the summary: the earlier
+ * text is the only copy of context the branch no longer projects.
+ */
+function withCarriedSummary(summary: string, carried: string | undefined): string {
+  const text = carried?.trim();
+  if (!text || summary.includes(text)) return summary;
+  return `${CARRIED_SUMMARY_LABEL}\n${text}\n\n${summary}`;
+}
+
 /**
  * Capture the messages a deterministic cut drops as this cycle's originals
  * capture, so the trace's span size and the originals archive describe the cut
@@ -1024,8 +1124,11 @@ function buildDeterministicCut(
     const keepCount = Math.min(50, Math.max(10, Math.floor(branch.length * 0.3)));
     // The deterministic cut is a supplied boundary: snap it out of any tool
     // batch it lands in (HTTP 400: a kept slice that opens with a tool result
-    // has no preceding tool_calls).
-    const cutIndex = snapBoundaryOutsideToolBatch(branch, Math.max(0, branch.length - keepCount));
+    // has no preceding tool_calls), then keep it in front of the branch's most
+    // recent compaction.
+    const snapIndex = snapBoundaryOutsideToolBatch(branch, Math.max(0, branch.length - keepCount));
+    const cut = clampedBoundary(branch, snapIndex, "Deterministic cut");
+    const cutIndex = cut.index;
     const cutEntryId = (branch[cutIndex] as { id?: string } | undefined)?.id;
     if (!cutEntryId || cutIndex <= 0) return null;
     const keptCount = branch.length - cutIndex;
@@ -1040,10 +1143,12 @@ function buildDeterministicCut(
     captureDroppedSpanBefore(ctx, cutEntryId);
     return {
       compaction: {
-        summary:
+        summary: withCarriedSummary(
           `Deterministic cut ${reason}: dropped the ${cutIndex} entries ` +
-          `before the cut without LLM summarization ${detail}. The last ${keptCount} entries ` +
-          `remain live; dropped content stays in the append-only session file and the originals archive.`,
+            `before the cut without LLM summarization ${detail}. The last ${keptCount} entries ` +
+            `remain live; dropped content stays in the append-only session file and the originals archive.`,
+          cut.carriedSummary,
+        ),
         firstKeptEntryId: cutEntryId,
         tokensBefore: typeof prep?.tokensBefore === "number" ? prep.tokensBefore : 0,
         details: { readFiles: [], modifiedFiles: [] },
@@ -1332,11 +1437,21 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             typeof ctx.sessionManager?.getBranch === "function"
               ? (ctx.sessionManager.getBranch() ?? [])
               : [];
+          // Two invariants on the consumed cut: out of any tool batch (HTTP
+          // 400: a kept slice that opens with a tool result has no preceding
+          // tool_calls), and in front of the branch's most recent compaction.
           const storedIndex = slideBranch.findIndex(
             (entry) => (entry as { id?: string })?.id === slide.cutEntryId,
           );
-          const cutIndex =
-            storedIndex >= 0 ? snapBoundaryOutsideToolBatch(slideBranch, storedIndex) : -1;
+          const cut =
+            storedIndex >= 0
+              ? clampedBoundary(
+                  slideBranch,
+                  snapBoundaryOutsideToolBatch(slideBranch, storedIndex),
+                  "Slide boundary",
+                )
+              : undefined;
+          const cutIndex = cut ? cut.index : -1;
           const cutEntryId =
             cutIndex >= 0
               ? ((slideBranch[cutIndex] as { id?: string })?.id ?? slide.cutEntryId)
@@ -1360,10 +1475,12 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
 
           return {
             compaction: {
-              summary:
+              summary: withCarriedSummary(
                 `Sliding window compaction: dropped the ${droppedCount} entries before the ` +
-                `cut; the last ${keptCount} entries remain live. Deterministic entry cut — ` +
-                `dropped content is preserved in the append-only session file and the originals archive.`,
+                  `cut; the last ${keptCount} entries remain live. Deterministic entry cut — ` +
+                  `dropped content is preserved in the append-only session file and the originals archive.`,
+                cut?.carriedSummary,
+              ),
               firstKeptEntryId: cutEntryId,
               tokensBefore: typeof prep.tokensBefore === "number" ? prep.tokensBefore : 0,
               details: { readFiles: [], modifiedFiles: [] },
@@ -1393,15 +1510,15 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
 
         // The declared boundary is a supplied one: snap it out of any tool
         // batch it lands in (HTTP 400: a kept slice that opens with a tool
-        // result has no preceding tool_calls), against the branch as it
-        // stands at consumption.
+        // result has no preceding tool_calls), and keep it in front of the
+        // branch's most recent compaction - a declared range that reaches back
+        // past one must not resurrect what that compaction folded.
         let boundaryId = rangeMode.firstKeptEntryId;
+        let carriedSummary: string | undefined;
         if (boundaryId) {
-          const storedIndex = branch.findIndex((entry) => entry.id === boundaryId);
-          if (storedIndex >= 0) {
-            const snappedIndex = snapBoundaryOutsideToolBatch(branch, storedIndex);
-            boundaryId = branch[snappedIndex]?.id ?? boundaryId;
-          }
+          const resolved = consumeBoundaryId(branch, boundaryId, "Range archive boundary");
+          boundaryId = resolved.id ?? boundaryId;
+          carriedSummary = resolved.carriedSummary;
           (prep as any).firstKeptEntryId = boundaryId;
         }
         (prep as any).messagesToSummarize = spanMessages;
@@ -1462,7 +1579,7 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
           getCmState(ctx).pendingRangeArchive = undefined;
           return {
             compaction: {
-              summary: chunked.summary,
+              summary: withCarriedSummary(chunked.summary, carriedSummary),
               firstKeptEntryId: (prep as any).firstKeptEntryId,
               tokensBefore: typeof prep.tokensBefore === "number" ? prep.tokensBefore : 0,
               details: { readFiles: [], modifiedFiles: [] },
@@ -1562,11 +1679,14 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
             const keepCount = Math.min(50, Math.max(10, Math.floor(branch.length * 0.3)));
             // The guard arms a supplied boundary: snap it out of any tool batch
             // it lands in (HTTP 400: a kept slice that opens with a tool result
-            // has no preceding tool_calls).
-            const cutIndex = snapBoundaryOutsideToolBatch(
+            // has no preceding tool_calls), then keep it in front of the
+            // branch's most recent compaction.
+            const snapIndex = snapBoundaryOutsideToolBatch(
               branch,
               Math.max(0, branch.length - keepCount),
             );
+            const guardCut = clampedBoundary(branch, snapIndex, "High-context cut");
+            const cutIndex = guardCut.index;
             const cutEntryId = branch[cutIndex]?.id;
             const keptCount = branch.length - cutIndex;
 
@@ -1643,12 +1763,14 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
                 );
                 return {
                   compaction: {
-                    summary:
+                    summary: withCarriedSummary(
                       `High-context deterministic cut: dropped the ${cutIndex} entries before the cut ` +
-                      `without LLM summarization (the summary span would not fit the configured ` +
-                      `context window: estimated ${spanEstimate} tokens plus 4096 safety >= ${window}). ` +
-                      `The last ${keptCount} entries remain live; dropped content stays in the ` +
-                      `append-only session file and the originals archive.`,
+                        `without LLM summarization (the summary span would not fit the configured ` +
+                        `context window: estimated ${spanEstimate} tokens plus 4096 safety >= ${window}). ` +
+                        `The last ${keptCount} entries remain live; dropped content stays in the ` +
+                        `append-only session file and the originals archive.`,
+                      guardCut.carriedSummary,
+                    ),
                     firstKeptEntryId: cutEntryId,
                     tokensBefore: typeof prep.tokensBefore === "number" ? prep.tokensBefore : 0,
                     details: { readFiles: [], modifiedFiles: [] },
@@ -1794,10 +1916,21 @@ export function registerBeforeCompactHandler(pi: ExtensionAPI): void {
               logPrefix: `Summary-cap recovery (attempt ${recovery.attempt})`,
             });
             if (!("error" in chunked)) {
+              // The recovery inherits pi-core's prepared boundary, which can sit
+              // behind the branch's most recent compaction after a failed cycle
+              // - the same resurrecting write as a declared range that reaches
+              // too far back.
+              const recoveryBoundary = consumeBoundaryId(
+                typeof ctx.sessionManager?.getBranch === "function"
+                  ? (ctx.sessionManager.getBranch() ?? [])
+                  : [],
+                (prep as any).firstKeptEntryId,
+                "Summary-cap recovery boundary",
+              );
               return {
                 compaction: {
-                  summary: chunked.summary,
-                  firstKeptEntryId: (prep as any).firstKeptEntryId,
+                  summary: withCarriedSummary(chunked.summary, recoveryBoundary.carriedSummary),
+                  firstKeptEntryId: recoveryBoundary.id ?? (prep as any).firstKeptEntryId,
                   tokensBefore: typeof prep.tokensBefore === "number" ? prep.tokensBefore : 0,
                   details: { readFiles: [], modifiedFiles: [] },
                   ...(chunked.usage ? { usage: chunked.usage } : {}),

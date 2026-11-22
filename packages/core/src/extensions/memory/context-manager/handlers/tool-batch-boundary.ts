@@ -17,7 +17,14 @@
  * `snapBoundaryOutsideToolBatch`, and the consumers that persist a stored
  * boundary id re-derive the index and snap it against the branch as it stands
  * at consumption (the armer may have read the branch before the batch's later
- * results landed).
+ * results landed). The monotonic rule is the second half of the same
+ * normalization: a boundary that lands behind the branch's most recent
+ * compaction resurrects everything that compaction folded, because superseded
+ * compaction entries project to empty. The floor is that compaction's own
+ * boundary, not its entry index, so the clamp keeps the messages the previous
+ * compaction still had live. `monotonicBoundaryIndex` is applied AFTER the
+ * snap, so the snap's own backward move (keeping a whole tool batch) cannot
+ * leave the boundary in front of a compaction.
  *
  * A supplied index can land on a non-message entry (`label` from
  * `context_navigate action=tag`, `custom`/`custom_message`, a model or
@@ -41,6 +48,8 @@ interface BoundaryEntry {
   id?: string;
   type?: string;
   message?: unknown;
+  /** A compaction entry's own kept-context start (pi's field name). */
+  firstKeptEntryId?: string;
 }
 
 interface BoundaryMessage {
@@ -250,4 +259,65 @@ export function snapBoundaryOutsideToolBatch(
     return index;
   }
   return index;
+}
+
+/**
+ * Where a branch's most recent compaction keeps context: the index of the
+ * compaction entry itself and the index its own `firstKeptEntryId` resolves to
+ * on the branch. The two differ, and the difference is what a later boundary
+ * must not fall behind: pi's `buildContextEntries` projects from that id, not
+ * from the entry, so entries in [anchorIndex, entryIndex) were live before the
+ * next compaction and stay live only if the next boundary keeps them.
+ *
+ * A boundary id that does not resolve on the branch (a rewritten or truncated
+ * branch) falls back to the entry index, which is where pi's projection starts
+ * when the anchor is gone and therefore resurrects nothing. `null` means the
+ * branch carries no compaction entry at all.
+ */
+export function compactionFloor(
+  entries: readonly unknown[],
+): { entryIndex: number; anchorIndex: number } | null {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  let entryIndex = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (entryOf(entries[i])?.type === "compaction") {
+      entryIndex = i;
+      break;
+    }
+  }
+  if (entryIndex < 0) return null;
+  const anchor = entryOf(entries[entryIndex])?.firstKeptEntryId;
+  if (typeof anchor !== "string" || anchor === "" || anchor === entryOf(entries[entryIndex])?.id) {
+    return { entryIndex, anchorIndex: entryIndex };
+  }
+  for (let i = 0; i < entryIndex; i++) {
+    if (entryOf(entries[i])?.id === anchor) return { entryIndex, anchorIndex: i };
+  }
+  return { entryIndex, anchorIndex: entryIndex };
+}
+
+/**
+ * A compaction boundary must never move backwards: returns the later of
+ * `requestedIndex` and where the branch's most recent compaction starts keeping
+ * context (see `compactionFloor`), unchanged when the branch carries no
+ * compaction entry and when `requestedIndex` already sits at or after the branch
+ * end.
+ *
+ * Why it is the invariant and not a preference: the boundary a compaction
+ * writes truncates the canonical context, and a superseded compaction entry
+ * projects to empty. A boundary set in front of the previous compaction's own
+ * boundary therefore hands back every message that entry had folded, so a
+ * compaction can multiply the live context by a large factor instead of
+ * shrinking it. The floor is that boundary and not the compaction entry's
+ * index, because a boundary at the entry (which every compaction entry follows,
+ * having been appended at the leaf) drops the entries in between, which were
+ * live and are summarized by nothing.
+ */
+export function monotonicBoundaryIndex(
+  entries: readonly unknown[],
+  requestedIndex: number,
+): number {
+  if (!Array.isArray(entries) || requestedIndex >= entries.length) return requestedIndex;
+  const floor = compactionFloor(entries);
+  return floor ? Math.max(requestedIndex, floor.anchorIndex) : requestedIndex;
 }

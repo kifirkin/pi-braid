@@ -31,6 +31,7 @@ import { CONTEXT_COMPACT_REFUSE_PERCENT } from "../../../../../lib/detection/con
 import { metricsDir } from "../../../../../lib/config/braid-paths.js";
 import { getCmState, isCompactionActive, log, recordNavigationAction } from "../shared.js";
 import { snapBoundaryOutsideToolBatch } from "../tool-batch-boundary.js";
+import { clampedBoundary } from "../compaction.js";
 import { formatTokensK, tokenArms } from "../../../../../lib/detection/context-usage.js";
 import { formatLocalTime } from "../../../../../lib/utils/local-time.js";
 import {
@@ -292,8 +293,14 @@ function coalesceIntoSlide(ctx: any, queue: PendingCompaction[]): { trigger: () 
     if (cutIndex < 0) return null;
     // The coalesced cut is a supplied boundary: snap it out of any tool batch
     // it lands in (HTTP 400: a kept slice that opens with a tool result has no
-    // preceding tool_calls).
-    const snappedIndex = snapBoundaryOutsideToolBatch(branch, cutIndex);
+    // preceding tool_calls), and keep it in front of the branch's most recent
+    // compaction - a cut behind one hands back what it folded.
+    const clamped = clampedBoundary(
+      branch,
+      snapBoundaryOutsideToolBatch(branch, cutIndex),
+      "Coalesced slide",
+    );
+    const snappedIndex = clamped.index;
     const cutEntryId = branch[snappedIndex].id;
     // Re-point the slide state the SLIDE_MODE compaction branch consumes.
     getCmState(ctx).slideMode = {
@@ -454,8 +461,13 @@ function armSlideCompaction(
 
   // The slide cut is a supplied boundary: snap it out of any tool batch it
   // lands in (HTTP 400: a kept slice that opens with a tool result has no
-  // preceding tool_calls).
-  const cutIndex = snapBoundaryOutsideToolBatch(branch, branch.length - keepCount);
+  // preceding tool_calls), and keep it in front of the branch's most recent
+  // compaction (a cut behind one resurrects every message it folded).
+  const cutIndex = clampedBoundary(
+    branch,
+    snapBoundaryOutsideToolBatch(branch, branch.length - keepCount),
+    "Slide window",
+  ).index;
   const cutEntryId = branch[cutIndex].id;
   const keptCount = branch.length - cutIndex;
   const droppedCount = cutIndex;
@@ -1213,12 +1225,19 @@ export function registerContextCompress(pi: ExtensionAPI): void {
           typeof sm.getBranch === "function" ? (sm.getBranch() ?? []) : [];
         // The declared boundary is a supplied one: snap it out of any tool
         // batch it lands in (HTTP 400: a kept slice that opens with a tool
-        // result has no preceding tool_calls). A boundary at the branch end
-        // stays undefined - there is no entry to keep.
+        // result has no preceding tool_calls), and clamp it in front of the
+        // branch's most recent compaction. A range that reaches back past one
+        // would write a boundary that resurrects everything it folded. A
+        // boundary at the branch end stays undefined - there is no entry to
+        // keep.
         const candidateBoundary = endIndex + 1;
         const boundaryIndex =
           candidateBoundary < branch.length
-            ? snapBoundaryOutsideToolBatch(branch, candidateBoundary)
+            ? clampedBoundary(
+                branch,
+                snapBoundaryOutsideToolBatch(branch, candidateBoundary),
+                "Archive range boundary",
+              ).index
             : candidateBoundary;
         const firstKeptEntryId = branch[boundaryIndex]?.id;
         try {
