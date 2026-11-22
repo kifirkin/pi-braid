@@ -125,6 +125,33 @@ required parameter, a changed return type or a reordered parameter, because
 telling assignability apart from text needs the type checker, and a gate that
 guesses which changes are safe is a gate that silences one.
 
+## The second diff: 1.6.0, which removed a member
+
+pi 1.6.0 changed four things braid can reach. Reconciliation against the installed release, before the range moved:
+
+```
+$ PI_SURFACE_PI_ROOT=~/.pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-coding-agent \
+    node packages/core/scripts/check-pi-surface.mjs --check
+check-pi-surface: 4 difference(s) between .../pi-surface.json (recorded against pi-coding-agent 1.5.0, ...)
+  and the installed pi-coding-agent 1.6.0, pi-ai 1.6.0, pi-agent-core 1.6.0, pi-tui 1.6.0
+```
+
+| member                  | recorded                           | now                                         | consequence                              |
+| ----------------------- | ---------------------------------- | ------------------------------------------- | ---------------------------------------- |
+| `SettingsList.render`   | `override render(width): string[]` | `override render(width): readonly string[]` | none: braid reads the array              |
+| `Text.render`           | same                               | same                                        | none: braid constructs, never subclasses |
+| `Container.render`      | same                               | same                                        | none: same reason                        |
+| `Container.mouseLayout` | a member                           | gone                                        | none: no braid code names it             |
+
+The interesting one is the type change rather than the removal. `Container` caches its rendered lines and returns the cached array, so an extension that mutates what `render()` returns now mutates the container's cache: a component that edits the array in place to add a line would write into the container's own output, and the next frame would carry it twice. Braid has exactly one custom component and it builds a fresh array per render, which the type checker confirms once the range moves. The check that would have caught an in-place edit is the type: the array is readonly now, so `push` on it does not compile.
+
+The step order is the one above, unchanged. The record moved from 686 members to 688, and the two additions are members braid never calls.
+
+```
+$ node packages/core/scripts/check-pi-surface.mjs --check
+check-pi-surface: 29 surfaces, 82 symbols, 688 members match (pi-coding-agent 1.6.0, pi-ai 1.6.0, pi-agent-core 1.6.0, pi-tui 1.6.0)
+```
+
 ## The upgrade
 
 1. Change the pi range everywhere it is declared: `package.json`,
