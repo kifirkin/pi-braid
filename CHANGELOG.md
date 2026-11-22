@@ -53,6 +53,30 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.51.2: a compaction boundary never moves behind the one it supersedes (2026-11-22)
+
+A session that compacts successfully can come out of it with a larger context than it went in with. pi projects a session
+to its last compaction entry and then every entry from that entry's `firstKeptEntryId` forward, so a compaction that writes
+its boundary in front of the previous compaction's boundary hands back every message the previous one had folded. One seat's
+session carried 28 compactions, 25 of which wrote a boundary behind the previous compaction entry; the last of them moved the
+boundary from entry 6597 to entry 101, and the live set went from 441 messages to 5082, from 168 462 tokens before that
+compaction to 583 671 in the next request.
+
+That is also what turned a slow session into a dead one. The next span was 5256 entries, the bounded summarizer plans at most
+960 messages, and its over-count refusal carried no failure class, so the controller fell through to pi-core's single
+unbounded summarizer, which length-stopped against the model's output limit, which armed the bounded recovery, which met the
+same span again: 87 cycles. The refusal now carries `summary-cap`, which is the class that makes the never-fall-through
+route reachable, and every boundary write (archive range, slide window, coalesced slide, deterministic cut, high-context
+cut, summary-cap recovery) is floored at the previous compaction's own `firstKeptEntryId` and carries that compaction's
+summary forward under a labelled line, so a superseded compaction's context is not lost with its entry.
+
+The floor is the anchor and not the compaction entry's index, and that distinction is the defect the first cut shipped: a
+boundary at the entry drops the entries between the anchor and the entry, which were live and which nothing summarizes.
+Measured on the same session: the entry floor drops 2585 live messages across its seven behind-anchor compactions (the last
+row 441 to 288), the anchor floor drops none. `test-compaction-boundary-monotonic.mjs` holds the shape with a fixture whose
+anchor sits strictly before its own entry, and asserts live-before equals live-after rather than merely not growing.
+Reverting the clamp reddens 17 assertions; reverting the floor from the anchor to the entry reddens 15.
+
 ## Core 0.51.1: a close is attributed on a filesystem that records whole seconds, and 0.51.0's content is in the ledger (2026-11-22)
 
 0.51.0 was tagged and pushed, and its publish stopped at the first gate: `check-release-content` refused it because the
