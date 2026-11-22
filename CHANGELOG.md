@@ -53,6 +53,22 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.51.1: a close is attributed on a filesystem that records whole seconds, and 0.51.0's content is in the ledger (2026-11-22)
+
+0.51.0 was tagged and pushed, and its publish stopped at the first gate: `check-release-content` refused it because the
+release commit carried no ledger entry, so nothing had recorded which files the version was. The gap is in the ritual, not
+in the gate: `release:content:record` belongs in the release commit, and the 0.51.0 entry is written now, from a worktree at
+the tag, so the ledger tells the truth about a tag that exists even though nothing was published under it.
+
+CI then failed a case that passes on an APFS disk: a legacy row closed by the session that admitted it reported no closer.
+The mechanism is a timestamp, measured rather than guessed: `findClosingCall` kept a session file only when its mtime was at
+or after the row's spawn, and the derivation gave the right answer only on a filesystem that records sub-second times. Give
+the fixture's session a whole-second mtime, as ext4 with small inodes and several overlay filesystems do, and two of the
+eleven cases fail with the same null closer CI reported; the fixture now holds that shape as a case of its own, and the
+rule absorbs the granularity with the skew the call timestamps already use. A second case holds the other end: a session
+file written ten minutes before the row spawned is still skipped, so the tolerance is bounded rather than open. Reverting
+the tolerance alone reddens the coarse case and nothing else.
+
 ## Core 0.51.0: a governed line may not state a number no entry proves, and the surface record follows pi 1.6.0 (2026-11-22)
 
 The documentation check had a hole in the shape of a sentence. `check-source-claims` proved that every number an entry

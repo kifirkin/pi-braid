@@ -29,7 +29,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -116,6 +116,18 @@ function writeSessionFile(root, projectDir, startIso, lines) {
   const file = join(dir, `${stamp}_session-${++seq}.jsonl`);
   writeFileSync(file, lines.join("\n") + "\n", "utf-8");
   return file;
+}
+
+/**
+ * Truncate one file's mtime down to the second, which is what a filesystem with
+ * small inodes or an overlay layer records. The fixture writes its session
+ * moments after the row spawns, so on such a filesystem the file's mtime sits
+ * below the spawn unless the rule allows for the granularity.
+ */
+function coarsenMtime(file) {
+  const coarse = Math.floor(statSync(file).mtimeMs / 1000) * 1000;
+  utimesSync(file, coarse / 1000, coarse / 1000);
+  return coarse;
 }
 
 /** Read one row through the registry reader, so the fixture never spells the path rule. */
@@ -408,6 +420,70 @@ test("a legacy row closed by the session that admitted it reads closed", async (
   );
   assert.equal(verdict.details.status, "closed", toolText(verdict));
   assert.equal(verdict.details.closer.kind, "seat");
+});
+
+test("a coarse mtime does not hide the session that closed a legacy row", async () => {
+  const project = freshProject();
+  await register(project, "unit-legacy-coarse");
+  const root = join(FAKE_HOME, "legacy-sessions-coarse");
+  const spawnedAt = row(project, "unit-legacy-coarse").spawnedAt;
+  const startedBefore = new Date(Date.parse(spawnedAt) - 3_600_000).toISOString();
+  const seat = writeSessionFile(root, "--fixture-seat--", startedBefore, [
+    orchestrateLine(spawnedAt, "close-worker", "unit-legacy-coarse"),
+  ]);
+  // A filesystem that records whole seconds puts the write below the spawn when
+  // the two happen inside one second, which is the ordinary case for a fixture
+  // and for a real close too. The closer must survive that.
+  const coarse = coarsenMtime(seat);
+  assert.ok(coarse <= Date.parse(spawnedAt), "the fixture must actually coarsen the mtime");
+  await runTool({
+    action: "close-worker",
+    workerId: "unit-legacy-coarse",
+    outcome: "completed",
+    gates: [{ cmd: "npm test", exit: 0 }],
+    cwd: project,
+  });
+  patchRowFile(project, "unit-legacy-coarse", (entry) => {
+    delete entry.closedBy;
+  });
+
+  const verdict = await runTool(
+    { action: "check-worker", workerId: "unit-legacy-coarse", cwd: project },
+    contextFor(seat, root),
+  );
+  assert.equal(verdict.details.status, "closed", toolText(verdict));
+  assert.equal(verdict.details.closer?.kind, "unknown", toolText(verdict));
+});
+
+test("a session file written long before the spawn is still skipped", async () => {
+  const project = freshProject();
+  await register(project, "unit-legacy-stale");
+  const root = join(FAKE_HOME, "legacy-sessions-stale");
+  const spawnedAt = row(project, "unit-legacy-stale").spawnedAt;
+  const startedBefore = new Date(Date.parse(spawnedAt) - 3_600_000).toISOString();
+  const seat = writeSessionFile(root, "--fixture-seat--", startedBefore, [
+    orchestrateLine(spawnedAt, "close-worker", "unit-legacy-stale"),
+  ]);
+  // Ten minutes before the spawn is outside the skew the rule allows: a file
+  // that stopped being written that long before the row existed did not close it.
+  const staleSeconds = (Date.parse(spawnedAt) - 600_000) / 1000;
+  utimesSync(seat, staleSeconds, staleSeconds);
+  await runTool({
+    action: "close-worker",
+    workerId: "unit-legacy-stale",
+    outcome: "completed",
+    gates: [{ cmd: "npm test", exit: 0 }],
+    cwd: project,
+  });
+  patchRowFile(project, "unit-legacy-stale", (entry) => {
+    delete entry.closedBy;
+  });
+
+  const verdict = await runTool(
+    { action: "check-worker", workerId: "unit-legacy-stale", cwd: project },
+    contextFor(seat, root),
+  );
+  assert.equal(verdict.details.closer, null, toolText(verdict));
 });
 
 test("list-workers prints the closer next to the status", async () => {

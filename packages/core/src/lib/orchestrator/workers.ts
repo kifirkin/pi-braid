@@ -2119,7 +2119,13 @@ function findClosingCall(entry: WorkerEntry, sessionsDir: string): SessionCloseC
     } catch {
       continue;
     }
-    if (Number.isFinite(spawned) && mtimeMs < spawned) continue;
+    // A file written during the row's life has an mtime at or after the spawn,
+    // but only on a filesystem that records sub-second times: ext4 with small
+    // inodes and several overlay filesystems truncate to the second, which puts
+    // a file written moments after the spawn below it. The same skew the call
+    // timestamps use absorbs that granularity, so a coarse clock reports a
+    // session that closed the row instead of an unknown closer.
+    if (Number.isFinite(spawned) && mtimeMs < spawned - lifetimeSkewMs) continue;
     const read = readSessionCalls(file, entry.workerId);
     for (const at of read.closes) {
       const ms = Date.parse(at);
