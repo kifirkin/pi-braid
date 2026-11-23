@@ -12,8 +12,30 @@ import type { ScheduledTimer } from "../../../lib/events/timer-types.js";
 
 const log = createLogger("timer-manager");
 
+/**
+ * A fire-time predicate, consulted when a timer's fire would become a whisper
+ * and again on every redelivery. `false` withholds the delivery; the fire
+ * itself still happens (the store's record, log line and disk removal are
+ * unchanged). A throw is treated as `true` by the fire path: a predicate that
+ * cannot answer must not silence a wake.
+ */
+export type FireTimePredicate = (timer: ScheduledTimer) => boolean;
+
+/**
+ * A timer as the store holds it: the public shape plus the opt-in predicate
+ * armed with it.
+ *
+ * The predicate is a live closure, so it is not part of `ScheduledTimer`: the
+ * persisted form cannot carry one, and a timer recovered after a restart fires
+ * exactly as an unarmed timer does. A spread copy (checkExpired's snapshot)
+ * keeps it, which is how it reaches the redelivery paths.
+ */
+export interface StoredTimer extends ScheduledTimer {
+  shouldFire?: FireTimePredicate;
+}
+
 export class TimerManager {
-  private timersBySession: Map<string, Map<string, ScheduledTimer>> = new Map();
+  private timersBySession: Map<string, Map<string, StoredTimer>> = new Map();
 
   setTimer(
     sessionId: string,
@@ -24,6 +46,7 @@ export class TimerManager {
     intervalMs?: number,
     count?: number,
     firedCount?: number,
+    shouldFire?: FireTimePredicate,
   ): string {
     const id = nextId("timer");
     const firesAt = Date.now() + delayMs;
@@ -34,7 +57,7 @@ export class TimerManager {
       sessionTimers = new Map();
       this.timersBySession.set(sessionId, sessionTimers);
     }
-    sessionTimers.set(id, {
+    const timer: StoredTimer = {
       id,
       firesAt,
       reason,
@@ -49,7 +72,9 @@ export class TimerManager {
             ...(count !== undefined ? { count } : {}),
           }
         : {}),
-    });
+      ...(shouldFire ? { shouldFire } : {}),
+    };
+    sessionTimers.set(id, timer);
     const repeatTail = recurring
       ? ` every ${Math.round(intervalMs / 1000)}s${count !== undefined ? ` x${count}` : " (until cancelled)"}`
       : "";
@@ -76,16 +101,16 @@ export class TimerManager {
     return n;
   }
 
-  listTimers(sessionId: string): ScheduledTimer[] {
+  listTimers(sessionId: string): StoredTimer[] {
     const sessionTimers = this.timersBySession.get(sessionId);
     if (!sessionTimers) return [];
     return Array.from(sessionTimers.values()).sort((a, b) => a.firesAt - b.firesAt);
   }
 
-  checkExpired(sessionId: string, nowMs: number): ScheduledTimer[] {
+  checkExpired(sessionId: string, nowMs: number): StoredTimer[] {
     const sessionTimers = this.timersBySession.get(sessionId);
     if (!sessionTimers) return [];
-    const expired: ScheduledTimer[] = [];
+    const expired: StoredTimer[] = [];
     for (const [id, timer] of sessionTimers) {
       if (timer.firesAt <= nowMs) {
         if (timer.intervalMs && timer.intervalMs > 0) {

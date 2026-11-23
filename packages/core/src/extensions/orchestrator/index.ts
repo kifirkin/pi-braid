@@ -50,6 +50,7 @@ import {
   cancelTimersByTag,
   listTimers,
   scheduleTimer,
+  type ScheduledTimer,
 } from "../scheduling/timer/index.js";
 import {
   acquireLock,
@@ -903,6 +904,61 @@ function workersInBabysitReason(reason: string): string[] | null {
   return ids.length > 0 ? ids : null;
 }
 
+/** The worker ids the registries hold open across `keys`. */
+function liveWorkerIds(keys: string[]): Set<string> {
+  const live = new Set<string>();
+  for (const key of keys) {
+    for (const entry of Object.values(readWorkers(key).workers)) {
+      if (!entry.closedAt) live.add(entry.workerId);
+    }
+  }
+  return live;
+}
+
+/**
+ * The workers of `named` (default: every live worker) that the registries hold
+ * open and no standing timer names. `excludeTimerId` is the timer whose own
+ * fire is asking, which must not count as the timer that covers it.
+ *
+ * The settle arm and the fire-time predicate both read coverage here, so the
+ * sentence and the fleet cannot disagree about who is unwatched.
+ */
+function uncoveredOf(
+  live: Set<string>,
+  standing: ScheduledTimer[],
+  named: Iterable<string> = live,
+  excludeTimerId?: string,
+): string[] {
+  return [...named].filter(
+    (id) =>
+      live.has(id) &&
+      !standing.some((timer) => timer.id !== excludeTimerId && reasonNamesWorker(timer.reason, id)),
+  );
+}
+
+/**
+ * Whether a standing cadence still has something to say when it fires: one of
+ * the workers its reason names is still open and still has no standing timer
+ * naming it.
+ *
+ * The arm measures coverage at the turn end and the fire lands minutes later,
+ * by which time the seat has usually armed its own timer naming the same
+ * worker. The reason is then a statement about a fleet that no longer exists,
+ * and delivering it costs a turn with nothing to do. This re-derives the same
+ * coverage at delivery time; a reason that is not this device's shape fires,
+ * because suppression may only withdraw a claim it can prove false.
+ */
+function babysitCadenceStillNeeded(
+  state: SettleState,
+  sessionId: string,
+  timer: ScheduledTimer,
+): boolean {
+  const named = workersInBabysitReason(timer.reason);
+  if (!named) return true;
+  const live = liveWorkerIds([...state.projectKeys]);
+  return uncoveredOf(live, listTimers(sessionId), named, timer.id).length > 0;
+}
+
 /**
  * Arm one single-fire babysit timer for the live workers nothing names, after
  * withdrawing the timers whose sentence no longer describes the fleet. Returns a
@@ -912,7 +968,11 @@ function workersInBabysitReason(reason: string): string[] | null {
  * once: a recurrence re-delivers a claim about a fleet that has moved on, and
  * the session accumulates one such sentence per dispatch it ever left uncovered.
  * The next turn end re-derives the set from the registry instead, which is also
- * why a closed worker can never come back in a later fire.
+ * why a closed worker can never come back in a later fire. One fire still lands
+ * minutes after the arm, so the snapshot is checked again at delivery: the timer
+ * carries a fire-time predicate that re-derives this same coverage and withholds
+ * the whisper when every worker in the reason has closed or gained a timer
+ * naming it.
  *
  * Withdrawal is the same decision as the arm: two places deciding which timers
  * should exist would disagree exactly when the fleet changes under them. A
@@ -938,17 +998,11 @@ function armMissingWorkerTimers(ctx: unknown): string | null {
   if (!sessionId || sessionId === "?") return null;
 
   const state = settleState(ctx);
-  const keys = state ? [...state.projectKeys] : [];
-  if (keys.length === 0) return null;
+  if (!state || state.projectKeys.size === 0) return null;
 
   // A `Set`: the same id can be live in two project registries, and a reason
   // that names it twice reads as two workers.
-  const live = new Set<string>();
-  for (const key of keys) {
-    for (const entry of Object.values(readWorkers(key).workers)) {
-      if (!entry.closedAt) live.add(entry.workerId);
-    }
-  }
+  const live = liveWorkerIds([...state.projectKeys]);
 
   // Residue: a timer this device armed whose reason names no worker the
   // registry still holds open. The tag is the device's own mark and every
@@ -970,9 +1024,7 @@ function armMissingWorkerTimers(ctx: unknown): string | null {
   }
 
   const standing = listTimers(sessionId);
-  const uncovered = [...live].filter(
-    (id) => !standing.some((timer) => reasonNamesWorker(timer.reason, id)),
-  );
+  const uncovered = uncoveredOf(live, standing);
   const residue =
     withdrawn > 0 ? `withdrew ${withdrawn} babysit timer(s) naming no open worker` : "";
   if (uncovered.length === 0) return residue || null;
@@ -985,7 +1037,16 @@ function armMissingWorkerTimers(ctx: unknown): string | null {
     return residue ? `${residue}; left ${cadences.length} cadence standing, armed nothing` : null;
   }
 
-  const id = scheduleTimer(sessionId, config.delayMs, babysitReason(uncovered), BABYSIT_TAG, true);
+  const id = scheduleTimer(
+    sessionId,
+    config.delayMs,
+    babysitReason(uncovered),
+    BABYSIT_TAG,
+    true,
+    undefined,
+    undefined,
+    (timer) => babysitCadenceStillNeeded(state, sessionId, timer),
+  );
   const armed = `armed ${id} for ${uncovered.join(", ")} (one fire in ${Math.round(
     config.delayMs / 1000,
   )}s)`;

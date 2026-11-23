@@ -8,12 +8,12 @@ Non-blocking Pomodoro-style reminders. Agent sets a timer, continues working, ge
 
 All exported from `./index.ts`:
 
-| Function                                                           | Purpose                                                                                                                                                                                   |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scheduleTimer(delayMs, reason, tag?, wake?, intervalMs?, count?)` | Schedule a timer. Returns timer ID. `wake=true` makes the fire whisper auto-resume the agent. `intervalMs` makes it recur (see below); `count` bounds a recurring timer to N total fires. |
-| `cancelTimer(id)`                                                  | Cancel a timer by ID.                                                                                                                                                                     |
-| `cancelTimersByTag(tag)`                                           | Cancel all timers matching a tag. Returns count cancelled.                                                                                                                                |
-| `onTimerFire(handler)`                                             | Subscribe to fire events. Returns unsubscribe function.                                                                                                                                   |
+| Function                                                                        | Purpose                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scheduleTimer(delayMs, reason, tag?, wake?, intervalMs?, count?, shouldFire?)` | Schedule a timer. Returns timer ID. `wake=true` makes the fire whisper auto-resume the agent. `intervalMs` makes it recur (see below); `count` bounds a recurring timer to N total fires; `shouldFire` gates the delivery at fire time (see below). |
+| `cancelTimer(id)`                                                               | Cancel a timer by ID.                                                                                                                                                                                                                               |
+| `cancelTimersByTag(tag)`                                                        | Cancel all timers matching a tag. Returns count cancelled.                                                                                                                                                                                          |
+| `onTimerFire(handler)`                                                          | Subscribe to fire events. Returns unsubscribe function.                                                                                                                                                                                             |
 
 ## Recurring timers (`intervalMs`)
 
@@ -61,6 +61,29 @@ The two fire sources (poller `setTimeout(0)` tick and `fireExpired` from
 | `false` (explicit) | `false`       | Background heartbeats and silent reminders. Visible in TUI but does not force a new turn.                                                                         |
 
 **Default is `wake: true` for every tool-surface timer (recurring included).** This is the principle: if the user (or the agent) scheduled a timer, they expect to be woken when it fires. Pass `wake: false` explicitly for silent reminders.
+
+## Fire-time predicate (`shouldFire`)
+
+`scheduleTimer` takes an optional `shouldFire: (timer) => boolean` for a wake
+whose reason asserts a fact measured at arm time. The predicate is consulted
+immediately before the whisper is injected, and again in both redelivery paths
+(the busy ladder rung and the parked late delivery), because a redelivery can
+land minutes after the first attempt and the fact can move in between.
+
+- `false` withholds the DELIVERY only. The timer still fires in the store's
+  own terms: the `fired` line is written, the one-shot is removed (or a recurring
+  timer re-armed), and the disk entry is updated. A withheld fire is a completed
+  fire: it is not tracked, not retried, and one `fire withheld` line records it
+  at the same level as the fire's own line.
+- A throw is treated as `true` and logged as a warning. A predicate that cannot
+  answer has not shown the wake false, and a wake is never silently lost.
+- A timer armed without a predicate behaves exactly as before - the
+  compatibility bar for every existing caller.
+- The predicate is a live closure, so it is not persisted. A timer recovered
+  after a restart carries none and fires as an unarmed timer does.
+- The orchestrator's babysit cadence is the first user: its predicate re-derives
+  whether any worker its reason names is still open and still has no standing
+  timer naming it.
 
 ## Failed-wake retry + recovered-fire deferral
 

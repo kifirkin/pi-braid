@@ -154,8 +154,14 @@ const log = createLogger("timer");
 // Timer Manager
 
 export type { ScheduledTimer };
-import { TimerManager, timerManager } from "./timer-manager.js";
+import {
+  TimerManager,
+  timerManager,
+  type FireTimePredicate,
+  type StoredTimer,
+} from "./timer-manager.js";
 export { TimerManager, timerManager };
+export type { FireTimePredicate, StoredTimer };
 
 /**
  * Defensive sessionId extraction. Returns "anonymous" if the ctx is missing
@@ -184,6 +190,12 @@ function getSessionId(ctx: unknown): string {
  *   reminders): no human is typing, and the input box should not be
  *   filled with "[TIMER FIRED]". Pass wake: false for silent reminders
  *   (visible in TUI but no forced turn) - used by background heartbeats.
+ * @param shouldFire optional fire-time predicate. Consulted when the fire
+ *   would become a whisper, and again on every redelivery; `false` withholds
+ *   the delivery while the fire itself still completes (the timer is removed,
+ *   the fire is logged, nothing is retried). A throw is treated as `true` and
+ *   logged. Timers armed without it behave exactly as before; a timer
+ *   recovered after a restart has no predicate and fires as before.
  */
 export function scheduleTimer(
   sessionId: string,
@@ -193,8 +205,19 @@ export function scheduleTimer(
   wake: boolean = true,
   intervalMs?: number,
   count?: number,
+  shouldFire?: FireTimePredicate,
 ): string {
-  const id = timerManager.setTimer(sessionId, delayMs, reason, tag, wake, intervalMs, count);
+  const id = timerManager.setTimer(
+    sessionId,
+    delayMs,
+    reason,
+    tag,
+    wake,
+    intervalMs,
+    count,
+    undefined,
+    shouldFire,
+  );
   persistTimerToDisk({
     id,
     sessionId,
@@ -359,7 +382,43 @@ function deliverDemotedFire(
   }
 }
 
-function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI, ctx?: unknown): void {
+/**
+ * Whether the fire's opt-in predicate allows the whisper.
+ *
+ * A predicate that throws is a delivery, never a silence: the fire is the
+ * timer's promise, and a predicate that cannot answer has not shown it false.
+ * The throw is logged because a broken predicate is a defect, but it must not
+ * withdraw a wake on its way out.
+ */
+function firePredicateAllows(timer: StoredTimer, site: string): boolean {
+  const predicate = timer.shouldFire;
+  if (!predicate) return true;
+  try {
+    return predicate(timer) !== false;
+  } catch (e) {
+    log.warn(
+      `[timer] fire predicate threw at ${site} - delivering anyway ` +
+        `(a predicate may never silence a fire): ${timer.id}: ${(e as Error).message}`,
+    );
+    return true;
+  }
+}
+
+/**
+ * The one line a withheld delivery writes. The timer fired in the store's own
+ * terms (its log line, its removal, its re-arm all happened); only the whisper
+ * the predicate knows to be false did not follow. Same level as the fire's own
+ * line: a suppression the log does not show is indistinguishable from a lost
+ * wake.
+ */
+function logWithheldFire(timer: ScheduledTimer, site: string): void {
+  log.info(
+    `[timer] fire withheld at ${site} (the fire-time predicate declined the wake): ` +
+      `${timer.id} (session=${timer.sessionId}) - ${timer.reason}`,
+  );
+}
+
+function fireTimer(timer: StoredTimer, pi: ExtensionAPI, ctx?: unknown): void {
   // Cancel retires the fire: a timer cancelled in the deferred-fire window
   // (checkExpired returned it, the setTimeout(0) delivery not yet run) must
   // not deliver. The manager map entry is already gone (delete-on-
@@ -414,6 +473,15 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI, ctx?: unknown): void
     // One-shot: remove from disk persistence so it doesn't fire again on
     // next restart.
     removeTimerFromDisk(timer.id);
+  }
+
+  // The fire-time predicate gates the DELIVERY, not the store: the timer has
+  // fired, been logged and been removed (or re-armed) above exactly as before.
+  // Withholding here leaves the timer gone like any completed one-shot, so the
+  // next settle re-derives whether the fleet still needs a cadence.
+  if (!firePredicateAllows(timer, "fire")) {
+    logWithheldFire(timer, "fire");
+    return;
   }
 
   // Timer honesty:
@@ -581,7 +649,7 @@ function fireTimer(timer: ScheduledTimer, pi: ExtensionAPI, ctx?: unknown): void
  */
 function redeliverWakeFire(
   pi: ExtensionAPI,
-  timer: ScheduledTimer,
+  timer: StoredTimer,
   attempt: number,
   cause: WakeRetryCause = "failed",
   ctx?: unknown,
@@ -593,6 +661,15 @@ function redeliverWakeFire(
     log.info(
       `[timer] wake retry suppressed — timer cancelled since the retry was armed: ${timer.id}`,
     );
+    return;
+  }
+  // A redelivery can land minutes after the first attempt, so the predicate is
+  // asked again here: the fact that allowed the first delivery may have moved.
+  // A withheld redelivery ends the chain for this fire; forgetParkedBusy drops
+  // a parked entry and is a no-op for a ladder entry (already popped).
+  if (!firePredicateAllows(timer, "redelivery")) {
+    logWithheldFire(timer, "redelivery");
+    wakeRetryQueue.forgetParkedBusy(timer.id);
     return;
   }
   const maxAttempts = wakeRetryQueue.getMaxAttempts();
@@ -677,7 +754,7 @@ function formatHeldDuration(ms: number): string {
  */
 function deliverParkedBusyFire(
   pi: ExtensionAPI,
-  timer: ScheduledTimer,
+  timer: StoredTimer,
   heldMs: number,
   ctx?: unknown,
 ): void {
@@ -686,6 +763,15 @@ function deliverParkedBusyFire(
   // window between the drain tick and the deferred send.
   if (wakeRetryQueue.isRetired(timer.id)) {
     log.info(`[timer] parked wake fire suppressed — timer cancelled before delivery: ${timer.id}`);
+    wakeRetryQueue.forgetParkedBusy(timer.id);
+    return;
+  }
+  // The late delivery asks the predicate again: a fire parked for minutes is
+  // exactly the case where the arm-time fact has moved. Withholding drops the
+  // parked entry (nothing is left to deliver), and the timer itself is already
+  // gone from the store.
+  if (!firePredicateAllows(timer, "parked delivery")) {
+    logWithheldFire(timer, "parked delivery");
     wakeRetryQueue.forgetParkedBusy(timer.id);
     return;
   }
