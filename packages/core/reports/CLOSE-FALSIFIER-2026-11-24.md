@@ -193,7 +193,10 @@ npm test                                                                        
     { "cmd": "npm run typecheck", "exit": 0 },
     { "cmd": "npm run lint", "exit": 0 },
     { "cmd": "node packages/core/scripts/check-placement.mjs --strict", "exit": 0 },
-    { "cmd": "node --test packages/core/test/runtime/orchestrator/test-close-gate-wellformedness.mjs", "exit": 0 },
+    {
+      "cmd": "node --test packages/core/test/runtime/orchestrator/test-close-gate-wellformedness.mjs",
+      "exit": 0
+    },
     { "cmd": "node --test packages/core/test/runtime/lib/test-worker-registry.mjs", "exit": 0 },
     { "cmd": "npm test", "exit": 0 }
   ],
