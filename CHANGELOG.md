@@ -53,6 +53,29 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.51.3: a wake re-derives its fact before it wakes the seat (2026-11-24)
+
+The orchestrator arms a single-fire timer when a live worker has no standing timer whose reason names
+it, and the wake carries what that check returned at arm time. Checkpoint timers are single-shot, so
+every fire leaves its worker uncovered for one turn, and the device armed a cadence whose sentence was
+already false when it landed: in one evening eight wakes arrived between two and six minutes after the
+seat had armed its own checkpoint naming the same worker, each costing a turn that had nothing to do.
+The settle-time withdrawal cannot close the gap, because the stranded cadence fires before the next
+settle withdraws it.
+
+`scheduleTimer` now takes an optional fire-time predicate. It is consulted inside `fireTimer` and in
+both redelivery paths, after the store's own bookkeeping and before any text is built. A refusal
+withholds the wake, writes one line at the fire's own level, and completes the fire with nothing
+retried; a predicate that throws delivers and logs the throw, because a callback that cannot answer
+has not shown the wake false. The orchestrator's cadence answers by re-deriving coverage through the
+same function its arm path uses, so the two cannot disagree. A timer armed without a predicate takes
+the path it always took, and a timer recovered after a restart carries none, since a closure cannot be
+persisted.
+
+The reproduction drives the whole stack in one process and fails on the unpatched tree in five of nine
+cases, with the four positive controls green there and here: a cadence nobody covers still fires with
+its reason, and a parked redelivery still lands when nothing names the worker.
+
 ## Core 0.51.2: a compaction boundary never moves behind the one it supersedes (2026-11-22)
 
 A session that compacts successfully can come out of it with a larger context than it went in with. pi projects a session
