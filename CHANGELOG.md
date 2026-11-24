@@ -53,6 +53,33 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.52.0: a close can record the gate that failed, and resolves it where it ran (2026-11-24)
+
+Two of the five predicates that judge a recorded gate row judged the row, not the check. Predicate (d)
+refused every non-zero exit under a completed outcome, so the one row that proves a check can refuse —
+a planted control — was the row a close would not store; it had to be described in prose, in a commit
+message or a summary, where nothing downstream reads it and the register cannot tell a close whose
+gates were proven able to fail from one whose gates were never tried. Predicate (b) resolved the first
+token from the orchestrator's own directory, so a worker's `./native/build/<binary>` was refused
+after running exactly as written, and the workaround was an absolute path under `/tmp` that a later
+reader cannot re-run.
+
+A gate row now carries `expect?: "pass" | "fail"`, defaulting to pass. Under a completed outcome a
+fail row's non-zero exit is accepted and stored with the code it produced, its zero exit is refused
+with a detail saying the falsifier proves nothing, and a row that declares nothing or declares pass
+keeps today's refusal and today's detail string character for character. The value is shape-checked
+where `stamp` is checked, so an unreadable expectation is refused before any write instead of
+silently reading as pass, and predicates (a), (b), (c) and (e) judge a falsifier as the command it
+is. Predicate (b) resolves in the directory the command ran in and names that directory when the
+token does not resolve there; with no recorded cwd it keeps this process's look-up, and a directory
+that no longer exists is named rather than swallowed.
+
+Both rules are judged against recorded instances each predicate must refuse and against their honest
+forms, so a rule that stopped refusing anything fails its own case. The report at
+`packages/core/reports/CLOSE-FALSIFIER-2026-11-24.md` carries the (d) census and its date range, and
+the seat observed the (b) defect on a real close before the fix: a gate row naming
+`./native/build/digmo-tract-test` was refused for not resolving, in a worktree where it resolved.
+
 ## Core 0.51.3: a wake re-derives its fact before it wakes the seat (2026-11-24)
 
 The orchestrator arms a single-fire timer when a live worker has no standing timer whose reason names
