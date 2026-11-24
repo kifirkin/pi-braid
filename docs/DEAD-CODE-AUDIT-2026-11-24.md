@@ -1,6 +1,6 @@
 # Dead-code audit, braid package family
 
-Revision `499fbc6` (`v0.52.0`), branch `audit/dead-code`, 2026-11-24.
+Revision `499fbc6` (`v0.52.0`), branch `audit/dead-code`.
 Read-only audit: no file outside this report and `scripts/dead-code-census.mjs` was changed.
 
 Scope: `packages/core`, `packages/skills`, `packages/contrib`, `packages/providers`, `packages/telegram`,
