@@ -304,6 +304,48 @@ test("closeWorker stamps outcome, closedAt, and gate evidence", () => {
   assert.deepEqual(readWorkers(project).workers.w6, closed);
 });
 
+test("closeWorker stores a row's declared expectation and it survives the read", () => {
+  const project = freshProject();
+  registerWorker({ workerId: "w16", spec: "impl", cwd: project }, project);
+
+  const closed = closeWorker(
+    "w16",
+    "completed",
+    [
+      { cmd: "npm run typecheck", exit: 0 },
+      { cmd: "false", exit: 1, expect: "fail" },
+      { cmd: "npm run build", exit: 0, expect: "pass" },
+    ],
+    project,
+  );
+
+  assert.equal(closed.gates[1].expect, "fail", "a planted falsifier keeps its declaration");
+  assert.equal(closed.gates[1].exit, 1, "and the code it produced");
+  assert.equal("expect" in closed.gates[0], false, "a row that declared nothing carries no field");
+  assert.equal(closed.gates[2].expect, "pass", "an explicit pass is stored verbatim, not dropped");
+
+  const reread = readWorkers(project).workers.w16;
+  assert.deepEqual(reread, closed, "the write/read round trip keeps every row as it was closed");
+  assert.equal(reread.gates[1].expect, "fail", "the field survives the round trip");
+  assert.equal(reread.gates[1].exit, 1);
+  assert.equal("stamp" in reread.gates[1], false, "an absent stamp stays absent beside the new field");
+});
+
+test("closeWorker refuses an unreadable expectation without writing", () => {
+  const project = freshProject();
+  registerWorker({ workerId: "w17", spec: "impl", cwd: project }, project);
+  const before = readWorkers(project).workers.w17;
+
+  for (const expect of ["maybe", "FAIL", 1, true, null]) {
+    assert.throws(
+      () => closeWorker("w17", "completed", [{ cmd: "false", exit: 1, expect }], project),
+      /gates\[0\]\.expect must be "pass" or "fail"/,
+      `an unreadable expectation must be refused: ${JSON.stringify(expect)}`,
+    );
+  }
+  assert.deepEqual(readWorkers(project).workers.w17, before, "a shape refusal leaves the row untouched");
+});
+
 test("closeWorker does not overwrite a prior closure", () => {
   const project = freshProject();
   registerWorker({ workerId: "w7", spec: "impl", cwd: project }, project);

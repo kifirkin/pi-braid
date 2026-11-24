@@ -22,8 +22,15 @@
  *    than the command the field names, so they are refused; quoted
  *    separators, command substitutions, pipelines, redirections and `&&`
  *    chains stay accepted.
- * 5. (d) is outcome-dependent: exit 1 is refused under `completed` and
- *    accepted under `error`.
+ * 5. (d) is outcome- and expectation-dependent: exit 1 is refused under
+ *    `completed` and accepted under `error`; a row that declares
+ *    `expect: "fail"` inverts the rule under `completed` - its non-zero exit
+ *    is the expectation, its zero exit is the violation - and the four other
+ *    predicates keep judging it. A row with no field keeps today's rule and
+ *    today's detail string.
+ * 5b. (b) resolves the first token in the directory the command ran in (the
+ *    worker's own cwd), so a worker's `./relative/binary` is valid evidence
+ *    where it ran and is refused, with that directory named, where it is not.
  * 6. The mode comes from settings (braid.orchestrator.closeGateWellFormedness,
  *    default "shadow"), read at close time: shadow records a refusal line and
  *    lets the close stand; enforce throws naming the row, predicate and cmd
@@ -47,7 +54,15 @@
 
 import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +78,9 @@ const {
   findGateRowViolation,
   findTopLevelDecoration,
   firstCommandToken,
+  gateRowExpectation,
+  gateRowExpectationMet,
+  GATE_ROW_EXPECTATIONS,
   readWorkers,
 } = await import("../../../dist/lib/orchestrator/index.js");
 const { CLOSE_GATE_WELL_FORMEDNESS_DEFAULTS, resolveCloseGateWellFormedness } = await import(
@@ -210,6 +228,130 @@ test("(d): exit 1 is refused under completed and accepted under the other outcom
   assert.equal(findGateRowViolation(failing, 1, "stalled"), null);
   assert.equal(findGateRowViolation(failing, 1, "false-done"), null);
   assert.equal(findGateRowViolation(failing, 0, "completed"), null);
+});
+
+test("(d): a falsifier is recorded for the exit it produced, and a green falsifier is the violation", () => {
+  const red = 'node -e "process.exit(1)"';
+  assert.equal(
+    findGateRowViolation(red, 1, "completed", { expect: "fail" }),
+    null,
+    "a control that went red is well-formed evidence",
+  );
+  assert.equal(
+    findGateRowViolation(red, 3, "completed", { expect: "fail" }),
+    null,
+    "any non-zero code is the expectation; the code is recorded as it was produced",
+  );
+
+  const green = 'node -e "process.exit(0)"';
+  const refused = findGateRowViolation(green, 0, "completed", { expect: "fail" });
+  assert.ok(refused, "a falsifier that passed must be refused");
+  assert.equal(refused.predicate, "d", JSON.stringify(refused));
+  assert.match(refused.detail, /proves nothing/, refused.detail);
+});
+
+test("(d) keeps today's refusal and today's detail for a row that expects to pass", () => {
+  const failing = 'node -e "process.exit(1)"';
+  for (const opts of [{}, { expect: "pass" }]) {
+    const refused = findGateRowViolation(failing, 1, "completed", opts);
+    assert.ok(refused, `a failing row under ${JSON.stringify(opts)} must be refused`);
+    assert.equal(refused.predicate, "d");
+    assert.equal(
+      refused.detail,
+      "exit 1 recorded under a completed outcome",
+      "the detail an existing reader pins must not change",
+    );
+  }
+  assert.equal(findGateRowViolation(failing, 0, "completed", { expect: "pass" }), null);
+});
+
+test("(d) is judged only under a completed outcome, whatever the row declared", () => {
+  for (const outcome of ["error", "stalled", "false-done", "closed"]) {
+    assert.equal(
+      findGateRowViolation('node -e "process.exit(0)"', 0, outcome, { expect: "fail" }),
+      null,
+      `an unreddened control is not a well-formedness violation under ${outcome}`,
+    );
+  }
+});
+
+test("a falsifier row is still a command: (a), (b), (c) and (e) judge it", () => {
+  const cases = [
+    ["npm run ci:check (planted control)", "a"],
+    ["falsification: the new case should go red", "b"],
+    ["npm run ci:check # planted control", "c"],
+    ["node scripts/check-result.mjs /tmp/close-falsifier-no-such-receipt.jsonl", "e"],
+  ];
+  for (const [cmd, predicate] of cases) {
+    const refused = findGateRowViolation(cmd, 1, "completed", { expect: "fail" });
+    assert.ok(refused, `a falsifier row must still be judged: ${cmd}`);
+    assert.equal(refused.predicate, predicate, `${cmd} -> ${JSON.stringify(refused)}`);
+  }
+});
+
+test("the expectation readers default an absent or unreadable field to pass", () => {
+  assert.deepEqual(GATE_ROW_EXPECTATIONS, ["pass", "fail"]);
+  assert.equal(gateRowExpectation({}), "pass");
+  assert.equal(gateRowExpectation({ expect: "pass" }), "pass");
+  assert.equal(gateRowExpectation({ expect: "fail" }), "fail");
+  assert.equal(gateRowExpectation({ expect: "FAIL" }), "pass", "an unreadable field reads as the old rule");
+  assert.equal(gateRowExpectationMet({ exit: 0 }), true);
+  assert.equal(gateRowExpectationMet({ exit: 1 }), false);
+  assert.equal(gateRowExpectationMet({ exit: 1, expect: "fail" }), true);
+  assert.equal(gateRowExpectationMet({ exit: 0, expect: "fail" }), false);
+});
+
+// ── (b) resolves where the command ran ──────────────────────────────────────
+
+const RESOLVE_DIR = mkdtempSync(join(tmpdir(), "close-gate-cwd-"));
+mkdirSync(join(RESOLVE_DIR, "native", "build"), { recursive: true });
+const LOCAL_BINARY = join(RESOLVE_DIR, "native", "build", "tract-test");
+writeFileSync(LOCAL_BINARY, "#!/bin/sh\nexit 1\n");
+chmodSync(LOCAL_BINARY, 0o755);
+const LOCAL_ROW = "./native/build/tract-test";
+
+test("(b): the first token resolves in the directory the command ran in", () => {
+  assert.equal(
+    findGateRowViolation(LOCAL_ROW, 1, "error", { cwd: RESOLVE_DIR }),
+    null,
+    "a worker's own relative binary is valid evidence where it ran",
+  );
+  assert.equal(
+    findGateRowViolation("npm run typecheck", 0, "completed", { cwd: RESOLVE_DIR }),
+    null,
+    "a PATH command still resolves",
+  );
+});
+
+test("(b): a row that does not resolve in that directory is refused, naming it", () => {
+  const elsewhere = mkdtempSync(join(tmpdir(), "close-gate-elsewhere-"));
+  const refused = findGateRowViolation(LOCAL_ROW, 0, "completed", { cwd: elsewhere });
+  assert.ok(refused, "the same row from another directory must be refused");
+  assert.equal(refused.predicate, "b", JSON.stringify(refused));
+  assert.ok(
+    refused.detail.includes(elsewhere),
+    `the detail must name the directory the look-up ran in: ${refused.detail}`,
+  );
+});
+
+test("(b): with no cwd the look-up is this process's, and the detail keeps its shape", () => {
+  const refused = findGateRowViolation(LOCAL_ROW, 0, "completed");
+  assert.ok(refused, "no cwd means today's behaviour");
+  assert.equal(refused.predicate, "b");
+  assert.equal(
+    refused.detail,
+    `first token "${LOCAL_ROW}" does not resolve to an executable`,
+    "a row recorded with no directory keeps the message it had",
+  );
+});
+
+test("(b): a directory that no longer exists is named, and the message is kept", () => {
+  const gone = join(RESOLVE_DIR, "removed-worktree");
+  const refused = findGateRowViolation(LOCAL_ROW, 0, "completed", { cwd: gone });
+  assert.ok(refused, "nothing resolves in a directory that is not there");
+  assert.equal(refused.predicate, "b");
+  assert.match(refused.detail, /does not resolve to an executable/, refused.detail);
+  assert.ok(refused.detail.includes(gone), `the detail must name the directory: ${refused.detail}`);
 });
 
 test("the deliberate non-catch: `false` with exit 0 is well formed and stays accepted", () => {
@@ -414,6 +556,127 @@ await testAsync("off mode closes the same decorated row and logs nothing", async
   });
   assert.equal(result.details.entry.status, "completed");
   assert.equal(refusalLines().length, 0, "off writes no refusal line");
+});
+
+await testAsync("a planted falsifier closes in enforce mode: stored with its code, printed as fail", async () => {
+  setMode("enforce");
+  clearRefusalLog();
+  const repo = scratchRepo();
+  const workerId = "wf-falsifier";
+  await runTool({ action: "register-worker", workerId, spec: "impl", cwd: repo });
+
+  const result = await runTool({
+    action: "close-worker",
+    workerId,
+    cwd: repo,
+    outcome: "completed",
+    gates: [
+      { cmd: "npm run typecheck", exit: 0 },
+      { cmd: 'node -e "process.exit(1)"', exit: 1, expect: "fail" },
+    ],
+  });
+
+  const text = toolText(result);
+  assert.match(text, /closed: completed/, text);
+  assert.equal(refusalLines().length, 0, "a red control is well-formed evidence, so nothing is refused");
+
+  const stored = result.details.entry.gates;
+  assert.equal(stored[0].expect, undefined, "a pass row carries no field");
+  assert.equal(stored[1].expect, "fail");
+  assert.equal(stored[1].exit, 1, "the code is stored as it was produced");
+  assert.ok(
+    text.includes('fail: node -e "process.exit(1)" (exit 1)'),
+    `the close report must mark a falsifier row as fail: ${text}`,
+  );
+  assert.ok(
+    text.includes("ok: npm run typecheck (exit 0)"),
+    `a pass row must read as ok: ${text}`,
+  );
+  assert.equal(
+    readWorkers(repo).workers[workerId].gates[1].expect,
+    "fail",
+    "the field survives the registry write",
+  );
+});
+
+await testAsync("enforce refuses a falsifier that passed, and stores nothing", async () => {
+  setMode("enforce");
+  clearRefusalLog();
+  const repo = scratchRepo();
+  const workerId = "wf-green-control";
+  await runTool({ action: "register-worker", workerId, spec: "impl", cwd: repo });
+
+  await assert.rejects(
+    () =>
+      runTool({
+        action: "close-worker",
+        workerId,
+        cwd: repo,
+        outcome: "completed",
+        gates: [{ cmd: 'node -e "process.exit(0)"', exit: 0, expect: "fail" }],
+      }),
+    (error) => {
+      assert.match(error.message, /predicate \(d\)/, error.message);
+      assert.match(error.message, /proves nothing/, error.message);
+      return true;
+    },
+  );
+
+  const entry = readWorkers(repo).workers[workerId];
+  assert.equal(entry.closedAt, null, "a refused close stamps nothing");
+  assert.equal(entry.gates.length, 0, "no gate row is stored");
+  const lines = refusalLines();
+  assert.equal(lines.length, 1, `the refusal is recorded once: ${JSON.stringify(lines)}`);
+  assert.equal(lines[0].predicate, "d");
+  assert.match(lines[0].detail, /proves nothing/, lines[0].detail);
+});
+
+await testAsync("a close resolves the worker's own relative row from the worker's cwd", async () => {
+  setMode("enforce");
+  clearRefusalLog();
+  const repo = scratchRepo();
+  mkdirSync(join(repo, "bin"), { recursive: true });
+  const binary = join(repo, "bin", "tract-check");
+  writeFileSync(binary, "#!/bin/sh\nexit 0\n");
+  chmodSync(binary, 0o755);
+  const workerId = "wf-relative";
+  await runTool({ action: "register-worker", workerId, spec: "impl", cwd: repo });
+
+  const result = await runTool({
+    action: "close-worker",
+    workerId,
+    cwd: repo,
+    outcome: "completed",
+    gates: [{ cmd: "./bin/tract-check", exit: 0 }],
+  });
+  assert.equal(result.details.entry.status, "completed");
+  assert.equal(
+    refusalLines().length,
+    0,
+    "the row resolves where it ran, so the close records it instead of refusing it",
+  );
+
+  // The other direction, through the same path: a worker whose own directory
+  // does not hold the binary is refused, and the message names that directory.
+  const empty = scratchRepo();
+  const other = "wf-relative-missing";
+  await runTool({ action: "register-worker", workerId: other, spec: "impl", cwd: empty });
+  await assert.rejects(
+    () =>
+      runTool({
+        action: "close-worker",
+        workerId: other,
+        cwd: empty,
+        outcome: "completed",
+        gates: [{ cmd: "./bin/tract-check", exit: 0 }],
+      }),
+    (error) => {
+      assert.match(error.message, /predicate \(b\)/, error.message);
+      assert.ok(error.message.includes(empty), `the message must name the directory: ${error.message}`);
+      return true;
+    },
+  );
+  assert.equal(readWorkers(empty).workers[other].closedAt, null);
 });
 
 await testAsync("a row with no cmd is refused by the shape check: no predicate runs and nothing is logged", async () => {
