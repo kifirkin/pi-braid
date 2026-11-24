@@ -29,7 +29,7 @@
  * recover are counted and listed rather than silently dropped.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative, dirname, resolve as presolve, sep } from "node:path";
 import ts from "typescript";
@@ -641,7 +641,6 @@ function exportsOf(file) {
 
 const ENTRY_SET = new Set(prodRoots.map((p) => presolve(p)));
 const API_SET = new Set(API_ENTRIES.map((p) => presolve(p)));
-const PUBLIC_ENTRY_FILES = [...API_SET];
 
 // own-file reference counts, one checker pass per file that has candidates
 function ownFileRefs(file, wantedNames) {
