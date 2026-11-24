@@ -79,6 +79,8 @@ import {
   resolveRequestId,
   computeWorkerStats,
   workerEffectEvidenceForEntry,
+  gateRowExpectation,
+  gateRowExpectationMet,
   locateResultSchema,
   readPopulationStamps,
   populationRefusalDetail,
@@ -95,6 +97,8 @@ import {
   type WorkerEntry,
   type WorkerStats,
   type PopulationRead,
+  type GateRowExpectation,
+  type WorkerGate,
 } from "../../lib/orchestrator/index.js";
 // The queue-fact readers come from their module directly: the barrel above is
 // one way into the library, not the only one, and it does not re-export these.
@@ -625,6 +629,23 @@ function formatCheckVerdict(verdict: WorkerCheckResult): string {
     `gateSummary: ${verdict.gateSummary}`,
     `effectEvidence: ${formatEffectEvidence(verdict.effectEvidence)}`,
   ].join("\n");
+}
+
+/**
+ * Gate rows as the close report prints them. Each row carries the mark it
+ * declared: `ok` for a row that expects to pass, `fail` for a planted
+ * falsifier, so a reader can tell a close whose gates were proven able to
+ * refuse from one whose were never tried. A row that missed its expectation
+ * says so beside the exit it produced.
+ */
+function formatGateRows(gates: WorkerGate[]): string {
+  if (!Array.isArray(gates) || gates.length === 0) return "none recorded";
+  const rows = gates.map((gate) => {
+    const mark = gateRowExpectation(gate) === "fail" ? "fail" : "ok";
+    const missed = gateRowExpectationMet(gate) ? "" : ", expectation missed";
+    return `  ${mark}: ${gate.cmd} (exit ${gate.exit}${missed})`;
+  });
+  return `${gates.length} recorded\n${rows.join("\n")}`;
 }
 
 /**
@@ -1205,16 +1226,31 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
                 "below it.",
             }),
           ),
+          expect: Type.Optional(
+            Type.Union([Type.Literal("pass"), Type.Literal("fail")], {
+              description:
+                'What this row\'s exit was expected to be; absent reads as "pass". A "fail" ' +
+                "row is a falsifier: a command that has to exit non-zero to show the check it " +
+                "targets can refuse. Under a completed close a falsifier's zero exit is " +
+                "refused (a control that passes proves nothing) and its non-zero exit is " +
+                'accepted and stored with the code it produced; a "pass" row keeps the old ' +
+                "rule, where a completed close with a non-zero exit is refused.",
+            }),
+          ),
         }),
         {
           description:
             "Gate evidence for close-worker: command plus exit code, recorded with a timestamp. " +
             `A completed close whose entry carries none of a fresh output file, a branch advance or ` +
             `merge, and a passing gate is flagged "${WORKER_EFFECT_EVIDENCE_FLAG}" (advisory, non-blocking). ` +
-            "Every row is also read for well-formedness at close time (parses under sh -n, first token " +
-            "resolves, no top-level decoration, exit 0 under a completed outcome); the read ships in " +
+            `Every row is also read for well-formedness at close time (parses under sh -n, first token ` +
+            `resolves from the worker's own cwd, no top-level decoration, and under a completed ` +
+            `outcome an exit the row declared); the read ships in ` +
             "shadow mode, so a failing row is logged and the close proceeds, until " +
             'braid.orchestrator.closeGateWellFormedness is set to "enforce". ' +
+            'A row recorded with expect="fail" is a planted control: the close report prints ' +
+            "it as `fail` and the register keeps it, so a reader can see which rows were " +
+            "meant to refuse." +
             "Rows the seat's production-write class marks as writes are refused unless the close " +
             "records every named preflight piece somewhere in its rows; the class data is the seat's, " +
             "and no class data means no refusal.",
@@ -1265,7 +1301,12 @@ const orchestrateTool: ToolDefinition<any, any, any> = {
       lastStep?: string;
       requestId?: string;
       outcome?: string;
-      gates?: Array<{ cmd: string; exit: number; stamp?: string }>;
+      gates?: Array<{
+        cmd: string;
+        exit: number;
+        stamp?: string;
+        expect?: GateRowExpectation;
+      }>;
       includeClosed?: boolean;
       includeStats?: boolean;
       liveStatus?: string;
@@ -1661,11 +1702,9 @@ When the worker signals completion, use orchestrate action=verify-and-merge to r
         const paneStep = closeClosedWorkerPane(entry, requestedPane);
 
         return textResult(
-          `Worker ${workerId} closed: ${entry.status}.${flagNote}\nPane: ${paneStep.detail}.\n${JSON.stringify(
-            entry,
-            null,
-            2,
-          )}`,
+          `Worker ${workerId} closed: ${entry.status}.${flagNote}\nGates: ${formatGateRows(
+            entry.gates,
+          )}\nPane: ${paneStep.detail}.\n${JSON.stringify(entry, null, 2)}`,
           {
             entry,
             effectEvidence,

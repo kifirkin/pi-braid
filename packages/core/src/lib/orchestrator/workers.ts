@@ -63,6 +63,17 @@ export type WorkerStatus =
 /** Terminal outcomes accepted by closeWorker. */
 export type WorkerOutcome = "completed" | "error" | "stalled" | "false-done" | "closed";
 
+/**
+ * What a gate row's exit is expected to be. A row expects to pass unless it
+ * says otherwise; `fail` records a falsifier: a command that has to exit
+ * non-zero for the evidence to mean anything, because a check never seen to
+ * refuse has not been shown to check.
+ */
+export type GateRowExpectation = "pass" | "fail";
+
+/** The expectations a row may declare, in the order they are read. */
+export const GATE_ROW_EXPECTATIONS: readonly GateRowExpectation[] = ["pass", "fail"];
+
 export interface WorkerGate {
   cmd: string;
   exit: number;
@@ -75,6 +86,12 @@ export interface WorkerGate {
    * on the merge path.
    */
   stamp?: string;
+  /**
+   * What the row's exit was expected to be. Absent on a row that expects to
+   * pass, which is every row recorded before the field existed: the default is
+   * the old rule, so no stored row changes meaning.
+   */
+  expect?: GateRowExpectation;
 }
 
 /** One duplicate admission a live entry turned away, and the request it refused. */
@@ -1118,7 +1135,9 @@ export function recordWorkerMerge(
 function assertGateEvidence(
   workerId: string,
   outcome: WorkerOutcome,
-  gates: Array<{ cmd: string; exit: number; stamp?: string }> | undefined,
+  gates:
+    | Array<{ cmd: string; exit: number; stamp?: string; expect?: GateRowExpectation }>
+    | undefined,
 ): void {
   if (gates !== undefined && !Array.isArray(gates)) {
     throw new Error(
@@ -1138,7 +1157,17 @@ function assertGateEvidence(
         `closeWorker: gates[${i}] must be an object carrying cmd and exit (worker ${workerId})`,
       );
     }
-    const { cmd, exit, stamp } = gate as { cmd?: unknown; exit?: unknown; stamp?: unknown };
+    const {
+      cmd,
+      exit,
+      stamp,
+      expect: expected,
+    } = gate as {
+      cmd?: unknown;
+      exit?: unknown;
+      stamp?: unknown;
+      expect?: unknown;
+    };
     if (typeof cmd !== "string" || cmd.trim() === "") {
       throw new Error(
         `closeWorker: gates[${i}].cmd must be a non-empty string (worker ${workerId})`,
@@ -1154,6 +1183,16 @@ function assertGateEvidence(
     if (stamp !== undefined && typeof stamp !== "string") {
       throw new Error(`closeWorker: gates[${i}].stamp must be a string (worker ${workerId})`);
     }
+    // The expectation is read by the (d) predicate and printed by the close
+    // report. A value neither reader can classify is a shape refusal, for the
+    // same reason an unreadable stamp is: it would silently fall back to
+    // `pass` and record a falsifier as a gate that failed.
+    if (expected !== undefined && parseGateRowExpectation(expected) === null) {
+      throw new Error(
+        `closeWorker: gates[${i}].expect must be "${GATE_ROW_EXPECTATIONS.join('" or "')}" ` +
+          `(worker ${workerId})`,
+      );
+    }
   }
 }
 
@@ -1161,12 +1200,15 @@ function assertGateEvidence(
 // Four string predicates over each recorded row, none of which reads what the
 // command does and none of which re-runs it: (a) the cmd parses under
 // `sh -n`; (b) after leading `VAR=x` assignments are stripped, the first token
-// resolves to an executable; (c) the field is the command alone, with no
+// resolves to an executable, looked up in the directory the command ran in and
+// not in this process's own; (c) the field is the command alone, with no
 // top-level decoration by which the recorded exit would belong to another
-// command; (d) a completed close records exit 0 under every row. A failing
-// row is logged, and in enforce mode refused; shadow mode is the shipped
-// default. Replay stays the sampler's sampled job: nothing here executes a
-// cmd, `sh -n` parses only and `command -v` only looks a token up.
+// command; (d) under a completed close the exit is the one the row declared it
+// would produce - zero for a row that expects to pass, non-zero for a row that
+// declares itself a falsifier. A failing row is logged, and in enforce mode
+// refused; shadow mode is the shipped default. Replay stays the sampler's
+// sampled job: nothing here executes a cmd, `sh -n` parses only and
+// `command -v` only looks a token up.
 
 /** Predicate letters, in the order the four are evaluated. */
 export type GateRowPredicate = "a" | "b" | "c" | "d" | "e";
@@ -1174,6 +1216,24 @@ export type GateRowPredicate = "a" | "b" | "c" | "d" | "e";
 export interface GateRowViolation {
   predicate: GateRowPredicate;
   detail: string;
+}
+
+/** The expectation a raw field declares, or null when it is absent or unreadable. */
+export function parseGateRowExpectation(raw: unknown): GateRowExpectation | null {
+  return raw === "pass" || raw === "fail" ? raw : null;
+}
+
+/**
+ * The expectation a recorded row declares, defaulting to `pass`: an absent or
+ * unreadable field leaves the row under the old rule rather than inventing one.
+ */
+export function gateRowExpectation(row: { expect?: unknown }): GateRowExpectation {
+  return parseGateRowExpectation(row.expect) ?? "pass";
+}
+
+/** True when the row's exit met the expectation the row declares. */
+export function gateRowExpectationMet(row: { exit: number; expect?: unknown }): boolean {
+  return gateRowExpectation(row) === "fail" ? row.exit !== 0 : row.exit === 0;
 }
 
 /** One leading `VAR=value` assignment, quoted value or not. */
@@ -1204,12 +1264,13 @@ export function firstCommandToken(cmd: string): string | null {
 /** One `sh` look-up outcome: ok, row-fail with the shell's own line, or no shell. */
 type ShellCheck = { ok: true } | { ok: false; detail: string } | { unavailable: true };
 
-function runShell(args: string[]): ShellCheck {
+function runShell(args: string[], cwd?: string): ShellCheck {
   try {
     execFileSync("sh", args, {
       stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",
       timeout: 5000,
+      ...(cwd === undefined ? {} : { cwd }),
     });
     return { ok: true };
   } catch (error) {
@@ -1319,6 +1380,19 @@ export function findTopLevelDecoration(cmd: string): string | null {
   return null;
 }
 
+/** What a row says about where it ran and what its exit was meant to be. */
+export interface GateRowReadOptions {
+  /** The expectation the row declared; `pass` when absent. */
+  expect?: GateRowExpectation;
+  /**
+   * The directory the command ran in, so the first token is looked up where
+   * the command ran and not in this process's directory. A directory that no
+   * longer exists resolves nothing: the look-up falls back to this process's
+   * directory, and the message still names the row's own.
+   */
+  cwd?: string;
+}
+
 /**
  * Run the four predicates over one recorded row and return the first
  * violation, or null when the row is well formed. (a)/(b) need `sh`; when the
@@ -1329,6 +1403,7 @@ export function findGateRowViolation(
   cmd: string,
   exit: number,
   outcome: WorkerOutcome,
+  opts: GateRowReadOptions = {},
 ): GateRowViolation | null {
   const parse = runShell(["-n", "-c", cmd]);
   if ("ok" in parse && !parse.ok) {
@@ -1339,9 +1414,16 @@ export function findGateRowViolation(
     if (token === null) {
       return { predicate: "b", detail: "no command token after the env prefixes" };
     }
-    const resolved = runShell(["-c", 'command -v "$1" >/dev/null 2>&1', "sh", token]);
+    const resolved = runShell(
+      ["-c", 'command -v "$1" >/dev/null 2>&1', "sh", token],
+      isDirectory(opts.cwd) ? opts.cwd : undefined,
+    );
     if ("ok" in resolved && !resolved.ok) {
-      return { predicate: "b", detail: `first token "${token}" does not resolve to an executable` };
+      const where = typeof opts.cwd === "string" ? ` in ${opts.cwd}` : "";
+      return {
+        predicate: "b",
+        detail: `first token "${token}" does not resolve to an executable${where}`,
+      };
     }
   }
   const decoration = findTopLevelDecoration(cmd);
@@ -1351,7 +1433,19 @@ export function findGateRowViolation(
       detail: `top-level ${decoration}: not the command alone`,
     };
   }
-  if (outcome === "completed" && exit !== 0) {
+  if (outcome === "completed" && gateRowExpectation({ expect: opts.expect }) === "fail") {
+    // A falsifier is recorded for the exit it produced. One that exits 0 proves
+    // nothing about the check it was meant to redden, so that is the violation:
+    // the register would otherwise say a control was planted and leave no way
+    // to see that it never went red.
+    if (exit === 0) {
+      return {
+        predicate: "d",
+        detail:
+          "exit 0 recorded under a row expected to fail: a falsifier that passes proves nothing",
+      };
+    }
+  } else if (outcome === "completed" && exit !== 0) {
     return { predicate: "d", detail: `exit ${exit} recorded under a completed outcome` };
   }
   // (e) A row that names a session file is a receipt for a command someone can
@@ -1369,6 +1463,16 @@ export function findGateRowViolation(
     };
   }
   return null;
+}
+
+/** True when the path is an existing directory. */
+function isDirectory(path: string | undefined): path is string {
+  if (typeof path !== "string" || path === "") return false;
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** Absolute-ish `.jsonl` references in a row that are not on disk. */
@@ -1868,7 +1972,7 @@ export function populationRefusalDetail(read: PopulationRead): string | null {
 export function closeWorker(
   workerId: string,
   outcome: WorkerOutcome,
-  gates?: Array<{ cmd: string; exit: number; stamp?: string }>,
+  gates?: Array<{ cmd: string; exit: number; stamp?: string; expect?: GateRowExpectation }>,
   cwd?: string,
   caller?: WorkerCloseCaller,
 ): WorkerEntry | null {
@@ -1906,7 +2010,13 @@ export function closeWorker(
   const wellFormedness = getCloseGateWellFormedness();
   if (wellFormedness.mode !== "off" && gates && gates.length > 0) {
     for (let i = 0; i < gates.length; i++) {
-      const violation = findGateRowViolation(gates[i].cmd, gates[i].exit, parsed);
+      // The row's own directory, not the seat's: a worker's `./binary` is valid
+      // in the worktree it ran in, and resolving it anywhere else refuses a
+      // command that ran exactly as written.
+      const violation = findGateRowViolation(gates[i].cmd, gates[i].exit, parsed, {
+        expect: gates[i].expect,
+        cwd: entry.cwd,
+      });
       if (!violation) continue;
       logCloseGateRefusal({
         at: new Date().toISOString(),
@@ -1957,6 +2067,7 @@ export function closeWorker(
         exit: gate.exit,
         at: nowIso,
         ...(gate.stamp === undefined ? {} : { stamp: gate.stamp }),
+        ...(gate.expect === undefined ? {} : { expect: gate.expect }),
       });
     }
   }
@@ -2401,11 +2512,18 @@ function countBranchAhead(branch: string | null, cwd?: string): number | null {
 
 function summarizeGates(gates: WorkerGate[]): string {
   if (!gates || gates.length === 0) return "no gates recorded";
-  const failed = gates.filter((gate) => gate.exit !== 0);
-  if (failed.length === 0) return `${gates.length}/${gates.length} passed`;
-  return `${gates.length - failed.length}/${gates.length} passed; failing: ${failed
-    .map((gate) => gate.cmd)
-    .join(", ")}`;
+  // A row is judged against what it declared: a falsifier that exited non-zero
+  // met its expectation, and a row that expects to pass and exited 0 met its
+  // own. Counting raw exit codes would report a working control as a failure.
+  const unmet = gates.filter((gate) => !gateRowExpectationMet(gate));
+  const falsifiers = gates.filter((gate) => gateRowExpectation(gate) === "fail").length;
+  const base =
+    unmet.length === 0
+      ? `${gates.length}/${gates.length} passed`
+      : `${gates.length - unmet.length}/${gates.length} passed; failing: ${unmet
+          .map((gate) => gate.cmd)
+          .join(", ")}`;
+  return falsifiers === 0 ? base : `${base} (${falsifiers} expected to fail)`;
 }
 
 function normalizeLiveStatus(raw?: string): "working" | "blocked" | "done" | "idle" | null {
