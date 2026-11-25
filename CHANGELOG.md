@@ -53,6 +53,29 @@ record; the tag scheme above applies unchanged.
 
 ---
 
+## Core 0.53.0: three argv tools close the pipe, the redirect and the hand-off (2026-11-26)
+
+A census of 121,097 bash calls over 60 days found three shapes no tool held: filtering a producer's
+stream (22,013 calls, 18.2%), redirecting one into a file (19,308, 15.9%), and feeding one program's
+stdout into another (17,844, 14.7%). `run` covered the bare command, the heredoc and the output cap,
+so a model that wanted any of those three had to build a shell string, which is the surface the argv
+tools exist to keep closed.
+
+`filter` runs `head`, `tail`, `grep` or `wc -l` over a producer in-process. `sink` writes stdout,
+stderr or both to files and reports each path with its byte count. `feed` passes one argv program's
+bytes into another's stdin with no shell between them. Each takes argv arrays, refuses the same five
+operators `run` refuses, and names the element it refused: `argv[1]` for a single-stage call,
+`from[1]` or `to[1]` for a `feed` stage. `feed` hands bytes, not text; a UTF-8 round trip over a
+one-mebibyte payload changes its digest, and the fixture reddens on exactly that.
+
+The cap, the capture pipeline and the offload remain one implementation, in `run-tool/run.ts`, and
+all four tools call it; the destructive-verb guard remains one verb set in
+`lib/tools/workspace-guard.ts`, reached through the same `findRefusal`. The fixture at
+`packages/core/test/runtime/core/test-argv-tools.mjs` compares each tool against the shell form it
+replaces in the same directory, byte for byte where bytes can be equal and by the integer where they
+cannot (`wc -l` pads its count to eight columns in BSD, so the count and the whitespace are asserted
+separately). Report: `docs/NO-BASH-TOOLS-2026-11-24.md`.
+
 ## Core 0.52.0: a close can record the gate that failed, and resolves it where it ran (2026-11-24)
 
 Two of the five predicates that judge a recorded gate row judged the row, not the check. Predicate (d)
