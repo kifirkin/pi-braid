@@ -21,27 +21,27 @@ which gap each tool closes; the tables below carry the commands that produce the
 Declared before the first edit. Files marked "(outside the lock list)" are existing files the work
 needed; nothing else outside the declared set was written.
 
-| Path | Class | Why |
-| --- | --- | --- |
-| `packages/core/src/extensions/core/filter/index.ts` | new | the `filter` tool: schema, handler, rendering |
-| `packages/core/src/extensions/core/filter/filter.ts` | new | the in-process readers (`head`, `tail`, `grep`, `wc -l`) |
-| `packages/core/src/extensions/core/sink/index.ts` | new | the `sink` tool: schema, handler, rendering |
-| `packages/core/src/extensions/core/sink/sink.ts` | new | target resolution and the write itself |
-| `packages/core/src/extensions/core/feed/index.ts` | new | the `feed` tool: schema, handler, rendering |
-| `packages/core/src/extensions/core/feed/feed.ts` | new | the two-stage refusals and the hand-off |
-| `packages/core/test/runtime/core/test-argv-tools.mjs` | new | the fixture that holds every bar below |
-| `docs/NO-BASH-TOOLS-2026-11-24.md` | new | this report |
-| `packages/core/src/extensions/manifest.ts` | in the lock list | three entries beside `run-tool` |
-| `packages/core/test/runtime/core/` | in the lock list | the fixture's directory |
-| `packages/core/src/extensions/core/run-tool/run.ts` | outside the lock list | the runner's stdin accepts bytes, a refusal names the tool that asked, and the offload copy and the stream-shape mapper moved here so four tools share one of each |
-| `packages/core/src/extensions/core/run-tool/index.ts` | outside the lock list | calls the two moved helpers instead of keeping its own copies |
-| `packages/core/TOOLS.md` | outside the lock list | three catalog rows and the two derived counts |
-| `packages/core/src/extensions/core/prompt-builder/tool-guidelines.ts` | outside the lock list | three reflections, which the catalog parity fixture requires to equal the catalog rows |
-| `packages/core/src/extensions/core/AGENTS.md` | outside the lock list | the sub-extension table is the nearest contract for `core/`; `run-tool/` was missing from it and is added in the same table |
-| `packages/core/AGENTS.md` | outside the lock list | the documented-tool count |
-| `packages/core/src/extensions/context-management/README.md` | outside the lock list | the same count, restated |
-| `packages/core/README.md` | outside the lock list | the extension count, re-derived from the manifest |
-| `packages/core/docs/LOCAL_DEV.md` | outside the lock list | the core fixture population, re-derived from the runner |
+| Path                                                                  | Class                 | Why                                                                                                                                                                |
+| --------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/core/src/extensions/core/filter/index.ts`                   | new                   | the `filter` tool: schema, handler, rendering                                                                                                                      |
+| `packages/core/src/extensions/core/filter/filter.ts`                  | new                   | the in-process readers (`head`, `tail`, `grep`, `wc -l`)                                                                                                           |
+| `packages/core/src/extensions/core/sink/index.ts`                     | new                   | the `sink` tool: schema, handler, rendering                                                                                                                        |
+| `packages/core/src/extensions/core/sink/sink.ts`                      | new                   | target resolution and the write itself                                                                                                                             |
+| `packages/core/src/extensions/core/feed/index.ts`                     | new                   | the `feed` tool: schema, handler, rendering                                                                                                                        |
+| `packages/core/src/extensions/core/feed/feed.ts`                      | new                   | the two-stage refusals and the hand-off                                                                                                                            |
+| `packages/core/test/runtime/core/test-argv-tools.mjs`                 | new                   | the fixture that holds every bar below                                                                                                                             |
+| `docs/NO-BASH-TOOLS-2026-11-24.md`                                    | new                   | this report                                                                                                                                                        |
+| `packages/core/src/extensions/manifest.ts`                            | in the lock list      | three entries beside `run-tool`                                                                                                                                    |
+| `packages/core/test/runtime/core/`                                    | in the lock list      | the fixture's directory                                                                                                                                            |
+| `packages/core/src/extensions/core/run-tool/run.ts`                   | outside the lock list | the runner's stdin accepts bytes, a refusal names the tool that asked, and the offload copy and the stream-shape mapper moved here so four tools share one of each |
+| `packages/core/src/extensions/core/run-tool/index.ts`                 | outside the lock list | calls the two moved helpers instead of keeping its own copies                                                                                                      |
+| `packages/core/TOOLS.md`                                              | outside the lock list | three catalog rows and the two derived counts                                                                                                                      |
+| `packages/core/src/extensions/core/prompt-builder/tool-guidelines.ts` | outside the lock list | three reflections, which the catalog parity fixture requires to equal the catalog rows                                                                             |
+| `packages/core/src/extensions/core/AGENTS.md`                         | outside the lock list | the sub-extension table is the nearest contract for `core/`; `run-tool/` was missing from it and is added in the same table                                        |
+| `packages/core/AGENTS.md`                                             | outside the lock list | the documented-tool count                                                                                                                                          |
+| `packages/core/src/extensions/context-management/README.md`           | outside the lock list | the same count, restated                                                                                                                                           |
+| `packages/core/README.md`                                             | outside the lock list | the extension count, re-derived from the manifest                                                                                                                  |
+| `packages/core/docs/LOCAL_DEV.md`                                     | outside the lock list | the core fixture population, re-derived from the runner                                                                                                            |
 
 Nothing was pushed, tagged or merged. `package-lock.json` was not touched and no install was run.
 
@@ -53,14 +53,14 @@ Runs one program and applies one filter to its stdout in this process. The filte
 the capture file; no second program is started, and the program's bytes are never decoded unless the
 filter needs text.
 
-| Parameter | Required | Meaning |
-| --- | --- | --- |
-| `argv` | yes | the program and its arguments, one element each |
-| `through` | yes | `head`, `tail`, `grep` or `wc` |
-| `pattern` | only for `grep` | the line pattern; a JavaScript regular expression, not a BRE |
-| `lines` | no, default 10 | the line count for `head` and `tail` |
-| `cwd`, `env`, `timeout_ms` | `timeout_ms` yes | as `run` |
-| `max_output_bytes` | no | the same cap and the same refusal message as `run` |
+| Parameter                  | Required         | Meaning                                                      |
+| -------------------------- | ---------------- | ------------------------------------------------------------ |
+| `argv`                     | yes              | the program and its arguments, one element each              |
+| `through`                  | yes              | `head`, `tail`, `grep` or `wc`                               |
+| `pattern`                  | only for `grep`  | the line pattern; a JavaScript regular expression, not a BRE |
+| `lines`                    | no, default 10   | the line count for `head` and `tail`                         |
+| `cwd`, `env`, `timeout_ms` | `timeout_ms` yes | as `run`                                                     |
+| `max_output_bytes`         | no               | the same cap and the same refusal message as `run`           |
 
 Two arguments are refused rather than ignored: a `pattern` with a reduction that cannot read it, and
 `lines` with `wc`, which counts every line.
@@ -76,11 +76,11 @@ holds one chunk; `head`, `grep` and `wc` stream forward and hold one chunk.
 
 Runs one program and writes its stdout and/or stderr to files.
 
-| Parameter | Required | Meaning |
-| --- | --- | --- |
-| `argv` | yes | the program and its arguments |
-| `stdout_to`, `stderr_to` | one of the two | destination paths, resolved against the tool's cwd |
-| `cwd`, `env`, `timeout_ms` | `timeout_ms` yes | as `run` |
+| Parameter                  | Required         | Meaning                                            |
+| -------------------------- | ---------------- | -------------------------------------------------- |
+| `argv`                     | yes              | the program and its arguments                      |
+| `stdout_to`, `stderr_to`   | one of the two   | destination paths, resolved against the tool's cwd |
+| `cwd`, `env`, `timeout_ms` | `timeout_ms` yes | as `run`                                           |
 
 Both paths are reported with the byte count written to each. A stream that is not redirected is
 shown in the result under the default cap. Destinations are checked before the program starts, as
@@ -94,12 +94,12 @@ stream does not pass through the model. The stream it shows instead is bounded b
 
 Runs one program whose stdin is another program's stdout.
 
-| Parameter | Required | Meaning |
-| --- | --- | --- |
-| `from` | yes | the producer's argv |
-| `to` | yes | the consumer's argv |
+| Parameter                  | Required         | Meaning                                        |
+| -------------------------- | ---------------- | ---------------------------------------------- |
+| `from`                     | yes              | the producer's argv                            |
+| `to`                       | yes              | the consumer's argv                            |
 | `cwd`, `env`, `timeout_ms` | `timeout_ms` yes | for both stages; the timeout bounds each stage |
-| `max_output_bytes` | no | applies to the consumer's streams |
+| `max_output_bytes`         | no               | applies to the consumer's streams              |
 
 The consumer's exit is the tool's answer; the producer's exit, duration and byte count are reported
 beside it. The producer runs to completion before the consumer starts, so the pipe cannot deadlock
@@ -117,12 +117,12 @@ streams' own sizes, taken from the comparison the assertion makes.
 
 Producer `lines.txt`, ten newline-terminated lines (`alpha` … `kappa`).
 
-| Shell form | Tool call | Tool bytes | Shell bytes | Bytes equal |
-| --- | --- | --- | --- | --- |
-| `cat lines.txt \| head -n 3` | `filter { through: "head", lines: 3 }` | 17 | 17 | equal |
-| `cat lines.txt \| tail -n 3` | `filter { through: "tail", lines: 3 }` | 17 | 17 | equal |
-| `cat lines.txt \| grep ta` | `filter { through: "grep", pattern: "ta" }` | 31 | 31 | equal |
-| `cat lines.txt \| wc -l` | `filter { through: "wc" }` | 3 | 9 | same integer, see below |
+| Shell form                   | Tool call                                   | Tool bytes | Shell bytes | Bytes equal             |
+| ---------------------------- | ------------------------------------------- | ---------- | ----------- | ----------------------- |
+| `cat lines.txt \| head -n 3` | `filter { through: "head", lines: 3 }`      | 17         | 17          | equal                   |
+| `cat lines.txt \| tail -n 3` | `filter { through: "tail", lines: 3 }`      | 17         | 17          | equal                   |
+| `cat lines.txt \| grep ta`   | `filter { through: "grep", pattern: "ta" }` | 31         | 31          | equal                   |
+| `cat lines.txt \| wc -l`     | `filter { through: "wc" }`                  | 3          | 9           | same integer, see below |
 
 `wc -l` is the one row where byte equality cannot hold: BSD `wc` pads a single count to eight
 columns and GNU `wc` does not, so the padding is a property of the local binary, not of the count.
@@ -141,9 +141,9 @@ Producer `node prog.js` writes `stdout-bytes-ü` (15 bytes, one two-byte charact
 `node prog.js > shell-out 2> shell-err`, once through `sink`.
 
 | Stream | Tool file bytes | Shell file bytes | Bytes equal |
-| --- | --- | --- | --- |
-| stdout | 15 | 15 | equal |
-| stderr | 12 | 12 | equal |
+| ------ | --------------- | ---------------- | ----------- |
+| stdout | 15              | 15               | equal       |
+| stderr | 12              | 12               | equal       |
 
 The reported counts (`stdout_bytes` 15, `stderr_bytes` 12) equal the files' own sizes, and the
 result text names each absolute path with its count. A second case redirects stdout only: the file
@@ -156,12 +156,12 @@ The producer is `cat in.bin` over one mebibyte built deterministically with a lo
 at offset 100, a NUL at 101, and bytes UTF-8 cannot carry. The consumer hashes its stdin and prints
 the digest and the length.
 
-| Measure | Value |
-| --- | --- |
-| producer bytes | 1,048,576 |
-| bytes the consumer saw | 1,048,576 |
+| Measure                     | Value                                           |
+| --------------------------- | ----------------------------------------------- |
+| producer bytes              | 1,048,576                                       |
+| bytes the consumer saw      | 1,048,576                                       |
 | digest the consumer printed | `5c822b6a…8094c`, equal to the payload's sha256 |
-| producer exit reported | 0 |
+| producer exit reported      | 0                                               |
 
 A second case sends `one\ntwo\nthree\n` through `from: ["cat","in.txt"], to: ["cat"]` and asserts
 the consumer's stdout is that text byte for byte. A third asserts the answer is the consumer's exit
@@ -172,11 +172,11 @@ the consumer's stdout is that text byte for byte. A third asserts the answer is 
 The fixture drives every operator through every tool. Fifteen cases for the single-argv tools, and
 ten more for `feed` (each operator in `from` and in `to`), plus a shell command string.
 
-| Tool | Operators refused | Refusal names |
-| --- | --- | --- |
-| `filter` | `\|`, `&&`, `;`, backtick, `$(` | `argv[1]` and the quoted element |
-| `sink` | the same five | `argv[1]` and the quoted element |
-| `feed` | the same five, in `from` and in `to` | `from[1]` or `to[1]` and the quoted element |
+| Tool     | Operators refused                    | Refusal names                               |
+| -------- | ------------------------------------ | ------------------------------------------- |
+| `filter` | `\|`, `&&`, `;`, backtick, `$(`      | `argv[1]` and the quoted element            |
+| `sink`   | the same five                        | `argv[1]` and the quoted element            |
+| `feed`   | the same five, in `from` and in `to` | `from[1]` or `to[1]` and the quoted element |
 
 Quoted, verbatim:
 
@@ -206,12 +206,12 @@ text and the operator list are `run`'s, so a fifth argv tool inherits both by pa
 
 ### B5: the cap is the existing cap
 
-| Case | Producer | Result |
-| --- | --- | --- |
-| `filter` past the cap | 1 MiB through `grep .` | `truncated: true`, 1,048,577 bytes, shown 2,036, dropped 1,046,541, offload file 1,048,577 bytes |
-| `feed` past the cap | 1 MiB through `cat` | `truncated: true`, 1,048,576 bytes, shown plus dropped equal the stream, offload file 1,048,576 bytes |
-| `filter` below `MIN_OUTPUT_BYTES` | `max_output_bytes: 1023` | refused, message equal to `run`'s for the same value |
-| `feed` above `MAX_OUTPUT_BYTES` | `max_output_bytes: 1048577` | refused, message equal to `run`'s for the same value |
+| Case                              | Producer                    | Result                                                                                                |
+| --------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `filter` past the cap             | 1 MiB through `grep .`      | `truncated: true`, 1,048,577 bytes, shown 2,036, dropped 1,046,541, offload file 1,048,577 bytes      |
+| `feed` past the cap               | 1 MiB through `cat`         | `truncated: true`, 1,048,576 bytes, shown plus dropped equal the stream, offload file 1,048,576 bytes |
+| `filter` below `MIN_OUTPUT_BYTES` | `max_output_bytes: 1023`    | refused, message equal to `run`'s for the same value                                                  |
+| `feed` above `MAX_OUTPUT_BYTES`   | `max_output_bytes: 1048577` | refused, message equal to `run`'s for the same value                                                  |
 
 The cap-refusal assertion does not compare against a copied literal: the fixture calls `run` with the
 same value and asserts the two results' text are equal.
@@ -292,16 +292,16 @@ green again.
 
 Run from the worktree, in this order, at the tree that was committed.
 
-| Command | Exit | Tail |
-| --- | --- | --- |
-| `npm run typecheck` | 0 | `pi-braid-telegram@0.3.2 typecheck` / `tsc --noEmit` |
-| `npm run lint` | 0 | eslint over the four source globs and the fixture globs, no findings |
-| `npm test` | 1 | `407 passed, 2 failed, 0 timed out in 5m28s`; the two failures are pre-existing, below |
-| `npm run check:placement -- --strict` | 1 | `Placement check (strict): 1269 tracked files scanned of 1269 tracked at worker/nobash/no-bash-tools`; `Totals: 2 hit(s) reported, 359 excluded`; both pre-existing, below |
-| `npm run check:extension-api -- --strict` | 0 | `346 files, 244 ctx accesses, 0 unclassified` |
-| `npm run check:doc-dates` | 0 | `Doc dates gate: PASS (0 residue hits)` |
-| `npm run check:source-claims` | 0 | `clean - 7 stated count(s) re-derived from 4 document(s)` |
-| `npm run check:doc-drift` | 0 | `Derived doc references: 125 doc(s), 0 queued fix(es) (0 row(s))` (the span and identifier counts move with this file's own backticks, so they are not quoted) |
+| Command                                   | Exit | Tail                                                                                                                                                                       |
+| ----------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                       | 0    | `pi-braid-telegram@0.3.2 typecheck` / `tsc --noEmit`                                                                                                                       |
+| `npm run lint`                            | 0    | eslint over the four source globs and the fixture globs, no findings                                                                                                       |
+| `npm test`                                | 1    | `407 passed, 2 failed, 0 timed out in 5m28s`; the two failures are pre-existing, below                                                                                     |
+| `npm run check:placement -- --strict`     | 1    | `Placement check (strict): 1269 tracked files scanned of 1269 tracked at worker/nobash/no-bash-tools`; `Totals: 2 hit(s) reported, 359 excluded`; both pre-existing, below |
+| `npm run check:extension-api -- --strict` | 0    | `346 files, 244 ctx accesses, 0 unclassified`                                                                                                                              |
+| `npm run check:doc-dates`                 | 0    | `Doc dates gate: PASS (0 residue hits)`                                                                                                                                    |
+| `npm run check:source-claims`             | 0    | `clean - 7 stated count(s) re-derived from 4 document(s)`                                                                                                                  |
+| `npm run check:doc-drift`                 | 0    | `Derived doc references: 125 doc(s), 0 queued fix(es) (0 row(s))` (the span and identifier counts move with this file's own backticks, so they are not quoted)             |
 
 The fixture on its own, at the committed tree:
 
@@ -366,7 +366,6 @@ against the tree it runs in. The same run in the primary checkout at the base re
 exits 2 with the same findings, so the red is state in the braid journal rather than anything in
 this tree. It is reported here and not touched: the journal lives in the braid home, not in the
 repository.
-
 
 ## Placement
 
