@@ -2,7 +2,7 @@
 /**
  * Dead-code census for the braid package family.
  *
- * Every number in docs/DEAD-CODE-AUDIT-2026-11-24.md comes from this script.
+ * Every number in the dead-code audit under docs/ comes from this script.
  *
  *   node scripts/dead-code-census.mjs           # report-shaped tables
  *   node scripts/dead-code-census.mjs --json    # machine-readable
@@ -803,9 +803,25 @@ const rev = (() => {
   }
 })();
 
+// The audit this census is generated for: the newest dated one in docs/. Naming a
+// dated file here would put a change-history date in a string literal, which the
+// placement rule refuses (and the audit doc's own name is the only place the date
+// belongs); the directory decides instead.
+const AUDIT_DOC = (() => {
+  try {
+    const found = readdirSync(join(ROOT, "docs"))
+      .filter((f) => f.startsWith("DEAD-CODE-AUDIT-") && f.endsWith(".md"))
+      .sort()
+      .pop();
+    return found ? `docs/${found}` : "docs/DEAD-CODE-AUDIT.md";
+  } catch {
+    return "docs/DEAD-CODE-AUDIT.md";
+  }
+})();
+
 const payload = {
   revision: rev,
-  generatedFor: "docs/DEAD-CODE-AUDIT-2026-11-24.md",
+  generatedFor: AUDIT_DOC,
   entries: { prod: prodRoots.map(rel), test: testRoots.length },
   totals: {
     files: measured.length,
