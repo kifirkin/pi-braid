@@ -19,8 +19,8 @@
  * own verb set to the same mechanism instead of copying it.
  */
 
-import { copyFileSync, mkdirSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { statSync } from "node:fs";
+import { resolve } from "node:path";
 import type {
   AgentToolUpdateCallback,
   ExtensionAPI,
@@ -29,7 +29,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { getOffloadFilePath } from "../../../lib/config/braid-paths.js";
 import {
   DEFAULT_OUTPUT_BYTES,
   MAX_OUTPUT_BYTES,
@@ -37,11 +36,13 @@ import {
   MIN_OUTPUT_BYTES,
   boundStream,
   capturePathFor,
+  describeStream,
   discardCapture,
   executeArgv,
   findRefusal,
+  offloadText,
 } from "./run.js";
-import type { RunCapture, RunRequest, RunStream } from "./run.js";
+import type { RunCapture, RunRequest, RunStream, StreamDetails } from "./run.js";
 
 /** Whether a path is a directory, with a missing path answering false. */
 function isDirectory(path: string): boolean {
@@ -109,54 +110,8 @@ export interface RunToolDetails {
   spawn_error?: string;
 }
 
-interface StreamDetails {
-  bytes: number;
-  shown_bytes: number;
-  dropped_bytes: number;
-  truncated: boolean;
-  full_text_path?: string;
-}
-
-function streamDetails(stream: RunStream): StreamDetails {
-  return {
-    bytes: stream.bytes,
-    shown_bytes: stream.shownBytes,
-    dropped_bytes: stream.droppedBytes,
-    truncated: stream.truncated,
-    ...(stream.fullTextPath ? { full_text_path: stream.fullTextPath } : {}),
-  };
-}
-
 function numberLine(bytes: number): string {
   return bytes.toLocaleString("en-US");
-}
-
-/**
- * The offload target for one truncated stream. The capture is copied, not moved:
- * the temp file is the fallback when the copy fails, and the result names
- * whichever path actually holds the text.
- */
-function offload(
-  capture: RunCapture,
-  stream: "stdout" | "stderr",
-  sessionId: string,
-  toolCallId: string,
-): string | undefined {
-  const source = capturePathFor(capture, stream);
-  const target = getOffloadFilePath(
-    sessionId,
-    toolCallId,
-    stream === "stdout" ? "run-stdout" : "run-stderr",
-  );
-  try {
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(source, target);
-    return target;
-  } catch {
-    // The full text is still in the capture directory; keeping it there and
-    // naming that path is better than losing it to a failed copy.
-    return undefined;
-  }
 }
 
 /** Render one stream as a labelled section, with its truncation note. */
@@ -255,9 +210,13 @@ export function createRunTool(): ToolDefinition<typeof runParameters, RunToolDet
       const cap = params.max_output_bytes ?? DEFAULT_OUTPUT_BYTES;
       const sessionId = ctx.sessionManager?.getSessionId?.() ?? "anonymous";
       const stdoutPath =
-        capture.stdoutBytes > cap ? offload(capture, "stdout", sessionId, toolCallId) : undefined;
+        capture.stdoutBytes > cap
+          ? offloadText(capturePathFor(capture, "stdout"), sessionId, toolCallId, "run-stdout")
+          : undefined;
       const stderrPath =
-        capture.stderrBytes > cap ? offload(capture, "stderr", sessionId, toolCallId) : undefined;
+        capture.stderrBytes > cap
+          ? offloadText(capturePathFor(capture, "stderr"), sessionId, toolCallId, "run-stderr")
+          : undefined;
       const offloadFailed =
         (capture.stdoutBytes > cap && stdoutPath === undefined) ||
         (capture.stderrBytes > cap && stderrPath === undefined);
@@ -292,8 +251,8 @@ export function createRunTool(): ToolDefinition<typeof runParameters, RunToolDet
           timed_out: capture.timedOut,
           aborted: capture.aborted,
           duration_ms: capture.durationMs,
-          stdout: streamDetails(stdout),
-          stderr: streamDetails(stderr),
+          stdout: describeStream(stdout),
+          stderr: describeStream(stderr),
           ...(capture.spawnError === undefined ? {} : { spawn_error: capture.spawnError }),
         } satisfies RunToolDetails,
         isError: isFailure(capture),

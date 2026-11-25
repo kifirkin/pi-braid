@@ -22,10 +22,20 @@
 
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, readSync, rmSync, statSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";
+import { getOffloadFilePath } from "../../../lib/config/braid-paths.js";
 import { findWorkspaceEscape } from "../../../lib/tools/workspace-guard.js";
 
 /** setTimeout's own ceiling: a longer timeout cannot be armed. */
@@ -73,7 +83,13 @@ export interface RunRequest {
   argv: string[];
   cwd?: string;
   env?: Record<string, string>;
-  stdin?: string;
+  /**
+   * Text written to the program's stdin, closed after writing. A `Buffer` is
+   * written byte for byte: the pipe carries what the caller holds, so a tool
+   * that feeds one program into another passes bytes rather than a UTF-8
+   * round trip that would replace everything it could not decode.
+   */
+  stdin?: string | Buffer;
   timeout_ms: number;
   max_output_bytes?: number;
 }
@@ -135,6 +151,11 @@ export interface RunContext {
   cwd: string;
   /** Boundary for the destructive guard. */
   workspaceRoot: string;
+  /**
+   * The tool a refusal text names. Defaults to `run`: the refusal belongs to
+   * whichever tool asked for it, and the argv tools share this module.
+   */
+  toolName?: string;
 }
 
 function quote(text: string): string {
@@ -185,6 +206,7 @@ function isShellCommandString(argv: readonly string[]): boolean {
  */
 export function findRefusal(request: RunRequest, context: RunContext): RunRefusal | null {
   const { argv } = request;
+  const tool = context.toolName ?? "run";
   if (!Array.isArray(argv) || argv.length === 0) {
     return {
       kind: "argv",
@@ -206,7 +228,7 @@ export function findRefusal(request: RunRequest, context: RunContext): RunRefusa
       kind: "metacharacter",
       message:
         `refused: argv[${operator.index}] carries "${operator.operator}". ` +
-        "run executes argv directly and never through a shell, so the operator would be a literal argument. " +
+        `${tool} executes argv directly and never through a shell, so the operator would be a literal argument. ` +
         `Argument: ${quote(argv[operator.index])}`,
     };
   }
@@ -216,7 +238,7 @@ export function findRefusal(request: RunRequest, context: RunContext): RunRefusa
       kind: "shell-string",
       message:
         "refused: argv[0] is a shell and argv carries -c, so this is a command string rather than a program call. " +
-        "run does not hand commands to a shell. Use bash, or pass the program and its arguments directly.",
+        `${tool} does not hand commands to a shell. Use bash, or pass the program and its arguments directly.`,
     };
   }
 
@@ -225,7 +247,7 @@ export function findRefusal(request: RunRequest, context: RunContext): RunRefusa
     return {
       kind: "glob",
       message:
-        `refused: "${quote(glob)}" is a glob, and run does not expand globs. ` +
+        `refused: "${quote(glob)}" is a glob, and ${tool} does not expand globs. ` +
         "Pass the paths the glob would have matched, or use find or grep, which take patterns themselves.",
     };
   }
@@ -358,6 +380,26 @@ export function boundStream(file: string, cap: number, fullTextPath?: string): R
     droppedBytes,
     truncated: true,
     ...(fullTextPath ? { fullTextPath } : {}),
+  };
+}
+
+/** The structured shape one captured stream is reported in. */
+export interface StreamDetails {
+  bytes: number;
+  shown_bytes: number;
+  dropped_bytes: number;
+  truncated: boolean;
+  full_text_path?: string;
+}
+
+/** Report one bounded stream: what it held, what is shown, and where the rest is. */
+export function describeStream(stream: RunStream): StreamDetails {
+  return {
+    bytes: stream.bytes,
+    shown_bytes: stream.shownBytes,
+    dropped_bytes: stream.droppedBytes,
+    truncated: stream.truncated,
+    ...(stream.fullTextPath ? { full_text_path: stream.fullTextPath } : {}),
   };
 }
 
@@ -500,4 +542,28 @@ export function discardCapture(capture: RunCapture): void {
 /** The capture file for one stream, while the capture directory still exists. */
 export function capturePathFor(capture: RunCapture, stream: "stdout" | "stderr"): string {
   return stream === "stdout" ? capture.stdoutPath : capture.stderrPath;
+}
+
+/**
+ * Copy a stream that outgrew its cap to the offload path the result names.
+ *
+ * Naming and placement belong to `getOffloadFilePath`; this function is the
+ * copy and the fallback, shared by every argv tool so no second tool invents a
+ * naming scheme. The capture itself is not moved: when the copy fails, the
+ * source is still the only copy and the caller names it.
+ */
+export function offloadText(
+  source: string,
+  sessionId: string,
+  toolCallId: string,
+  label: string,
+): string | undefined {
+  const target = getOffloadFilePath(sessionId, toolCallId, label);
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+    return target;
+  } catch {
+    return undefined;
+  }
 }

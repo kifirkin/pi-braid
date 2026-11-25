@@ -6,7 +6,7 @@ Narrows the active tool set to a curated profile on request, using `pi.setActive
 
 ## Problem
 
-The core package alone documents 34 tools in [TOOLS.md](../../../TOOLS.md); a
+The core package alone documents 37 tools in [TOOLS.md](../../../TOOLS.md); a
 full install adds the contrib and third-party families on top. Most sessions
 use only a subset. Displaying every registered tool in the system prompt wastes
 tokens and increases cognitive load on the model.

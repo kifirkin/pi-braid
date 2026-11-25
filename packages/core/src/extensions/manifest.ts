@@ -20,6 +20,9 @@ import contextManagementFn from "./context-management/index.js";
 import coreAgentEnvFn from "./core/agent-environment/index.js";
 import coreBashCwdFn from "./core/bash-cwd/index.js";
 import coreRunToolFn from "./core/run-tool/index.js";
+import coreFilterToolFn from "./core/filter/index.js";
+import coreSinkToolFn from "./core/sink/index.js";
+import coreFeedToolFn from "./core/feed/index.js";
 import corePromptBuilderFn from "./core/prompt-builder/index.js";
 
 // cognitive (reasoning tools + detectors: think, verify, topic-drift, MARS reflection, ...)
@@ -112,6 +115,21 @@ export const MANIFEST: ManifestEntry[] = [
     id: "run-tool",
     fn: coreRunToolFn,
     desc: "run tool - one program and its argv, without a shell",
+  },
+  {
+    id: "filter",
+    fn: coreFilterToolFn,
+    desc: "filter tool - one program and one in-process reduction of its stdout",
+  },
+  {
+    id: "sink",
+    fn: coreSinkToolFn,
+    desc: "sink tool - one program, its streams written to files",
+  },
+  {
+    id: "feed",
+    fn: coreFeedToolFn,
+    desc: "feed tool - one program's stdout as another program's stdin",
   },
   {
     id: "bash-cwd",

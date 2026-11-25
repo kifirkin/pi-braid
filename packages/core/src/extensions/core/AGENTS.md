@@ -13,6 +13,10 @@ environmental awareness, and system prompt assembly.
 | `agent-environment/` | L1 environmental awareness: working dir, time, machine info.                                                                                                                                                  | `prompt-builder` |
 | `bash-cwd/`          | pi's `bash` tool, overridden so the shell's working directory carries across calls. See `bash-cwd/AGENTS.md`.                                                                                                 | (tool surface)   |
 | `prompt-builder/`    | Builds the agent's system prompt. Composes sections; orchestrates once-per-session whisper deliveries from `memory/` and `cognitive/`.                                                                        | (final assembly) |
+| `run-tool/`          | One program and its argv, without a shell. The capture pipeline, the cap and the offload copy every argv tool reuses live in `run-tool/run.ts`.                                                               | (tool surface)   |
+| `filter/`            | Reduces one program's stdout in this process: `head`, `tail`, `grep`, `wc -l`.                                                                                                                                | (tool surface)   |
+| `sink/`              | Writes one program's stdout and stderr to files, and reports each path with its byte count.                                                                                                                   | (tool surface)   |
+| `feed/`              | Feeds one program's stdout into another's stdin as bytes, through the same executor as `run`.                                                                                                                 | (tool surface)   |
 | `skills-tool/`       | Skill surface: `list_skills` catalog (on-demand reach and ranking) + `skill_stats` counters, the auto-inject whisper, the skills floor (visible catalog) and drift trigger text rendered by `prompt-builder`. | (tool surface)   |
 
 ## Local Contracts
